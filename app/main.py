@@ -8,7 +8,9 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
 
 from app.bot.handlers import build_router
 from app.config import Settings, get_settings
@@ -19,6 +21,7 @@ from app.services.contact_service import ContactService
 from app.services.instagram_monitor import InstagramMonitor
 from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowService
+from app.services.monitor_controller import MonitorController
 from app.services.notification_service import NullLeadNotifier
 from app.services.telegram_notification_service import TelegramLeadNotifier
 
@@ -85,9 +88,14 @@ async def run(*, once: bool = False) -> int:
         process_existing_comments=settings.process_existing_comments,
         force_refresh_seconds=settings.instagram_force_refresh_seconds,
     )
+    controller = MonitorController(monitor)
     dispatcher = Dispatcher(storage=MemoryStorage())
-    dispatcher.include_router(build_router(settings, workflow, notifier))
-    monitor_task = asyncio.create_task(_monitor_loop(monitor, settings))
+    dispatcher.include_router(build_router(settings, workflow, notifier, controller))
+    try:
+        await _register_bot_commands(bot)
+    except TelegramAPIError as exc:
+        logger.warning("telegram_command_menu_failed error_type=%s", type(exc).__name__)
+    monitor_task = asyncio.create_task(_monitor_loop(controller, settings))
     logger.info(
         "startup provider=%s competitors=%s interval_seconds=%s",
         provider.name,
@@ -100,20 +108,35 @@ async def run(*, once: bool = False) -> int:
         monitor_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await monitor_task
+        await controller.stop()
         await provider.aclose()
         await bot.session.close()
         await engine.dispose()
     return 0
 
 
-async def _monitor_loop(monitor: InstagramMonitor, settings: Settings) -> None:
+async def _monitor_loop(controller: MonitorController, settings: Settings) -> None:
     while True:
-        try:
-            stats = await monitor.run_cycle()
-            logger.info("poll_cycle_complete stats=%s", stats)
-        except Exception as exc:
-            logger.exception("poll_cycle_failed error_type=%s", type(exc).__name__)
+        if controller.start_cycle("schedule"):
+            with contextlib.suppress(Exception):
+                await controller.wait_current()
         await asyncio.sleep(settings.instagram_poll_interval_seconds)
+
+
+async def _register_bot_commands(bot: Bot) -> None:
+    await bot.set_my_commands(
+        [
+            BotCommand(command="start", description="Открыть главное меню"),
+            BotCommand(command="status", description="Состояние мониторинга"),
+            BotCommand(command="stats", description="Статистика базы и сделок"),
+            BotCommand(command="hot", description="Открытые HOT-лиды"),
+            BotCommand(command="lead", description="Карточка лида по ID"),
+            BotCommand(command="scan", description="Проверить Instagram сейчас"),
+            BotCommand(command="competitors", description="Список конкурентов"),
+            BotCommand(command="help", description="Справка по боту"),
+            BotCommand(command="cancel", description="Отменить текущий диалог"),
+        ]
+    )
 
 
 def configure_logging(settings: Settings) -> None:

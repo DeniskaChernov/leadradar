@@ -17,6 +17,10 @@ Hardened local MVP complete and verified with the credentialed real provider.
 - Durable `AI_PENDING` leads with automatic retry on later polling cycles.
 - HOT threshold, previous-signal context, and 14-day repeat-interest calculation.
 - aiogram long polling with `/start`, `/status`, `/stats`, `/hot`, and `/competitors`.
+- Persistent Telegram command/reply menus plus `/help`, `/lead ID`, `/scan`, and `/cancel`.
+- Runtime status with uptime, current/last cycle state, last statistics, and last system error.
+- Shared manual/scheduled monitor controller that prevents overlapping provider cycles.
+- Full HOT cards in `/hot` and button-based LOST reasons with a free-text fallback.
 - Durable HOT notification results, atomic manager assignment, and NOT_LEAD feedback.
 - Atomic Telegram outbox claiming, bounded retry state, and startup reconciliation of unsent HOT
   leads without duplicate `(lead, chat)` deliveries.
@@ -36,7 +40,7 @@ Hardened local MVP complete and verified with the credentialed real provider.
 ## Next
 
 1. Keep one application process running with `python -m app.main`.
-2. Use Telegram `/status`, `/stats`, and `/hot` for daily operation.
+2. Use Telegram `/status`, `/stats`, `/hot`, and `/scan` for daily operation.
 3. Run `python -m scripts.check_data_integrity` whenever an explicit duplicate audit is wanted.
 
 ## Known issues
@@ -51,7 +55,7 @@ Hardened local MVP complete and verified with the credentialed real provider.
 
 ## Tests
 
-- `python -m pytest -q`: 21 passed.
+- `python -m pytest -q`: 26 passed.
 - `ruff check .`: passed.
 - `python -m scripts.check_integrations`: Database, Telegram, OpenAI, ScrapeCreators, and Bright
   Data all OK with local credentials on 2026-08-26.
@@ -67,7 +71,8 @@ normalization/fallback, lead creation, Structured Output parsing, HOT threshold,
 baseline, unchanged-post skipping, AI retry, manager assignment, double-assignment protection,
 provider-change baseline reset, forced refresh with unchanged counts, cross-provider Reel identity,
 concurrent notification delivery, NOT_LEAD, deal WON/LOST, SQLite foreign keys, and full mock
-HOT-to-WON acceptance flow.
+HOT-to-WON acceptance flow. UI coverage includes the persistent menu, safe callback sizes, runtime
+status tracking, failure reporting, and prevention of overlapping monitor cycles.
 
 ## How to run
 
@@ -79,4 +84,4 @@ Full setup commands are in `README.md`.
 
 ## Last verified commit
 
-Current HEAD (`feat: harden idempotent lead processing`).
+Current HEAD (`feat: improve Telegram UX and monitor control`).

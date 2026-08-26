@@ -8,6 +8,9 @@ SQLite/PostgreSQL is the source of truth. Telegram is an operational interface, 
 InstagramProvider (Mock / ScrapeCreators -> Bright Data fallback)
         |
         v
+MonitorController (scheduled/manual cycle lock + runtime status)
+        |
+        v
 InstagramMonitor
         |
         v
@@ -56,6 +59,8 @@ atomic manager assignment -> deal WON/LOST -> immutable events + AI feedback
 - AI failures create `AI_PENDING`; later polling cycles retry analysis.
 - startup applies pending Alembic migrations before polling begins; SQLite foreign-key enforcement
   is enabled for every application connection.
+- scheduled polling and Telegram `/scan` share one `MonitorController`; a second cycle is rejected
+  while the first is running, and `/status` reads its real runtime snapshot.
 
 ## Database portability
 

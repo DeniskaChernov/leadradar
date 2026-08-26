@@ -18,6 +18,8 @@ from app.db.models import (
     DealStatus,
     Lead,
     LeadStatus,
+    NotificationLog,
+    NotificationStatus,
     Post,
 )
 from app.db.repositories.events import ContactEventRepository
@@ -62,6 +64,8 @@ class WorkflowStats:
     open_leads: int
     won_deals: int
     lost_deals: int
+    ai_pending: int
+    notification_backlog: int
 
 
 class LeadWorkflowService:
@@ -360,7 +364,32 @@ class LeadWorkflowService:
                 )
                 or 0
             )
-            return WorkflowStats(contacts, comments, hot, open_leads, won, lost)
+            ai_pending = (
+                await session.scalar(
+                    select(func.count(Lead.id)).where(
+                        Lead.status == LeadStatus.AI_PENDING
+                    )
+                )
+                or 0
+            )
+            notification_backlog = (
+                await session.scalar(
+                    select(func.count(NotificationLog.id)).where(
+                        NotificationLog.status != NotificationStatus.SENT
+                    )
+                )
+                or 0
+            )
+            return WorkflowStats(
+                contacts=contacts,
+                comments=comments,
+                hot_leads=hot,
+                open_leads=open_leads,
+                won_deals=won,
+                lost_deals=lost,
+                ai_pending=ai_pending,
+                notification_backlog=notification_backlog,
+            )
 
     async def _load_deal_and_lead(
         self, session: AsyncSession, deal_id: int, manager_id: int
