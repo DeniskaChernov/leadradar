@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Stage 3/4 — AI lead scoring and Instagram monitoring orchestration.
+Stage 3/4 complete — moving to Telegram lead workflow and deals.
 
 ## Completed
 
@@ -15,10 +15,13 @@ Stage 3/4 — AI lead scoring and Instagram monitoring orchestration.
 - Contact/post/comment/event repositories and transactional signal persistence added.
 - Mock, ScrapeCreators, Bright Data, and automatic fallback providers implemented.
 - Provider normalization follows current official documented fields.
+- OpenAI Responses API structured Pydantic scoring and AI_PENDING recovery added.
+- Lead/AIFeedback creation commits before notification.
+- Baseline-aware polling skips unchanged posts and retries failed comment synchronizations.
 
 ## In progress
 
-- AI scoring, lead creation, baseline-aware polling, and notification orchestration.
+- Telegram commands, HOT notifications, callbacks, and deal workflow.
 
 ## Next
 
@@ -30,8 +33,8 @@ Stage 3/4 — AI lead scoring and Instagram monitoring orchestration.
 
 ## Tests
 
-- 5 tests pass: contact upsert, comment dedup, baseline persistence, provider normalization,
-  and provider fallback.
+- 8 tests pass, including structured AI parsing, lead creation/HOT threshold, feedback,
+  baseline behavior, history reuse, and unchanged-post skipping.
 - Alembic upgrade to the initial schema passed.
 - Ruff passes for all current files.
 

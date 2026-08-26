@@ -100,6 +100,7 @@ class Post(Base):
     post_type: Mapped[str] = mapped_column(String(32), default="REEL")
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     comments_count: Mapped[int] = mapped_column(Integer, default=0)
+    comments_fetched_count: Mapped[int | None] = mapped_column(Integer)
     last_checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     raw_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -272,4 +273,3 @@ class NotificationLog(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
-
