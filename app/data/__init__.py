@@ -1,0 +1,3 @@
+from app.data.competitor_catalog import MARKET_CANDIDATES, MONITORED_COMPETITORS
+
+__all__ = ["MARKET_CANDIDATES", "MONITORED_COMPETITORS"]

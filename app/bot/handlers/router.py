@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from html import escape
@@ -81,8 +82,10 @@ def build_router(
             if has_access
             else "⛔ Доступ пока не настроен.\n"
         )
+        dashboard_url = settings.web_public_url or f"http://{settings.web_host}:{settings.web_port}"
         next_step = (
-            "Используйте кнопки меню или команду /help."
+            f"Основная работа теперь в веб-интерфейсе: {dashboard_url}\n"
+            "Telegram оставляем для HOT-уведомлений и быстрых действий."
             if has_access
             else "Добавьте нужный ID в TELEGRAM_ADMIN_CHAT_IDS и перезапустите бота."
         )
@@ -105,6 +108,7 @@ def build_router(
             "/lead 12 — открыть лид №12\n"
             "/scan — проверить Instagram сейчас\n"
             "/competitors — кого отслеживаем\n"
+            "/web — адрес интерфейса Lead Radar\n"
             "/cancel — отменить заполнение сделки\n\n"
             "Новые комментарии сохраняются автоматически. База данных — источник истины.",
             reply_markup=main_menu(),
@@ -145,11 +149,64 @@ def build_router(
     async def scan(message: Message) -> None:
         if not authorized(message):
             return await reject(message)
-        if not controller.start_cycle("manual"):
-            return await message.answer("⏳ Проверка уже выполняется. Посмотрите /status.")
-        await message.answer("🔎 Проверка Instagram запущена. Я сообщу результат здесь.")
-        task = asyncio.create_task(_report_scan_result(message, controller))
-        task.add_done_callback(_consume_task_exception)
+        if not settings.lead_search_enabled:
+            return await message.answer(
+                "⏸ <b>Поиск лидов временно приостановлен</b>\n\n"
+                "Ни ручные, ни фоновые проверки сейчас не запускаются. "
+                "Внешние токены и лимиты не расходуются."
+            )
+        is_live = settings.instagram_provider not in {"mock", "replay"}
+        if is_live and not settings.instagram_live_enabled:
+            return await message.answer(
+                "🛡 <b>Live-проверка заблокирована</b>\n\n"
+                "Реальные Instagram-запросы выключены, поэтому токены не будут потрачены. "
+                "Для разработки используйте replay/mock режим."
+            )
+        if is_live:
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="✅ Подтвердить live-проверку", callback_data="scan:confirm"
+                        )
+                    ],
+                    [InlineKeyboardButton(text="Отмена", callback_data="scan:cancel")],
+                ]
+            )
+            return await message.answer(
+                "⚠️ <b>Подтвердите расход внешних запросов</b>\n\n"
+                f"Жёсткий предел одной проверки: <b>{settings.instagram_max_units_per_scan}</b> "
+                "операций. Fallback входит в этот же лимит.\n"
+                f"Дневной предел: <b>{settings.instagram_daily_request_limit}</b>.\n\n"
+                "Если сейчас только тестируем интерфейс и CRM, запускать live-проверку не нужно.",
+                reply_markup=keyboard,
+            )
+        await _start_scan_from_message(message, controller)
+
+    @router.callback_query(F.data == "scan:confirm")
+    async def confirm_scan(callback: CallbackQuery) -> None:
+        if not authorized(callback):
+            return await reject(callback)
+        if not settings.lead_search_enabled:
+            await callback.answer("Поиск лидов временно приостановлен", show_alert=True)
+            return
+        if settings.instagram_provider in {"mock", "replay"}:
+            return await callback.answer("Live-подтверждение здесь не требуется", show_alert=True)
+        if not settings.instagram_live_enabled:
+            return await callback.answer("Live-запросы уже выключены", show_alert=True)
+        if callback.message is None:
+            return await callback.answer("Не удалось запустить проверку", show_alert=True)
+        await callback.answer("Запускаю")
+        await _start_scan_from_message(callback.message, controller)
+
+    @router.callback_query(F.data == "scan:cancel")
+    async def cancel_scan(callback: CallbackQuery) -> None:
+        if not authorized(callback):
+            return await reject(callback)
+        if callback.message is not None:
+            with contextlib.suppress(TelegramAPIError):
+                await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.answer("Проверка отменена")
 
     @router.message(Command("stats"))
     async def stats(message: Message) -> None:
@@ -198,6 +255,18 @@ def build_router(
             return await reject(message)
         await message.answer(
             "🏢 Конкуренты:\n" + "\n".join(escape(item) for item in settings.competitors)
+        )
+
+    @router.message(Command("web"))
+    async def web(message: Message) -> None:
+        if not authorized(message):
+            return await reject(message)
+        url = settings.web_public_url or f"http://{settings.web_host}:{settings.web_port}"
+        await message.answer(
+            "🌐 <b>Lead Radar Web</b>\n\n"
+            f"{escape(url)}\n\n"
+            "Локально открывайте ссылку на том же компьютере, где запущен бот. "
+            "После Railway сюда поставим публичный HTTPS URL и подключим как Telegram Mini App."
         )
 
     @router.message(Command("cancel"))
@@ -407,7 +476,8 @@ def main_menu() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="/status"), KeyboardButton(text="/stats")],
             [KeyboardButton(text="/hot"), KeyboardButton(text="/scan")],
-            [KeyboardButton(text="/competitors"), KeyboardButton(text="/help")],
+            [KeyboardButton(text="/competitors"), KeyboardButton(text="/web")],
+            [KeyboardButton(text="/help")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -431,6 +501,15 @@ def lost_reason_keyboard(deal_id: int) -> InlineKeyboardMarkup:
         ]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _start_scan_from_message(message: Message, controller: MonitorController) -> None:
+    if not controller.start_cycle("manual"):
+        await message.answer("⏳ Проверка уже выполняется. Откройте /status.")
+        return
+    await message.answer("🔎 Проверка Instagram запущена. Результат пришлю сюда после завершения.")
+    task = asyncio.create_task(_report_scan_result(message, controller))
+    task.add_done_callback(_consume_task_exception)
 
 
 async def _report_scan_result(

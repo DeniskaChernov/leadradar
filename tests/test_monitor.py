@@ -97,9 +97,13 @@ async def test_provider_change_rebuilds_baseline_without_leads(session_factory):
         assert await session.scalar(select(func.count(Lead.id))) == 0
 
 
-async def test_forced_refresh_finds_new_comment_when_total_count_is_unchanged(
-    session_factory,
-):
+async def test_unchanged_remote_count_does_not_spend_comment_request(session_factory):
+    """Cost-safe rule: Reel metadata is the cheap change detector.
+
+    A provider can theoretically expose a new comment without changing comment_count immediately.
+    We intentionally do not pay for a Comments API refresh until the remote count changes. The
+    next metadata update catches it. This trades a small delay for predictable provider spend.
+    """
     provider = MockInstagramProvider()
     notifier = RecordingNotifier()
     monitor = InstagramMonitor(
@@ -125,11 +129,19 @@ async def test_forced_refresh_finds_new_comment_when_total_count_is_unchanged(
         )
     )
 
+    unchanged = await monitor.run_cycle()
+    assert unchanged.comment_requests == 0
+    assert unchanged.comments_created == 0
+    assert notifier.lead_ids == []
+
+    # Simulate the next profile/Reel metadata refresh catching Instagram's updated counter.
+    provider._post = provider._post.model_copy(update={"comments_count": 2})
     detected = await monitor.run_cycle()
     repeated = await monitor.run_cycle()
 
+    assert detected.comment_requests == 1
     assert detected.comments_created == 1
     assert detected.leads_created == 1
+    assert repeated.comment_requests == 0
     assert repeated.comments_created == 0
-    assert repeated.leads_created == 0
     assert notifier.lead_ids == [1]

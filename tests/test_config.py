@@ -19,3 +19,9 @@ def test_empty_list_settings_use_safe_defaults(monkeypatch):
 
     assert settings.competitors == ["aiko.uz"]
     assert settings.telegram_admin_chat_ids == []
+
+
+def test_replay_is_a_valid_safe_provider():
+    settings = Settings(_env_file=None, instagram_provider="replay")
+    assert settings.instagram_provider == "replay"
+    assert settings.instagram_live_calls_enabled is False

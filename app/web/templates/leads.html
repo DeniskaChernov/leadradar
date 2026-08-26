@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Лиды · Lead Radar{% endblock %}
+{% block heading %}Лиды{% endblock %}
+{% block subheading %}Рабочая воронка от первого интереса до продажи{% endblock %}
+{% block content %}
+<div class="page-help"><b>Главный принцип</b><span>Комментарий становится лидом только после оценки. Здесь уже не весь шум Instagram, а коммерческие возможности, которые можно вести к сделке.</span></div>
+<form class="filters" method="get"><input name="q" value="{{ q }}" placeholder="Клиент, комментарий, товар или конкурент"><select name="status"><option value="">Все рабочие стадии</option>{% for s in ['NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST','AI_PENDING'] %}<option value="{{ s }}" {% if status_filter==s %}selected{% endif %}>{{ lead_status_label(s) }}</option>{% endfor %}</select><button class="btn">Найти</button><a class="btn ghost" href="/leads">Сбросить</a></form>
+
+{% if status_filter %}
+<div class="cards">
+{% for lead, contact, comment, competitor, post, deal in rows %}
+<article class="lead-card {% if lead.lead_score >= settings.hot_lead_threshold %}is-hot{% endif %}">
+  <div class="lead-card-top"><div><a href="/contacts/{{ contact.id }}"><b>@{{ contact.username }}</b></a><small>@{{ competitor.normalized_handle }}</small></div><div class="big-score">{% if lead.status.value=='AI_PENDING' %}AI{% else %}{{ lead.lead_score }}{% endif %}</div></div>
+  <blockquote>{{ comment.text or 'Пустой комментарий' }}</blockquote>
+  <div class="lead-tags"><span class="tag">{{ intent_label(lead.intent) }}</span><span class="tag">{{ product_label(lead.product_category) }}</span><span class="tag status-{{ lead.status.value|lower }}">{{ lead_status_label(lead.status) }}</span></div>
+  <p class="reason">{{ lead.ai_reason or 'Объяснение ещё не сформировано.' }}</p>
+  <div class="card-actions"><a class="btn primary" href="/leads/{{ lead.id }}">Работать с лидом</a><a class="btn ghost" href="/contacts/{{ contact.id }}">История клиента</a></div>
+</article>
+{% else %}<div class="empty panel">Лидов с таким статусом нет.</div>{% endfor %}
+</div>
+{% else %}
+<div class="kanban">
+{% for stage in board_statuses %}
+<section class="kanban-col">
+  <header><div><b>{{ lead_status_label(stage) }}</b><small>{% set ns=namespace(count=0) %}{% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}{% set ns.count=ns.count+1 %}{% endif %}{% endfor %}{{ ns.count }} лидов</small></div></header>
+  <div class="kanban-stack">
+  {% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}
+    <a class="kanban-card {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %}" href="/leads/{{ lead.id }}">
+      <div class="kanban-top"><b>@{{ contact.username }}</b><span>{{ lead.lead_score }}</span></div>
+      <p>{{ comment.text[:120] }}{% if comment.text|length > 120 %}…{% endif %}</p>
+      <small>{{ intent_label(lead.intent) }} · {{ product_label(lead.product_category) }}</small>
+      <div class="kanban-source"><span>@{{ competitor.normalized_handle }}</span>{% if lead.next_action_at %}<em>⏱ {{ lead.next_action_at.strftime('%d.%m %H:%M') }}</em>{% endif %}</div>
+    </a>
+  {% endif %}{% endfor %}
+  </div>
+</section>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Лид #{{ lead.id }} · Lead Radar{% endblock %}
+{% block heading %}Лид #{{ lead.id }}{% endblock %}
+{% block subheading %}@{{ contact.username }} · {{ lead_status_label(lead.status) }}{% endblock %}
+{% block content %}
+<div class="lead-hero {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %}">
+  <div class="lead-score-xl"><span>{{ lead.lead_score }}</span><small>из 100</small></div>
+  <div class="lead-hero-body"><span class="eyebrow">{{ intent_label(lead.intent) }}</span><h2>{{ comment.text or 'Пустой комментарий' }}</h2><p>{{ lead.ai_reason or 'Система ещё не сформировала объяснение оценки.' }}</p><div class="lead-hero-tags"><span class="tag">{{ product_label(lead.product_category) }}</span><span class="tag">Источник: @{{ competitor.normalized_handle }}</span><span class="tag status-{{ lead.status.value|lower }}">{{ lead_status_label(lead.status) }}</span></div></div>
+  <div class="lead-hero-actions"><a class="btn" target="_blank" rel="noopener" href="{{ contact.profile_url }}">Профиль Instagram ↗</a><a class="btn ghost" target="_blank" rel="noopener" href="{{ post.url }}">Открыть Reel ↗</a></div>
+</div>
+
+<div class="lead-layout">
+  <div class="lead-main">
+    <section class="panel">
+      <div class="panel-head"><div><h2>Следующее действие</h2><p>Переводите лид по воронке только после реального действия менеджера</p></div></div>
+      <div class="stage-actions">
+        {% if lead.status.value == 'NEW' %}<button class="stage-btn primary" data-lead-action="take" data-lead-id="{{ lead.id }}"><span>1</span><div><b>Взять в работу</b><small>Закрепить лида за собой</small></div></button>{% endif %}
+        {% if lead.status.value in ['TAKEN'] %}<button class="stage-btn" data-stage="CONTACTED" data-lead-id="{{ lead.id }}"><span>2</span><div><b>Связались</b><small>Менеджер написал или позвонил</small></div></button>{% endif %}
+        {% if lead.status.value in ['TAKEN','CONTACTED'] %}<button class="stage-btn" data-stage="QUALIFIED" data-lead-id="{{ lead.id }}"><span>3</span><div><b>Интерес подтверждён</b><small>Понятно, что человеку действительно нужен товар</small></div></button>{% endif %}
+        {% if lead.status.value in ['CONTACTED','QUALIFIED','NEGOTIATION'] %}<button class="stage-btn" data-stage="OFFER_SENT" data-lead-id="{{ lead.id }}"><span>4</span><div><b>Отправили предложение</b><small>Цена, фото, каталог или конкретная модель</small></div></button>{% endif %}
+        {% if lead.status.value in ['CONTACTED','QUALIFIED','OFFER_SENT'] %}<button class="stage-btn" data-stage="NEGOTIATION" data-lead-id="{{ lead.id }}"><span>5</span><div><b>Переговоры</b><small>Обсуждаем детали и ведём к решению</small></div></button>{% endif %}
+        {% if lead.status.value == 'AI_PENDING' %}<div class="empty compact">Локальные правила не уверены. Сигнал можно оставить в очереди или включить ограниченный OpenAI-анализ в разделе «Система».</div>{% endif %}
+        {% if lead.status.value in ['WON','LOST','NOT_LEAD'] %}<div class="empty compact">Этот лид уже закрыт: <b>{{ lead_status_label(lead.status) }}</b>.</div>{% endif %}
+      </div>
+      {% if lead.status.value not in ['WON','LOST','NOT_LEAD','AI_PENDING'] %}
+      <div class="danger-zone"><button class="btn danger ghost" data-lead-action="not-lead" data-lead-id="{{ lead.id }}">Это не лид</button><span>Используйте только если комментарий действительно не связан с покупкой.</span></div>
+      {% endif %}
+    </section>
+
+    <section class="panel source-panel">
+      <div class="panel-head"><div><h2>Откуда взялся лид</h2><p>Полный контекст, чтобы менеджер не работал вслепую</p></div></div>
+      <div class="source-detail"><div><span>Конкурент</span><b>@{{ competitor.normalized_handle }}</b></div><div><span>Комментарий</span><b>{{ comment.text or '—' }}</b></div><div class="wide"><span>Описание Reel</span><p>{{ post.caption or 'Описание не получено' }}</p></div><div><span>Комментарий найден</span><b>{{ comment.discovered_at.strftime('%d.%m.%Y %H:%M') }}</b></div><div><span>Тип сигнала</span><b>{% if comment.is_baseline %}Исторический{% else %}Новый{% endif %}</b></div></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div><h2>История интереса</h2><p>Другие сигналы этого же Instagram-пользователя</p></div><a href="/contacts/{{ contact.id }}">Вся карточка клиента →</a></div>
+      <div class="mini-history">{% for h_comment, h_competitor, h_post, h_lead in history %}<div class="mini-history-row"><span>{{ h_comment.discovered_at.strftime('%d.%m.%Y') }}</span><div><b>@{{ h_competitor.normalized_handle }}</b><p>{{ h_comment.text }}</p></div><div>{% if h_lead %}<strong>{{ h_lead.lead_score }}</strong><small>{{ intent_label(h_lead.intent) }}</small>{% else %}<small>не разобран</small>{% endif %}</div></div>{% endfor %}</div>
+    </section>
+  </div>
+
+  <aside class="lead-side">
+    <section class="panel side-card">
+      <div class="avatar large-avatar">{{ (contact.display_name or contact.username)[:1]|upper }}</div><h3>{{ contact.display_name or '@' ~ contact.username }}</h3><a target="_blank" rel="noopener" href="{{ contact.profile_url }}">@{{ contact.username }} ↗</a>
+      <dl><dt>Первый сигнал</dt><dd>{{ contact.first_seen_at.strftime('%d.%m.%Y') }}</dd><dt>Последняя активность</dt><dd>{{ contact.last_seen_at.strftime('%d.%m.%Y %H:%M') }}</dd><dt>Лучшая оценка</dt><dd>{{ contact.current_lead_score }}/100</dd><dt>Ответственный</dt><dd>{% if lead.assigned_manager_telegram_id %}Telegram ID {{ lead.assigned_manager_telegram_id }}{% else %}Не назначен{% endif %}</dd></dl>
+    </section>
+
+    <section class="panel action-form-card">
+      <h3>Заметка менеджера</h3><form data-api-form action="/api/contacts/{{ contact.id }}/notes" data-reload="1"><textarea name="text" rows="3" placeholder="Например: нужен комплект на 6 персон, бюджет до 10 млн"></textarea><button class="btn" type="submit">Сохранить заметку</button></form>
+    </section>
+
+    <section class="panel action-form-card">
+      <h3>Следующий контакт</h3><form data-api-form action="/api/contacts/{{ contact.id }}/tasks" data-reload="1"><input type="hidden" name="lead_id" value="{{ lead.id }}"><label>Когда связаться<input name="due_at" type="datetime-local" required></label><label>Что сделать<input name="note" placeholder="Написать после 15:00"></label><button class="btn" type="submit">Поставить задачу</button></form>
+      {% for task in tasks %}<div class="task-mini"><div><b>{{ task.due_at.strftime('%d.%m %H:%M') }}</b><span>{{ task.note or 'Связаться' }}</span></div><button class="icon-btn" data-task-complete="{{ task.id }}" title="Отметить выполненной">✓</button></div>{% endfor %}
+    </section>
+
+    <section class="panel action-form-card deal-box {% if deal %}has-deal{% endif %}">
+      <h3>{% if deal %}Сделка #{{ deal.id }}{% else %}Создать сделку{% endif %}</h3>
+      {% if not deal %}
+      <p>Создавайте сделку, когда появился предмет разговора: конкретный комплект, цена или объём.</p>
+      <form data-api-form action="/api/leads/{{ lead.id }}/deal" data-reload="1"><label>Товар<input name="product_name" placeholder="Комплект Milano 6"></label><div class="form-row"><label>Количество<input name="quantity" type="number" min="1" value="1"></label><label>Сумма, сум<input name="amount" inputmode="decimal" placeholder="8900000"></label></div><button class="btn primary" type="submit">Создать сделку</button></form>
+      {% else %}
+      <div class="deal-summary"><span>{{ deal_status_label(deal.status) }}</span><b>{{ deal.product_name or product_label(deal.product_category) }}</b><strong>{{ money(deal.final_amount or deal.amount) }} сум</strong></div>
+      {% if deal.status.value not in ['WON','LOST'] %}
+      <details class="action-details"><summary>Зафиксировать продажу</summary><form data-api-form action="/api/deals/{{ deal.id }}/win" data-reload="1"><label>Товар<input name="product_name" value="{{ deal.product_name or '' }}" required></label><div class="form-row"><label>Количество<input name="quantity" type="number" min="1" value="{{ deal.quantity or 1 }}"></label><label>Сумма<input name="amount" value="{{ deal.final_amount or deal.amount or '' }}" required></label></div><button class="btn success" type="submit">✓ Продажа</button></form></details>
+      <details class="action-details danger-details"><summary>Сделка не состоялась</summary><form data-api-form action="/api/deals/{{ deal.id }}/lose" data-reload="1"><label>Причина<select name="reason" required><option value="">Выберите причину</option><option>Дорого</option><option>Купил у конкурента</option><option>Нет подходящей модели</option><option>Нет нужного цвета</option><option>Нет в наличии</option><option>Долго ждать</option><option>Не отвечает</option><option>Отложил покупку</option><option>Передумал</option><option>Другое</option></select></label><button class="btn danger" type="submit">Закрыть как проигранную</button></form></details>
+      {% endif %}
+      {% endif %}
+    </section>
+  </aside>
+</div>
+{% endblock %}

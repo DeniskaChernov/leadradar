@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "name": "AIKO demo — безопасный сценарий",
+  "competitors": {
+    "aiko.uz": {
+      "profile": {
+        "platform_user_id": "replay-aiko-profile",
+        "username": "aiko.uz",
+        "display_name": "AIKO",
+        "profile_url": "https://www.instagram.com/aiko.uz/"
+      },
+      "reels": [
+        {
+          "post": {
+            "platform_post_id": "replay-aiko-dining-001",
+            "url": "https://www.instagram.com/reel/replay-aiko-dining-001/",
+            "caption": "Обеденный комплект LOOP на 6 персон. Для получения цены напишите + в комментариях.",
+            "post_type": "REEL",
+            "published_at": "2026-08-26T08:00:00+00:00"
+          },
+          "comments": [
+            {
+              "platform_comment_id": "replay-comment-001",
+              "platform_user_id": "replay-user-001",
+              "username": "malika_demo",
+              "display_name": "Malika",
+              "profile_url": "https://www.instagram.com/malika_demo/",
+              "text": "Красиво 🔥",
+              "created_at": "2026-08-26T08:02:00+00:00"
+            },
+            {
+              "platform_comment_id": "replay-comment-002",
+              "platform_user_id": "replay-user-002",
+              "username": "aziz_demo",
+              "display_name": "Aziz",
+              "profile_url": "https://www.instagram.com/aziz_demo/",
+              "text": "+",
+              "created_at": "2026-08-26T08:03:00+00:00"
+            },
+            {
+              "platform_comment_id": "replay-comment-003",
+              "platform_user_id": "replay-user-003",
+              "username": "dilshod_demo",
+              "display_name": "Dilshod",
+              "profile_url": "https://www.instagram.com/dilshod_demo/",
+              "text": "Narxi qancha?",
+              "created_at": "2026-08-26T08:07:00+00:00"
+            },
+            {
+              "platform_comment_id": "replay-comment-004",
+              "platform_user_id": "replay-user-002",
+              "username": "aziz_demo",
+              "display_name": "Aziz",
+              "profile_url": "https://www.instagram.com/aziz_demo/",
+              "text": "6 kishilik bormi?",
+              "created_at": "2026-08-26T08:11:00+00:00"
+            }
+          ]
+        },
+        {
+          "post": {
+            "platform_post_id": "replay-aiko-rattan-002",
+            "url": "https://www.instagram.com/reel/replay-aiko-rattan-002/",
+            "caption": "Плетёный комплект для террасы: стол и кресла из искусственного ротанга.",
+            "post_type": "REEL",
+            "published_at": "2026-08-26T08:10:00+00:00"
+          },
+          "comments": [
+            {
+              "platform_comment_id": "replay-comment-005",
+              "platform_user_id": "replay-user-004",
+              "username": "sardor_demo",
+              "display_name": "Sardor",
+              "profile_url": "https://www.instagram.com/sardor_demo/",
+              "text": "Yetkazib berish bormi?",
+              "created_at": "2026-08-26T08:12:00+00:00"
+            },
+            {
+              "platform_comment_id": "replay-comment-006",
+              "platform_user_id": "replay-user-005",
+              "username": "nargiza_demo",
+              "display_name": "Nargiza",
+              "profile_url": "https://www.instagram.com/nargiza_demo/",
+              "text": "другой цвет есть?",
+              "created_at": "2026-08-26T08:15:00+00:00"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "title": "Базовая история",
+      "description": "Первый запуск: сохраняем старые комментарии без Telegram-спама.",
+      "visible_comments": {
+        "replay-aiko-dining-001": 2,
+        "replay-aiko-rattan-002": 1
+      }
+    },
+    {
+      "title": "Новый запрос цены",
+      "description": "Появляется новый HOT-сигнал: Narxi qancha?",
+      "visible_comments": {
+        "replay-aiko-dining-001": 3,
+        "replay-aiko-rattan-002": 1
+      }
+    },
+    {
+      "title": "Повторный интерес клиента",
+      "description": "Aziz повторно спрашивает конкретную комплектацию на 6 персон.",
+      "visible_comments": {
+        "replay-aiko-dining-001": 4,
+        "replay-aiko-rattan-002": 1
+      }
+    },
+    {
+      "title": "Ещё два сигнала",
+      "description": "Добавляются вопросы про доставку и цвет в другом Reel.",
+      "visible_comments": {
+        "replay-aiko-dining-001": 4,
+        "replay-aiko-rattan-002": 2
+      }
+    }
+  ]
+}

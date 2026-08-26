@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Конкуренты · Lead Radar{% endblock %}
+{% block heading %}Карта конкурентов{% endblock %}
+{% block subheading %}Все найденные игроки рынка, приоритеты и качество мониторинга{% endblock %}
+{% block content %}
+<section class="market-hero panel">
+  <div>
+    <span class="eyebrow">КАРТА РЫНКА</span>
+    <h2>Мы больше не ограничены AIKO</h2>
+    <p>В базе находятся подтверждённые Instagram-конкуренты и отдельный список компаний, которые ещё нужно проверить перед live-мониторингом. Новые компании добавляются <b>на паузе</b>, поэтому расширение карты рынка само по себе не расходует токены.</p>
+  </div>
+  <div class="market-kpis">
+    <div><strong>{{ market_overview.verified }}</strong><span>в радаре</span></div>
+    <div><strong>{{ market_overview.active }}</strong><span>активно</span></div>
+    <div><strong>{{ market_overview.paused }}</strong><span>на паузе</span></div>
+    <div><strong>{{ market_overview.candidates }}</strong><span>кандидатов</span></div>
+  </div>
+</section>
+
+<div class="market-toolbar">
+  <div class="explain-line"><span class="dot green"></span><b>Активный</b> проверяется по расписанию только когда live разрешён. <span class="dot grey"></span><b>На паузе</b> хранится в системе бесплатно.</div>
+  <button class="btn ghost" data-api-action="/api/market-catalog/sync" data-payload="{}" data-reload="1">Обновить встроенную карту рынка</button>
+</div>
+
+<details class="panel add-competitor"><summary><div><b>+ Добавить компанию вручную</b><span>Если вы нашли ещё один Instagram-аккаунт, он сразу попадёт в карту рынка</span></div></summary><form data-api-form action="/api/competitors" data-reload="1" class="form-grid"><label>Instagram username<input name="handle" placeholder="company.uz" required></label><label>Название<input name="display_name" placeholder="Название компании"></label><label>Сегмент<select name="category">{% for value, text in categories.items() %}<option value="{{ value }}">{{ text }}</option>{% endfor %}</select></label><label>Приоритет<select name="tier"><option value="A">A · главный конкурент</option><option value="B">B · важный</option><option value="C">C · фоновый</option></select></label><label class="wide">Почему отслеживаем<input name="notes" placeholder="Например: плетёные обеденные комплекты и высокая активность в комментариях"></label><div class="wide"><button class="btn primary" type="submit">Добавить в радар</button></div></form></details>
+
+<div class="section-title-row"><div><span class="eyebrow">МОНИТОРИНГ</span><h2>Компании в радаре</h2><p>Приоритет A проверяем чаще, B умеренно, C в фоне. Система со временем сможет менять приоритет по фактическим лидам и продажам.</p></div></div>
+
+{% for item in rows %}
+<section class="panel competitor-block {% if not item.competitor.active %}paused-block{% endif %}">
+  <div class="competitor-head">
+    <div>
+      <div class="title-line"><h2>{{ item.competitor.display_name or '@' ~ item.competitor.normalized_handle }}</h2><span class="tier tier-{{ item.competitor.tier|lower }}">Приоритет {{ item.competitor.tier }}</span>{% if item.competitor.active %}<span class="tag success">Активный</span>{% else %}<span class="tag muted-tag">На паузе</span>{% endif %}</div>
+      <p><a target="_blank" rel="noopener" href="https://instagram.com/{{ item.competitor.normalized_handle }}">@{{ item.competitor.normalized_handle }} ↗</a> · {{ competitor_category_label(item.competitor.category) }}</p>
+      {% if item.competitor.notes %}<small>{{ item.competitor.notes }}</small>{% endif %}
+      {% if item.competitor.website_url %}<small><a target="_blank" rel="noopener" href="{{ item.competitor.website_url }}">Сайт компании ↗</a></small>{% endif %}
+    </div>
+    <div class="mini-metrics">
+      <span><b>{{ item.posts|length }}</b> Reels</span><span><b>{{ item.comments }}</b> сигналов</span><span><b>{{ item.hot }}</b> горячих</span><span><b>{{ item.hot_rate }}%</b> HOT</span><span><b>{{ item.won }}</b> продаж</span><span><b>{{ money(item.revenue) }}</b> сум</span>
+    </div>
+  </div>
+  <div class="competitor-insight"><span class="insight-label">Рекомендация</span><b class="{{ item.recommendation_tone }}">{{ item.recommendation }}</b><small>{% if item.comments < 10 %}Нужно больше реальных сигналов для вывода.{% elif item.hot_rate >= 15 %}Высокая доля коммерческого интереса среди найденных комментариев.{% elif item.hot_rate >= 5 %}Источник даёт полезные сигналы, продолжаем собирать статистику.{% else %}Пока мало горячих обращений относительно объёма комментариев.{% endif %}</small></div>
+  <div class="competitor-settings"><form data-api-form action="/api/competitors/{{ item.competitor.id }}/settings" data-reload="1"><input type="hidden" name="active" value="{{ 'false' if item.competitor.active else 'true' }}"><button class="btn tiny {% if item.competitor.active %}ghost{% endif %}" type="submit">{% if item.competitor.active %}Поставить на паузу{% else %}Включить мониторинг{% endif %}</button></form><form data-api-form action="/api/competitors/{{ item.competitor.id }}/settings" data-reload="1" class="inline-form"><select name="tier"><option value="A" {% if item.competitor.tier=='A' %}selected{% endif %}>Приоритет A</option><option value="B" {% if item.competitor.tier=='B' %}selected{% endif %}>Приоритет B</option><option value="C" {% if item.competitor.tier=='C' %}selected{% endif %}>Приоритет C</option></select><button class="btn tiny" type="submit">Сохранить</button></form><span class="muted">Интервал: {{ (item.competitor.poll_interval_seconds / 60)|round|int }} мин · последняя проверка: {{ item.competitor.last_scanned_at.strftime('%d.%m %H:%M') if item.competitor.last_scanned_at else 'ещё не было' }}</span></div>
+  {% if item.posts %}<details class="posts-disclosure"><summary>Показать {{ item.posts|length }} отслеживаемых Reels и полноту комментариев</summary><div class="table-wrap embedded"><table><thead><tr><th>Reel</th><th>В Instagram</th><th>Получили мы</th><th>Полнота</th><th>Источник</th><th>Проверено</th></tr></thead><tbody>{% for post in item.posts %}<tr><td class="context"><a target="_blank" rel="noopener" href="{{ post.url }}">{{ post.caption[:115] or post.platform_post_id }}{% if post.caption|length > 115 %}…{% endif %} ↗</a></td><td>{{ post.comments_count }}</td><td>{{ post.comments_fetched_count if post.comments_fetched_count is not none else '—' }}</td><td><span class="tag coverage-{{ post.coverage_status.value|lower }}">{{ coverage_label(post.coverage_status) }}</span>{% if post.comments_count > (post.comments_fetched_count or 0) %}<small class="warn">Не хватает примерно {{ post.comments_count - (post.comments_fetched_count or 0) }}</small>{% endif %}</td><td>{{ post.last_comment_provider or '—' }}{% if post.comment_pages_fetched %}<small>{{ post.comment_pages_fetched }} стр. API</small>{% endif %}</td><td>{{ post.comments_checked_at.strftime('%d.%m %H:%M') if post.comments_checked_at else '—' }}</td></tr>{% endfor %}</tbody></table></div></details>{% else %}<div class="empty inline-empty">Данных по Reels пока нет. {% if not item.competitor.active %}Компания добавлена на паузу, поэтому API не вызывается.{% endif %}</div>{% endif %}
+</section>
+{% else %}<div class="empty panel">Конкуренты ещё не добавлены.</div>{% endfor %}
+
+<section class="market-candidates-section">
+  <div class="section-title-row"><div><span class="eyebrow">РАЗВЕДКА РЫНКА</span><h2>Кандидаты на мониторинг</h2><p>Эти компании уже найдены как релевантные рынку. Мы не включаем их вслепую: сначала подтверждаем актуальный Instagram username, потом добавляем на паузу.</p></div></div>
+  <div class="candidate-grid">
+    {% for candidate in candidates %}
+    <article class="candidate-card panel">
+      <div class="candidate-head"><div><span class="tier tier-{{ candidate.tier|lower }}">{{ candidate.tier }}</span><span class="confidence {% if candidate.confidence >= 85 %}high{% elif candidate.confidence >= 65 %}medium{% else %}low{% endif %}">{{ candidate.confidence }}% уверенности</span></div><span class="category-chip">{{ competitor_category_label(candidate.category) }}</span></div>
+      <h3>{{ candidate.display_name }}</h3>
+      <p>{{ candidate.rationale }}</p>
+      <div class="candidate-links">{% if candidate.website_url %}<a href="{{ candidate.website_url }}" target="_blank" rel="noopener">Сайт ↗</a>{% endif %}{% if candidate.instagram_handle %}<a href="https://instagram.com/{{ candidate.instagram_handle }}" target="_blank" rel="noopener">@{{ candidate.instagram_handle }} ↗</a>{% endif %}</div>
+      <form data-api-form action="/api/market-candidates/{{ candidate.id }}/promote" data-reload="1" class="candidate-form">
+        <label>Instagram username<input name="handle" value="{{ candidate.instagram_handle or '' }}" placeholder="Нужно подтвердить username" required></label>
+        <input type="hidden" name="active" value="false">
+        <button class="btn tiny primary" type="submit">Добавить в радар на паузу</button>
+      </form>
+    </article>
+    {% else %}<div class="empty panel">Все кандидаты уже разобраны.</div>{% endfor %}
+  </div>
+</section>
+{% endblock %}

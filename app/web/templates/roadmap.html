@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Развитие · Lead Radar{% endblock %}
+{% block heading %}План развития{% endblock %}
+{% block subheading %}Где мы сейчас и что превращает Lead Radar в систему роста продаж{% endblock %}
+{% block content %}
+<section class="roadmap-hero panel">
+  <div><span class="eyebrow">ТЕКУЩАЯ СТАДИЯ</span><h2>Стадия {{ current_stage }} из {{ total_stages }} · Мультиконкурентный радар</h2><p>Фундамент и CRM уже есть. Сейчас расширяем покрытие рынка: конкуренты, качество источников, приоритеты и прозрачность, откуда приходит каждый лид.</p></div>
+  <div class="stage-meter"><div><i style="width: {{ (current_stage / total_stages * 100)|round|int }}%"></i></div><b>{{ (current_stage / total_stages * 100)|round|int }}%</b><span>пути до зрелой production-системы</span></div>
+</section>
+
+<div class="roadmap-list">
+  <article class="roadmap-stage done"><div class="stage-num">1</div><div><span class="stage-state">ГОТОВО</span><h3>Надёжный сбор и база</h3><p>Дедупликация, Contacts, Signals, Leads, история, сделки, миграции, truthful coverage, replay и защита лимитов.</p></div></article>
+  <article class="roadmap-stage done"><div class="stage-num">2</div><div><span class="stage-state">ГОТОВО</span><h3>Mini App + CRM продаж</h3><p>Радар, клиенты 360°, задачи, воронка, заметки, сделки, Telegram-уведомления, локальный RU/UZ анализ и безопасная разработка без расхода токенов.</p></div></article>
+  <article class="roadmap-stage current"><div class="stage-num">3</div><div><span class="stage-state">МЫ ЗДЕСЬ</span><h3>Мультиконкурентная разведка</h3><p>Расширяем карту рынка, добавляем прямых и смежных конкурентов, считаем качество каждого источника и не позволяем новым аккаунтам автоматически увеличивать расходы API.</p><div class="stage-tags"><span>Карта рынка</span><span>Tier A/B/C</span><span>Yield HOT-лидов</span><span>Источник → продажа</span></div></div></article>
+  <article class="roadmap-stage next"><div class="stage-num">4</div><div><span class="stage-state">СЛЕДУЮЩАЯ</span><h3>Каталог наших товаров + Next Best Offer</h3><p>Lead Radar должен знать наш ассортимент, цены, остатки, цвета и комплектации. Для каждого лида система будет сразу подсказывать менеджеру, что предложить и почему.</p><div class="stage-tags"><span>Каталог</span><span>Остатки</span><span>Матч товара</span><span>Готовый оффер</span></div></div></article>
+  <article class="roadmap-stage"><div class="stage-num">5</div><div><span class="stage-state">ПЛАН</span><h3>Мультиканальный радар спроса</h3><p>Не только Instagram конкурентов. Подключаем разрешённые публичные источники: TikTok, YouTube, Facebook, публичные Telegram-источники, отзывы и площадки, где люди сами пишут, что ищут мебель.</p><div class="stage-tags"><span>Instagram</span><span>TikTok</span><span>YouTube</span><span>Telegram</span><span>Отзывы</span></div></div></article>
+  <article class="roadmap-stage"><div class="stage-num">6</div><div><span class="stage-state">ПЛАН</span><h3>Предиктивный интеллект</h3><p>Скоринг начинает опираться на наши фактические продажи: вероятность сделки, ожидаемый чек, повторный интерес, ценность источника и лучший следующий шаг.</p><div class="stage-tags"><span>Вероятность продажи</span><span>Expected revenue</span><span>Самообучение</span><span>Приоритет лида</span></div></div></article>
+  <article class="roadmap-stage"><div class="stage-num">7</div><div><span class="stage-state">PRODUCTION</span><h3>Командная эксплуатация и масштабирование</h3><p>Railway/PostgreSQL, роли менеджеров, аудит действий, резервные копии, мониторинг ошибок, SLA, интеграции с CRM/учётом и управленческие отчёты.</p><div class="stage-tags"><span>Railway</span><span>PostgreSQL</span><span>Роли</span><span>Аудит</span><span>Интеграции</span></div></div></article>
+</div>
+
+<section class="panel growth-matrix">
+  <div class="panel-head"><div><span class="eyebrow">ГДЕ ВЗЯТЬ БОЛЬШЕ ЛИДОВ</span><h2>Двигаться нужно не только вширь по конкурентам</h2></div></div>
+  <div class="growth-grid">
+    <div><b>1. Комментарии конкурентов</b><p>Самый быстрый сигнал: цена, наличие, доставка, комплектация, «+» по коммерческому CTA.</p><span class="tag success">Уже работает</span></div>
+    <div><b>2. Повторный интерес одного человека</b><p>Если пользователь спрашивает у нескольких компаний или несколько раз, его приоритет резко повышается.</p><span class="tag success">Фундамент есть</span></div>
+    <div><b>3. Публичные запросы «где купить?»</b><p>Искать открытые сообщения и комментарии, где человек сам просит посоветовать стол, стулья, комплект или мебель для кафе.</p><span class="tag">Стадия 5</span></div>
+    <div><b>4. HoReCa и оптовые сигналы</b><p>Фразы «20 штук», «на летник», «для ресторана», «для гостиницы» должны иметь отдельный B2B-приоритет и высокий ожидаемый чек.</p><span class="tag">Расширяем скоринг</span></div>
+    <div><b>5. Возврат старых клиентов</b><p>После покупки система не забывает человека: повторный сигнал превращается в отдельную возможность допродажи.</p><span class="tag success">CRM готова</span></div>
+    <div><b>6. Рекомендация нашего товара</b><p>Меньше времени между сигналом и хорошим предложением менеджера. Это не добавляет трафик, но увеличивает конверсию в деньги.</p><span class="tag">Стадия 4</span></div>
+  </div>
+</section>
+{% endblock %}

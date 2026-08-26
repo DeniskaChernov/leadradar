@@ -10,7 +10,12 @@ from app.providers.base import (
     ProviderResponseError,
     parse_datetime,
 )
-from app.schemas.instagram import InstagramComment, InstagramPost, InstagramProfile
+from app.schemas.instagram import (
+    CommentFetchResult,
+    InstagramComment,
+    InstagramPost,
+    InstagramProfile,
+)
 
 
 class ScrapeCreatorsProvider(HTTPInstagramProvider):
@@ -23,6 +28,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         base_url: str = "https://api.scrapecreators.com",
         timeout_seconds: float = 25,
         max_attempts: int = 3,
+        max_comment_pages: int = 10,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         super().__init__(
@@ -30,6 +36,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         )
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
+        self.max_comment_pages = max(1, max_comment_pages)
 
     @property
     def headers(self) -> dict[str, str]:
@@ -87,16 +94,76 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         return self.normalize_post(item, competitor)
 
     async def get_comments(self, post: InstagramPost) -> list[InstagramComment]:
-        payload = await self._request_json(
-            "GET",
-            f"{self.base_url}/v2/instagram/post/comments",
-            headers=self.headers,
-            params={"url": post.url, "include_replies": "false"},
+        return (await self.get_comment_batch(post)).comments
+
+    async def get_comment_batch(
+        self,
+        post: InstagramPost,
+        *,
+        known_comment_ids: set[str] | None = None,
+        max_pages: int | None = None,
+    ) -> CommentFetchResult:
+        comments: list[InstagramComment] = []
+        seen_ids: set[str] = set()
+        known_comment_ids = known_comment_ids or set()
+        cursor: str | None = None
+        pages = 0
+        cursor_exhausted = False
+        stopped_on_known = False
+        page_limit = self.max_comment_pages
+        if max_pages is not None:
+            page_limit = max(1, min(page_limit, int(max_pages)))
+
+        while pages < page_limit:
+            params = {"url": post.url, "include_replies": "false"}
+            if cursor:
+                params["cursor"] = cursor
+            payload = await self._request_json(
+                "GET",
+                f"{self.base_url}/v2/instagram/post/comments",
+                headers=self.headers,
+                params=params,
+            )
+            items = payload.get("comments") if isinstance(payload, dict) else None
+            if not isinstance(items, list):
+                raise ProviderResponseError("ScrapeCreators comments response has no comments list")
+            pages += 1
+            page_has_known = False
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                normalized = self.normalize_comment(item)
+                if normalized.platform_comment_id in known_comment_ids:
+                    page_has_known = True
+                if normalized.platform_comment_id in seen_ids:
+                    continue
+                seen_ids.add(normalized.platform_comment_id)
+                comments.append(normalized)
+
+            # Instagram comment pages are returned newest-first. Once we hit a comment already
+            # stored in our DB, all new comments needed for the incremental sync are on the pages
+            # we already fetched. Stopping here usually turns a 10-page refresh into one request.
+            if page_has_known:
+                stopped_on_known = True
+                break
+
+            next_cursor = payload.get("cursor") if isinstance(payload, dict) else None
+            if not next_cursor:
+                cursor_exhausted = True
+                break
+            if str(next_cursor) == cursor:
+                break
+            cursor = str(next_cursor)
+
+        coverage = "FULL" if cursor_exhausted else "UNKNOWN" if stopped_on_known else "PARTIAL"
+        return CommentFetchResult(
+            comments=comments,
+            provider=self.name,
+            pages_fetched=pages,
+            coverage_status=coverage,
+            cursor_exhausted=cursor_exhausted,
+            stopped_on_known_comment=stopped_on_known,
         )
-        items = payload.get("comments") if isinstance(payload, dict) else None
-        if not isinstance(items, list):
-            raise ProviderResponseError("ScrapeCreators comments response has no comments list")
-        return [self.normalize_comment(item) for item in items if isinstance(item, dict)]
 
     @staticmethod
     def normalize_post(item: dict[str, Any], competitor: str) -> InstagramPost:

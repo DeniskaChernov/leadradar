@@ -3,7 +3,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.providers.base import InstagramProvider, ProviderResponseError
-from app.schemas.instagram import InstagramComment, InstagramPost, InstagramProfile
+from app.schemas.instagram import (
+    CommentFetchResult,
+    InstagramComment,
+    InstagramPost,
+    InstagramProfile,
+)
 
 
 class MockInstagramProvider(InstagramProvider):
@@ -56,9 +61,24 @@ class MockInstagramProvider(InstagramProvider):
         return self._post.model_copy(update={"competitor": competitor})
 
     async def get_comments(self, post: InstagramPost) -> list[InstagramComment]:
+        return (await self.get_comment_batch(post)).comments
+
+    async def get_comment_batch(
+        self,
+        post: InstagramPost,
+        *,
+        known_comment_ids: set[str] | None = None,
+        max_pages: int | None = None,
+    ) -> CommentFetchResult:
         if post.platform_post_id != self._post.platform_post_id:
             raise ProviderResponseError(f"Unknown mock post: {post.platform_post_id}")
-        return list(self._comments)
+        return CommentFetchResult(
+            comments=list(self._comments),
+            provider=self.name,
+            pages_fetched=1,
+            coverage_status="FULL",
+            cursor_exhausted=True,
+        )
 
     def add_comment(self, comment: InstagramComment) -> None:
         self._comments.append(comment)

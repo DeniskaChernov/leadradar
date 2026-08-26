@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}@{{ contact.username }} · Lead Radar{% endblock %}
+{% block heading %}@{{ contact.username }}{% endblock %}
+{% block subheading %}Вся история клиента, интерес, задачи и сделки в одном месте{% endblock %}
+{% block content %}
+<div class="contact-header panel">
+  <div class="profile-avatar">{{ (contact.display_name or contact.username)[:1]|upper }}</div>
+  <div>
+    <span class="eyebrow">КЛИЕНТ #{{ contact.id }}</span>
+    <h2>{{ contact.display_name or '@' ~ contact.username }}</h2>
+    <div class="profile-links">
+      <a target="_blank" rel="noopener" href="{{ contact.profile_url }}">Instagram @{{ contact.username }} ↗</a>
+      {% if contact.phone %}<span>·</span><a href="tel:{{ contact.phone }}">{{ contact.phone }}</a>{% endif %}
+    </div>
+  </div>
+  <div class="contact-kpis">
+    <div><span>Сигналов</span><b>{{ signals|length }}</b></div>
+    <div><span>Источников</span><b>{{ source_count }}</b></div>
+    <div><span>Лучшая оценка</span><b>{{ contact.current_lead_score }}</b></div>
+    <div><span>Сделок</span><b>{{ deals|length }}</b></div>
+    <div><span>Последняя активность</span><b>{{ contact.last_seen_at.strftime('%d.%m') }}</b></div>
+  </div>
+</div>
+
+{% if source_count > 1 %}
+<section class="cross-source-alert panel"><div class="attention-icon hot">{{ source_count }}</div><div><span class="eyebrow">СИЛЬНЫЙ СИГНАЛ</span><h3>Клиент сравнивает предложения у нескольких компаний</h3><p>Мы видели этого пользователя у: {% for handle in source_handles %}<b>@{{ handle }}</b>{% if not loop.last %}, {% endif %}{% endfor %}. Повторный интерес по разным источникам повышает приоритет лида.</p></div></section>
+{% endif %}
+
+<section class="panel customer-knowledge">
+  <div class="panel-head">
+    <div><h2>Что мы уже знаем о клиенте</h2><p>Эти данные вводит менеджер после реального общения. Они остаются в истории и учитываются при будущих сигналах.</p></div>
+    <span class="tag {% if contact.qualification_updated_at %}status-qualified{% else %}neutral{% endif %}">{% if contact.qualification_updated_at %}обновлено {{ contact.qualification_updated_at.strftime('%d.%m %H:%M') }}{% else %}ещё не заполнено{% endif %}</span>
+  </div>
+  <div class="knowledge-grid">
+    <div><span>Что ищет</span><b>{{ contact.interest_summary or 'Пока не уточнили' }}</b></div>
+    <div><span>Количество</span><b>{{ contact.desired_quantity or '—' }}</b></div>
+    <div><span>Бюджет</span><b>{% if contact.budget_from or contact.budget_to %}{% if contact.budget_from %}от {{ money(contact.budget_from) }}{% endif %}{% if contact.budget_to %} до {{ money(contact.budget_to) }}{% endif %} сум{% else %}—{% endif %}</b></div>
+    <div><span>Цвет</span><b>{{ contact.desired_color or '—' }}</b></div>
+    <div><span>Срок покупки</span><b>{{ contact.purchase_timeline or '—' }}</b></div>
+    <div><span>Город</span><b>{{ contact.city or '—' }}</b></div>
+    <div><span>Удобный канал</span><b>{{ channel_label(contact.preferred_channel) }}</b></div>
+    <div><span>Телефон</span><b>{{ contact.phone or '—' }}</b></div>
+    {% if contact.qualification_note %}<div class="wide"><span>Комментарий менеджера</span><p>{{ contact.qualification_note }}</p></div>{% endif %}
+  </div>
+  <details class="edit-knowledge">
+    <summary>Изменить информацию о клиенте</summary>
+    <form data-api-form action="/api/contacts/{{ contact.id }}/qualification" data-reload="1" class="form-grid qualification-form">
+      <label class="wide">Что именно ищет<input name="interest_summary" value="{{ contact.interest_summary or '' }}" placeholder="Например: обеденный комплект на 6 персон для кухни"></label>
+      <label>Количество<input name="desired_quantity" type="number" min="1" value="{{ contact.desired_quantity or '' }}" placeholder="6"></label>
+      <label>Цвет<input name="desired_color" value="{{ contact.desired_color or '' }}" placeholder="Бежевый"></label>
+      <label>Бюджет от, сум<input name="budget_from" inputmode="decimal" value="{{ contact.budget_from or '' }}" placeholder="8000000"></label>
+      <label>Бюджет до, сум<input name="budget_to" inputmode="decimal" value="{{ contact.budget_to or '' }}" placeholder="10000000"></label>
+      <label>Когда планирует купить<input name="purchase_timeline" value="{{ contact.purchase_timeline or '' }}" placeholder="На этой неделе / до конца месяца"></label>
+      <label>Город<input name="city" value="{{ contact.city or '' }}" placeholder="Ташкент"></label>
+      <label>Телефон<input name="phone" value="{{ contact.phone or '' }}" placeholder="Только если клиент сам сообщил"></label>
+      <label>Удобный канал<select name="preferred_channel"><option value="">Не указан</option><option value="instagram" {% if contact.preferred_channel=='instagram' %}selected{% endif %}>Instagram</option><option value="telegram" {% if contact.preferred_channel=='telegram' %}selected{% endif %}>Telegram</option><option value="phone" {% if contact.preferred_channel=='phone' %}selected{% endif %}>Телефон</option><option value="whatsapp" {% if contact.preferred_channel=='whatsapp' %}selected{% endif %}>WhatsApp</option><option value="other" {% if contact.preferred_channel=='other' %}selected{% endif %}>Другой</option></select></label>
+      <label class="wide">Что важно помнить<textarea name="qualification_note" rows="3" placeholder="Например: нужен светлый комплект, просил вернуться после зарплаты">{{ contact.qualification_note or '' }}</textarea></label>
+      <div class="wide form-footnote">Сохраняйте только информацию, которую клиент сам сообщил в разговоре. Lead Radar не пытается добывать скрытые контакты.</div>
+      <div class="wide"><button class="btn primary" type="submit">Сохранить данные клиента</button></div>
+    </form>
+  </details>
+</section>
+
+<div class="contact-layout">
+  <div class="contact-main">
+    <section class="panel">
+      <div class="panel-head"><div><h2>История интереса</h2><p>Все найденные комментарии и источники, от первого сигнала до сегодняшнего дня</p></div></div>
+      <div class="timeline">
+      {% for comment, competitor, post, signal_lead in signals %}
+      <div class="timeline-item">
+        <div class="time">{{ comment.created_at_platform.strftime('%d.%m.%Y %H:%M') if comment.created_at_platform else comment.discovered_at.strftime('%d.%m.%Y %H:%M') }}</div>
+        <div class="timeline-card">
+          <div class="feed-meta"><b>@{{ competitor.normalized_handle }}</b>{% if comment.is_baseline %}<span class="tag neutral">история</span>{% else %}<span class="tag live">новый сигнал</span>{% endif %}</div>
+          <blockquote>{{ comment.text or 'Пустой комментарий' }}</blockquote>
+          <a target="_blank" rel="noopener" href="{{ post.url }}">Reel: {{ post.caption[:130] or 'без описания' }}{% if post.caption|length > 130 %}…{% endif %} ↗</a>
+          {% if signal_lead %}
+          <div class="analysis"><b>{{ signal_lead.lead_score }}/100 · {{ intent_label(signal_lead.intent) }}</b><span>{{ product_label(signal_lead.product_category) }} · {{ lead_status_label(signal_lead.status) }}</span><p>{{ signal_lead.ai_reason }}</p><a href="/leads/{{ signal_lead.id }}">Открыть лид →</a></div>
+          {% endif %}
+        </div>
+      </div>
+      {% else %}<div class="empty">Сигналов нет.</div>{% endfor %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div><h2>CRM-история</h2><p>Ничего не перезаписывается молча: действия менеджеров остаются в хронологии</p></div></div>
+      <div class="event-list rich-events">
+      {% for event in events %}
+        <div class="event">
+          <span>{{ event.created_at.strftime('%d.%m %H:%M') }}</span>
+          <div>
+            <b>{{ event_label(event.event_type) }}</b>
+            {% if event.payload_json.get('text') %}<p>{{ event.payload_json.get('text') }}</p>
+            {% elif event.payload_json.get('reason') %}<p>{{ event.payload_json.get('reason') }}</p>
+            {% elif event.payload_json.get('to') %}<p>{{ lead_status_label(event.payload_json.get('to')) }}</p>
+            {% elif event.payload_json.get('note') %}<p>{{ event.payload_json.get('note') }}</p>
+            {% elif event.payload_json.get('changed') %}
+              <p>{% for key, value in event.payload_json.get('changed').items() %}<span class="event-change">{{ qualification_field_label(key) }}: {{ value if value not in [None,''] else 'очищено' }}</span>{% endfor %}</p>
+            {% endif %}
+          </div>
+        </div>
+      {% else %}<div class="empty">Истории действий пока нет.</div>{% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <aside class="contact-side">
+    <section class="panel action-form-card quick-crm-card">
+      <h3>Клиент ответил</h3>
+      <p>Фиксируйте ответ, даже если сделка ещё не определилась. Это часть обучающей истории.</p>
+      <form data-api-form action="/api/contacts/{{ contact.id }}/reply" data-reload="1">
+        {% if leads %}<input type="hidden" name="lead_id" value="{{ leads[0].id }}">{% endif %}
+        <textarea name="text" rows="2" placeholder="Например: попросил цену и фото в бежевом цвете"></textarea>
+        <button class="btn" type="submit">Зафиксировать ответ</button>
+      </form>
+    </section>
+
+    <section class="panel action-form-card"><h3>Добавить заметку</h3><form data-api-form action="/api/contacts/{{ contact.id }}/notes" data-reload="1"><textarea name="text" rows="3" placeholder="Свободная заметка для команды"></textarea><button class="btn" type="submit">Сохранить заметку</button></form></section>
+
+    <section class="panel action-form-card"><h3>Следующий контакт</h3><form data-api-form action="/api/contacts/{{ contact.id }}/tasks" data-reload="1"><label>Когда<input name="due_at" type="datetime-local" required></label><label>Что сделать<input name="note" placeholder="Позвонить, отправить фото, уточнить решение"></label>{% if leads %}<label>Связать с лидом<select name="lead_id"><option value="">Без привязки</option>{% for item in leads %}<option value="{{ item.id }}">Лид #{{ item.id }} · {{ lead_status_label(item.status) }}</option>{% endfor %}</select></label>{% endif %}<button class="btn" type="submit">Поставить задачу</button></form></section>
+
+    <section class="panel"><div class="panel-head"><div><h2>Задачи</h2></div><a href="/tasks">Все →</a></div>
+      {% set open_count = namespace(value=0) %}
+      {% for task in tasks %}{% if task.status.value == 'OPEN' %}{% set open_count.value = open_count.value + 1 %}<div class="task-row"><div><b>{{ task.due_at.strftime('%d.%m.%Y %H:%M') }}</b><p>{{ task.note or 'Связаться с клиентом' }}</p></div><div class="task-row-actions"><button class="icon-btn" data-task-complete="{{ task.id }}" title="Выполнено">✓</button><button class="icon-btn muted-action" data-api-action="/api/tasks/{{ task.id }}/cancel" data-payload='{}' data-reload="1" title="Отменить">×</button></div></div>{% endif %}{% endfor %}
+      {% if open_count.value == 0 %}<div class="empty compact">Открытых задач нет.</div>{% endif %}
+    </section>
+
+    <section class="panel"><div class="panel-head"><div><h2>Сделки</h2></div><a href="/deals">Все →</a></div>{% for deal in deals %}<div class="deal-row"><span class="tag status-{{ deal.status.value|lower }}">{{ deal_status_label(deal.status) }}</span><div><b>{{ deal.product_name or product_label(deal.product_category) }}</b><small>{% if deal.lost_reason %}{{ deal.lost_reason }}{% endif %}</small></div><strong>{{ money(deal.final_amount or deal.amount) }} сум</strong></div>{% else %}<div class="empty compact">Сделок пока нет.</div>{% endfor %}</section>
+  </aside>
+</div>
+{% endblock %}

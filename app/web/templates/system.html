@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Система · Lead Radar{% endblock %}
+{% block heading %}Система{% endblock %}
+{% block subheading %}Контроль интеграций, расходов и качества мониторинга{% endblock %}
+{% block content %}
+<section class="cost-guard panel {% if safe_mode %}safe{% else %}live{% endif %}"><div><span class="eyebrow">КОНТРОЛЬ РАСХОДОВ</span><h2>{% if safe_mode %}Внешние Instagram-запросы заблокированы{% else %}Live-запросы разрешены{% endif %}</h2><p>{% if safe_mode %}Это намеренно. Тесты, интерфейс, база, локальный скоринг и CRM работают без списания бесплатных токенов. Чтобы сделать реальный контрольный скан, нужно явно включить live-настройку и второй предохранитель EXTERNAL_LIVE_UNLOCK. Одной случайной галочки недостаточно.{% else %}Каждая внешняя операция записывается в журнал и ограничивается дневным лимитом. Автоматические live-сканы могут быть отдельно отключены настройкой INSTAGRAM_MANUAL_LIVE_SCAN_ONLY.{% endif %}</p></div><div class="budget-box"><div><span>Instagram сегодня</span><b>{{ usage.get('instagram',0) }} / {{ settings.instagram_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('instagram',0) / (settings.instagram_daily_request_limit if settings.instagram_daily_request_limit else 1) * 100]|min }}%"></i></div><div><span>OpenAI сегодня</span><b>{{ usage.get('openai',0) }} / {{ settings.openai_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('openai',0) / (settings.openai_daily_request_limit if settings.openai_daily_request_limit else 1) * 100]|min }}%"></i></div></div></section>
+
+<section class="panel scan-plan">
+  <div class="panel-head"><div><h2>План следующей проверки</h2><p>Расчёт строится только по нашей базе и сам по себе ничего не тратит</p></div><span class="tag {% if scan_plan.live_enabled %}status-contacted{% else %}neutral{% endif %}">{% if scan_plan.live_enabled %}live разрешён{% else %}без внешних запросов{% endif %}</span></div>
+  <div class="plan-grid">
+    <div><span>Активных конкурентов</span><b>{{ scan_plan.active_competitors }}</b><small>минимум по одному запросу Reels на каждого</small></div>
+    <div><span>Reels с изменившимся счётчиком</span><b>{{ scan_plan.comment_candidates }}</b><small>им может понадобиться загрузка комментариев</small></div>
+    <div><span>Неполная история</span><b>{{ scan_plan.partial_posts }}</b><small>{% if settings.instagram_auto_repair_partial_coverage %}может дозагружаться автоматически{% else %}не дозагружается автоматически, чтобы беречь квоту{% endif %}</small></div>
+    <div class="plan-cap"><span>Жёсткий предел одной проверки</span><b>{{ scan_plan.hard_cap_units }}</b><small>даже fallback и пагинация не должны пройти выше этого значения</small></div>
+    <div><span>Остаток дневного лимита</span><b>{{ scan_plan.daily_remaining }}</b><small>по журналу Lead Radar</small></div>
+    <div><span>Ожидаемый минимум</span><b>{{ scan_plan.expected_min_units }}</b><small>оценка, а не обещание: реальные Reels узнаем только после запроса</small></div>
+  </div>
+</section>
+
+
+{% if replay_status %}
+<section class="panel replay-panel">
+  <div class="panel-head"><div><h2>Безопасный тестовый сценарий</h2><p>Полный путь от комментария до сделки без единого внешнего запроса</p></div><span class="tag status-new">Шаг {{ replay_status.step + 1 }} из {{ replay_status.total_steps }}</span></div>
+  <div class="replay-body">
+    <div><span class="eyebrow">СЕЙЧАС</span><h3>{{ replay_status.title }}</h3><p>{{ replay_status.description }}</p><p class="muted">Сначала нажмите «Проверить сейчас», затем переключите сценарий на следующий шаг и снова запустите проверку. Так можно воспроизвести появление нового клиента.</p></div>
+    <div class="replay-actions">
+      {% if replay_status.can_advance %}<button class="btn primary" data-api-action="/api/replay/advance" data-payload='{}' data-reload="1">Подготовить следующий сигнал</button>{% endif %}
+      <button class="btn ghost" data-api-action="/api/replay/reset" data-payload='{}' data-reload="1">Сбросить сценарий</button>
+      <button class="btn success" data-scan>Проверить сейчас</button>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if usage_breakdown %}
+<section class="panel usage-breakdown"><div class="panel-head"><div><h2>Куда ушли Instagram-запросы сегодня</h2><p>Fallback считается отдельно, поэтому расход не прячется за одной операцией</p></div></div><div class="mini-metrics">{% for provider, units in usage_breakdown.items() %}<span><b>{{ units }}</b> {{ provider }}</span>{% endfor %}</div></section>
+{% endif %}
+
+<div class="integration-grid">{% for name, item in integrations.items() %}<div class="integration"><span class="pulse {% if item.enabled %}{% elif item.configured %}busy{% else %}bad{% endif %}"></span><div><b>{{ name }}</b><small>{% if item.enabled %}работает{% elif item.configured %}настроен, но расход выключен{% else %}не настроен{% endif %}</small><p>{{ item.detail }}</p></div></div>{% endfor %}</div>
+
+<div class="grid two system-actions">
+<section class="panel action-form-card"><h3>Разобрать сохранённую историю</h3><p>Сначала сработают бесплатные локальные правила. Неоднозначные комментарии останутся в очереди AI, если OpenAI-запросы выключены.</p><div class="form-row"><button class="btn primary" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Обработать до 100 сигналов</button><a class="btn ghost" href="/radar?kind=pending">Посмотреть очередь AI</a></div></section>
+<section class="panel action-form-card"><h3>Как тестировать без потерь</h3><ol class="plain-steps"><li>Оставить <code>INSTAGRAM_LIVE_CALLS_ENABLED=false</code>.</li><li>Проверить интерфейс и логику на mock и сохранённой базе.</li><li>Перед контрольным тестом включить live-запросы, поставить маленький дневной лимит и только тогда задать <code>EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS</code>.</li><li>После теста снова выключить live-режим.</li></ol></section>
+</div>
+
+<section class="panel"><div class="panel-head"><div><h2>История проверок</h2><p>Что происходило в каждом цикле, без технических загадок</p></div></div><div class="table-wrap embedded"><table><thead><tr><th>Время</th><th>Кто запустил</th><th>Источник</th><th>Результат</th><th>Reels</th><th>Страниц API</th><th>Комментариев увидели</th><th>Новых сохранили</th><th>История разобрана</th><th>Ошибки</th></tr></thead><tbody>{% for run in runs %}<tr><td>{{ run.started_at.strftime('%d.%m %H:%M:%S') }}</td><td>{{ trigger_label(run.trigger) }}</td><td>{{ run.provider or '—' }}</td><td><span class="tag run-{{ run.status.value|lower }}">{{ run_status_label(run.status) }}</span></td><td>{{ run.stats_json.get('reels_found',0) }}</td><td>{{ run.stats_json.get('comment_requests',0) }}</td><td>{{ run.stats_json.get('comments_seen',0) }}</td><td>{{ run.stats_json.get('comments_created',0) }}</td><td>{{ run.stats_json.get('historical_analyzed',0) }}</td><td>{% if run.error %}<span class="warn">{{ run.error }}</span>{% else %}{{ run.stats_json.get('errors',0) }}{% endif %}</td></tr>{% else %}<tr><td colspan="10" class="empty">Проверок пока не было.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

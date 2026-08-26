@@ -12,7 +12,7 @@ from sqlalchemy import and_, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import Lead, LeadStatus, NotificationLog, NotificationStatus
+from app.db.models import Comment, Lead, LeadStatus, NotificationLog, NotificationStatus
 from app.services.lead_workflow_service import LeadCard, LeadWorkflowService
 
 logger = logging.getLogger(__name__)
@@ -91,9 +91,12 @@ class TelegramLeadNotifier:
         async with self.session_factory() as session:
             lead_ids = (
                 await session.scalars(
-                    select(Lead.id).where(
+                    select(Lead.id)
+                    .join(Comment, Comment.id == Lead.comment_id)
+                    .where(
                         Lead.lead_score >= self.hot_threshold,
                         Lead.status.in_([LeadStatus.NEW, LeadStatus.TAKEN]),
+                        Comment.is_baseline.is_(False),
                     )
                 )
             ).all()

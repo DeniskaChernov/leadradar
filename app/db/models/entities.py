@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     Enum,
@@ -41,6 +42,12 @@ class ContactEventType(StrEnum):
     DEAL_CREATED = "DEAL_CREATED"
     DEAL_WON = "DEAL_WON"
     DEAL_LOST = "DEAL_LOST"
+    LEAD_STATUS_CHANGED = "LEAD_STATUS_CHANGED"
+    NEXT_CONTACT_SCHEDULED = "NEXT_CONTACT_SCHEDULED"
+    NEXT_CONTACT_COMPLETED = "NEXT_CONTACT_COMPLETED"
+    NEXT_CONTACT_CANCELLED = "NEXT_CONTACT_CANCELLED"
+    QUALIFICATION_UPDATED = "QUALIFICATION_UPDATED"
+    LEAD_REOPENED = "LEAD_REOPENED"
 
 
 class LeadStatus(StrEnum):
@@ -48,6 +55,8 @@ class LeadStatus(StrEnum):
     NEW = "NEW"
     TAKEN = "TAKEN"
     CONTACTED = "CONTACTED"
+    QUALIFIED = "QUALIFIED"
+    OFFER_SENT = "OFFER_SENT"
     NEGOTIATION = "NEGOTIATION"
     WON = "WON"
     LOST = "LOST"
@@ -70,6 +79,25 @@ class NotificationStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class CoverageStatus(StrEnum):
+    UNKNOWN = "UNKNOWN"
+    FULL = "FULL"
+    PARTIAL = "PARTIAL"
+    LATEST_ONLY = "LATEST_ONLY"
+
+
+class MonitorRunStatus(StrEnum):
+    RUNNING = "RUNNING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+
+
+class TaskStatus(StrEnum):
+    OPEN = "OPEN"
+    DONE = "DONE"
+    CANCELLED = "CANCELLED"
+
+
 class Competitor(Base):
     __tablename__ = "competitors"
 
@@ -78,7 +106,15 @@ class Competitor(Base):
     handle: Mapped[str] = mapped_column(String(255))
     normalized_handle: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     display_name: Mapped[str | None] = mapped_column(String(255))
+    category: Mapped[str] = mapped_column(String(64), default="DIRECT")
+    tier: Mapped[str] = mapped_column(String(8), default="A", index=True)
+    poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=180)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+    website_url: Mapped[str | None] = mapped_column(Text)
+    catalog_managed: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scan_error_count: Mapped[int] = mapped_column(Integer, default=0)
     baseline_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     baseline_provider: Mapped[str | None] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -87,6 +123,27 @@ class Competitor(Base):
     )
 
     posts: Mapped[list[Post]] = relationship(back_populates="competitor")
+
+
+class MarketCandidate(Base):
+    __tablename__ = "market_candidates"
+    __table_args__ = (
+        UniqueConstraint("display_name", name="uq_market_candidates_display_name"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(255))
+    instagram_handle: Mapped[str | None] = mapped_column(String(255), index=True)
+    website_url: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(String(64), default="DIRECT", index=True)
+    tier: Mapped[str] = mapped_column(String(8), default="B", index=True)
+    confidence: Mapped[int] = mapped_column(Integer, default=50)
+    rationale: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32), default="DISCOVERED", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class Post(Base):
@@ -105,7 +162,15 @@ class Post(Base):
     post_type: Mapped[str] = mapped_column(String(32), default="REEL")
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     comments_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Number of comments actually returned by the provider during the last successful fetch.
     comments_fetched_count: Mapped[int | None] = mapped_column(Integer)
+    # Remote comments_count value for which a fetch was successfully completed.
+    last_synced_remote_count: Mapped[int | None] = mapped_column(Integer)
+    comment_pages_fetched: Mapped[int] = mapped_column(Integer, default=0)
+    coverage_status: Mapped[CoverageStatus] = mapped_column(
+        Enum(CoverageStatus, native_enum=False), default=CoverageStatus.UNKNOWN, index=True
+    )
+    last_comment_provider: Mapped[str | None] = mapped_column(String(128))
     comments_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     raw_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
@@ -140,6 +205,18 @@ class Contact(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     current_lead_score: Mapped[int] = mapped_column(Integer, default=0)
     assigned_manager_telegram_id: Mapped[int | None] = mapped_column()
+    phone: Mapped[str | None] = mapped_column(String(64))
+    preferred_channel: Mapped[str | None] = mapped_column(String(32))
+    city: Mapped[str | None] = mapped_column(String(128))
+    interest_summary: Mapped[str | None] = mapped_column(String(255))
+    desired_quantity: Mapped[int | None] = mapped_column(Integer)
+    budget_from: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    budget_to: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    desired_color: Mapped[str | None] = mapped_column(String(128))
+    purchase_timeline: Mapped[str | None] = mapped_column(String(128))
+    qualification_note: Mapped[str | None] = mapped_column(Text)
+    last_contacted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    qualification_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -191,6 +268,11 @@ class Lead(Base):
         Enum(LeadStatus, native_enum=False), default=LeadStatus.AI_PENDING, index=True
     )
     assigned_manager_telegram_id: Mapped[int | None] = mapped_column()
+    ai_source: Mapped[str | None] = mapped_column(String(32))
+    ai_attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    ai_last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_action_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    next_action_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -295,3 +377,64 @@ class NotificationLog(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
+
+
+class MonitorRun(Base):
+    __tablename__ = "monitor_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    trigger: Mapped[str] = mapped_column(String(64), default="schedule", index=True)
+    provider: Mapped[str | None] = mapped_column(String(128))
+    status: Mapped[MonitorRunStatus] = mapped_column(
+        Enum(MonitorRunStatus, native_enum=False),
+        default=MonitorRunStatus.RUNNING,
+        index=True,
+    )
+    stats_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    error: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ContactTask(Base):
+    __tablename__ = "contact_tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"), index=True)
+    manager_telegram_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[TaskStatus] = mapped_column(
+        Enum(TaskStatus, native_enum=False, length=16), default=TaskStatus.OPEN, index=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class AnalysisCache(Base):
+    __tablename__ = "analysis_cache"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cache_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    model: Mapped[str] = mapped_column(String(128))
+    result_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+    hit_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ExternalUsage(Base):
+    __tablename__ = "external_usage"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    service: Mapped[str] = mapped_column(String(64), index=True)
+    operation: Mapped[str] = mapped_column(String(128), index=True)
+    units: Mapped[int] = mapped_column(Integer, default=1)
+    success: Mapped[bool] = mapped_column(Boolean, default=True)
+    details_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)

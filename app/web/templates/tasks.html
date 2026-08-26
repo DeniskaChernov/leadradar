@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Задачи · Lead Radar{% endblock %}
+{% block heading %}Задачи менеджера{% endblock %}
+{% block subheading %}Кому и когда нужно написать, позвонить или вернуться с предложением{% endblock %}
+{% block content %}
+<div class="page-help"><b>Не теряйте тёплых клиентов</b><span>Следующее действие ставится прямо из карточки лида или клиента. Просроченные задачи всегда поднимаются наверх.</span></div>
+<form class="filters" method="get">
+  <input name="q" value="{{ q }}" placeholder="Клиент или текст задачи">
+  <select name="view">
+    <option value="open" {% if view=='open' %}selected{% endif %}>Все открытые</option>
+    <option value="overdue" {% if view=='overdue' %}selected{% endif %}>Просроченные</option>
+    <option value="today" {% if view=='today' %}selected{% endif %}>На ближайшие 24 часа</option>
+    <option value="done" {% if view=='done' %}selected{% endif %}>Выполненные</option>
+  </select>
+  <button class="btn">Показать</button><a class="btn ghost" href="/tasks">Сбросить</a>
+</form>
+<div class="task-list-page">
+{% for task, contact, lead in rows %}
+<article class="panel task-card {% if task.status.value == 'OPEN' and task.due_at < now %}overdue{% endif %}">
+  <div class="task-time"><b>{{ task.due_at.strftime('%d.%m') }}</b><span>{{ task.due_at.strftime('%H:%M') }}</span></div>
+  <div class="task-card-body">
+    <div class="title-line"><h3><a href="/contacts/{{ contact.id }}">{{ contact.display_name or '@' ~ contact.username }}</a></h3>{% if task.status.value == 'DONE' %}<span class="tag status-won">Выполнено</span>{% elif task.due_at < now %}<span class="tag status-lost">Просрочено</span>{% else %}<span class="tag status-contacted">Запланировано</span>{% endif %}</div>
+    <p>{{ task.note or 'Связаться с клиентом' }}</p>
+    <small>@{{ contact.username }}{% if lead %} · <a href="/leads/{{ lead.id }}">лид #{{ lead.id }} · {{ lead.lead_score }}/100</a>{% endif %}</small>
+  </div>
+  <div class="task-card-actions">
+    <a class="btn ghost" href="/contacts/{{ contact.id }}">Карточка клиента</a>
+    {% if task.status.value != 'DONE' %}<button class="btn success" data-task-complete="{{ task.id }}">✓ Выполнено</button>{% endif %}
+  </div>
+</article>
+{% else %}<div class="empty panel">В этом разделе задач нет.</div>{% endfor %}
+</div>
+{% endblock %}

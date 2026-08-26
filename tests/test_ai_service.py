@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from app.schemas.leads import Intent, LeadAnalysis
-from app.services.ai_service import LeadAnalysisContext, OpenAILeadAnalyzer
+from app.services.ai_service import LeadAnalysisContext, OpenAILeadAnalyzer, RuleBasedLeadAnalyzer
 
 
 class FakeResponses:
@@ -42,3 +42,96 @@ async def test_openai_structured_response_parsing():
     assert responses.kwargs["model"] == "configured-model"
     assert responses.kwargs["text_format"] is LeadAnalysis
 
+
+async def test_rules_understand_uzbek_cyrillic_price_questions():
+    analyzer = RuleBasedLeadAnalyzer()
+    for text in ["Нархи?", "Нархи қанча", "Нархини ёзинг", "Нархи канча?"]:
+        result = await analyzer.analyze(
+            LeadAnalysisContext(
+                competitor="aiko.uz",
+                post_caption="Обеденный комплект на 6 персон",
+                comment=text,
+                username="test_user",
+                previous_signals=[],
+                previous_interests=[],
+            )
+        )
+        assert result.is_lead is True
+        assert result.intent == Intent.PRICE
+        assert result.lead_score >= 80
+        assert result.language == "uz-cyrl"
+
+async def test_rules_cover_common_uzbek_purchase_signals_without_openai():
+    analyzer = RuleBasedLeadAnalyzer()
+    cases = [
+        ("6 кишилик борми?", Intent.AVAILABILITY),
+        ("Доставка борми?", Intent.DELIVERY),
+        ("20 дона керак", Intent.BUY),
+        ("Манзил қаерда?", Intent.LOCATION),
+    ]
+    for text, expected_intent in cases:
+        result = await analyzer.analyze(
+            LeadAnalysisContext(
+                competitor="aiko.uz",
+                post_caption="Плетёный обеденный комплект",
+                comment=text,
+                username="test_user",
+                previous_signals=[],
+                previous_interests=[],
+            )
+        )
+        assert result.is_lead is True
+        assert result.intent == expected_intent
+        assert result.lead_score >= 70
+
+
+def test_rules_classify_social_congratulations_locally():
+    analyzer = RuleBasedLeadAnalyzer()
+    result = analyzer.classify(
+        LeadAnalysisContext(
+            competitor="aiko.uz",
+            post_caption="Новый шоурум",
+            comment="Муборак булсин, яхши кунлар куп булсин ❤️",
+            username="test_user",
+            previous_signals=[],
+            previous_interests=[],
+        )
+    )
+    assert result is not None
+    assert result.is_lead is False
+    assert result.intent == Intent.REACTION
+
+async def test_local_rules_raise_priority_for_cross_competitor_history():
+    from app.services.ai_service import LeadAnalysisContext, PreviousSignal, RuleBasedLeadAnalyzer
+
+    analyzer = RuleBasedLeadAnalyzer()
+    base_context = LeadAnalysisContext(
+        competitor="aiko.uz",
+        post_caption="Обеденный комплект на 6 персон",
+        comment="narxi?",
+        username="buyer",
+        previous_signals=[],
+        previous_interests=[],
+    )
+    comparison_context = LeadAnalysisContext(
+        competitor="aiko.uz",
+        post_caption="Обеденный комплект на 6 персон",
+        comment="narxi?",
+        username="buyer",
+        previous_signals=[
+            PreviousSignal(
+                competitor="chinar.uz",
+                post_caption="Стол и 6 кресел",
+                comment="qancha?",
+                discovered_at="2026-08-25T10:00:00+00:00",
+            )
+        ],
+        previous_interests=["DINING_SET"],
+    )
+
+    base = analyzer.classify(base_context)
+    comparison = analyzer.classify(comparison_context)
+
+    assert base is not None and comparison is not None
+    assert comparison.lead_score > base.lead_score
+    assert comparison.lead_score <= 99

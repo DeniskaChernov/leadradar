@@ -7,7 +7,12 @@ from typing import Any
 
 import httpx
 
-from app.schemas.instagram import InstagramComment, InstagramPost, InstagramProfile
+from app.schemas.instagram import (
+    CommentFetchResult,
+    InstagramComment,
+    InstagramPost,
+    InstagramProfile,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +29,24 @@ class ProviderResponseError(ProviderError):
     """Provider returned an invalid or unsupported response."""
 
 
+class ProviderUsageBlockedError(ProviderError):
+    """External usage is intentionally blocked by a safety/budget guard.
+
+    This is different from a transient provider failure and must not trigger fallback,
+    otherwise a safety block on the primary provider could immediately attempt the fallback.
+    """
+
+
 class InstagramProvider(ABC):
     name: str
+
+    def begin_cycle(self) -> None:
+        """Reset optional per-cycle state before one monitoring pass.
+
+        Mock/replay providers do not need it. Live wrappers use it to reset the
+        conservative request budget that protects external credits.
+        """
+        return None
 
     @abstractmethod
     async def get_profile(self, handle: str) -> InstagramProfile:
@@ -42,6 +63,22 @@ class InstagramProvider(ABC):
     @abstractmethod
     async def get_comments(self, post: InstagramPost) -> list[InstagramComment]:
         raise NotImplementedError
+
+    async def get_comment_batch(
+        self,
+        post: InstagramPost,
+        *,
+        known_comment_ids: set[str] | None = None,
+        max_pages: int | None = None,
+    ) -> CommentFetchResult:
+        comments = await self.get_comments(post)
+        return CommentFetchResult(
+            comments=comments,
+            provider=self.name,
+            pages_fetched=1,
+            coverage_status="UNKNOWN",
+            cursor_exhausted=True,
+        )
 
     async def aclose(self) -> None:
         return None

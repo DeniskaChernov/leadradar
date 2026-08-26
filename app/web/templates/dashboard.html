@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Обзор · Lead Radar{% endblock %}
+{% block heading %}Обзор{% endblock %}
+{% block subheading %}Что происходит с лидами прямо сейчас{% endblock %}
+{% block content %}
+<section class="hero-status {% if safe_mode %}safe{% else %}live{% endif %}">
+  <div>
+    <span class="eyebrow">{% if safe_mode %}БЕЗОПАСНЫЙ РЕЖИМ{% else %}LIVE-МОНИТОРИНГ{% endif %}</span>
+    <h2>{% if safe_mode %}Тестируем без расхода внешних токенов{% else %}Lead Radar следит за конкурентами{% endif %}</h2>
+    <p>{% if safe_mode %}Можно работать с базой, воронкой, заметками, сделками и локально разбирать очевидные комментарии. Instagram и OpenAI не вызываются, пока вы явно не разрешите live-запросы.{% else %}Новые комментарии сохраняются в базу, проходят локальный фильтр и только неоднозначные сигналы при необходимости отправляются в AI.{% endif %}</p>
+  </div>
+  <div class="hero-actions">
+    <button class="btn" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Разобрать сохранённые сигналы</button>
+    <a class="btn ghost" href="/system">Как расходуются запросы</a>
+  </div>
+</section>
+
+<a class="project-stage-banner panel" href="/roadmap"><div><span class="eyebrow">РАЗВИТИЕ ПРОЕКТА</span><b>Стадия 3 из 7 · Мультиконкурентный радар</b><small>Сейчас расширяем карту рынка и качество источников. Следом: каталог наших товаров и автоматическая рекомендация лучшего предложения менеджеру.</small></div><span class="stage-arrow">Открыть план →</span></a>
+
+<div class="page-help"><b>Что система нашла</b><span>Здесь только данные, которые уже сохранены в нашей базе: клиенты, сигналы, горячие лиды, задачи и продажи.</span></div>
+
+<div class="metrics">
+  <a class="metric" href="/contacts"><span>Клиенты</span><strong>{{ counts.contacts }}</strong><small>уникальных профилей</small></a>
+  <a class="metric" href="/radar"><span>Сигналы</span><strong>{{ counts.comments }}</strong><small>+{{ counts.new_comments_24h }} за 24 часа</small></a>
+  <a class="metric" href="/radar?kind=pending"><span>Ждут разбора</span><strong>{{ counts.ai_pending }}</strong><small>неоднозначные сигналы</small></a>
+  <a class="metric accent" href="/leads"><span>Горячие лиды</span><strong>{{ counts.hot }}</strong><small>оценка от {{ settings.hot_lead_threshold }}/100</small></a>
+  <a class="metric warn" href="/"><span>Нужно связаться</span><strong>{{ counts.tasks_today }}</strong><small>{{ counts.tasks_due }} уже просрочено</small></a>
+  <a class="metric success" href="/deals?status=WON"><span>Продажи</span><strong>{{ counts.won }}</strong><small>{{ money(counts.revenue) }} сум</small></a>
+</div>
+
+<div class="dashboard-grid">
+  <section class="panel attention-panel">
+    <div class="panel-head"><div><h2>Требует внимания</h2><p>Лиды и задачи, которые лучше не откладывать</p></div></div>
+    <div class="attention-list">
+      {% for task, contact, task_lead in tasks %}
+      <a class="attention-item" href="/contacts/{{ contact.id }}">
+        <span class="attention-icon">⏱</span><div><b>@{{ contact.username }}</b><p>{{ task.note or 'Связаться с клиентом' }}</p><small>{{ task.due_at.strftime('%d.%m.%Y %H:%M') }}</small></div><span>→</span>
+      </a>
+      {% endfor %}
+      {% for lead, contact, comment, competitor in hot_leads %}
+      <a class="attention-item" href="/leads/{{ lead.id }}">
+        <span class="attention-icon hot">{{ lead.lead_score }}</span><div><b>@{{ contact.username }} · {{ intent_label(lead.intent) }}</b><p>{{ comment.text }}</p><small>Источник: @{{ competitor.normalized_handle }}</small></div><span>→</span>
+      </a>
+      {% endfor %}
+      {% if not tasks and not hot_leads %}<div class="empty compact">Срочных действий пока нет.</div>{% endif %}
+    </div>
+  </section>
+
+  <section class="panel funnel-panel">
+    <div class="panel-head"><div><h2>Воронка</h2><p>Где сейчас находятся лиды</p></div><a href="/leads">Открыть воронку →</a></div>
+    <div class="funnel">
+      {% for status in ['NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON'] %}
+      <div class="funnel-step"><div><span>{{ lead_status_label(status) }}</span><strong>{{ funnel.get(status, 0) }}</strong></div><div class="funnel-bar"><i style="width: {{ [100, (funnel.get(status, 0) * 14)]|min }}%"></i></div></div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<div class="grid two dashboard-lower">
+  <section class="panel">
+    <div class="panel-head"><div><h2>Последние сигналы</h2><p>Что реально сохранено из Instagram</p></div><a href="/radar">Вся лента →</a></div>
+    <div class="feed">
+      {% for comment, contact, competitor, post, lead in recent_signals %}
+      <a class="feed-item" href="{% if lead %}/leads/{{ lead.id }}{% else %}/contacts/{{ contact.id }}{% endif %}">
+        <div class="avatar">{{ (contact.display_name or contact.username)[:1]|upper }}</div>
+        <div class="feed-body">
+          <div class="feed-meta"><b>@{{ contact.username }}</b><span>@{{ competitor.normalized_handle }}</span>{% if comment.is_baseline %}<em>история</em>{% else %}<em class="live">новый</em>{% endif %}</div>
+          <p>{{ comment.text or 'Пустой комментарий' }}</p>
+          <small>{{ post.caption[:105] }}{% if post.caption|length > 105 %}…{% endif %}</small>
+        </div>
+        <div class="score {% if lead and lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead and lead.status.value == 'AI_PENDING' %}pending{% elif lead %}warm{% else %}muted{% endif %}">{% if lead and lead.status.value != 'AI_PENDING' %}{{ lead.lead_score }}{% elif lead %}AI{% else %}…{% endif %}</div>
+      </a>
+      {% else %}<div class="empty">Сигналов пока нет.</div>{% endfor %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div><h2>Последние проверки</h2><p>Понятная история мониторинга</p></div><a href="/system">Диагностика →</a></div>
+    <div class="run-list">
+      {% for run in recent_runs %}
+      <div class="run-row">
+        <span class="run-dot {{ run.status.value|lower }}"></span>
+        <div><b>{{ trigger_label(run.trigger) }}</b><small>{{ run.started_at.strftime('%d.%m %H:%M:%S') }}</small></div>
+        <div class="run-stat"><b>{{ run.stats_json.get('comments_created', 0) }}</b><small>новых</small></div>
+        <div class="run-stat"><b>{{ run.stats_json.get('errors', 0) }}</b><small>ошибок</small></div>
+      </div>
+      {% else %}<div class="empty compact">Проверок ещё не было.</div>{% endfor %}
+    </div>
+    <div class="coverage-box">
+      <h3>Насколько полно забраны комментарии</h3>
+      <div class="coverage-bars">
+        <span><b>{{ coverage.get('FULL', 0) }}</b> полностью</span><span><b>{{ coverage.get('PARTIAL', 0) }}</b> частично</span><span><b>{{ coverage.get('LATEST_ONLY', 0) }}</b> только последние</span><span><b>{{ coverage.get('UNKNOWN', 0) }}</b> неизвестно</span>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

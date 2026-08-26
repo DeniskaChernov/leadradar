@@ -1,0 +1,121 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from sqlalchemy import func, select
+
+from app.db.models import Comment, Contact, Lead
+from app.providers.base import InstagramProvider, ProviderError
+from app.providers.budgeted import BudgetedInstagramProvider
+from app.providers.fallback import FallbackInstagramProvider
+from app.providers.replay import ReplayInstagramProvider
+from app.schemas.instagram import InstagramComment, InstagramPost, InstagramProfile
+from app.services.ai_service import HybridLeadAnalyzer, RuleBasedLeadAnalyzer
+from app.services.contact_service import ContactService
+from app.services.instagram_monitor import InstagramMonitor
+from app.services.lead_service import LeadService
+from app.services.usage_service import ExternalUsageService
+
+
+class NullNotifier:
+    async def notify_hot_lead(self, lead_id: int) -> int:
+        return 0
+
+    async def flush_pending(self) -> int:
+        return 0
+
+
+async def test_replay_scenario_creates_new_lead_without_external_calls(session_factory, tmp_path):
+    fixture = Path(__file__).resolve().parents[1] / "fixtures" / "replay_aiko.json"
+    provider = ReplayInstagramProvider(fixture, tmp_path / "state.json")
+    analyzer = HybridLeadAnalyzer(RuleBasedLeadAnalyzer(), None, mode="rules")
+    monitor = InstagramMonitor(
+        session_factory=session_factory,
+        provider=provider,
+        contact_service=ContactService(session_factory),
+        lead_service=LeadService(session_factory, analyzer, 70),
+        notifier=NullNotifier(),
+        competitors=["aiko.uz"],
+        process_existing_comments=False,
+    )
+
+    baseline = await monitor.run_cycle()
+    assert baseline.comments_created == 3
+    assert baseline.leads_created == 0
+
+    status = provider.scenario.advance()
+    assert status.step == 1
+    second = await monitor.run_cycle()
+
+    assert second.comments_created == 1
+    assert second.leads_created == 1
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count(Contact.id))) == 4
+        assert await session.scalar(select(func.count(Comment.id))) == 4
+        lead = await session.scalar(select(Lead))
+        assert lead is not None
+        assert lead.lead_score >= 70
+        assert lead.ai_source == "local_rules"
+
+
+class StubProfileProvider(InstagramProvider):
+    def __init__(self, name: str, fail: bool) -> None:
+        self.name = name
+        self.fail = fail
+
+    async def get_profile(self, handle: str) -> InstagramProfile:
+        if self.fail:
+            raise ProviderError("temporary")
+        return InstagramProfile(username=handle, profile_url=f"https://instagram.com/{handle}/")
+
+    async def get_reels(self, handle: str) -> list[InstagramPost]:
+        raise NotImplementedError
+
+    async def get_post(self, url: str, competitor: str) -> InstagramPost:
+        raise NotImplementedError
+
+    async def get_comments(self, post: InstagramPost) -> list[InstagramComment]:
+        raise NotImplementedError
+
+
+@pytest.mark.asyncio
+async def test_fallback_spend_counts_each_provider_operation(session_factory):
+    usage = ExternalUsageService(session_factory)
+    primary = BudgetedInstagramProvider(
+        StubProfileProvider("scrapecreators", True), usage, enabled=True, daily_limit=10
+    )
+    fallback = BudgetedInstagramProvider(
+        StubProfileProvider("brightdata", False), usage, enabled=True, daily_limit=10
+    )
+    provider = FallbackInstagramProvider(primary, fallback)
+
+    result = await provider.get_profile("aiko.uz")
+
+    assert result.username == "aiko.uz"
+    assert await usage.used_today("instagram") == 2
+    breakdown = await usage.breakdown_today("instagram")
+    assert breakdown == {"scrapecreators": 1, "brightdata": 1}
+
+async def test_tasks_page_renders_in_russian(session_factory):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.config import Settings
+    from app.services.lead_workflow_service import LeadWorkflowService
+    from app.services.monitor_controller import MonitorController
+    from app.web.app import build_web_app
+    from app.web.queries import WebQueryService
+
+    settings = Settings(_env_file=None, web_enabled=True)
+    controller = MonitorController(monitor=None)  # type: ignore[arg-type]
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        controller,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/tasks")
+    assert response.status_code == 200
+    assert "Задачи менеджера" in response.text
+    assert "Не теряйте тёплых клиентов" in response.text

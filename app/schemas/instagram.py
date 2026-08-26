@@ -41,3 +41,14 @@ class InstagramComment(BaseModel):
     created_at: datetime | None = None
     raw_data: dict[str, Any] = Field(default_factory=dict)
 
+
+
+class CommentFetchResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comments: list[InstagramComment] = Field(default_factory=list)
+    provider: str
+    pages_fetched: int = Field(default=1, ge=0)
+    coverage_status: str = "UNKNOWN"
+    cursor_exhausted: bool = True
+    stopped_on_known_comment: bool = False

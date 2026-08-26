@@ -11,7 +11,12 @@ from app.providers.base import (
     ProviderResponseError,
     parse_datetime,
 )
-from app.schemas.instagram import InstagramComment, InstagramPost, InstagramProfile
+from app.schemas.instagram import (
+    CommentFetchResult,
+    InstagramComment,
+    InstagramPost,
+    InstagramProfile,
+)
 
 
 class BrightDataProvider(HTTPInstagramProvider):
@@ -100,8 +105,25 @@ class BrightDataProvider(HTTPInstagramProvider):
         return self.normalize_post(rows[0], competitor)
 
     async def get_comments(self, post: InstagramPost) -> list[InstagramComment]:
+        return (await self.get_comment_batch(post)).comments
+
+    async def get_comment_batch(
+        self,
+        post: InstagramPost,
+        *,
+        known_comment_ids: set[str] | None = None,
+        max_pages: int | None = None,
+    ) -> CommentFetchResult:
         rows = await self._scrape(self.comments_dataset_id, [{"url": post.url}])
-        return [self.normalize_comment(row) for row in rows]
+        comments = [self.normalize_comment(row) for row in rows]
+        coverage = "FULL" if post.comments_count <= len(comments) else "LATEST_ONLY"
+        return CommentFetchResult(
+            comments=comments,
+            provider=self.name,
+            pages_fetched=1,
+            coverage_status=coverage,
+            cursor_exhausted=coverage == "FULL",
+        )
 
     @staticmethod
     def normalize_post(row: dict[str, Any], competitor: str) -> InstagramPost:

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 from alembic.config import Config
@@ -17,6 +19,40 @@ from alembic import command
 from app.config import Settings
 from app.db.base import Base
 
+
+def backup_sqlite_database(settings: Settings) -> Path | None:
+    """Create a startup backup for local SQLite before migrations or writes.
+
+    PostgreSQL/Railway is intentionally skipped because its backup strategy belongs to the
+    managed database layer.
+    """
+    if not settings.database_backup_on_start:
+        return None
+    url = normalize_database_url(settings.database_url)
+    prefix = "sqlite+aiosqlite:///"
+    if not url.startswith(prefix):
+        return None
+    raw_path = url[len(prefix):]
+    if raw_path in {"", ":memory:"}:
+        return None
+    source = Path(raw_path).expanduser()
+    if not source.is_absolute():
+        source = (Path.cwd() / source).resolve()
+    if not source.exists() or source.stat().st_size == 0:
+        return None
+    backup_dir = source.parent / ".backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+    destination = backup_dir / f"{source.stem}-{stamp}{source.suffix or '.db'}"
+    shutil.copy2(source, destination)
+    backups = sorted(
+        backup_dir.glob(f"{source.stem}-*{source.suffix or '.db'}"),
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    )
+    for old in backups[settings.database_backup_keep :]:
+        old.unlink(missing_ok=True)
+    return destination
 
 def normalize_database_url(url: str) -> str:
     if url.startswith("postgres://"):

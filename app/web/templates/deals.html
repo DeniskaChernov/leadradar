@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Сделки · Lead Radar{% endblock %}
+{% block heading %}Сделки{% endblock %}
+{% block subheading %}Деньги и результат работы с лидами{% endblock %}
+{% block content %}
+<div class="page-help"><b>Почему сделки важны для Lead Radar</b><span>Именно результат сделки учит систему отличать красивый комментарий от лида, который действительно приносит деньги.</span></div>
+<form class="filters" method="get"><input name="q" value="{{ q }}" placeholder="Клиент, товар или конкурент"><select name="status"><option value="">Все сделки</option>{% for s in ['NEW','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}<option value="{{ s }}" {% if status_filter==s %}selected{% endif %}>{{ deal_status_label(s) }}</option>{% endfor %}</select><button class="btn">Применить</button><a class="btn ghost" href="/deals">Сбросить</a></form>
+<div class="deal-grid">
+{% for deal, lead, contact, competitor in rows %}
+<article class="deal-card status-border-{{ deal.status.value|lower }}">
+  <div class="deal-card-head"><div><span class="tag status-{{ deal.status.value|lower }}">{{ deal_status_label(deal.status) }}</span><h3>{{ deal.product_name or product_label(deal.product_category) }}</h3></div><strong>{{ money(deal.final_amount or deal.amount) }} <small>сум</small></strong></div>
+  <dl><dt>Клиент</dt><dd><a href="/contacts/{{ contact.id }}">@{{ contact.username }}</a></dd><dt>Источник</dt><dd>@{{ competitor.normalized_handle }}</dd><dt>Лид</dt><dd><a href="/leads/{{ lead.id }}">#{{ lead.id }} · {{ lead.lead_score }}/100</a></dd><dt>Количество</dt><dd>{{ deal.quantity or 'не указано' }}</dd>{% if deal.lost_reason %}<dt>Почему не купил</dt><dd>{{ deal.lost_reason }}</dd>{% endif %}</dl>
+  <div class="card-actions"><a class="btn primary" href="/leads/{{ lead.id }}">Открыть сделку</a><a class="btn ghost" href="/contacts/{{ contact.id }}">Клиент</a></div>
+</article>
+{% else %}<div class="empty panel">Сделок пока нет. Создайте первую из карточки рабочего лида.</div>{% endfor %}
+</div>
+{% endblock %}

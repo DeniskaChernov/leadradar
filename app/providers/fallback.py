@@ -4,8 +4,13 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
-from app.providers.base import InstagramProvider, ProviderError
-from app.schemas.instagram import InstagramComment, InstagramPost, InstagramProfile
+from app.providers.base import InstagramProvider, ProviderError, ProviderUsageBlockedError
+from app.schemas.instagram import (
+    CommentFetchResult,
+    InstagramComment,
+    InstagramPost,
+    InstagramProfile,
+)
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -17,6 +22,12 @@ class FallbackInstagramProvider(InstagramProvider):
         self.fallback = fallback
         self.name = f"{primary.name}+{fallback.name}"
 
+    def begin_cycle(self) -> None:
+        # Both wrappers normally share one ScanBudget. Resetting twice is harmless and keeps this
+        # adapter correct even when providers are configured independently.
+        self.primary.begin_cycle()
+        self.fallback.begin_cycle()
+
     async def _call(
         self,
         operation: str,
@@ -25,6 +36,9 @@ class FallbackInstagramProvider(InstagramProvider):
     ) -> T:
         try:
             return await primary_call()
+        except ProviderUsageBlockedError:
+            # Safety/budget blocks are intentional. Never bypass them by trying another paid API.
+            raise
         except ProviderError as exc:
             logger.warning(
                 "provider_fallback_activated operation=%s primary=%s fallback=%s error_type=%s",
@@ -57,10 +71,27 @@ class FallbackInstagramProvider(InstagramProvider):
         )
 
     async def get_comments(self, post: InstagramPost) -> list[InstagramComment]:
+        return (await self.get_comment_batch(post)).comments
+
+    async def get_comment_batch(
+        self,
+        post: InstagramPost,
+        *,
+        known_comment_ids: set[str] | None = None,
+        max_pages: int | None = None,
+    ) -> CommentFetchResult:
         return await self._call(
-            "get_comments",
-            lambda: self.primary.get_comments(post),
-            lambda: self.fallback.get_comments(post),
+            "get_comment_batch",
+            lambda: self.primary.get_comment_batch(
+                post,
+                known_comment_ids=known_comment_ids,
+                max_pages=max_pages,
+            ),
+            lambda: self.fallback.get_comment_batch(
+                post,
+                known_comment_ids=known_comment_ids,
+                max_pages=max_pages,
+            ),
         )
 
     async def aclose(self) -> None:

@@ -1,0 +1,31 @@
+LEAD RADAR MVP V3.2 — БЫСТРЫЙ СТАРТ
+
+1. Распакуйте архив в отдельную папку.
+2. Запустите setup_windows.bat. Он создаст .venv и .env, если .env отсутствует.
+3. Откройте .env и вставьте свои ключи.
+4. Для безопасной работы без поиска лидов запустите start_web_only_windows.bat.
+5. Для основной работы запустите start_windows.bat.
+6. Mini App: http://127.0.0.1:8000
+
+ВАЖНО
+По умолчанию реальные Instagram/OpenAI запросы заблокированы.
+Сейчас весь поиск лидов отдельно заблокирован: LEAD_SEARCH_ENABLED=false.
+Чтобы разрешить Instagram live, нужно одновременно:
+  LEAD_SEARCH_ENABLED=true
+  INSTAGRAM_PROVIDER=scrapecreators
+  INSTAGRAM_LIVE_CALLS_ENABLED=true
+  EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS
+  SCRAPECREATORS_API_KEY=...
+
+Для автоматической фоновой проверки после ручного пилота:
+  MONITOR_SCHEDULE_ENABLED=true
+  INSTAGRAM_MANUAL_LIVE_SCAN_ONLY=false
+При наличии BRIGHTDATA_API_KEY Bright Data используется как fallback.
+
+OpenAI включается отдельно:
+  OPENAI_LIVE_CALLS_ENABLED=true
+  EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS
+  OPENAI_API_KEY=...
+
+Не добавляйте .env в Git и не пересылайте его.
+Новые конкуренты в каталоге добавлены на паузе: включайте нужных через раздел «Конкуренты».

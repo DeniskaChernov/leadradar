@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from app.services.instagram_monitor import CycleStats, InstagramMonitor
+from app.services.monitor_run_service import MonitorRunService
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +26,9 @@ class RuntimeSnapshot:
 
 
 class MonitorController:
-    def __init__(self, monitor: InstagramMonitor) -> None:
+    def __init__(self, monitor: InstagramMonitor, run_service: MonitorRunService | None = None) -> None:
         self.monitor = monitor
+        self.run_service = run_service
         self.started_at = datetime.now(UTC)
         self.cycles_completed = 0
         self.last_cycle_started_at: datetime | None = None
@@ -72,10 +75,20 @@ class MonitorController:
     async def _execute_cycle(self) -> CycleStats:
         self.last_cycle_started_at = datetime.now(UTC)
         self.last_error = None
+        run_id = None
+        if self.run_service is not None:
+            run_id = await self.run_service.start(self._cycle_trigger or "unknown")
         try:
-            stats = await self.monitor.run_cycle()
+            force = (self._cycle_trigger or "") in {"web", "manual", "bot", "once"}
+            parameters = inspect.signature(self.monitor.run_cycle).parameters
+            if "force" in parameters:
+                stats = await self.monitor.run_cycle(force=force)
+            else:
+                stats = await self.monitor.run_cycle()
             self.last_stats = stats
             self.cycles_completed += 1
+            if run_id is not None and self.run_service is not None:
+                await self.run_service.finish_success(run_id, stats)
             logger.info(
                 "controlled_poll_cycle_complete trigger=%s stats=%s",
                 self._cycle_trigger,
@@ -83,6 +96,8 @@ class MonitorController:
             )
             return stats
         except Exception as exc:
+            if run_id is not None and self.run_service is not None:
+                await self.run_service.finish_failure(run_id, exc)
             self.last_error = f"{type(exc).__name__}: {str(exc)[:200]}"
             logger.exception(
                 "controlled_poll_cycle_failed trigger=%s error_type=%s",

@@ -1,87 +1,88 @@
-# Lead Radar Project Status
+# Lead Radar — состояние проекта
 
-## Current stage
+## Текущая версия
 
-Hardened local MVP complete and verified with the credentialed real provider.
+**V3.2 · Stage 3/7 · Multi-competitor intelligence build**
 
-## Completed
+Текущая цель: перейти от одного AIKO к системной карте мебельного рынка и подготовить Lead Radar к
+контролируемому пилоту нескольких конкурентов без бесконтрольного расхода API.
 
-- Modular Python 3.12 application scaffold and secret-safe environment contract.
-- Async SQLAlchemy models for competitors, posts, contacts, comments, immutable contact events,
-  leads, deals, AI feedback, and Telegram notification logs.
-- Alembic initial schema plus fetched-comment synchronization migration.
-- Database-first, idempotent comment ingestion and contact upsert.
-- Mock, ScrapeCreators, Bright Data, and ScrapeCreators-to-Bright-Data fallback providers.
-- Provider-scoped baseline behavior and comment-count optimization with failure-safe retry state.
-- OpenAI Responses API Structured Outputs through a Pydantic schema.
-- Durable `AI_PENDING` leads with automatic retry on later polling cycles.
-- HOT threshold, previous-signal context, and 14-day repeat-interest calculation.
-- aiogram long polling with `/start`, `/status`, `/stats`, `/hot`, and `/competitors`.
-- Persistent Telegram command/reply menus plus `/help`, `/lead ID`, `/scan`, and `/cancel`.
-- Runtime status with uptime, current/last cycle state, last statistics, and last system error.
-- Shared manual/scheduled monitor controller that prevents overlapping provider cycles.
-- Full HOT cards in `/hot` and button-based LOST reasons with a free-text fallback.
-- Durable HOT notification results, atomic manager assignment, and NOT_LEAD feedback.
-- Atomic Telegram outbox claiming, bounded retry state, and startup reconciliation of unsent HOT
-  leads without duplicate `(lead, chat)` deliveries.
-- Unique database identities for provider-independent Reel URLs, comments, leads, deals, and
-  notification targets.
-- Periodic forced comment refresh to detect new comments even when the provider count is unchanged.
-- Automatic Alembic migrations on application startup and enforced SQLite foreign keys.
-- Standalone `python -m scripts.check_data_integrity` duplicate audit.
-- Telegram deal workflow for WON/LOST outcomes and feedback dataset updates.
-- Independent Database/Telegram/OpenAI/ScrapeCreators/Bright Data integration checker.
-- Dockerfile, Railway configuration, architecture notes, and non-developer setup guide.
+## На какой стадии мы сейчас
 
-## In progress
+**Стадия 3 из 7 — мультиконкурентный радар.**
 
-- None in local code. The app is ready to build its first real provider baseline.
+Стадии 1 и 2 закрыты: фундамент данных, CRM, Mini App, сделки, replay, локальный AI и защита
+расходов уже существуют. Стадия 3 добавляет покрытие рынка и измерение ценности каждого источника.
 
-## Next
+## Новое в V3.2
 
-1. Keep one application process running with `python -m app.main`.
-2. Use Telegram `/status`, `/stats`, `/hot`, and `/scan` for daily operation.
-3. Run `python -m scripts.check_data_integrity` whenever an explicit duplicate audit is wanted.
+### Market intelligence
 
-## Known issues
+- встроенный каталог подтверждённых конкурентов;
+- 11 подтверждённых Instagram-аккаунтов в таблице `competitors`;
+- 27 дополнительных market candidates в `market_candidates`;
+- новые компании создаются на паузе и не повышают расход API;
+- отдельная уверенность кандидата и причина, почему он интересен;
+- продвижение кандидата в реальный мониторинг через Mini App;
+- сайт и Instagram компании видны в карте рынка;
+- idempotent catalog sync на старте приложения;
+- ручные настройки active/tier пользователя не перезаписываются повторной синхронизацией.
 
-- Bright Data's synchronous Comments by URL endpoint returns the latest 15 comments per request.
-- A process crash in the ambiguous moment after Telegram accepted a message but before the local
-  SENT commit leaves the outbox item in PROCESSING. It is not resent automatically because doing so
-  could duplicate the Telegram message; the lead remains available through `/hot`.
-- Telegram FSM state is in memory and is reset by process restart.
-- Docker build was not executed because Docker is not installed on the verification machine.
-- SQLite and a single process are intentional local-MVP constraints.
+### Более сильный lead intelligence
 
-## Tests
+- HOT-rate по каждому конкуренту;
+- системная рекомендация: усилить мониторинг / оставить / фоновый / набираем данные;
+- один Contact теперь явно показывает число разных источников;
+- если пользователь найден у нескольких конкурентов, Mini App отмечает это как сильный сигнал;
+- локальный lead score получает ограниченный дополнительный boost за cross-competitor history.
 
-- `python -m pytest -q`: 26 passed.
-- `ruff check .`: passed.
-- `python -m scripts.check_integrations`: Database, Telegram, OpenAI, ScrapeCreators, and Bright
-  Data all OK with local credentials on 2026-08-26.
-- `python -m app.main --once`: completed mock polling without a stack trace.
-- Two consecutive real ScrapeCreators cycles on 2026-08-26: first safely re-read 27 comments with
-  `comments_created=0`; second used `comment_requests=0`; both finished with `errors=0`.
-- `python -m scripts.check_data_integrity`: all five duplicate checks passed with zero duplicates.
-- `python -m pip check`: passed; no broken requirements.
-- `alembic check`: passed; no missing migration operations.
+### Продуктовая понятность
 
-Covered behavior includes contact upsert, cross-provider comment deduplication, provider
-normalization/fallback, lead creation, Structured Output parsing, HOT threshold, immutable events,
-baseline, unchanged-post skipping, AI retry, manager assignment, double-assignment protection,
-provider-change baseline reset, forced refresh with unchanged counts, cross-provider Reel identity,
-concurrent notification delivery, NOT_LEAD, deal WON/LOST, SQLite foreign keys, and full mock
-HOT-to-WON acceptance flow. UI coverage includes the persistent menu, safe callback sizes, runtime
-status tracking, failure reporting, and prevention of overlapping monitor cycles.
+- новый раздел `Развитие`;
+- на Dashboard видна текущая стадия проекта;
+- дорожная карта из 7 стадий встроена в Mini App;
+- раздел `Конкуренты` разделён на рабочий мониторинг и разведку рынка.
 
-## How to run
+## Сохраняется из V3.1
 
-```bash
-python -m app.main
-```
+- Contacts / Signals / Leads / Deals / ContactEvents;
+- Radar, Kanban, client 360, Tasks, Deals, Analytics;
+- Telegram HOT alerts;
+- локальный RU / UZ Latin / UZ Cyrillic classifier;
+- AI_PENDING;
+- AI cache;
+- replay/mock;
+- truthful comment coverage;
+- cursor pagination + stop-on-known;
+- daily/per-scan budgets;
+- double live unlock;
+- server-side live confirmation;
+- Telegram Mini App auth preparation.
 
-Full setup commands are in `README.md`.
+## Проверки текущей локальной сборки
 
-## Last verified commit
+- Python compileall: passed.
+- `ruff check app scripts`: passed.
+- Alembic schema check: passed, новых операций не требуется.
+- Проверка целостности: passed; дубли по comment ID, post URL, lead/comment, deal/lead и
+  notification target отсутствуют.
+- Исходные данные сохранены: 25 контактов, 12 постов, 28 комментариев, 28 событий.
+- Результат синхронизации: **11 competitors / 1 active / 27 market candidates**.
+- Повторная синхронизация каталога дважды создала `0` конкурентов и `0` кандидатов.
+- Локальный web smoke: `/health` и `/` успешны; `/api/scan` возвращает блокировку `409`.
+- `pytest` намеренно не запускался по просьбе владельца проекта.
+- Внешние Instagram/OpenAI вызовы при переносе и проверке: **0**.
 
-Current HEAD (`feat: improve Telegram UX and monitor control`).
+Поиск лидов полностью приостановлен через `LEAD_SEARCH_ENABLED=false`: ручные команды,
+веб-кнопка, `--once` и расписание не могут запустить цикл. Дополнительно live-флаги выключены,
+лимиты равны нулю, AI работает в режиме `rules`, внешний unlock пуст.
+
+## Следующая цель
+
+Работать с локальной CRM и накопленными данными без поиска. Когда владелец отдельно разрешит
+возобновление, сначала включить replay одним флагом и только затем выбрать небольшой Tier A pilot.
+После подтверждения качества live ingestion перейти к Stage 4:
+
+**наш каталог + автоматическая рекомендация менеджеру лучшего товара/оффера.**
+
+Полная дорожная карта: `ROADMAP.md`.

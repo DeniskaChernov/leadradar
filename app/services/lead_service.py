@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -50,8 +51,10 @@ class LeadService:
         self.analyzer = analyzer
         self.hot_threshold = hot_threshold
 
-    async def process_signal(self, signal: PersistedSignal) -> ProcessedLead | None:
-        if not signal.created or signal.is_baseline:
+    async def process_signal(
+        self, signal: PersistedSignal, *, allow_baseline: bool = False
+    ) -> ProcessedLead | None:
+        if not signal.created or (signal.is_baseline and not allow_baseline):
             return None
 
         async with self.session_factory() as session:
@@ -63,7 +66,7 @@ class LeadService:
             context = await self._build_context(session, signal.comment_id)
 
         try:
-            analysis = await self.analyzer.analyze(context)
+            analysis, analysis_source = await self._analyze(context)
         except AIAnalysisError:
             logger.warning("lead_ai_pending comment_id=%s", signal.comment_id)
             return await self._create_pending(signal)
@@ -88,7 +91,10 @@ class LeadService:
                 lead_score=analysis.lead_score,
                 ai_reason=analysis.reason,
                 language=analysis.language,
-                status=LeadStatus.NEW,
+                ai_source=analysis_source,
+                ai_attempt_count=1,
+                ai_last_attempt_at=datetime.now(UTC),
+                status=LeadStatus.NEW if analysis.is_lead else LeadStatus.NOT_LEAD,
             )
             session.add(lead)
             try:
@@ -104,6 +110,7 @@ class LeadService:
                         "score": analysis.lead_score,
                         "intent": analysis.intent.value,
                         "product_category": analysis.product_category,
+                        "is_lead": analysis.is_lead,
                     },
                 )
                 session.add(
@@ -134,12 +141,57 @@ class LeadService:
             )
             return self._to_result(lead, created=True)
 
-    async def retry_pending(self, limit: int = 50) -> list[ProcessedLead]:
+    async def backfill_unanalyzed_comments(self, limit: int = 25) -> list[ProcessedLead]:
+        """Analyze stored signals that do not have a Lead yet, including baseline history.
+
+        Historical comments are intentionally never notified here; this method only builds
+        searchable lead intelligence in the database.
+        """
+        if limit <= 0:
+            return []
+        async with self.session_factory() as session:
+            rows = (
+                await session.execute(
+                    select(Comment)
+                    .outerjoin(Lead, Lead.comment_id == Comment.id)
+                    .where(Lead.id.is_(None))
+                    .order_by(Comment.created_at_platform.desc(), Comment.id.desc())
+                    .limit(limit)
+                )
+            ).scalars().all()
+
+        results: list[ProcessedLead] = []
+        for comment in rows:
+            signal = PersistedSignal(
+                comment_id=comment.id,
+                contact_id=comment.contact_id,
+                post_id=comment.post_id,
+                competitor_id=comment.competitor_id,
+                created=True,
+                is_baseline=comment.is_baseline,
+            )
+            result = await self.process_signal(signal, allow_baseline=True)
+            if result is not None:
+                results.append(result)
+        return results
+
+    async def retry_pending(
+        self,
+        limit: int = 50,
+        *,
+        cooldown_seconds: int = 0,
+    ) -> list[ProcessedLead]:
+        if limit <= 0:
+            return []
+        cutoff = datetime.now(UTC) - timedelta(seconds=cooldown_seconds)
         async with self.session_factory() as session:
             lead_ids = (
                 await session.scalars(
                     select(Lead.id)
-                    .where(Lead.status == LeadStatus.AI_PENDING)
+                    .where(
+                        Lead.status == LeadStatus.AI_PENDING,
+                        (Lead.ai_last_attempt_at.is_(None) | (Lead.ai_last_attempt_at <= cutoff)),
+                    )
                     .order_by(Lead.created_at)
                     .limit(limit)
                 )
@@ -157,8 +209,11 @@ class LeadService:
             if lead is None or lead.status != LeadStatus.AI_PENDING:
                 return None
             context = await self._build_context(session, lead.comment_id)
+            lead.ai_attempt_count += 1
+            lead.ai_last_attempt_at = datetime.now(UTC)
+            await session.commit()
         try:
-            analysis = await self.analyzer.analyze(context)
+            analysis, analysis_source = await self._analyze(context)
         except AIAnalysisError:
             return None
 
@@ -176,7 +231,8 @@ class LeadService:
             lead.lead_score = analysis.lead_score
             lead.ai_reason = analysis.reason
             lead.language = analysis.language
-            lead.status = LeadStatus.NEW
+            lead.ai_source = analysis_source
+            lead.status = LeadStatus.NEW if analysis.is_lead else LeadStatus.NOT_LEAD
             contact.current_lead_score = max(contact.current_lead_score, analysis.lead_score)
             feedback = await session.scalar(
                 select(AIFeedback).where(AIFeedback.lead_id == lead.id)
@@ -201,6 +257,7 @@ class LeadService:
                         "score": analysis.lead_score,
                         "intent": analysis.intent.value,
                         "product_category": analysis.product_category,
+                        "is_lead": analysis.is_lead,
                         "from_ai_pending": True,
                     },
                 )
@@ -220,6 +277,9 @@ class LeadService:
                     intent="OTHER",
                     lead_score=0,
                     ai_reason="AI analysis pending retry",
+                    ai_source="pending",
+                    ai_attempt_count=1,
+                    ai_last_attempt_at=datetime.now(UTC),
                     status=LeadStatus.AI_PENDING,
                 )
                 session.add(lead)
@@ -287,7 +347,24 @@ class LeadService:
             previous_interests=[
                 lead.product_category for lead in interests if lead.product_category
             ],
+            known_customer_context={
+                "city": contact.city,
+                "interest_summary": contact.interest_summary,
+                "desired_quantity": contact.desired_quantity,
+                "budget_from": str(contact.budget_from) if contact.budget_from is not None else None,
+                "budget_to": str(contact.budget_to) if contact.budget_to is not None else None,
+                "desired_color": contact.desired_color,
+                "purchase_timeline": contact.purchase_timeline,
+                "qualification_note": contact.qualification_note,
+            },
         )
+
+
+    async def _analyze(self, context: LeadAnalysisContext):
+        analyze_with_source = getattr(self.analyzer, "analyze_with_source", None)
+        if analyze_with_source is not None:
+            return await analyze_with_source(context)
+        return await self.analyzer.analyze(context), "custom_analyzer"
 
     def _to_result(self, lead: Lead, *, created: bool) -> ProcessedLead:
         return ProcessedLead(
@@ -295,5 +372,8 @@ class LeadService:
             score=lead.lead_score,
             status=lead.status,
             created=created,
-            is_hot=lead.lead_score >= self.hot_threshold,
+            is_hot=(
+                lead.lead_score >= self.hot_threshold
+                and lead.status not in {LeadStatus.NOT_LEAD, LeadStatus.LOST}
+            ),
         )

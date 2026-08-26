@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>{% block title %}Lead Radar{% endblock %}</title>
+  <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
+  <link rel="stylesheet" href="/static/app.css">
+  <script defer src="/static/app.js"></script>
+</head>
+<body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}">
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="/">
+      <div class="brand-mark">LR</div>
+      <div><strong>Lead Radar</strong><span>Радар спроса и CRM</span></div>
+    </a>
+    <nav>
+      <a class="nav {% if active_path == '/' %}active{% endif %}" href="/"><span>⌂</span>Обзор</a>
+      <a class="nav {% if active_path.startswith('/radar') %}active{% endif %}" href="/radar"><span>⌁</span>Радар</a>
+      <a class="nav {% if active_path.startswith('/leads') %}active{% endif %}" href="/leads"><span>⚡</span>Лиды</a>
+      <a class="nav {% if active_path.startswith('/contacts') %}active{% endif %}" href="/contacts"><span>◎</span>Клиенты</a>
+      <a class="nav {% if active_path.startswith('/tasks') %}active{% endif %}" href="/tasks"><span>✓</span>Задачи</a>
+      <a class="nav {% if active_path.startswith('/deals') %}active{% endif %}" href="/deals"><span>₽</span>Сделки</a>
+      <a class="nav {% if active_path.startswith('/analytics') %}active{% endif %}" href="/analytics"><span>◒</span>Аналитика</a>
+      <a class="nav {% if active_path.startswith('/competitors') %}active{% endif %}" href="/competitors"><span>◫</span>Конкуренты</a>
+      <a class="nav {% if active_path.startswith('/roadmap') %}active{% endif %}" href="/roadmap"><span>↗</span>Развитие</a>
+      <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system"><span>⚙</span>Система</a>
+    </nav>
+    <div class="side-info">
+      {% if safe_mode %}
+      <div class="safe-chip"><span>🛡</span><div><b>Безопасный режим</b><small>Внешние токены не расходуются</small></div></div>
+      {% else %}
+      <div class="safe-chip live"><span>◉</span><div><b>Live-мониторинг</b><small>Внешние API разрешены</small></div></div>
+      {% endif %}
+      <div class="side-status">
+        <span class="pulse {% if snapshot.last_error %}bad{% elif snapshot.cycle_running %}busy{% endif %}"></span>
+        <div>
+          <b>{% if snapshot.cycle_running %}Идёт проверка{% elif snapshot.last_error %}Нужна проверка{% else %}Система готова{% endif %}</b>
+          <small>Циклов в этой сессии: {{ snapshot.cycles_completed }}</small>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="top-title">
+        <h1>{% block heading %}Lead Radar{% endblock %}</h1>
+        <p>{% block subheading %}Публичный спрос конкурентов в одной базе{% endblock %}</p>
+      </div>
+      <div class="top-actions">
+        {% if safe_mode %}
+        <span class="status-pill safe">🛡 Без расхода токенов</span>
+        {% elif snapshot.last_error %}
+        <span class="status-pill error">Есть ошибка</span>
+        {% elif snapshot.cycle_running %}
+        <span class="status-pill busy">Проверяем Instagram…</span>
+        {% else %}
+        <span class="status-pill ok">Live включён</span>
+        {% endif %}
+        <button class="btn primary" data-scan {% if snapshot.cycle_running %}disabled{% endif %}>Проверить сейчас</button>
+      </div>
+    </header>
+
+    <section class="content">
+      {% if snapshot.last_error %}
+      <div class="alert error"><b>Последняя проблема мониторинга</b><span>{{ snapshot.last_error }}</span><a href="/system">Открыть диагностику →</a></div>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </section>
+  </main>
+</div>
+<div id="toast" class="toast" role="status"></div>
+<div id="confirm" class="modal-backdrop" hidden>
+  <div class="modal"><h3 id="confirm-title">Подтвердите действие</h3><p id="confirm-text"></p><div class="modal-actions"><button class="btn ghost" data-confirm-cancel>Отмена</button><button class="btn primary" data-confirm-ok>Продолжить</button></div></div>
+</div>
+</body>
+</html>

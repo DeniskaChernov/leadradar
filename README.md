@@ -1,194 +1,306 @@
-# Lead Radar
+# Lead Radar V3.2
 
-Lead Radar — локальный бот для мебельной компании. Он проверяет публичные комментарии под Reels
-конкурентов, сначала сохраняет данные в собственной базе, оценивает коммерческий интерес через
-OpenAI и отправляет HOT-лиды менеджерам в Telegram.
+Lead Radar — локальный Mini App + Telegram-бот для мониторинга публичного спроса у мебельных
+конкурентов. Система сохраняет найденного человека в своей базе, показывает откуда он пришёл,
+анализирует комментарий, ведёт лида по воронке и запоминает результат сделки.
 
-Первый конкурент по умолчанию: `aiko.uz`. Для безопасной проверки без Instagram API включён mock
-provider.
+## Что главное в V3.2
 
-## Что уже работает
+Основной интерфейс теперь не Telegram-команды, а понятный русскоязычный Mini App / CRM:
 
-- SQLite как source of truth с готовыми Alembic-миграциями;
-- единая карточка Contact и полная immutable-история событий;
-- дедупликация одного Instagram comment между разными providers;
-- baseline без шквала старых Telegram-уведомлений;
-- ScrapeCreators с автоматическим fallback на Bright Data;
-- OpenAI Structured Outputs с русским и узбекским контекстом;
-- `AI_PENDING` и повторный анализ после восстановления OpenAI;
-- Telegram-меню, `/start`, `/help`, `/status`, `/stats`, `/hot`, `/lead`, `/scan`,
-  `/competitors`, `/cancel`;
-- HOT notification, «Взять лид», «Не лид», WON/LOST сделки и AI feedback.
-- автоматические миграции при старте и проверка целостности данных;
-- атомарная Telegram outbox-очередь с ограниченными повторными попытками;
-- защита от дублей Contact, Reel, Comment, Lead, Deal, Event и notification на уровне БД.
+- **Обзор** — что происходит прямо сейчас, сколько клиентов, сигналов, HOT-лидов, задач и продаж;
+- **Радар** — каждый сохранённый комментарий с источником, Reel, оценкой и объяснением;
+- **Лиды** — рабочая Kanban-воронка от нового интереса до продажи;
+- **Клиенты** — поиск по username/имени и единая история человека;
+- **Карточка клиента 360°** — сигналы, заметки, квалификация, задачи, лиды, сделки и история действий;
+- **Задачи** — кому и когда нужно написать/позвонить;
+- **Сделки** — сумма, товар, результат и причина проигрыша;
+- **Аналитика** — источники лидов, намерения, товары, продажи и конверсия;
+- **Конкуренты** — карта рынка, подтверждённые аккаунты, кандидаты, приоритет, эффективность, Reels и полнота комментариев;
+- **Развитие** — текущая стадия проекта, следующие этапы и источники будущего роста лидов;
+- **Система** — состояние интеграций, история проверок и расход внешних запросов.
 
-## Требования
+Telegram остаётся быстрым каналом HOT-уведомлений и действий менеджера.
 
-- Python 3.12 или новее;
-- Telegram bot token для обычного запуска;
-- OpenAI API key для AI-оценки;
-- ScrapeCreators/Bright Data keys нужны только для реального Instagram, не для mock mode.
 
-Секреты хранятся только в локальном `.env`, который исключён из Git.
+## Карта рынка V3.2
 
-## Запуск на Windows
+Lead Radar больше не ограничен AIKO. При запуске система бесплатно синхронизирует встроенную карту
+рынка в своей БД:
 
-Откройте PowerShell в папке проекта и выполните:
+- **11 подтверждённых Instagram-конкурентов** находятся непосредственно в радаре;
+- **27 market candidates** сохранены как компании для проверки/подключения;
+- новые подтверждённые аккаунты стартуют **на паузе**, поэтому каталог не увеличивает расход API;
+- в Mini App есть сегменты, Tier A/B/C, HOT-rate, продажи, выручка и рекомендация по приоритету;
+- кандидата можно подтвердить и добавить в мониторинг прямо из раздела «Конкуренты».
+
+Текущая стадия проекта: **3 из 7 — мультиконкурентный радар**. Полная дорожная карта находится в
+`ROADMAP.md` и в разделе **Развитие** Mini App.
+
+## Самое важное: безопасная разработка без расхода токенов
+
+V3.2 по умолчанию работает fail-closed. Для обычной разработки не нужны ScrapeCreators,
+Bright Data или OpenAI.
+
+Безопасные значения уже находятся в `.env.example`:
+
+```dotenv
+EXTERNAL_LIVE_UNLOCK=
+INSTAGRAM_PROVIDER=replay
+INSTAGRAM_LIVE_CALLS_ENABLED=false
+OPENAI_LIVE_CALLS_ENABLED=false
+AI_MODE=hybrid
+AI_PENDING_RETRY_ENABLED=false
+```
+
+Даже если случайно поставить `*_LIVE_CALLS_ENABLED=true`, внешний запрос **не уйдёт**, пока не
+будет добавлен второй предохранитель:
+
+```dotenv
+EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS
+```
+
+Для Instagram дополнительно действуют:
+
+```dotenv
+INSTAGRAM_DAILY_REQUEST_LIMIT=100
+INSTAGRAM_MAX_UNITS_PER_SCAN=8
+INSTAGRAM_MANUAL_LIVE_SCAN_ONLY=true
+MONITOR_SCHEDULE_ENABLED=false
+```
+
+То есть live-проверка имеет дневной предел, предел одного запуска и требует отдельного
+подтверждения в интерфейсе/Telegram.
+
+## Локальный AI без OpenAI
+
+Очевидные сигналы классифицируются бесплатно на компьютере:
+
+- `цена?`, `сколько стоит?`;
+- `narxi?`, `qancha?`, `nech pul?`;
+- `Нархи?`, `Нархи қанча?`, `Нархини ёзинг`;
+- `bormi?`, `борми?`, `мавжуд`;
+- `доставка`, `yetkazib berish`, `етказиб бериш`;
+- конкретное количество;
+- `+`, только если в Reel есть коммерческий CTA оставить плюс.
+
+Похвала, эмодзи и обычные реакции также отсекаются локально.
+
+Если локальные правила не уверены, комментарий получает статус **«Нужна AI-проверка»**. Он не
+объявляется автоматически плохим лидом и не расходует OpenAI без явного разрешения.
+
+Кнопка **«Разобрать сохранённые сигналы»** в Mini App всегда локальная: она технически не имеет
+доступа к OpenAI даже если live-AI позже включён.
+
+## Уже сохранённые данные Aiko в этой сборке
+
+Копия базы, вошедшая в V3.2, мигрирована на последнюю схему и локально разобрана без внешних API:
+
+- 25 клиентов;
+- 28 публичных комментариев;
+- 8 HOT-лидов;
+- 17 реакций / не лидов;
+- 3 неоднозначных сигнала, оставленных на AI-проверку;
+- 0 внешних AI/Instagram операций во время этого разбора.
+
+Исторические лиды не рассылаются пачкой в Telegram.
+
+## Быстрый запуск на Windows
+
+### 1. Первый запуск
+
+Распакуйте архив и запустите:
+
+```text
+setup_windows.bat
+```
+
+Скрипт:
+
+1. создаст `.venv`;
+2. установит зависимости;
+3. создаст `.env`, если его нет;
+4. сделает резервную копию SQLite;
+5. применит Alembic migrations;
+6. проверит целостность базы.
+
+### 2. Безопасный локальный интерфейс без поиска лидов
+
+```text
+start_web_only_windows.bat
+```
+
+При `LEAD_SEARCH_ENABLED=false` ручные, CLI и фоновые циклы поиска заблокированы. Вместе с
+нулевыми лимитами и пустым `EXTERNAL_LIVE_UNLOCK` это исключает расходы Instagram/OpenAI.
+
+Откройте:
+
+```text
+http://127.0.0.1:8000
+```
+
+### 3. Работа с основной локальной базой
+
+```text
+start_web_only_windows.bat
+```
+
+или, если настроен Telegram:
+
+```text
+start_windows.bat
+```
+
+## Replay Mode
+
+Replay — главный режим разработки. Он воспроизводит реалистичный Instagram-сценарий из локального
+fixture и не делает сетевых запросов.
+
+В разделе **Система** можно переключать шаги replay-сценария и затем нажимать **Проверить сейчас**.
+Так можно многократно тестировать цепочку:
+
+```text
+Reel → комментарий → Contact → Lead → CRM → сделка
+```
+
+без расхода credits.
+
+## Анализ сохранённой истории
+
+Только локальные правила, 0 OpenAI:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-Copy-Item .env.example .env
-python -m alembic upgrade head
-python -m scripts.check_integrations
-python -m app.main
+python -m scripts.analyze_history --limit 100
 ```
 
-При каждом старте приложение само применяет недостающие безопасные Alembic-миграции. Отдельная
-команда `alembic upgrade head` остаётся в первоначальной установке как явная диагностическая
-проверка, но при обычных последующих запусках выполнять её вручную не требуется.
+Неоднозначные сигналы останутся в `AI_PENDING`.
 
-Если PowerShell запрещает активацию, можно один раз выполнить для текущего окна:
+OpenAI можно разрешить только осознанно:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass
+python -m scripts.analyze_history --limit 100 --allow-openai
 ```
 
-## Запуск на macOS / Linux
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-cp .env.example .env
-python -m alembic upgrade head
-python -m scripts.check_integrations
-python -m app.main
-```
-
-Официальная команда запуска приложения одна:
-
-```bash
-python -m app.main
-```
-
-## Настройка `.env`
-
-Откройте созданный `.env` и заполните самостоятельно:
+Но даже эта команда не отправит запрос, пока одновременно не установлены:
 
 ```dotenv
-TELEGRAM_BOT_TOKEN=...
-OPENAI_API_KEY=...
+OPENAI_LIVE_CALLS_ENABLED=true
+EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS
 ```
 
-Первый запуск можно оставить с `INSTAGRAM_PROVIDER=mock`. Команда `/start` доступна без allowlist
-и показывает Telegram Chat ID и User ID. Добавьте нужные значения через запятую:
+## Интеграции
 
-```dotenv
-TELEGRAM_ADMIN_CHAT_IDS=123456789,-1001234567890
-```
+Безопасная проверка конфигурации и БД, без Instagram API:
 
-После изменения `.env` перезапустите приложение. Остальные рабочие команды доступны только этим
-ID.
-
-После запуска ничего вручную «запускать внутри бота» не нужно. Пока открыто окно PowerShell,
-приложение каждые `INSTAGRAM_POLL_INTERVAL_SECONDS` секунд проверяет конкурентов, сохраняет новые
-сигналы, анализирует их и отправляет HOT-лиды. Повторно полученные данные безопасно игнорируются.
-
-## Работа в Telegram
-
-После `/start` авторизованный менеджер получает постоянное кнопочное меню. Основные сценарии:
-
-- `/status` показывает uptime, выполняющийся цикл, время и результат последней проверки;
-- `/scan` запускает внеплановую проверку и присылает итог, но не допускает наложения двух циклов;
-- `/hot` показывает полные интерактивные карточки открытых лидов;
-- `/lead 12` повторно открывает конкретную карточку по ID;
-- `/stats` дополнительно показывает очередь OpenAI и неотправленные Telegram-уведомления;
-- `/cancel` безопасно отменяет заполнение WON/LOST сделки;
-- причины проигрыша выбираются кнопками, а свободный текст нужен только для варианта «Другая».
-
-Команды также регистрируются в стандартном меню Telegram. Если установка меню временно не удалась,
-основной polling продолжает работать.
-
-Для реального Instagram:
-
-```dotenv
-INSTAGRAM_PROVIDER=scrapecreators
-SCRAPECREATORS_API_KEY=...
-BRIGHTDATA_API_KEY=...
-```
-
-При ошибке, timeout, rate limit или некорректном ответе ScrapeCreators автоматически используется
-Bright Data. Можно выбрать только Bright Data: `INSTAGRAM_PROVIDER=brightdata`.
-
-## Baseline и mock demo
-
-Значение по умолчанию `PROCESS_EXISTING_COMMENTS=false` сохраняет уже существующие comments как
-baseline и не отправляет по ним уведомления. Все comments после baseline обрабатываются обычно.
-Baseline привязан к выбранному provider: при переходе с mock на ScrapeCreators/Bright Data он
-безопасно строится заново, даже если конкурент остался тем же.
-
-Даже при неизменившемся публичном счётчике комментариев каждый Reel принудительно перепроверяется
-не реже `INSTAGRAM_FORCE_REFRESH_SECONDS` (по умолчанию раз в час). Это закрывает сценарий, когда
-один комментарий удалили и одновременно появился новый, а общий счётчик не изменился.
-
-Чтобы на совершенно новой тестовой базе сразу прогнать встроенный mock HOT-сценарий, перед первым
-запуском временно установите:
-
-```dotenv
-INSTAGRAM_PROVIDER=mock
-PROCESS_EXISTING_COMMENTS=true
-```
-
-Верните `false` перед переходом к реальному конкуренту.
-
-Диагностический одиночный polling cycle без запуска Telegram:
-
-```bash
-python -m app.main --once
-```
-
-## Проверка интеграций
-
-```bash
+```powershell
 python -m scripts.check_integrations
 ```
 
-Проверяются Database, Telegram, OpenAI, ScrapeCreators и Bright Data. Пустые необязательные ключи
-показываются как `SKIP`; значения secrets никогда не печатаются. Проверка реальных Instagram
-providers может расходовать один API credit на публичный профиль.
+Минимальная live-проверка выполняется только явно:
 
-Проверка БД на дубли без обращения к внешним API:
+```powershell
+python -m scripts.check_integrations --live
+```
 
-```bash
+Instagram live всё равно подчиняется двойному предохранителю. Фоновое расписание также отключено по умолчанию (`MONITOR_SCHEDULE_ENABLED=false`) и включается отдельно после ручного пилота.
+
+## Целостность базы
+
+```powershell
 python -m scripts.check_data_integrity
 ```
 
-## Тесты и lint
+Проверяются в том числе дубли comment ID, post URL, lead/comment, deal/lead и Telegram notifications.
 
-```bash
-python -m pytest
-ruff check .
+## Автоматические тесты
+
+```powershell
+python -m ruff check .
 ```
 
-Внешние API в тестах замоканы; реальные secrets не нужны.
+`pytest` временно не запускается в рабочем цикле по решению владельца проекта. Тестовые файлы
+сохранены для будущего включения; сами по себе они не выполняются и токены не расходуют.
 
-## Переход на PostgreSQL / Railway позже
+## Основные переменные `.env`
 
-Railway сейчас не развёртывается. `Dockerfile` и `railway.json` только готовят будущий этап. Для
-PostgreSQL достаточно поменять `DATABASE_URL`; сервис автоматически нормализует Railway URL для
-`asyncpg`, бизнес-логику переписывать не нужно.
+```dotenv
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_ADMIN_CHAT_IDS=
 
-## Текущие ограничения
+EXTERNAL_LIVE_UNLOCK=
 
-- реальные API требуют локальной проверки с вашими keys и тарифами;
-- Bright Data Comments by URL возвращает последние 15 comments за один synchronous request;
-- один локальный процесс и in-memory Telegram FSM; Redis/Celery намеренно отсутствуют;
-- после неоднозначного обрыва соединения с Telegram запись остаётся в БД; система предпочитает не
-  отправлять её повторно вслепую, чтобы не создать дублирующее сообщение;
-- SQLite рассчитан на локальный MVP, не на несколько одновременно запущенных экземпляров.
+DATABASE_URL=sqlite+aiosqlite:///./lead_radar.db
 
-Подробности устройства: [ARCHITECTURE.md](ARCHITECTURE.md). Реальное состояние работ:
-[PROJECT_STATUS.md](PROJECT_STATUS.md).
+AI_MODE=hybrid
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5-mini
+OPENAI_LIVE_CALLS_ENABLED=false
+OPENAI_DAILY_REQUEST_LIMIT=25
+AI_PENDING_RETRY_ENABLED=false
+
+INSTAGRAM_PROVIDER=replay
+INSTAGRAM_LIVE_CALLS_ENABLED=false
+INSTAGRAM_DAILY_REQUEST_LIMIT=100
+INSTAGRAM_MAX_UNITS_PER_SCAN=8
+INSTAGRAM_MANUAL_LIVE_SCAN_ONLY=true
+
+SCRAPECREATORS_API_KEY=
+BRIGHTDATA_API_KEY=
+
+# `COMPETITORS` теперь только bootstrap. Полная карта рынка живёт в БД.
+COMPETITORS=aiko.uz
+HOT_LEAD_THRESHOLD=70
+PROCESS_EXISTING_COMMENTS=false
+ANALYZE_BASELINE_COMMENTS=true
+HISTORICAL_ANALYSIS_BATCH_SIZE=25
+LEAD_SEARCH_ENABLED=false
+
+WEB_ENABLED=true
+WEB_HOST=127.0.0.1
+WEB_PORT=8000
+WEB_PUBLIC_URL=
+WEB_AUTH_ENABLED=false
+```
+
+## Когда будем включать реальный Instagram
+
+Не включайте live во время разработки интерфейса. Правильная последовательность:
+
+1. отдельно вернуть запуск `pytest`;
+2. включить `LEAD_SEARCH_ENABLED=true` только для replay-проверки;
+3. проверить Mini App, CRM и целостность базы;
+4. проверить preview расхода в разделе **Система**;
+5. выполнить один подтверждённый live scan;
+6. только после проверки результата расширять мониторинг.
+
+Для реального Instagram понадобятся одновременно:
+
+```dotenv
+INSTAGRAM_PROVIDER=scrapecreators
+INSTAGRAM_LIVE_CALLS_ENABLED=true
+EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS
+```
+
+После контрольного теста `EXTERNAL_LIVE_UNLOCK` лучше снова очистить.
+
+## Telegram Mini App и Railway
+
+Локально интерфейс работает как обычный web app. После Railway:
+
+1. SQLite заменяем на PostgreSQL через `DATABASE_URL`;
+2. получаем HTTPS URL;
+3. задаём `WEB_PUBLIC_URL`;
+4. включаем `WEB_AUTH_ENABLED=true`;
+5. Mini App проверяет Telegram `initData` на сервере;
+6. доступ получают только Telegram ID из разрешённого списка.
+
+До включения серверной Telegram-авторизации публично выставлять CRM нельзя.
+
+## Privacy
+
+Lead Radar использует только публичную информацию: username, display name, публичный комментарий,
+публичную ссылку профиля, Reel URL/caption и timestamps. Скрытые телефоны, email, private messages
+и данные из утечек система не получает.
+
+Подробная архитектура находится в `ARCHITECTURE.md`, текущее состояние — в `PROJECT_STATUS.md`,
+дорожная карта — в `ROADMAP.md`.
