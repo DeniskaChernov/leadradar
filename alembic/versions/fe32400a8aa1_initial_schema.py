@@ -229,4 +229,3 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_competitors_normalized_handle'), table_name='competitors')
     op.drop_table('competitors')
     # ### end Alembic commands ###
-

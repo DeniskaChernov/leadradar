@@ -15,8 +15,12 @@ class RecordingNotifier:
     def __init__(self):
         self.lead_ids = []
 
-    async def notify_hot_lead(self, lead_id: int) -> None:
+    async def notify_hot_lead(self, lead_id: int) -> int:
         self.lead_ids.append(lead_id)
+        return 1
+
+    async def flush_pending(self) -> int:
+        return 0
 
 
 async def test_baseline_then_new_comment_creates_one_hot_lead(session_factory):
@@ -91,3 +95,41 @@ async def test_provider_change_rebuilds_baseline_without_leads(session_factory):
     assert second.leads_created == 0
     async with session_factory() as session:
         assert await session.scalar(select(func.count(Lead.id))) == 0
+
+
+async def test_forced_refresh_finds_new_comment_when_total_count_is_unchanged(
+    session_factory,
+):
+    provider = MockInstagramProvider()
+    notifier = RecordingNotifier()
+    monitor = InstagramMonitor(
+        session_factory=session_factory,
+        provider=provider,
+        contact_service=ContactService(session_factory),
+        lead_service=LeadService(session_factory, StaticAnalyzer(), hot_threshold=70),
+        notifier=notifier,
+        competitors=["aiko.uz"],
+        process_existing_comments=False,
+        force_refresh_seconds=0,
+    )
+    await monitor.run_cycle()
+    provider._comments.append(
+        InstagramComment(
+            platform_comment_id="mock-comment-hidden-by-count",
+            platform_user_id="mock-user-002",
+            username="dilshod_test",
+            display_name="Dilshod",
+            profile_url="https://www.instagram.com/dilshod_test/",
+            text="qancha?",
+            created_at=datetime.now(UTC),
+        )
+    )
+
+    detected = await monitor.run_cycle()
+    repeated = await monitor.run_cycle()
+
+    assert detected.comments_created == 1
+    assert detected.leads_created == 1
+    assert repeated.comments_created == 0
+    assert repeated.leads_created == 0
+    assert notifier.lead_ids == [1]

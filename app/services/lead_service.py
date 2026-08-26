@@ -223,7 +223,16 @@ class LeadService:
                     status=LeadStatus.AI_PENDING,
                 )
                 session.add(lead)
-                await session.commit()
+                try:
+                    await session.commit()
+                except IntegrityError:
+                    await session.rollback()
+                    lead = await session.scalar(
+                        select(Lead).where(Lead.comment_id == signal.comment_id)
+                    )
+                    if lead is None:
+                        raise
+                    created = False
             return self._to_result(lead, created=created)
 
     async def _build_context(

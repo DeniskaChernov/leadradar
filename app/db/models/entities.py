@@ -65,6 +65,7 @@ class DealStatus(StrEnum):
 
 class NotificationStatus(StrEnum):
     PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
     SENT = "SENT"
     FAILED = "FAILED"
 
@@ -90,7 +91,10 @@ class Competitor(Base):
 
 class Post(Base):
     __tablename__ = "posts"
-    __table_args__ = (UniqueConstraint("platform", "platform_post_id"),)
+    __table_args__ = (
+        UniqueConstraint("platform", "platform_post_id"),
+        UniqueConstraint("platform", "url", name="uq_posts_platform_url"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     platform: Mapped[str] = mapped_column(String(32), default="instagram")
@@ -102,6 +106,7 @@ class Post(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     comments_count: Mapped[int] = mapped_column(Integer, default=0)
     comments_fetched_count: Mapped[int | None] = mapped_column(Integer)
+    comments_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     raw_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -116,8 +121,12 @@ class Post(Base):
 class Contact(Base):
     __tablename__ = "contacts"
     __table_args__ = (
-        UniqueConstraint("platform", "platform_user_id"),
-        UniqueConstraint("platform", "normalized_username"),
+        UniqueConstraint(
+            "platform", "platform_user_id", name="uq_contacts_platform_user_id"
+        ),
+        UniqueConstraint(
+            "platform", "normalized_username", name="uq_contacts_platform_username"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -143,7 +152,11 @@ class Contact(Base):
 
 class Comment(Base):
     __tablename__ = "comments"
-    __table_args__ = (UniqueConstraint("platform", "platform_comment_id"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "platform", "platform_comment_id", name="uq_comments_platform_comment_id"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     platform: Mapped[str] = mapped_column(String(32), default="instagram")
@@ -191,6 +204,9 @@ class Lead(Base):
 
 class Deal(Base):
     __tablename__ = "deals"
+    __table_args__ = (
+        UniqueConstraint("lead_id", name="uq_deals_lead_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
@@ -260,7 +276,9 @@ class AIFeedback(Base):
 
 class NotificationLog(Base):
     __tablename__ = "notification_logs"
-    __table_args__ = (UniqueConstraint("lead_id", "chat_id"),)
+    __table_args__ = (
+        UniqueConstraint("lead_id", "chat_id", name="uq_notification_logs_lead_chat"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
@@ -270,6 +288,9 @@ class NotificationLog(Base):
         Enum(NotificationStatus, native_enum=False), default=NotificationStatus.PENDING
     )
     error: Mapped[str | None] = mapped_column(Text)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

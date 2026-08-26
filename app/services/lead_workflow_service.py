@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import (
@@ -179,20 +180,29 @@ class LeadWorkflowService:
                 product_category=lead.product_category,
             )
             session.add(deal)
-            await session.flush()
-            feedback = await session.scalar(
-                select(AIFeedback).where(AIFeedback.lead_id == lead_id)
-            )
-            if feedback is not None:
-                feedback.deal_created = True
-            await ContactEventRepository(session).add(
-                lead.contact_id,
-                ContactEventType.DEAL_CREATED,
-                lead_id=lead.id,
-                deal_id=deal.id,
-                manager_telegram_id=manager_id,
-            )
-            await session.commit()
+            try:
+                await session.flush()
+                feedback = await session.scalar(
+                    select(AIFeedback).where(AIFeedback.lead_id == lead_id)
+                )
+                if feedback is not None:
+                    feedback.deal_created = True
+                await ContactEventRepository(session).add(
+                    lead.contact_id,
+                    ContactEventType.DEAL_CREATED,
+                    lead_id=lead.id,
+                    deal_id=deal.id,
+                    manager_telegram_id=manager_id,
+                )
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                existing = await session.scalar(
+                    select(Deal).where(Deal.lead_id == lead_id)
+                )
+                if existing is None:
+                    raise
+                return existing
             return deal
 
     async def win_deal(

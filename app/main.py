@@ -12,7 +12,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.bot.handlers import build_router
 from app.config import Settings, get_settings
-from app.db.session import create_engine, create_session_factory, init_database
+from app.db.session import create_engine, create_session_factory, upgrade_database
 from app.providers import create_instagram_provider
 from app.services.ai_service import OpenAILeadAnalyzer, UnavailableLeadAnalyzer
 from app.services.contact_service import ContactService
@@ -27,10 +27,10 @@ logger = logging.getLogger(__name__)
 
 async def run(*, once: bool = False) -> int:
     settings = get_settings()
+    await upgrade_database()
     configure_logging(settings)
     engine = create_engine(settings)
     session_factory = create_session_factory(engine)
-    await init_database(engine)
     provider = create_instagram_provider(settings)
     analyzer = (
         OpenAILeadAnalyzer(settings.openai_api_key, settings.openai_model)
@@ -49,6 +49,7 @@ async def run(*, once: bool = False) -> int:
             notifier=NullLeadNotifier(),
             competitors=settings.competitors,
             process_existing_comments=settings.process_existing_comments,
+            force_refresh_seconds=settings.instagram_force_refresh_seconds,
         )
         stats = await monitor.run_cycle()
         logger.info("one_shot_cycle_complete stats=%s", stats)
@@ -67,7 +68,12 @@ async def run(*, once: bool = False) -> int:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     notifier = TelegramLeadNotifier(
-        bot, session_factory, workflow, settings.telegram_admin_chat_ids
+        bot,
+        session_factory,
+        workflow,
+        settings.telegram_admin_chat_ids,
+        hot_threshold=settings.hot_lead_threshold,
+        max_attempts=settings.telegram_notification_max_attempts,
     )
     monitor = InstagramMonitor(
         session_factory=session_factory,
@@ -77,6 +83,7 @@ async def run(*, once: bool = False) -> int:
         notifier=notifier,
         competitors=settings.competitors,
         process_existing_comments=settings.process_existing_comments,
+        force_refresh_seconds=settings.instagram_force_refresh_seconds,
     )
     dispatcher = Dispatcher(storage=MemoryStorage())
     dispatcher.include_router(build_router(settings, workflow, notifier))
@@ -113,6 +120,7 @@ def configure_logging(settings: Settings) -> None:
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        force=True,
     )
 
 
@@ -125,4 +133,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.db.models import Post
 from app.db.repositories import CompetitorRepository, PostRepository
 from app.providers.base import InstagramProvider, ProviderError
 from app.schemas.instagram import InstagramPost
@@ -30,6 +31,7 @@ class CycleStats:
 
 @dataclass(frozen=True, slots=True)
 class PostCheck:
+    post_id: int
     should_fetch_comments: bool
     is_baseline: bool
 
@@ -45,6 +47,7 @@ class InstagramMonitor:
         notifier: LeadNotifier,
         competitors: list[str],
         process_existing_comments: bool,
+        force_refresh_seconds: int = 3600,
     ) -> None:
         self.session_factory = session_factory
         self.provider = provider
@@ -53,16 +56,25 @@ class InstagramMonitor:
         self.notifier = notifier
         self.competitors = competitors
         self.process_existing_comments = process_existing_comments
+        self.force_refresh_seconds = force_refresh_seconds
 
     async def run_cycle(self) -> CycleStats:
         stats = CycleStats()
+        try:
+            stats.hot_notifications += await self.notifier.flush_pending()
+        except Exception as exc:
+            stats.errors += 1
+            logger.exception(
+                "notification_outbox_flush_failed error_type=%s", type(exc).__name__
+            )
         pending_leads = await self.lead_service.retry_pending()
         for lead in pending_leads:
             stats.leads_created += 1
             if lead.is_hot:
                 try:
-                    await self.notifier.notify_hot_lead(lead.lead_id)
-                    stats.hot_notifications += 1
+                    stats.hot_notifications += await self.notifier.notify_hot_lead(
+                        lead.lead_id
+                    )
                 except Exception as exc:
                     stats.errors += 1
                     logger.exception(
@@ -120,8 +132,9 @@ class InstagramMonitor:
             stats.leads_created += 1
             if lead.is_hot:
                 try:
-                    await self.notifier.notify_hot_lead(lead.lead_id)
-                    stats.hot_notifications += 1
+                    stats.hot_notifications += await self.notifier.notify_hot_lead(
+                        lead.lead_id
+                    )
                 except Exception as exc:
                     stats.errors += 1
                     logger.exception(
@@ -129,7 +142,7 @@ class InstagramMonitor:
                         lead.lead_id,
                         type(exc).__name__,
                     )
-        await self._mark_comments_fetched(reel)
+        await self._mark_comments_fetched(check.post_id, reel.comments_count)
 
     async def _prepare_post(self, reel: InstagramPost) -> PostCheck:
         async with self.session_factory() as session:
@@ -140,16 +153,35 @@ class InstagramMonitor:
                 (competitor.baseline_completed_at is None or provider_changed)
                 and not self.process_existing_comments
             )
-            should_fetch = provider_changed or post.comments_fetched_count != reel.comments_count
+            refresh_before = datetime.now(UTC) - timedelta(
+                seconds=self.force_refresh_seconds
+            )
+            comments_checked_at = post.comments_checked_at
+            if comments_checked_at is not None and comments_checked_at.tzinfo is None:
+                comments_checked_at = comments_checked_at.replace(tzinfo=UTC)
+            refresh_due = (
+                comments_checked_at is None
+                or comments_checked_at <= refresh_before
+            )
+            should_fetch = (
+                provider_changed
+                or post.comments_fetched_count != reel.comments_count
+                or refresh_due
+            )
             await session.commit()
-            return PostCheck(should_fetch_comments=should_fetch, is_baseline=is_first_baseline)
+            return PostCheck(
+                post_id=post.id,
+                should_fetch_comments=should_fetch,
+                is_baseline=is_first_baseline,
+            )
 
-    async def _mark_comments_fetched(self, reel: InstagramPost) -> None:
+    async def _mark_comments_fetched(self, post_id: int, comments_count: int) -> None:
         async with self.session_factory() as session:
-            post = await PostRepository(session).get_by_platform_id(reel.platform_post_id)
+            post = await session.get(Post, post_id)
             if post is None:
-                raise RuntimeError(f"Post {reel.platform_post_id} disappeared during polling")
-            post.comments_fetched_count = reel.comments_count
+                raise RuntimeError(f"Post {post_id} disappeared during polling")
+            post.comments_fetched_count = comments_count
+            post.comments_checked_at = datetime.now(UTC)
             await session.commit()
 
     async def _complete_baseline(self, handle: str) -> None:

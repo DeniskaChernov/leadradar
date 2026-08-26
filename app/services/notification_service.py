@@ -4,10 +4,14 @@ from typing import Protocol
 
 
 class LeadNotifier(Protocol):
-    async def notify_hot_lead(self, lead_id: int) -> None: ...
+    async def notify_hot_lead(self, lead_id: int) -> int: ...
+
+    async def flush_pending(self) -> int: ...
 
 
 class NullLeadNotifier:
-    async def notify_hot_lead(self, lead_id: int) -> None:
-        return None
+    async def notify_hot_lead(self, lead_id: int) -> int:
+        return 0
 
+    async def flush_pending(self) -> int:
+        return 0

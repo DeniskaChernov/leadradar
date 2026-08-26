@@ -40,6 +40,26 @@ class ContactService:
         *,
         is_baseline: bool = False,
     ) -> PersistedSignal:
+        for attempt in range(2):
+            result = await self._persist_signal_once(
+                post_data, comment_data, is_baseline=is_baseline
+            )
+            if result is not None:
+                return result
+            logger.info(
+                "signal_persist_retry platform_comment_id=%s attempt=%s",
+                comment_data.platform_comment_id,
+                attempt + 2,
+            )
+        raise RuntimeError("Signal persistence retry was exhausted")
+
+    async def _persist_signal_once(
+        self,
+        post_data: InstagramPost,
+        comment_data: InstagramComment,
+        *,
+        is_baseline: bool,
+    ) -> PersistedSignal | None:
         async with self.session_factory() as session:
             comments = CommentRepository(session)
             existing = await comments.get_by_platform_id(comment_data.platform_comment_id)
@@ -103,7 +123,7 @@ class ContactService:
                     comment_data.platform_comment_id
                 )
                 if existing is None:
-                    raise
+                    return None
                 return PersistedSignal(
                     comment_id=existing.id,
                     contact_id=existing.contact_id,
@@ -112,4 +132,3 @@ class ContactService:
                     created=False,
                     is_baseline=existing.is_baseline,
                 )
-

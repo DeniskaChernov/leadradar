@@ -38,10 +38,12 @@ class Settings(BaseSettings):
     instagram_provider: str = "mock"
     hot_lead_threshold: int = Field(default=70, ge=0, le=100)
     instagram_poll_interval_seconds: int = Field(default=180, ge=10)
+    instagram_force_refresh_seconds: int = Field(default=3600, ge=60)
     process_existing_comments: bool = False
     log_level: str = "INFO"
     http_timeout_seconds: float = Field(default=60.0, gt=0)
     http_max_attempts: int = Field(default=3, ge=1, le=5)
+    telegram_notification_max_attempts: int = Field(default=3, ge=1, le=10)
 
     @field_validator("telegram_admin_chat_ids", mode="before")
     @classmethod
