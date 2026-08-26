@@ -2,50 +2,71 @@
 
 ## Current stage
 
-Stage 8/9 complete — moving to integration checks, hardening, and documentation.
+Local MVP complete and ready for the first credentialed integration test.
 
 ## Completed
 
-- Empty repository inspected.
-- Official OpenAI, ScrapeCreators, and Bright Data API documentation reviewed.
-- Environment contract and secret-safe Git exclusions created.
-- SQLAlchemy async database foundation and complete MVP entity model created.
-- Initial Alembic migration generated and applied to SQLite successfully.
-- Python 3.12 virtual environment and project dependencies installed.
-- Contact/post/comment/event repositories and transactional signal persistence added.
-- Mock, ScrapeCreators, Bright Data, and automatic fallback providers implemented.
-- Provider normalization follows current official documented fields.
-- OpenAI Responses API structured Pydantic scoring and AI_PENDING recovery added.
-- Lead/AIFeedback creation commits before notification.
-- Baseline-aware polling skips unchanged posts and retries failed comment synchronizations.
-- Telegram long polling commands, HOT cards, access checks, and inline callbacks added.
-- Atomic manager assignment, NOT_LEAD feedback, and deal WON/LOST FSM implemented.
-- Telegram notification attempts and message IDs persist in the database.
+- Modular Python 3.12 application scaffold and secret-safe environment contract.
+- Async SQLAlchemy models for competitors, posts, contacts, comments, immutable contact events,
+  leads, deals, AI feedback, and Telegram notification logs.
+- Alembic initial schema plus fetched-comment synchronization migration.
+- Database-first, idempotent comment ingestion and contact upsert.
+- Mock, ScrapeCreators, Bright Data, and ScrapeCreators-to-Bright-Data fallback providers.
+- Baseline behavior and comment-count optimization with failure-safe retry state.
+- OpenAI Responses API Structured Outputs through a Pydantic schema.
+- Durable `AI_PENDING` leads with automatic retry on later polling cycles.
+- HOT threshold, previous-signal context, and 14-day repeat-interest calculation.
+- aiogram long polling with `/start`, `/status`, `/stats`, `/hot`, and `/competitors`.
+- Durable HOT notification results, atomic manager assignment, and NOT_LEAD feedback.
+- Telegram deal workflow for WON/LOST outcomes and feedback dataset updates.
+- Independent Database/Telegram/OpenAI/ScrapeCreators/Bright Data integration checker.
+- Dockerfile, Railway configuration, architecture notes, and non-developer setup guide.
 
 ## In progress
 
-- Integration checker, acceptance hardening, Docker/Railway preparation, and documentation.
+- None in local code. Real external API validation is a user-run operational step.
 
 ## Next
 
-- Telegram workflows, deals, integration checker, hardening, and user documentation.
+1. Create local `.env` from `.env.example` and fill secrets locally.
+2. Run `python -m alembic upgrade head`.
+3. Run `python -m scripts.check_integrations`.
+4. Start with `python -m app.main`, use `/start`, then configure admin IDs.
+5. Validate mock mode before switching `INSTAGRAM_PROVIDER` to `scrapecreators`.
 
 ## Known issues
 
-- Real external integrations are not yet validated with local API keys.
+- Real Telegram, OpenAI, ScrapeCreators, and Bright Data calls were not executed because no local
+  API credentials were present during verification.
+- Bright Data's synchronous Comments by URL endpoint returns the latest 15 comments per request.
+- FAILED Telegram notifications are durable but have no separate automatic retry worker; the lead
+  remains available through `/hot`.
+- Telegram FSM state is in memory and is reset by process restart.
+- Docker build was not executed because Docker is not installed on the verification machine.
+- SQLite and a single process are intentional local-MVP constraints.
 
 ## Tests
 
-- 12 tests pass, including manager assignment/double-assignment protection, NOT_LEAD,
-  deal WON, and deal LOST.
-- `python -m app.main --once` completes a mock baseline cycle without a stack trace.
-- Alembic upgrade to the initial schema passed.
-- Ruff passes for all current files.
+- `python -m pytest -q`: 14 passed.
+- `ruff check .`: passed.
+- `python -m scripts.check_integrations`: Database OK; four credentialed integrations SKIP.
+- `python -m app.main --once`: completed mock polling without a stack trace.
+- `python -m pip check`: passed; no broken requirements.
+- `alembic check`: passed; no missing migration operations.
+
+Covered behavior includes contact upsert, cross-provider comment deduplication, provider
+normalization/fallback, lead creation, Structured Output parsing, HOT threshold, immutable events,
+baseline, unchanged-post skipping, AI retry, manager assignment, double-assignment protection,
+NOT_LEAD, deal WON/LOST, and full mock HOT-to-WON acceptance flow.
 
 ## How to run
 
-Not ready for application startup yet.
+```bash
+python -m app.main
+```
+
+Full setup commands are in `README.md`.
 
 ## Last verified commit
 
-22f3d89 (Stage 1 scaffold)
+`HEAD` (final local MVP commit; verify with `git log -1 --oneline`).

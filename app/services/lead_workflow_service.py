@@ -95,7 +95,9 @@ class LeadWorkflowService:
                     raise LeadWorkflowError("Lead not found")
                 if current.assigned_manager_telegram_id == manager_id:
                     return current
-                raise LeadAlreadyAssignedError(current.assigned_manager_telegram_id)
+                if current.assigned_manager_telegram_id is not None:
+                    raise LeadAlreadyAssignedError(current.assigned_manager_telegram_id)
+                raise LeadWorkflowError(f"Lead cannot be taken in status {current.status.value}")
             await session.execute(
                 update(Contact)
                 .where(Contact.id == contact_id)
@@ -126,6 +128,13 @@ class LeadWorkflowService:
                 raise LeadWorkflowError("Lead not found")
             if lead.status == LeadStatus.NOT_LEAD:
                 return lead
+            if (
+                lead.assigned_manager_telegram_id is not None
+                and lead.assigned_manager_telegram_id != manager_id
+            ):
+                raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
+            if lead.status in {LeadStatus.WON, LeadStatus.LOST}:
+                raise LeadWorkflowError(f"Closed lead cannot become NOT_LEAD: {lead.status.value}")
             lead.status = LeadStatus.NOT_LEAD
             feedback = await session.scalar(
                 select(AIFeedback).where(AIFeedback.lead_id == lead_id)
@@ -152,6 +161,8 @@ class LeadWorkflowService:
                 and lead.assigned_manager_telegram_id != manager_id
             ):
                 raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
+            if lead.status != LeadStatus.TAKEN:
+                raise LeadWorkflowError("A deal can be created only for a TAKEN lead")
             deal = await session.scalar(
                 select(Deal).where(
                     Deal.lead_id == lead_id,
@@ -355,4 +366,3 @@ class LeadWorkflowService:
         if deal.status in {DealStatus.WON, DealStatus.LOST}:
             raise LeadWorkflowError("Deal is already closed")
         return deal, lead
-

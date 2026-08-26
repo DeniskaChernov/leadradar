@@ -56,6 +56,20 @@ class InstagramMonitor:
 
     async def run_cycle(self) -> CycleStats:
         stats = CycleStats()
+        pending_leads = await self.lead_service.retry_pending()
+        for lead in pending_leads:
+            stats.leads_created += 1
+            if lead.is_hot:
+                try:
+                    await self.notifier.notify_hot_lead(lead.lead_id)
+                    stats.hot_notifications += 1
+                except Exception as exc:
+                    stats.errors += 1
+                    logger.exception(
+                        "pending_lead_notification_failed lead_id=%s error_type=%s",
+                        lead.lead_id,
+                        type(exc).__name__,
+                    )
         for handle in self.competitors:
             try:
                 reels = await self.provider.get_reels(handle)

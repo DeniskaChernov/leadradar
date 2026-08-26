@@ -116,15 +116,20 @@ def build_router(
             await callback.answer("Лид назначен вам")
         except LeadAlreadyAssignedError as exc:
             await callback.answer(f"Лид уже взял менеджер {exc.manager_id}", show_alert=True)
+        except LeadWorkflowError as exc:
+            await callback.answer(str(exc), show_alert=True)
 
     @router.callback_query(F.data.startswith("lead:not:"))
     async def not_lead(callback: CallbackQuery) -> None:
         if not authorized(callback):
             return await reject(callback)
         lead_id = _callback_id(callback)
-        await workflow.mark_not_lead(lead_id, callback.from_user.id)
-        await notifier.refresh_lead_messages(lead_id)
-        await callback.answer("Feedback сохранён")
+        try:
+            await workflow.mark_not_lead(lead_id, callback.from_user.id)
+            await notifier.refresh_lead_messages(lead_id)
+            await callback.answer("Feedback сохранён")
+        except LeadWorkflowError as exc:
+            await callback.answer(str(exc), show_alert=True)
 
     @router.callback_query(F.data.startswith("deal:create:"))
     async def create_deal(callback: CallbackQuery) -> None:

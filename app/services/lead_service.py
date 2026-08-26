@@ -134,6 +134,80 @@ class LeadService:
             )
             return self._to_result(lead, created=True)
 
+    async def retry_pending(self, limit: int = 50) -> list[ProcessedLead]:
+        async with self.session_factory() as session:
+            lead_ids = (
+                await session.scalars(
+                    select(Lead.id)
+                    .where(Lead.status == LeadStatus.AI_PENDING)
+                    .order_by(Lead.created_at)
+                    .limit(limit)
+                )
+            ).all()
+        results: list[ProcessedLead] = []
+        for lead_id in lead_ids:
+            result = await self._retry_pending_one(lead_id)
+            if result is not None:
+                results.append(result)
+        return results
+
+    async def _retry_pending_one(self, lead_id: int) -> ProcessedLead | None:
+        async with self.session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None or lead.status != LeadStatus.AI_PENDING:
+                return None
+            context = await self._build_context(session, lead.comment_id)
+        try:
+            analysis = await self.analyzer.analyze(context)
+        except AIAnalysisError:
+            return None
+
+        async with self.session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None or lead.status != LeadStatus.AI_PENDING:
+                return None
+            comment = await session.get(Comment, lead.comment_id)
+            post = await session.get(Post, comment.post_id) if comment is not None else None
+            contact = await session.get(Contact, lead.contact_id)
+            if comment is None or post is None or contact is None:
+                raise RuntimeError("Pending lead references missing database rows")
+            lead.intent = analysis.intent.value
+            lead.product_category = analysis.product_category
+            lead.lead_score = analysis.lead_score
+            lead.ai_reason = analysis.reason
+            lead.language = analysis.language
+            lead.status = LeadStatus.NEW
+            contact.current_lead_score = max(contact.current_lead_score, analysis.lead_score)
+            feedback = await session.scalar(
+                select(AIFeedback).where(AIFeedback.lead_id == lead.id)
+            )
+            if feedback is None:
+                session.add(
+                    AIFeedback(
+                        contact_id=contact.id,
+                        lead_id=lead.id,
+                        comment_text=comment.text,
+                        post_context=post.caption,
+                        predicted_intent=analysis.intent.value,
+                        predicted_product=analysis.product_category,
+                        predicted_score=analysis.lead_score,
+                    )
+                )
+                await ContactEventRepository(session).add(
+                    contact.id,
+                    ContactEventType.LEAD_CREATED,
+                    lead_id=lead.id,
+                    payload={
+                        "score": analysis.lead_score,
+                        "intent": analysis.intent.value,
+                        "product_category": analysis.product_category,
+                        "from_ai_pending": True,
+                    },
+                )
+            await session.commit()
+            logger.info("pending_lead_processed lead_id=%s score=%s", lead.id, lead.lead_score)
+            return self._to_result(lead, created=True)
+
     async def _create_pending(self, signal: PersistedSignal) -> ProcessedLead:
         async with self.session_factory() as session:
             lead = await session.scalar(select(Lead).where(Lead.comment_id == signal.comment_id))
