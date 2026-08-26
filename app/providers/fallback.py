@@ -12,11 +12,10 @@ T = TypeVar("T")
 
 
 class FallbackInstagramProvider(InstagramProvider):
-    name = "fallback"
-
     def __init__(self, primary: InstagramProvider, fallback: InstagramProvider) -> None:
         self.primary = primary
         self.fallback = fallback
+        self.name = f"{primary.name}+{fallback.name}"
 
     async def _call(
         self,
@@ -67,4 +66,3 @@ class FallbackInstagramProvider(InstagramProvider):
     async def aclose(self) -> None:
         await self.primary.aclose()
         await self.fallback.aclose()
-

@@ -135,11 +135,12 @@ class InstagramMonitor:
         async with self.session_factory() as session:
             competitor = await CompetitorRepository(session).get_or_create(reel.competitor)
             post, _, _ = await PostRepository(session).upsert(competitor, reel)
+            provider_changed = competitor.baseline_provider != self.provider.name
             is_first_baseline = (
-                competitor.baseline_completed_at is None
+                (competitor.baseline_completed_at is None or provider_changed)
                 and not self.process_existing_comments
             )
-            should_fetch = post.comments_fetched_count != reel.comments_count
+            should_fetch = provider_changed or post.comments_fetched_count != reel.comments_count
             await session.commit()
             return PostCheck(should_fetch_comments=should_fetch, is_baseline=is_first_baseline)
 
@@ -154,6 +155,10 @@ class InstagramMonitor:
     async def _complete_baseline(self, handle: str) -> None:
         async with self.session_factory() as session:
             competitor = await CompetitorRepository(session).get_or_create(handle)
-            if competitor.baseline_completed_at is None:
+            if (
+                competitor.baseline_completed_at is None
+                or competitor.baseline_provider != self.provider.name
+            ):
                 competitor.baseline_completed_at = datetime.now(UTC)
+                competitor.baseline_provider = self.provider.name
                 await session.commit()

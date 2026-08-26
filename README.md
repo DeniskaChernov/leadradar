@@ -100,6 +100,8 @@ Bright Data. Можно выбрать только Bright Data: `INSTAGRAM_PROV
 
 Значение по умолчанию `PROCESS_EXISTING_COMMENTS=false` сохраняет уже существующие comments как
 baseline и не отправляет по ним уведомления. Все comments после baseline обрабатываются обычно.
+Baseline привязан к выбранному provider: при переходе с mock на ScrapeCreators/Bright Data он
+безопасно строится заново, даже если конкурент остался тем же.
 
 Чтобы на совершенно новой тестовой базе сразу прогнать встроенный mock HOT-сценарий, перед первым
 запуском временно установите:
@@ -153,4 +155,3 @@ PostgreSQL достаточно поменять `DATABASE_URL`; сервис а
 
 Подробности устройства: [ARCHITECTURE.md](ARCHITECTURE.md). Реальное состояние работ:
 [PROJECT_STATUS.md](PROJECT_STATUS.md).
-

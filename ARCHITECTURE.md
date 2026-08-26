@@ -44,6 +44,8 @@ atomic manager assignment -> deal WON/LOST -> immutable events + AI feedback
 - provider requests have bounded exponential backoff; ScrapeCreators failures activate Bright Data.
 - `comments_fetched_count` advances only after successful comment processing, so a failed fetch is
   retried even when Instagram's public `comments_count` remains unchanged.
+- competitor baseline records the provider identity, so changing from mock to a real adapter builds
+  a fresh no-notification baseline rather than treating existing comments as new.
 - AI failures create `AI_PENDING`; later polling cycles retry analysis.
 
 ## Database portability
@@ -51,4 +53,3 @@ atomic manager assignment -> deal WON/LOST -> immutable events + AI feedback
 Repositories use SQLAlchemy expressions rather than SQLite-specific SQL. `DATABASE_URL` accepts
 local `sqlite+aiosqlite://` and Railway-style `postgres://`/`postgresql://` URLs, normalized to
 `postgresql+asyncpg://` at startup.
-

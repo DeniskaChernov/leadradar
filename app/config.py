@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -15,7 +16,7 @@ class Settings(BaseSettings):
     )
 
     telegram_bot_token: str = ""
-    telegram_admin_chat_ids: list[int] = Field(default_factory=list)
+    telegram_admin_chat_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
 
     openai_api_key: str = ""
     openai_model: str = "gpt-5-mini"
@@ -31,13 +32,15 @@ class Settings(BaseSettings):
     brightdata_comments_dataset_id: str = "gd_ltppn085pokosxh13"
 
     database_url: str = "sqlite+aiosqlite:///./lead_radar.db"
-    competitors: list[str] = Field(default_factory=lambda: ["aiko.uz"])
+    competitors: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["aiko.uz"]
+    )
     instagram_provider: str = "mock"
     hot_lead_threshold: int = Field(default=70, ge=0, le=100)
     instagram_poll_interval_seconds: int = Field(default=180, ge=10)
     process_existing_comments: bool = False
     log_level: str = "INFO"
-    http_timeout_seconds: float = Field(default=25.0, gt=0)
+    http_timeout_seconds: float = Field(default=60.0, gt=0)
     http_max_attempts: int = Field(default=3, ge=1, le=5)
 
     @field_validator("telegram_admin_chat_ids", mode="before")
@@ -77,4 +80,3 @@ def normalize_instagram_handle(value: str) -> str:
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

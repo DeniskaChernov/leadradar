@@ -59,3 +59,35 @@ async def test_baseline_then_new_comment_creates_one_hot_lead(session_factory):
         assert await session.scalar(select(func.count(Contact.id))) == 1
         assert await session.scalar(select(func.count(Comment.id))) == 2
         assert await session.scalar(select(func.count(Lead.id))) == 1
+
+
+async def test_provider_change_rebuilds_baseline_without_leads(session_factory):
+    first_provider = MockInstagramProvider()
+    first_monitor = InstagramMonitor(
+        session_factory=session_factory,
+        provider=first_provider,
+        contact_service=ContactService(session_factory),
+        lead_service=LeadService(session_factory, StaticAnalyzer(), hot_threshold=70),
+        notifier=RecordingNotifier(),
+        competitors=["aiko.uz"],
+        process_existing_comments=False,
+    )
+    await first_monitor.run_cycle()
+
+    second_provider = MockInstagramProvider()
+    second_provider.name = "scrapecreators+brightdata"
+    second = await InstagramMonitor(
+        session_factory=session_factory,
+        provider=second_provider,
+        contact_service=ContactService(session_factory),
+        lead_service=LeadService(session_factory, StaticAnalyzer(), hot_threshold=70),
+        notifier=RecordingNotifier(),
+        competitors=["aiko.uz"],
+        process_existing_comments=False,
+    ).run_cycle()
+
+    assert second.comment_requests == 1
+    assert second.comments_created == 0
+    assert second.leads_created == 0
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count(Lead.id))) == 0

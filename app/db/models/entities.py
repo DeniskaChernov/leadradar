@@ -79,6 +79,7 @@ class Competitor(Base):
     display_name: Mapped[str | None] = mapped_column(String(255))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     baseline_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    baseline_provider: Mapped[str | None] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

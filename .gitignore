@@ -8,9 +8,9 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
+.backups/
 lead_radar.db
 *.db-journal
 *.sqlite3
 .idea/
 .vscode/
-

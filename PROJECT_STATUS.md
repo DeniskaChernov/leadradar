@@ -12,7 +12,7 @@ Local MVP complete and ready for the first credentialed integration test.
 - Alembic initial schema plus fetched-comment synchronization migration.
 - Database-first, idempotent comment ingestion and contact upsert.
 - Mock, ScrapeCreators, Bright Data, and ScrapeCreators-to-Bright-Data fallback providers.
-- Baseline behavior and comment-count optimization with failure-safe retry state.
+- Provider-scoped baseline behavior and comment-count optimization with failure-safe retry state.
 - OpenAI Responses API Structured Outputs through a Pydantic schema.
 - Durable `AI_PENDING` leads with automatic retry on later polling cycles.
 - HOT threshold, previous-signal context, and 14-day repeat-interest calculation.
@@ -24,7 +24,7 @@ Local MVP complete and ready for the first credentialed integration test.
 
 ## In progress
 
-- None in local code. Real external API validation is a user-run operational step.
+- None in local code. The app is ready to build its first real provider baseline.
 
 ## Next
 
@@ -36,8 +36,6 @@ Local MVP complete and ready for the first credentialed integration test.
 
 ## Known issues
 
-- Real Telegram, OpenAI, ScrapeCreators, and Bright Data calls were not executed because no local
-  API credentials were present during verification.
 - Bright Data's synchronous Comments by URL endpoint returns the latest 15 comments per request.
 - FAILED Telegram notifications are durable but have no separate automatic retry worker; the lead
   remains available through `/hot`.
@@ -47,9 +45,10 @@ Local MVP complete and ready for the first credentialed integration test.
 
 ## Tests
 
-- `python -m pytest -q`: 14 passed.
+- `python -m pytest -q`: 17 passed.
 - `ruff check .`: passed.
-- `python -m scripts.check_integrations`: Database OK; four credentialed integrations SKIP.
+- `python -m scripts.check_integrations`: Database, Telegram, OpenAI, ScrapeCreators, and Bright
+  Data all OK with local credentials on 2026-08-26.
 - `python -m app.main --once`: completed mock polling without a stack trace.
 - `python -m pip check`: passed; no broken requirements.
 - `alembic check`: passed; no missing migration operations.
@@ -57,7 +56,7 @@ Local MVP complete and ready for the first credentialed integration test.
 Covered behavior includes contact upsert, cross-provider comment deduplication, provider
 normalization/fallback, lead creation, Structured Output parsing, HOT threshold, immutable events,
 baseline, unchanged-post skipping, AI retry, manager assignment, double-assignment protection,
-NOT_LEAD, deal WON/LOST, and full mock HOT-to-WON acceptance flow.
+provider-change baseline reset, NOT_LEAD, deal WON/LOST, and full mock HOT-to-WON acceptance flow.
 
 ## How to run
 
