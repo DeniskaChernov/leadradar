@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+from abc import ABC, abstractmethod
+from typing import Any
+
+import httpx
+
+from app.schemas.instagram import InstagramComment, InstagramPost, InstagramProfile
+
+logger = logging.getLogger(__name__)
+
+
+class ProviderError(RuntimeError):
+    """Base error for a provider failure that may trigger fallback."""
+
+
+class ProviderAuthError(ProviderError):
+    """Provider credentials are missing or rejected."""
+
+
+class ProviderResponseError(ProviderError):
+    """Provider returned an invalid or unsupported response."""
+
+
+class InstagramProvider(ABC):
+    name: str
+
+    @abstractmethod
+    async def get_profile(self, handle: str) -> InstagramProfile:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_reels(self, handle: str) -> list[InstagramPost]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_post(self, url: str, competitor: str) -> InstagramPost:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_comments(self, post: InstagramPost) -> list[InstagramComment]:
+        raise NotImplementedError
+
+    async def aclose(self) -> None:
+        return None
+
+
+class HTTPInstagramProvider(InstagramProvider):
+    def __init__(
+        self,
+        *,
+        timeout_seconds: float = 25,
+        max_attempts: int = 3,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        self.max_attempts = max_attempts
+        self._owns_client = client is None
+        self.client = client or httpx.AsyncClient(timeout=timeout_seconds)
+
+    async def _request_json(self, method: str, url: str, **kwargs: Any) -> Any:
+        last_error: Exception | None = None
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                response = await self.client.request(method, url, **kwargs)
+                if response.status_code in {401, 402, 403}:
+                    raise ProviderAuthError(
+                        f"{self.name} authentication failed ({response.status_code})"
+                    )
+                if response.status_code == 429 or response.status_code >= 500:
+                    raise ProviderError(f"{self.name} temporary HTTP {response.status_code}")
+                response.raise_for_status()
+                return response.json()
+            except ProviderAuthError:
+                raise
+            except (httpx.HTTPError, ValueError, ProviderError) as exc:
+                last_error = exc
+                logger.warning(
+                    "provider_request_failed provider=%s attempt=%s error_type=%s",
+                    self.name,
+                    attempt,
+                    type(exc).__name__,
+                )
+                if attempt < self.max_attempts:
+                    await asyncio.sleep(0.5 * (2 ** (attempt - 1)))
+        raise ProviderError(
+            f"{self.name} request failed after {self.max_attempts} attempts"
+        ) from last_error
+
+    async def aclose(self) -> None:
+        if self._owns_client:
+            await self.client.aclose()
+
+
+def parse_datetime(value: object) -> Any:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        from datetime import UTC, datetime
+
+        return datetime.fromtimestamp(value, UTC)
+    if isinstance(value, str):
+        from datetime import datetime
+
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    raise ProviderResponseError("Unsupported timestamp type")
