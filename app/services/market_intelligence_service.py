@@ -22,6 +22,11 @@ class MarketIntelligenceService:
     async def sync_catalog(self) -> dict[str, int]:
         created_competitors = 0
         created_candidates = 0
+        promoted_candidates = 0
+        monitored_names = {seed.display_name.casefold() for seed in MONITORED_COMPETITORS}
+        monitored_handles = {
+            normalize_instagram_handle(seed.handle) for seed in MONITORED_COMPETITORS
+        }
         async with self.session_factory() as session:
             for seed in MONITORED_COMPETITORS:
                 handle = normalize_instagram_handle(seed.handle)
@@ -51,34 +56,46 @@ class MarketIntelligenceService:
                     row.catalog_managed = True
 
             for seed in MARKET_CANDIDATES:
+                candidate_handle = (
+                    normalize_instagram_handle(seed.instagram_handle)
+                    if seed.instagram_handle
+                    else None
+                )
+                is_monitored = (
+                    seed.display_name.casefold() in monitored_names
+                    or candidate_handle in monitored_handles
+                )
                 row = await session.scalar(
                     select(MarketCandidate).where(MarketCandidate.display_name == seed.display_name)
                 )
                 if row is None:
                     row = MarketCandidate(
                         display_name=seed.display_name,
-                        instagram_handle=normalize_instagram_handle(seed.instagram_handle)
-                        if seed.instagram_handle else None,
+                        instagram_handle=candidate_handle,
                         website_url=seed.website_url or None,
                         category=seed.category,
                         tier=seed.tier,
                         confidence=seed.confidence,
                         rationale=seed.rationale,
-                        status="DISCOVERED",
+                        status="PROMOTED" if is_monitored else "DISCOVERED",
                     )
                     session.add(row)
                     created_candidates += 1
                 else:
                     row.instagram_handle = row.instagram_handle or (
-                        normalize_instagram_handle(seed.instagram_handle) if seed.instagram_handle else None
+                        candidate_handle
                     )
                     row.website_url = row.website_url or seed.website_url or None
                     row.rationale = row.rationale or seed.rationale
                     row.confidence = max(row.confidence, seed.confidence)
+                    if is_monitored and row.status != "PROMOTED":
+                        row.status = "PROMOTED"
+                        promoted_candidates += 1
             await session.commit()
         return {
             "created_competitors": created_competitors,
             "created_candidates": created_candidates,
+            "promoted_candidates": promoted_candidates,
         }
 
     async def promote_candidate(

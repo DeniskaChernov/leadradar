@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from sqlalchemy import func, select
 
-from app.db.models import NotificationLog, NotificationStatus
+from app.db.models import Lead, NotificationLog, NotificationStatus
 from app.services.lead_workflow_service import LeadWorkflowService
 from app.services.telegram_notification_service import TelegramLeadNotifier
 from tests.test_lead_workflow import create_lead
@@ -44,3 +44,22 @@ async def test_notification_outbox_prevents_duplicate_delivery(session_factory):
         assert log is not None
         assert log.status == NotificationStatus.SENT
         assert log.attempt_count == 1
+
+
+async def test_notification_is_routed_to_assigned_manager(session_factory):
+    lead_id = await create_lead(session_factory)
+    async with session_factory() as session:
+        lead = await session.get(Lead, lead_id)
+        lead.assigned_manager_telegram_id = 2002
+        await session.commit()
+    bot = RecordingBot()
+    notifier = TelegramLeadNotifier(
+        bot,
+        session_factory,
+        LeadWorkflowService(session_factory, 70),
+        [1001],
+        hot_threshold=70,
+    )
+
+    assert await notifier.notify_hot_lead(lead_id) == 1
+    assert bot.sent[0][0] == 2002

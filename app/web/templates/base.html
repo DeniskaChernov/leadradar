@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="dark">
   <title>{% block title %}Lead Radar{% endblock %}</title>
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
-  <link rel="stylesheet" href="/static/app.css">
-  <script defer src="/static/app.js"></script>
+  <link rel="stylesheet" href="/static/app.css?v=3.3">
+  <script defer src="/static/app.js?v=3.3"></script>
 </head>
 <body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}">
 <div class="shell">
@@ -29,7 +29,9 @@
       <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system"><span>⚙</span>Система</a>
     </nav>
     <div class="side-info">
-      {% if safe_mode %}
+      {% if search_paused %}
+      <div class="safe-chip paused"><span>⏸</span><div><b>Поиск на паузе</b><small>CRM и Telegram продолжают работать</small></div></div>
+      {% elif safe_mode %}
       <div class="safe-chip"><span>🛡</span><div><b>Безопасный режим</b><small>Внешние токены не расходуются</small></div></div>
       {% else %}
       <div class="safe-chip live"><span>◉</span><div><b>Live-мониторинг</b><small>Внешние API разрешены</small></div></div>
@@ -51,7 +53,9 @@
         <p>{% block subheading %}Публичный спрос конкурентов в одной базе{% endblock %}</p>
       </div>
       <div class="top-actions">
-        {% if safe_mode %}
+        {% if search_paused %}
+        <span class="status-pill paused">⏸ Поиск на паузе</span>
+        {% elif safe_mode %}
         <span class="status-pill safe">🛡 Без расхода токенов</span>
         {% elif snapshot.last_error %}
         <span class="status-pill error">Есть ошибка</span>
@@ -60,7 +64,7 @@
         {% else %}
         <span class="status-pill ok">Live включён</span>
         {% endif %}
-        <button class="btn primary" data-scan {% if snapshot.cycle_running %}disabled{% endif %}>Проверить сейчас</button>
+        <button class="btn primary" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %}>{% if search_paused %}Поиск приостановлен{% else %}Проверить сейчас{% endif %}</button>
       </div>
     </header>
 

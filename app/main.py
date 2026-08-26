@@ -209,6 +209,9 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
     except TelegramAPIError as exc:
         logger.warning("telegram_command_menu_failed error_type=%s", type(exc).__name__)
     monitor_task = asyncio.create_task(_monitor_loop(controller, settings))
+    notification_task = asyncio.create_task(
+        _notification_loop(notifier, settings), name="lead-radar-notifications"
+    )
     web_task = None
     web_server = None
     if settings.web_enabled:
@@ -240,8 +243,11 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         await dispatcher.start_polling(bot)
     finally:
         monitor_task.cancel()
+        notification_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await monitor_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await notification_task
         if web_server is not None:
             web_server.should_exit = True
         if web_task is not None:
@@ -266,6 +272,20 @@ async def _monitor_loop(controller: MonitorController, settings: Settings) -> No
                 with contextlib.suppress(Exception):
                     await controller.wait_current()
         await asyncio.sleep(settings.instagram_poll_interval_seconds)
+
+
+async def _notification_loop(notifier: TelegramLeadNotifier, settings: Settings) -> None:
+    """Retry committed Telegram outbox rows even while lead search is paused."""
+    while True:
+        try:
+            sent = await notifier.flush_pending()
+            if sent:
+                logger.info("telegram_notifications_flushed sent=%s", sent)
+        except Exception as exc:
+            logger.exception(
+                "telegram_notification_flush_failed error_type=%s", type(exc).__name__
+            )
+        await asyncio.sleep(settings.telegram_notification_flush_interval_seconds)
 
 
 async def _register_bot_commands(bot: Bot) -> None:

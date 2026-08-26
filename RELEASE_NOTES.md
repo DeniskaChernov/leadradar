@@ -1,4 +1,15 @@
-# Lead Radar V3.2 — release notes
+# Lead Radar V3.3 — release notes
+
+## V3.3 · lead operations
+
+- локально квалифицированы сохранённые сигналы без OpenAI;
+- усилены RU / UZ Latin / UZ Cyrillic правила покупки, цены, рассрочки и HoReCa;
+- Telegram outbox работает независимо от паузы поиска и направляет лид назначенному менеджеру;
+- добавлены пять проверенных компаний, всего 16, новые аккаунты остаются на паузе;
+- Dashboard и Radar показывают операционную очередь и качество классификации;
+- Instagram/OpenAI остаются заблокированы через `LEAD_SEARCH_ENABLED=false` и live guards.
+
+## V3.2 · market intelligence
 
 ## Главная тема релиза
 

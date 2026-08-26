@@ -83,6 +83,31 @@ MONITORED_COMPETITORS: tuple[CompetitorSeed, ...] = (
         "Мебельный магазин с широкой аудиторией; полезен как дополнительный источник спроса.",
         "https://mebelpark.uz",
     ),
+    CompetitorSeed(
+        "mudoconcept", "Mudo Concept", "PREMIUM", "B",
+        "Официальный интерьерный и outdoor-бренд: садовая мебель, dining и HoReCa-проекты.",
+        "https://mudo.uz",
+    ),
+    CompetitorSeed(
+        "official_divan.uz", "Divan.uz", "MASS", "B",
+        "Крупный интернет-магазин мебели с отдельными категориями столов, стульев и террас.",
+        "https://divan.uz",
+    ),
+    CompetitorSeed(
+        "h0medit", "Homedit", "DINING", "B",
+        "Производитель мебели с обеденными группами и аудиторией, выбирающей мебель для дома.",
+        "https://homedit.uz",
+    ),
+    CompetitorSeed(
+        "komfortelit", "Komfort Elit", "PREMIUM", "C",
+        "Премиальная мебель, включая столы и стулья; полезен для сигналов высокого чека.",
+        "https://komfortelit.uz",
+    ),
+    CompetitorSeed(
+        "ergomebel.uz", "ERGO", "HORECA", "C",
+        "Производитель и импортёр мебели для офиса и бизнеса; потенциальные B2B-сигналы.",
+        "https://b2b.ergo.uz",
+    ),
 )
 
 

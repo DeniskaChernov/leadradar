@@ -124,6 +124,12 @@ def build_router(
             if snapshot.cycle_running
             else "ожидает следующего запуска"
         )
+        search_state = "включён" if settings.lead_search_enabled else "приостановлен"
+        notification_state = (
+            f"настроено менеджеров: {len(settings.telegram_admin_chat_ids)}"
+            if settings.telegram_admin_chat_ids
+            else "не указаны TELEGRAM_ADMIN_CHAT_IDS"
+        )
         last_cycle = _format_datetime(snapshot.last_cycle_completed_at)
         last_result = "ещё нет"
         if snapshot.last_stats is not None:
@@ -141,6 +147,8 @@ def build_router(
             f"Результат: <b>{last_result}</b>\n"
             f"Последняя системная ошибка: <b>{escape(snapshot.last_error or 'нет')}</b>\n\n"
             f"Provider: <b>{settings.instagram_provider}</b>\n"
+            f"Поиск лидов: <b>{search_state}</b>\n"
+            f"Уведомления: <b>{notification_state}</b>\n"
             f"Конкурентов: <b>{len(settings.competitors)}</b>\n"
             f"HOT-порог: <b>{settings.hot_lead_threshold}</b>"
         )

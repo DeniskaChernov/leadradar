@@ -42,10 +42,11 @@ class TelegramLeadNotifier:
             return await self._notify_hot_lead(lead_id)
 
     async def _notify_hot_lead(self, lead_id: int) -> int:
-        if not self.admin_chat_ids:
-            logger.warning("hot_lead_not_sent lead_id=%s reason=no_admin_chat_ids", lead_id)
+        targets = await self._target_chat_ids(lead_id)
+        if not targets:
+            logger.warning("hot_lead_not_sent lead_id=%s reason=no_manager_chat_ids", lead_id)
             return 0
-        for chat_id in self.admin_chat_ids:
+        for chat_id in targets:
             await self._ensure_log(lead_id, chat_id)
         return await self._deliver_pending(lead_id=lead_id)
 
@@ -54,10 +55,17 @@ class TelegramLeadNotifier:
             return await self._flush_pending()
 
     async def _flush_pending(self) -> int:
-        if not self.admin_chat_ids:
-            return 0
         await self._reconcile_hot_leads()
         return await self._deliver_pending()
+
+    async def _target_chat_ids(self, lead_id: int) -> list[int]:
+        async with self.session_factory() as session:
+            manager_id = await session.scalar(
+                select(Lead.assigned_manager_telegram_id).where(Lead.id == lead_id)
+            )
+        if manager_id:
+            return [int(manager_id)]
+        return list(dict.fromkeys(self.admin_chat_ids))
 
     async def refresh_lead_messages(self, lead_id: int) -> None:
         card = await self.workflow.get_lead_card(lead_id)
@@ -89,9 +97,9 @@ class TelegramLeadNotifier:
 
     async def _reconcile_hot_leads(self) -> None:
         async with self.session_factory() as session:
-            lead_ids = (
-                await session.scalars(
-                    select(Lead.id)
+            leads = (
+                await session.execute(
+                    select(Lead.id, Lead.assigned_manager_telegram_id)
                     .join(Comment, Comment.id == Lead.comment_id)
                     .where(
                         Lead.lead_score >= self.hot_threshold,
@@ -100,8 +108,9 @@ class TelegramLeadNotifier:
                     )
                 )
             ).all()
-        for lead_id in lead_ids:
-            for chat_id in self.admin_chat_ids:
+        for lead_id, manager_id in leads:
+            targets = [int(manager_id)] if manager_id else self.admin_chat_ids
+            for chat_id in dict.fromkeys(targets):
                 await self._ensure_log(lead_id, chat_id)
 
     async def _ensure_log(self, lead_id: int, chat_id: int) -> None:

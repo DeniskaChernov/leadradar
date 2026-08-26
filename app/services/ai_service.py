@@ -97,6 +97,24 @@ class RuleBasedLeadAnalyzer:
                 "Это реакция на публикацию без явного намерения купить.",
             )
 
+        non_commercial = (
+            "сколько лет",
+            "сколько красоты",
+            "ish kerak",
+            "работа нужна",
+            "вакансия",
+            "резюме",
+        )
+        if any(marker in text for marker in non_commercial):
+            return self._result(
+                False,
+                5,
+                Intent.SPAM,
+                self._product(caption),
+                language,
+                "Комментарий не относится к покупке мебели.",
+            )
+
         if re.fullmatch(r"\+{1,3}", raw.replace(" ", "")):
             if self._caption_has_commercial_plus_cta(caption):
                 score = min(99, 92 + self._history_boost(context))
@@ -126,12 +144,19 @@ class RuleBasedLeadAnalyzer:
                     "заказать",
                     "купить",
                     "мне нужно",
+                    "мне нужен",
+                    "мне нужна",
+                    "можно заказать",
+                    "хотела бы заказать",
+                    "хотел бы заказать",
                     "нужно ",
                     "buyurtma",
                     "buyurtma qil",
                     "olmoqchiman",
                     "olaman",
                     "olamiz",
+                    "olsa bo'ladimi",
+                    "olsa boladimi",
                     "sotib ol",
                     "kerak",
                     "керак",
@@ -144,7 +169,8 @@ class RuleBasedLeadAnalyzer:
                 (
                     "цена",
                     "сколько стоит",
-                    "сколько",
+                    "сколько будет",
+                    "какая цена",
                     "почем",
                     "почём",
                     "стоимость",
@@ -159,6 +185,11 @@ class RuleBasedLeadAnalyzer:
                     "канча",
                     "неч пул",
                     "неча пул",
+                    "рассрочка",
+                    "в рассрочку",
+                    "nasiya",
+                    "bo'lib to'lash",
+                    "bolib tolash",
                 ),
                 86,
                 "Пользователь спрашивает цену товара.",
@@ -270,6 +301,28 @@ class RuleBasedLeadAnalyzer:
                 self._product(f"{caption} {text}"),
                 language,
                 "Пользователь указывает конкретное количество, что является сильным коммерческим сигналом.",
+            )
+
+        business_markers = (
+            "для кафе",
+            "для ресторана",
+            "для гостиницы",
+            "для объекта",
+            "оптом",
+            "ulgurji",
+            "kafe uchun",
+            "restoran uchun",
+            "mehmonxona uchun",
+        )
+        if any(marker in text for marker in business_markers):
+            score = min(99, 90 + self._history_boost(context))
+            return self._result(
+                True,
+                score,
+                Intent.BUY,
+                self._product(f"{caption} {text}") or "HORECA",
+                language,
+                "Пользователь описывает коммерческое или оптовое применение мебели.",
             )
 
         if any(word in text for word in self._reaction_words) and len(text.split()) <= 16:

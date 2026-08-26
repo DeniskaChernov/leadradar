@@ -565,3 +565,19 @@ tr:hover td { background: #132434; }
 .project-stage-banner { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:13px 17px; margin:0 0 14px; border-color:rgba(57,184,255,.22); }
 .project-stage-banner b, .project-stage-banner small { display:block; }.project-stage-banner b { margin-top:3px; }.project-stage-banner small { color:var(--muted); margin-top:3px; }.stage-arrow { white-space:nowrap; color:#6fcdf5; font-weight:700; }
 @media (max-width:680px){.project-stage-banner{align-items:flex-start;flex-direction:column;}.stage-arrow{white-space:normal;}}
+
+/* V3.3 · lead operations */
+.status-pill.paused, .safe-chip.paused { color:#ffd08a; border-color:rgba(255,177,95,.35); background:rgba(255,177,95,.09); }
+.operations-strip { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:14px; align-items:center; padding:13px 16px; margin-bottom:14px; }
+.operations-strip > div { display:flex; gap:10px; align-items:center; min-width:0; }
+.operations-strip p, .operations-strip b, .operations-strip small { display:block; margin:0; }
+.operations-strip small { color:var(--muted); margin-top:2px; }
+.op-icon { width:34px; height:34px; display:grid; place-items:center; border-radius:10px; background:#10283a; }
+.radar-summary { display:grid; grid-template-columns:repeat(5,minmax(100px,1fr)); gap:8px; margin-bottom:12px; }
+.radar-summary > * { background:var(--panel); border:1px solid var(--line); border-radius:11px; padding:10px 12px; }
+.radar-summary span, .radar-summary b { display:block; }
+.radar-summary span { color:var(--muted); font-size:10px; }
+.radar-summary b { color:var(--text); font-size:22px; margin-top:2px; }
+.radar-summary .hot { border-color:rgba(255,100,124,.35); }
+.radar-summary .hot b { color:#ff7d92; }
+@media(max-width:760px){.operations-strip{grid-template-columns:1fr}.radar-summary{grid-template-columns:repeat(2,1fr)}}

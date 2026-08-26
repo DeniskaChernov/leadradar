@@ -20,6 +20,8 @@ from app.db.models import (
     LeadStatus,
     MarketCandidate,
     MonitorRun,
+    NotificationLog,
+    NotificationStatus,
     Post,
     TaskStatus,
 )
@@ -66,6 +68,32 @@ class WebQueryService:
             counts["ai_pending"] = int(
                 await session.scalar(
                     select(func.count(Lead.id)).where(Lead.status == LeadStatus.AI_PENDING)
+                )
+                or 0
+            )
+            counts["unprocessed"] = int(
+                await session.scalar(
+                    select(func.count(Comment.id))
+                    .outerjoin(Lead, Lead.comment_id == Comment.id)
+                    .where(Lead.id.is_(None))
+                )
+                or 0
+            )
+            counts["notifications_pending"] = int(
+                await session.scalar(
+                    select(func.count(NotificationLog.id)).where(
+                        NotificationLog.status.in_(
+                            [NotificationStatus.PENDING, NotificationStatus.PROCESSING]
+                        )
+                    )
+                )
+                or 0
+            )
+            counts["notifications_failed"] = int(
+                await session.scalar(
+                    select(func.count(NotificationLog.id)).where(
+                        NotificationLog.status == NotificationStatus.FAILED
+                    )
                 )
                 or 0
             )
@@ -175,6 +203,53 @@ class WebQueryService:
             "recent_runs": recent_runs,
             "coverage": {getattr(key, "value", str(key)): value for key, value in coverage},
             "funnel": {getattr(key, "value", str(key)): value for key, value in funnel_rows},
+        }
+
+    async def signal_overview(self) -> dict[str, int]:
+        async with self.session_factory() as session:
+            total = int(await session.scalar(select(func.count(Comment.id))) or 0)
+            unprocessed = int(
+                await session.scalar(
+                    select(func.count(Comment.id))
+                    .outerjoin(Lead, Lead.comment_id == Comment.id)
+                    .where(Lead.id.is_(None))
+                )
+                or 0
+            )
+            hot = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(
+                        Lead.lead_score >= self.hot_threshold,
+                        Lead.status.in_(OPEN_LEAD_STATUSES),
+                    )
+                )
+                or 0
+            )
+            qualified = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(Lead.status.in_(OPEN_LEAD_STATUSES))
+                )
+                or 0
+            )
+            rejected = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.NOT_LEAD)
+                )
+                or 0
+            )
+            pending = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.AI_PENDING)
+                )
+                or 0
+            )
+        return {
+            "total": total,
+            "unprocessed": unprocessed,
+            "qualified": qualified,
+            "hot": hot,
+            "rejected": rejected,
+            "pending": pending,
         }
 
     async def signals(

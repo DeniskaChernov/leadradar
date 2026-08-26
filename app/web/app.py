@@ -122,6 +122,8 @@ def build_web_app(
             "active_path": request.url.path,
             "manager_id": getattr(request.state, "manager_id", local_manager_id()),
             "safe_mode": (settings.instagram_provider in {"mock", "replay"} or not settings.instagram_live_enabled),
+            "search_paused": not settings.lead_search_enabled,
+            "telegram_manager_count": len(settings.telegram_admin_chat_ids),
             **kwargs,
         }
 
@@ -178,6 +180,7 @@ def build_web_app(
     ):
         rows = await queries.signals(q=q, competitor=competitor, kind=kind)
         competitors = await queries.competitors()
+        overview = await queries.signal_overview()
         return templates.TemplateResponse(
             request=request,
             name="radar.html",
@@ -188,6 +191,7 @@ def build_web_app(
                 competitor_filter=competitor,
                 kind_filter=kind,
                 competitors=competitors,
+                overview=overview,
             ),
         )
 
@@ -643,6 +647,7 @@ def build_web_app(
             "ok": True,
             "created_competitors": result["created_competitors"],
             "created_candidates": result["created_candidates"],
+            "promoted_candidates": result["promoted_candidates"],
             "message": "Карта рынка синхронизирована. Новые конкуренты добавлены на паузе и не расходуют API.",
         }
 

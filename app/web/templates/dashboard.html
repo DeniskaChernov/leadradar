@@ -15,6 +15,12 @@
   </div>
 </section>
 
+<section class="operations-strip panel">
+  <div><span class="op-icon">🎯</span><p><b>{{ counts.unprocessed + counts.ai_pending }} сигналов требуют разбора</b><small>{{ counts.unprocessed }} ещё не классифицировано · {{ counts.ai_pending }} ждут AI</small></p></div>
+  <div><span class="op-icon">🔔</span><p><b>{% if telegram_manager_count %}Уведомления включены для {{ telegram_manager_count }} менеджер{% if telegram_manager_count != 1 %}ов{% endif %}{% else %}Менеджеры для уведомлений не настроены{% endif %}</b><small>{{ counts.notifications_pending }} в очереди · {{ counts.notifications_failed }} с ошибкой доставки</small></p></div>
+  <a class="btn tiny" href="/system">Диагностика</a>
+</section>
+
 <a class="project-stage-banner panel" href="/roadmap"><div><span class="eyebrow">РАЗВИТИЕ ПРОЕКТА</span><b>Стадия 3 из 7 · Мультиконкурентный радар</b><small>Сейчас расширяем карту рынка и качество источников. Следом: каталог наших товаров и автоматическая рекомендация лучшего предложения менеджеру.</small></div><span class="stage-arrow">Открыть план →</span></a>
 
 <div class="page-help"><b>Что система нашла</b><span>Здесь только данные, которые уже сохранены в нашей базе: клиенты, сигналы, горячие лиды, задачи и продажи.</span></div>
@@ -22,7 +28,7 @@
 <div class="metrics">
   <a class="metric" href="/contacts"><span>Клиенты</span><strong>{{ counts.contacts }}</strong><small>уникальных профилей</small></a>
   <a class="metric" href="/radar"><span>Сигналы</span><strong>{{ counts.comments }}</strong><small>+{{ counts.new_comments_24h }} за 24 часа</small></a>
-  <a class="metric" href="/radar?kind=pending"><span>Ждут разбора</span><strong>{{ counts.ai_pending }}</strong><small>неоднозначные сигналы</small></a>
+  <a class="metric" href="/radar?kind=pending"><span>Ждут разбора</span><strong>{{ counts.unprocessed + counts.ai_pending }}</strong><small>локальная очередь + AI</small></a>
   <a class="metric accent" href="/leads"><span>Горячие лиды</span><strong>{{ counts.hot }}</strong><small>оценка от {{ settings.hot_lead_threshold }}/100</small></a>
   <a class="metric warn" href="/"><span>Нужно связаться</span><strong>{{ counts.tasks_today }}</strong><small>{{ counts.tasks_due }} уже просрочено</small></a>
   <a class="metric success" href="/deals?status=WON"><span>Продажи</span><strong>{{ counts.won }}</strong><small>{{ money(counts.revenue) }} сум</small></a>

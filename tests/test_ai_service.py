@@ -85,6 +85,28 @@ async def test_rules_cover_common_uzbek_purchase_signals_without_openai():
         assert result.lead_score >= 70
 
 
+async def test_rules_cover_installment_and_horeca_without_false_price_match():
+    analyzer = RuleBasedLeadAnalyzer()
+    contexts = [
+        ("Можно в рассрочку?", Intent.PRICE, True),
+        ("Для ресторана нужно 20 штук", Intent.BUY, True),
+        ("Сколько красоты 😍", Intent.SPAM, False),
+    ]
+    for text, intent, is_lead in contexts:
+        result = await analyzer.analyze(
+            LeadAnalysisContext(
+                competitor="aiko.uz",
+                post_caption="Комплект мебели для террасы",
+                comment=text,
+                username="buyer",
+                previous_signals=[],
+                previous_interests=[],
+            )
+        )
+        assert result.intent == intent
+        assert result.is_lead is is_lead
+
+
 def test_rules_classify_social_congratulations_locally():
     analyzer = RuleBasedLeadAnalyzer()
     result = analyzer.classify(
