@@ -25,6 +25,7 @@ from app.services.ai_service import (
     LeadAnalysisContext,
     LeadAnalyzer,
     PreviousSignal,
+    RuleBasedLeadAnalyzer,
 )
 from app.services.contact_service import PersistedSignal
 
@@ -90,6 +91,7 @@ class LeadService:
                 product_category=analysis.product_category,
                 lead_score=analysis.lead_score,
                 ai_reason=analysis.reason,
+                analysis_details=analysis.model_dump(mode="json"),
                 language=analysis.language,
                 ai_source=analysis_source,
                 ai_attempt_count=1,
@@ -111,6 +113,9 @@ class LeadService:
                         "intent": analysis.intent.value,
                         "product_category": analysis.product_category,
                         "is_lead": analysis.is_lead,
+                        "confidence": analysis.confidence,
+                        "funnel_stage": analysis.funnel_stage.value,
+                        "urgency": analysis.urgency.value,
                     },
                 )
                 session.add(
@@ -230,6 +235,7 @@ class LeadService:
             lead.product_category = analysis.product_category
             lead.lead_score = analysis.lead_score
             lead.ai_reason = analysis.reason
+            lead.analysis_details = analysis.model_dump(mode="json")
             lead.language = analysis.language
             lead.ai_source = analysis_source
             lead.status = LeadStatus.NEW if analysis.is_lead else LeadStatus.NOT_LEAD
@@ -258,6 +264,9 @@ class LeadService:
                         "intent": analysis.intent.value,
                         "product_category": analysis.product_category,
                         "is_lead": analysis.is_lead,
+                        "confidence": analysis.confidence,
+                        "funnel_stage": analysis.funnel_stage.value,
+                        "urgency": analysis.urgency.value,
                         "from_ai_pending": True,
                     },
                 )
@@ -294,6 +303,51 @@ class LeadService:
                         raise
                     created = False
             return self._to_result(lead, created=created)
+
+    async def backfill_analysis_details(self, *, limit: int = 500) -> int:
+        """Enrich saved leads with the V3.5 explanation contract without external calls.
+
+        The operation is idempotent and intentionally preserves the historical score, intent,
+        status and reason. Only the new JSON explanation is filled for rows that do not have it.
+        """
+        async with self.session_factory() as session:
+            lead_ids = list(
+                await session.scalars(
+                    select(Lead.id)
+                    .order_by(Lead.id)
+                )
+            )
+
+        rules = RuleBasedLeadAnalyzer()
+        updated = 0
+        for lead_id in lead_ids:
+            if updated >= limit:
+                break
+            async with self.session_factory() as session:
+                lead = await session.get(Lead, lead_id)
+                if lead is None or lead.analysis_details is not None:
+                    continue
+                context = await self._build_context(session, lead.comment_id)
+            analysis = await rules.analyze(context)
+            details = analysis.model_dump(mode="json")
+            details.update(
+                {
+                    "is_lead": lead.status not in {LeadStatus.NOT_LEAD, LeadStatus.AI_PENDING},
+                    "lead_score": lead.lead_score,
+                    "intent": lead.intent,
+                    "product_category": lead.product_category,
+                    "language": lead.language or analysis.language,
+                    "reason": lead.ai_reason or analysis.reason,
+                }
+            )
+            async with self.session_factory() as session:
+                current = await session.get(Lead, lead_id)
+                if current is None or current.analysis_details is not None:
+                    continue
+                current.analysis_details = details
+                await session.commit()
+                updated += 1
+        return updated
 
     async def _build_context(
         self, session: AsyncSession, comment_id: int

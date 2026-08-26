@@ -3,11 +3,32 @@
 {% block heading %}Лид #{{ lead.id }}{% endblock %}
 {% block subheading %}@{{ contact.username }} · {{ lead_status_label(lead.status) }}{% endblock %}
 {% block content %}
+{% set ai = lead.analysis_details or {} %}
 <div class="lead-hero {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %}">
   <div class="lead-score-xl"><span>{{ lead.lead_score }}</span><small>из 100</small></div>
   <div class="lead-hero-body"><span class="eyebrow">{{ intent_label(lead.intent) }}</span><h2>{{ comment.text or 'Пустой комментарий' }}</h2><p>{{ lead.ai_reason or 'Система ещё не сформировала объяснение оценки.' }}</p><div class="lead-hero-tags"><span class="tag">{{ product_label(lead.product_category) }}</span><span class="tag">Источник: @{{ competitor.normalized_handle }}</span><span class="tag status-{{ lead.status.value|lower }}">{{ lead_status_label(lead.status) }}</span></div></div>
   <div class="lead-hero-actions"><a class="btn" target="_blank" rel="noopener" href="{{ contact.profile_url }}">Профиль Instagram ↗</a><a class="btn ghost" target="_blank" rel="noopener" href="{{ post.url }}">Открыть Reel ↗</a></div>
 </div>
+
+{% if ai %}
+<section class="ai-intelligence panel">
+  <div class="ai-intelligence-head">
+    <div><span class="eyebrow">ГЛУБОКИЙ AI-РАЗБОР</span><h2>Почему этот сигнал важен</h2><p>Не просто оценка, а решение для следующего действия менеджера.</p></div>
+    <div class="confidence-orb"><strong>{{ ai.get('confidence', 50) }}%</strong><span>уверенность</span></div>
+  </div>
+  <div class="intelligence-grid">
+    <div><span>Стадия покупки</span><b>{{ funnel_stage_label(ai.get('funnel_stage')) }}</b></div>
+    <div><span>Срочность</span><b class="urgency-{{ ai.get('urgency', 'LOW')|lower }}">{{ urgency_label(ai.get('urgency')) }}</b></div>
+    <div><span>Горизонт</span><b>{{ purchase_horizon_label(ai.get('purchase_horizon')) }}</b></div>
+    <div><span>Язык</span><b>{{ lead.language or 'Не определён' }}</b></div>
+  </div>
+  <div class="ai-action-callout"><span>Лучшее следующее действие</span><b>{{ ai.get('recommended_action', 'Проверить контекст и выбрать следующее действие.') }}</b></div>
+  <div class="ai-evidence-grid">
+    <div><h3>На чём основано решение</h3>{% for item in ai.get('evidence', []) %}<p><span class="evidence-check">✓</span>{{ item }}</p>{% else %}<p class="muted">Дополнительные признаки не сохранены.</p>{% endfor %}</div>
+    <div><h3>Риски и неопределённость</h3>{% for item in ai.get('risk_flags', []) %}<p><span class="risk-mark">!</span>{{ item }}</p>{% else %}<p><span class="evidence-check">✓</span>Существенных рисков классификации не найдено.</p>{% endfor %}</div>
+  </div>
+</section>
+{% endif %}
 
 <div class="lead-layout">
   <div class="lead-main">

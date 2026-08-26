@@ -34,6 +34,10 @@ async def test_lead_creation_feedback_event_and_hot_threshold(session_factory):
     assert duplicate.created is False
 
     async with session_factory() as session:
+        lead = await session.scalar(select(Lead))
+        assert lead is not None
+        assert lead.analysis_details is not None
+        assert lead.analysis_details["confidence"] == 50
         assert await session.scalar(select(func.count(Lead.id))) == 1
         assert await session.scalar(select(func.count(AIFeedback.id))) == 1
         assert (
@@ -45,3 +49,26 @@ async def test_lead_creation_feedback_event_and_hot_threshold(session_factory):
             == 1
         )
 
+
+async def test_deep_analysis_backfill_is_idempotent(session_factory):
+    signal = await ContactService(session_factory).persist_signal(make_post(), make_comment())
+    service = LeadService(session_factory, StaticAnalyzer(), hot_threshold=70)
+    await service.process_signal(signal)
+
+    async with session_factory() as session:
+        lead = await session.scalar(select(Lead))
+        assert lead is not None
+        lead.analysis_details = None
+        await session.commit()
+
+    first = await service.backfill_analysis_details()
+    second = await service.backfill_analysis_details()
+
+    assert first == 1
+    assert second == 0
+    async with session_factory() as session:
+        lead = await session.scalar(select(Lead))
+        assert lead is not None
+        assert lead.analysis_details is not None
+        assert lead.analysis_details["lead_score"] == 91
+        assert lead.analysis_details["recommended_action"]

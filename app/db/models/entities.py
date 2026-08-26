@@ -263,6 +263,7 @@ class Lead(Base):
     product_category: Mapped[str | None] = mapped_column(String(128))
     lead_score: Mapped[int] = mapped_column(Integer, default=0)
     ai_reason: Mapped[str] = mapped_column(Text, default="")
+    analysis_details: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     language: Mapped[str | None] = mapped_column(String(16))
     status: Mapped[LeadStatus] = mapped_column(
         Enum(LeadStatus, native_enum=False), default=LeadStatus.AI_PENDING, index=True

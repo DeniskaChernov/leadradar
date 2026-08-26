@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import AnalysisCache
-from app.schemas.leads import Intent, LeadAnalysis
+from app.schemas.leads import FunnelStage, Intent, LeadAnalysis, PurchaseHorizon, Urgency
 from app.services.usage_service import ExternalBudgetExceeded, ExternalUsageService
 
 logger = logging.getLogger(__name__)
@@ -85,7 +85,9 @@ class RuleBasedLeadAnalyzer:
         language = self._language(raw)
 
         if not raw:
-            return self._result(False, 0, Intent.OTHER, None, language, "Пустой комментарий.")
+            return self._result(
+                False, 0, Intent.OTHER, None, language, "Пустой комментарий.", context
+            )
 
         if self._is_reaction_only(raw, text):
             return self._result(
@@ -95,6 +97,7 @@ class RuleBasedLeadAnalyzer:
                 self._product(caption),
                 language,
                 "Это реакция на публикацию без явного намерения купить.",
+                context,
             )
 
         non_commercial = (
@@ -113,6 +116,28 @@ class RuleBasedLeadAnalyzer:
                 self._product(caption),
                 language,
                 "Комментарий не относится к покупке мебели.",
+                context,
+            )
+
+        negative_purchase = (
+            "не хочу",
+            "не нужно",
+            "не буду покупать",
+            "покупать не буду",
+            "kerak emas",
+            "olmayman",
+            "сотиб олмайман",
+        )
+        if any(marker in text for marker in negative_purchase):
+            return self._result(
+                False,
+                12,
+                Intent.OTHER,
+                self._product(f"{caption} {text}"),
+                language,
+                "Пользователь явно отрицает намерение покупать.",
+                context,
+                risk_flags=["Явный отказ от покупки"],
             )
 
         if re.fullmatch(r"\+{1,3}", raw.replace(" ", "")):
@@ -125,6 +150,7 @@ class RuleBasedLeadAnalyzer:
                     self._product(caption),
                     language,
                     "Пользователь выполнил коммерческий призыв публикации и оставил «+» для получения цены, каталога или связи.",
+                    context,
                 )
             return self._result(
                 False,
@@ -133,6 +159,8 @@ class RuleBasedLeadAnalyzer:
                 self._product(caption),
                 language,
                 "Сам по себе «+» не доказывает покупательский интерес: в публикации не найден коммерческий призыв оставить плюс.",
+                context,
+                risk_flags=["Смысл «+» зависит от призыва в публикации"],
             )
 
         checks: list[tuple[Intent, tuple[str, ...], int, str]] = [
@@ -277,17 +305,48 @@ class RuleBasedLeadAnalyzer:
                 "Пользователь уточняет размер товара.",
             ),
         ]
+        matched_checks: list[tuple[Intent, int, str, list[str]]] = []
         for intent, phrases, base_score, reason in checks:
-            if any(phrase in text for phrase in phrases):
-                score = min(99, base_score + self._history_boost(context))
-                return self._result(
-                    score >= 65,
-                    score,
-                    intent,
-                    self._product(f"{caption} {text}"),
-                    language,
-                    reason,
-                )
+            matched_phrases = [phrase for phrase in phrases if phrase in text]
+            if matched_phrases:
+                matched_checks.append((intent, base_score, reason, matched_phrases[:2]))
+        if matched_checks:
+            # The checks are ordered from the most decision-specific intent to more generic
+            # signals. Preserve that semantic priority: e.g. "delivery bormi" contains the
+            # generic availability word too, but the real question is about delivery.
+            intent, base_score, reason, _phrases = matched_checks[0]
+            specificity_boost = min(6, (len(matched_checks) - 1) * 3)
+            score = min(99, base_score + specificity_boost + self._history_boost(context))
+            evidence = [reason]
+            evidence.extend(
+                f"Дополнительный сигнал: {extra_reason}"
+                for extra_intent, _score, extra_reason, _matched in matched_checks
+                if extra_intent != intent
+            )
+            return self._result(
+                score >= 65,
+                score,
+                intent,
+                self._product(f"{caption} {text}"),
+                language,
+                reason,
+                context,
+                evidence=evidence[:4],
+            )
+
+        objection_markers = ("дорого", "слишком дорого", "qimmat", "киммат", "қиммат")
+        if any(marker in text for marker in objection_markers):
+            score = min(79, 58 + self._history_boost(context))
+            return self._result(
+                score >= 65,
+                score,
+                Intent.PRICE,
+                self._product(f"{caption} {text}"),
+                language,
+                "Пользователь выражает ценовое возражение: интерес возможен, но требуется уточнение бюджета.",
+                context,
+                risk_flags=["Ценовое возражение"],
+            )
 
         if re.search(
             r"\b\d{1,3}\s*(шт|штук|dona|дона|та|персон|киши|kishi|kishilik|кишилик)\b",
@@ -301,6 +360,7 @@ class RuleBasedLeadAnalyzer:
                 self._product(f"{caption} {text}"),
                 language,
                 "Пользователь указывает конкретное количество, что является сильным коммерческим сигналом.",
+                context,
             )
 
         business_markers = (
@@ -323,6 +383,7 @@ class RuleBasedLeadAnalyzer:
                 self._product(f"{caption} {text}") or "HORECA",
                 language,
                 "Пользователь описывает коммерческое или оптовое применение мебели.",
+                context,
             )
 
         if any(word in text for word in self._reaction_words) and len(text.split()) <= 16:
@@ -333,6 +394,7 @@ class RuleBasedLeadAnalyzer:
                 self._product(caption),
                 language,
                 "Комментарий похож на похвалу или реакцию, а не на запрос о покупке.",
+                context,
             )
 
         return None
@@ -348,6 +410,8 @@ class RuleBasedLeadAnalyzer:
             self._product(context.post_caption),
             self._language(context.comment),
             "По локальным правилам покупательское намерение не определено уверенно.",
+            context,
+            risk_flags=["Недостаточно явных коммерческих признаков"],
         )
 
     @staticmethod
@@ -431,7 +495,77 @@ class RuleBasedLeadAnalyzer:
         product: str | None,
         language: str,
         reason: str,
+        context: LeadAnalysisContext | None = None,
+        *,
+        evidence: list[str] | None = None,
+        risk_flags: list[str] | None = None,
     ) -> LeadAnalysis:
+        raw = RuleBasedLeadAnalyzer._norm(context.comment) if context else ""
+        urgent_markers = (
+            "срочно",
+            "сегодня",
+            "прямо сейчас",
+            "bugun",
+            "hozir",
+            "tezda",
+            "бугун",
+            "хозир",
+        )
+        week_markers = ("на этой неделе", "this week", "shu hafta", "шу хафта")
+        month_markers = ("в этом месяце", "this month", "shu oy", "шу ой")
+        has_urgency = any(marker in raw for marker in urgent_markers)
+        if has_urgency:
+            urgency = Urgency.HIGH
+            horizon = PurchaseHorizon.TODAY
+        elif any(marker in raw for marker in week_markers):
+            urgency = Urgency.MEDIUM
+            horizon = PurchaseHorizon.THIS_WEEK
+        elif any(marker in raw for marker in month_markers):
+            urgency = Urgency.MEDIUM
+            horizon = PurchaseHorizon.THIS_MONTH
+        elif intent in {Intent.PRICE, Intent.CATALOG, Intent.COLOR, Intent.SIZE}:
+            urgency = Urgency.MEDIUM if is_lead else Urgency.LOW
+            horizon = PurchaseHorizon.RESEARCHING
+        else:
+            urgency = Urgency.MEDIUM if is_lead else Urgency.LOW
+            horizon = PurchaseHorizon.UNKNOWN
+
+        if not is_lead:
+            stage = FunnelStage.NON_COMMERCIAL
+        elif intent in {Intent.BUY, Intent.QUANTITY} and score >= 88:
+            stage = FunnelStage.READY_TO_BUY
+        elif intent in {Intent.BUY, Intent.QUANTITY, Intent.CONTACT}:
+            stage = FunnelStage.PURCHASE_INTENT
+        else:
+            stage = FunnelStage.CONSIDERATION
+
+        confidence = min(98, max(35, abs(score - 50) + 48))
+        if intent == Intent.OTHER:
+            confidence = min(confidence, 52)
+        details = list(evidence or [reason])
+        if context and context.previous_signals:
+            details.append(f"Ранее найдено сигналов этого клиента: {len(context.previous_signals)}")
+        if product:
+            details.append(f"Товарный контекст: {product}")
+
+        actions = {
+            Intent.BUY: "Связаться в течение 10 минут, подтвердить модель, количество и удобный способ оформления.",
+            Intent.QUANTITY: "Уточнить точное количество, сроки и подготовить расчёт с оптовыми условиями.",
+            Intent.PRICE: "Ответить ценой и сразу уточнить бюджет, количество и предпочтительную модель.",
+            Intent.AVAILABILITY: "Подтвердить наличие и предложить забронировать подходящий комплект.",
+            Intent.DELIVERY: "Уточнить город и срок, затем дать точную стоимость и условия доставки.",
+            Intent.CATALOG: "Отправить короткую подборку из 3–5 релевантных моделей и задать вопрос о бюджете.",
+            Intent.LOCATION: "Отправить адрес шоурума, часы работы и предложить удобное время визита.",
+            Intent.CONTACT: "Назначить менеджера и ответить в том же канале без задержки.",
+            Intent.COLOR: "Уточнить нужный оттенок и отправить доступные варианты с фото.",
+            Intent.SIZE: "Запросить требуемые размеры и проверить подходящие модели.",
+        }
+        recommended_action = actions.get(
+            intent,
+            "Не отправлять менеджеру; сохранить сигнал как контекст для будущего интереса."
+            if not is_lead
+            else "Менеджеру проверить контекст и задать один уточняющий вопрос.",
+        )
         return LeadAnalysis(
             is_lead=is_lead,
             lead_score=score,
@@ -439,6 +573,13 @@ class RuleBasedLeadAnalyzer:
             product_category=product,
             language=language,
             reason=reason,
+            confidence=confidence,
+            funnel_stage=stage,
+            urgency=urgency,
+            purchase_horizon=horizon,
+            evidence=details[:6],
+            risk_flags=(risk_flags or [])[:6],
+            recommended_action=recommended_action,
         )
 
 
@@ -467,28 +608,37 @@ class OpenAILeadAnalyzer:
                 "garden and terrace furniture",
                 "cafe, restaurant and HoReCa furniture",
             ],
+            "business_goal": (
+                "Find people with credible furniture purchase intent and give a manager the "
+                "single best next action without turning social engagement into false leads."
+            ),
         }
         system_prompt = (
-            "You qualify public Instagram comments for a furniture seller. "
-            "Understand Russian, Uzbek Latin, Uzbek Cyrillic, and mixed phrases. "
-            "Score commercial purchase intent from 0 to 100. Consider the reel CTA, "
-            "product relevance, specificity, prior signals, and known_customer_context that was "
-            "explicitly entered by a sales manager. Treat manager-entered context as useful CRM "
-            "history, but do not invent missing facts. A '+' is commercial only "
-            "when the post CTA asks for '+' to receive price/catalog/contact. "
-            "Reaction or engagement-only comments are not leads. Return the requested schema."
+            "You are the lead-intelligence layer for a furniture seller. Qualify public Instagram "
+            "comments in Russian, Uzbek Latin, Uzbek Cyrillic, or mixed language. The outcome must "
+            "help a sales manager decide whether to act, why, how quickly, and what to say next. "
+            "Use only supplied evidence. Never infer private traits, contact details, income, or "
+            "facts that are not present. Evaluate the comment together with the Reel caption and "
+            "CTA, product fit, request specificity, repetition across prior signals, comparison "
+            "across competitors, and manager-entered CRM context. A plus sign is commercial only "
+            "when the Reel explicitly asks for it to receive a price, catalog, or contact. Praise, "
+            "emoji, congratulations, job requests, and unrelated conversation are not leads. "
+            "Negation overrides keyword matches. Distinguish active purchase intent from research, "
+            "price objections, and ambiguous questions. Score 0–100 consistently; confidence means "
+            "confidence in the classification, not purchase probability. Provide short observable "
+            "evidence, uncertainty flags, and one concrete manager action. Do not reveal hidden "
+            "chain-of-thought or invent a rationale. Return only the validated structured result."
         )
         try:
             response = await self.client.responses.parse(
                 model=self.model,
-                input=[
-                    {"role": "system", "content": system_prompt},
-                    {
-                        "role": "user",
-                        "content": json.dumps(payload, ensure_ascii=False, default=str),
-                    },
-                ],
+                instructions=system_prompt,
+                input=json.dumps(payload, ensure_ascii=False, default=str),
                 text_format=LeadAnalysis,
+                reasoning={"effort": "medium"},
+                max_output_tokens=900,
+                store=False,
+                prompt_cache_key="lead-radar-qualifier-v2",
             )
             parsed = response.output_parsed
             if parsed is None:
@@ -564,6 +714,7 @@ class BudgetedCachedOpenAIAnalyzer:
 
     def _cache_key(self, context: LeadAnalysisContext) -> str:
         normalized = {
+            "analysis_contract": "lead-analysis-v2",
             "model": self.inner.model,
             "competitor": context.competitor,
             "post_caption": context.post_caption,

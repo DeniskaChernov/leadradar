@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.schemas.leads import Intent, LeadAnalysis
+from app.schemas.leads import FunnelStage, Intent, LeadAnalysis, PurchaseHorizon, Urgency
 from app.services.ai_service import LeadAnalysisContext, OpenAILeadAnalyzer, RuleBasedLeadAnalyzer
 
 
@@ -41,6 +41,9 @@ async def test_openai_structured_response_parsing():
     assert parsed.lead_score == 91
     assert responses.kwargs["model"] == "configured-model"
     assert responses.kwargs["text_format"] is LeadAnalysis
+    assert responses.kwargs["store"] is False
+    assert responses.kwargs["reasoning"] == {"effort": "medium"}
+    assert responses.kwargs["prompt_cache_key"] == "lead-radar-qualifier-v2"
 
 
 async def test_rules_understand_uzbek_cyrillic_price_questions():
@@ -83,6 +86,47 @@ async def test_rules_cover_common_uzbek_purchase_signals_without_openai():
         assert result.is_lead is True
         assert result.intent == expected_intent
         assert result.lead_score >= 70
+
+
+async def test_rules_return_deep_manager_ready_analysis():
+    analyzer = RuleBasedLeadAnalyzer()
+    result = await analyzer.analyze(
+        LeadAnalysisContext(
+            competitor="aiko.uz",
+            post_caption="Обеденный комплект на 6 персон",
+            comment="Срочно хочу заказать сегодня, доставка есть?",
+            username="buyer",
+            previous_signals=[],
+            previous_interests=[],
+        )
+    )
+
+    assert result.is_lead is True
+    assert result.intent == Intent.BUY
+    assert result.funnel_stage == FunnelStage.READY_TO_BUY
+    assert result.urgency == Urgency.HIGH
+    assert result.purchase_horizon == PurchaseHorizon.TODAY
+    assert result.confidence >= 80
+    assert len(result.evidence) >= 2
+    assert "10 минут" in result.recommended_action
+
+
+async def test_negation_overrides_purchase_keywords():
+    analyzer = RuleBasedLeadAnalyzer()
+    result = await analyzer.analyze(
+        LeadAnalysisContext(
+            competitor="aiko.uz",
+            post_caption="Стол в наличии",
+            comment="Не хочу покупать, просто красиво",
+            username="viewer",
+            previous_signals=[],
+            previous_interests=[],
+        )
+    )
+
+    assert result.is_lead is False
+    assert result.funnel_stage == FunnelStage.NON_COMMERCIAL
+    assert "отказ" in result.risk_flags[0].lower()
 
 
 async def test_rules_cover_installment_and_horeca_without_false_price_match():

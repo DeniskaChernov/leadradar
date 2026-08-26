@@ -1,4 +1,16 @@
-# Lead Radar V3.4 — release notes
+# Lead Radar V3.5 — release notes
+
+## V3.5 · deep lead intelligence
+
+- AI-анализ теперь возвращает уверенность, стадию покупки, срочность, горизонт, доказательства,
+  риски и лучшее следующее действие;
+- усилены отрицания, смешанные намерения, ценовые возражения и RU/UZ urgency-сигналы;
+- OpenAI Responses использует Structured Outputs, reasoning `medium`, `store=false` и новый cache key;
+- добавлена миграция `f31a8c74d920` и идемпотентный локальный backfill;
+- все 28 существующих результатов получили расширенное объяснение без OpenAI;
+- карточка лида получила отдельный intelligence-блок;
+- Radar адаптируется в карточки на узких экранах;
+- 57 тестов пройдены, внешние Instagram/OpenAI вызовы не выполнялись.
 
 ## V3.4 · light liquid-glass interface
 
@@ -8,8 +20,6 @@
 - улучшены контраст, keyboard focus, skip navigation и reduced-motion режим;
 - статические ассеты переведены на cache key `v=3.4`;
 - поиск лидов и внешние AI/Instagram вызовы остались выключены.
-
-## V3.3 · lead operations
 
 ## V3.3 · lead operations
 

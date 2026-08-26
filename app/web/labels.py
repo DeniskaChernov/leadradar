@@ -55,6 +55,28 @@ AI_SOURCE_LABELS = {
     "custom_analyzer": "Системный анализатор",
 }
 
+FUNNEL_STAGE_LABELS = {
+    "NON_COMMERCIAL": "Нет покупательского намерения",
+    "AWARENESS": "Знакомство с товаром",
+    "CONSIDERATION": "Сравнивает и выбирает",
+    "PURCHASE_INTENT": "Намерение купить",
+    "READY_TO_BUY": "Готов к покупке",
+}
+
+URGENCY_LABELS = {
+    "LOW": "Низкая",
+    "MEDIUM": "Средняя",
+    "HIGH": "Высокая",
+}
+
+PURCHASE_HORIZON_LABELS = {
+    "TODAY": "Сегодня",
+    "THIS_WEEK": "На этой неделе",
+    "THIS_MONTH": "В этом месяце",
+    "RESEARCHING": "Пока выбирает",
+    "UNKNOWN": "Не определён",
+}
+
 COVERAGE_LABELS = {
     "FULL": "Получено полностью",
     "PARTIAL": "Получено частично",
