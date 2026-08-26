@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Stage 3/4 complete — moving to Telegram lead workflow and deals.
+Stage 8/9 complete — moving to integration checks, hardening, and documentation.
 
 ## Completed
 
@@ -18,10 +18,13 @@ Stage 3/4 complete — moving to Telegram lead workflow and deals.
 - OpenAI Responses API structured Pydantic scoring and AI_PENDING recovery added.
 - Lead/AIFeedback creation commits before notification.
 - Baseline-aware polling skips unchanged posts and retries failed comment synchronizations.
+- Telegram long polling commands, HOT cards, access checks, and inline callbacks added.
+- Atomic manager assignment, NOT_LEAD feedback, and deal WON/LOST FSM implemented.
+- Telegram notification attempts and message IDs persist in the database.
 
 ## In progress
 
-- Telegram commands, HOT notifications, callbacks, and deal workflow.
+- Integration checker, acceptance hardening, Docker/Railway preparation, and documentation.
 
 ## Next
 
@@ -33,8 +36,9 @@ Stage 3/4 complete — moving to Telegram lead workflow and deals.
 
 ## Tests
 
-- 8 tests pass, including structured AI parsing, lead creation/HOT threshold, feedback,
-  baseline behavior, history reuse, and unchanged-post skipping.
+- 12 tests pass, including manager assignment/double-assignment protection, NOT_LEAD,
+  deal WON, and deal LOST.
+- `python -m app.main --once` completes a mock baseline cycle without a stack trace.
 - Alembic upgrade to the initial schema passed.
 - Ruff passes for all current files.
 
