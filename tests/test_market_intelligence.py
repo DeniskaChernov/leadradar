@@ -25,7 +25,11 @@ async def test_market_catalog_sync_is_idempotent_and_safe(session_factory):
 
     assert first["created_competitors"] == len(MONITORED_COMPETITORS)
     assert first["created_candidates"] == len(MARKET_CANDIDATES)
-    assert second == {"created_competitors": 0, "created_candidates": 0}
+    assert second == {
+        "created_competitors": 0,
+        "created_candidates": 0,
+        "promoted_candidates": 0,
+    }
 
     async with session_factory() as session:
         competitor_count = int(await session.scalar(select(func.count(Competitor.id))) or 0)

@@ -21,6 +21,7 @@ class FakeMonitor:
 async def test_live_scan_requires_server_side_confirmation(session_factory):
     settings = Settings(
         _env_file=None,
+        lead_search_enabled=True,
         web_enabled=True,
         instagram_provider="scrapecreators",
         instagram_live_calls_enabled=True,
@@ -56,7 +57,12 @@ async def test_live_scan_requires_server_side_confirmation(session_factory):
 
 
 async def test_safe_replay_scan_does_not_require_confirmation(session_factory):
-    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay")
+    settings = Settings(
+        _env_file=None,
+        lead_search_enabled=True,
+        web_enabled=True,
+        instagram_provider="replay",
+    )
     controller = MonitorController(FakeMonitor())  # type: ignore[arg-type]
     workflow = LeadWorkflowService(session_factory, hot_threshold=70)
     app = build_web_app(

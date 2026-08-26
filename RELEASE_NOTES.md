@@ -1,4 +1,15 @@
-# Lead Radar V3.3 — release notes
+# Lead Radar V3.4 — release notes
+
+## V3.4 · light liquid-glass interface
+
+- Mini App получил единую светлую glass-систему для всех страниц;
+- подключена лёгкая библиотека Lucide 1.34.0 для навигационных SVG-иконок;
+- добавлены стеклянные панели с graceful fallback для старых браузеров;
+- улучшены контраст, keyboard focus, skip navigation и reduced-motion режим;
+- статические ассеты переведены на cache key `v=3.4`;
+- поиск лидов и внешние AI/Instagram вызовы остались выключены.
+
+## V3.3 · lead operations
 
 ## V3.3 · lead operations
 

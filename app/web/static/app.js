@@ -1,4 +1,11 @@
 (() => {
+  if (window.lucide) {
+    try {
+      window.lucide.createIcons({ attrs: { 'aria-hidden': 'true', 'stroke-width': 1.9 } });
+      document.documentElement.classList.add('icons-ready');
+    } catch (_) {}
+  }
+
   const tg = window.Telegram?.WebApp;
   if (tg) {
     try {

@@ -3,30 +3,34 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f4f7ff">
   <title>{% block title %}Lead Radar{% endblock %}</title>
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
-  <link rel="stylesheet" href="/static/app.css?v=3.3">
-  <script defer src="/static/app.js?v=3.3"></script>
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <link rel="stylesheet" href="/static/app.css?v=3.4">
+  <script defer src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
+  <script defer src="/static/app.js?v=3.4"></script>
 </head>
 <body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}">
+<a class="skip-link" href="#main-content">Перейти к содержимому</a>
 <div class="shell">
   <aside class="sidebar">
     <a class="brand" href="/">
-      <div class="brand-mark">LR</div>
+      <div class="brand-mark" aria-hidden="true"><i data-lucide="radar">LR</i></div>
       <div><strong>Lead Radar</strong><span>Радар спроса и CRM</span></div>
     </a>
-    <nav>
-      <a class="nav {% if active_path == '/' %}active{% endif %}" href="/"><span>⌂</span>Обзор</a>
-      <a class="nav {% if active_path.startswith('/radar') %}active{% endif %}" href="/radar"><span>⌁</span>Радар</a>
-      <a class="nav {% if active_path.startswith('/leads') %}active{% endif %}" href="/leads"><span>⚡</span>Лиды</a>
-      <a class="nav {% if active_path.startswith('/contacts') %}active{% endif %}" href="/contacts"><span>◎</span>Клиенты</a>
-      <a class="nav {% if active_path.startswith('/tasks') %}active{% endif %}" href="/tasks"><span>✓</span>Задачи</a>
-      <a class="nav {% if active_path.startswith('/deals') %}active{% endif %}" href="/deals"><span>₽</span>Сделки</a>
-      <a class="nav {% if active_path.startswith('/analytics') %}active{% endif %}" href="/analytics"><span>◒</span>Аналитика</a>
-      <a class="nav {% if active_path.startswith('/competitors') %}active{% endif %}" href="/competitors"><span>◫</span>Конкуренты</a>
-      <a class="nav {% if active_path.startswith('/roadmap') %}active{% endif %}" href="/roadmap"><span>↗</span>Развитие</a>
-      <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system"><span>⚙</span>Система</a>
+    <nav aria-label="Основная навигация">
+      <a class="nav {% if active_path == '/' %}active{% endif %}" href="/" {% if active_path == '/' %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="layout-dashboard">⌂</i></span>Обзор</a>
+      <a class="nav {% if active_path.startswith('/radar') %}active{% endif %}" href="/radar" {% if active_path.startswith('/radar') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="radar">⌁</i></span>Радар</a>
+      <a class="nav {% if active_path.startswith('/leads') %}active{% endif %}" href="/leads" {% if active_path.startswith('/leads') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="zap">⚡</i></span>Лиды</a>
+      <a class="nav {% if active_path.startswith('/contacts') %}active{% endif %}" href="/contacts" {% if active_path.startswith('/contacts') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="users">◎</i></span>Клиенты</a>
+      <a class="nav {% if active_path.startswith('/tasks') %}active{% endif %}" href="/tasks" {% if active_path.startswith('/tasks') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="circle-check-big">✓</i></span>Задачи</a>
+      <a class="nav {% if active_path.startswith('/deals') %}active{% endif %}" href="/deals" {% if active_path.startswith('/deals') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="handshake">₽</i></span>Сделки</a>
+      <a class="nav {% if active_path.startswith('/analytics') %}active{% endif %}" href="/analytics" {% if active_path.startswith('/analytics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="chart-no-axes-combined">◒</i></span>Аналитика</a>
+      <a class="nav {% if active_path.startswith('/competitors') %}active{% endif %}" href="/competitors" {% if active_path.startswith('/competitors') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="building-2">◫</i></span>Конкуренты</a>
+      <a class="nav {% if active_path.startswith('/roadmap') %}active{% endif %}" href="/roadmap" {% if active_path.startswith('/roadmap') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="route">↗</i></span>Развитие</a>
+      <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system" {% if active_path.startswith('/system') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="settings-2">⚙</i></span>Система</a>
     </nav>
     <div class="side-info">
       {% if search_paused %}
@@ -46,7 +50,7 @@
     </div>
   </aside>
 
-  <main class="main">
+  <main class="main" id="main-content" tabindex="-1">
     <header class="topbar">
       <div class="top-title">
         <h1>{% block heading %}Lead Radar{% endblock %}</h1>
@@ -64,7 +68,7 @@
         {% else %}
         <span class="status-pill ok">Live включён</span>
         {% endif %}
-        <button class="btn primary" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %}>{% if search_paused %}Поиск приостановлен{% else %}Проверить сейчас{% endif %}</button>
+        <button class="btn primary" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %}>{% if search_paused %}Поиск приостановлен{% else %}Проверить сейчас{% endif %}</button>
       </div>
     </header>
 
