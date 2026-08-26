@@ -18,6 +18,8 @@ from app.db.models import (
     Lead,
     LeadStatus,
     Post,
+    PublicSignal,
+    PublicSignalStatus,
 )
 from app.db.repositories.events import ContactEventRepository
 from app.services.ai_service import (
@@ -58,19 +60,20 @@ class LeadService:
         if not signal.created or (signal.is_baseline and not allow_baseline):
             return None
 
-        async with self.session_factory() as session:
-            existing = await session.scalar(
-                select(Lead).where(Lead.comment_id == signal.comment_id)
-            )
-            if existing is not None:
-                return self._to_result(existing, created=False)
-            context = await self._build_context(session, signal.comment_id)
+        prepared = await self.ensure_analyzing(signal)
+        if not prepared.created:
+            return prepared
+        analyzed = await self.analyze_lead(prepared.lead_id)
+        return ProcessedLead(
+            lead_id=analyzed.lead_id,
+            score=analyzed.score,
+            status=analyzed.status,
+            created=True,
+            is_hot=analyzed.is_hot,
+        )
 
-        try:
-            analysis, analysis_source = await self._analyze(context)
-        except AIAnalysisError:
-            logger.warning("lead_ai_pending comment_id=%s", signal.comment_id)
-            return await self._create_pending(signal)
+    async def ensure_analyzing(self, signal: PersistedSignal) -> ProcessedLead:
+        """Create and commit the manager-visible lead shell before any analysis runs."""
 
         async with self.session_factory() as session:
             existing = await session.scalar(
@@ -79,45 +82,114 @@ class LeadService:
             if existing is not None:
                 return self._to_result(existing, created=False)
             comment = await session.get(Comment, signal.comment_id)
-            post = await session.get(Post, signal.post_id)
             contact = await session.get(Contact, signal.contact_id)
-            if comment is None or post is None or contact is None:
+            if comment is None or contact is None:
                 raise RuntimeError("Persisted signal references missing database rows")
             lead = Lead(
                 contact_id=signal.contact_id,
                 comment_id=signal.comment_id,
                 competitor_id=signal.competitor_id,
-                intent=analysis.intent.value,
-                product_category=analysis.product_category,
-                lead_score=analysis.lead_score,
-                ai_reason=analysis.reason,
-                analysis_details=analysis.model_dump(mode="json"),
-                language=analysis.language,
-                ai_source=analysis_source,
-                ai_attempt_count=1,
-                ai_last_attempt_at=datetime.now(UTC),
-                status=LeadStatus.NEW if analysis.is_lead else LeadStatus.NOT_LEAD,
+                intent="OTHER",
+                lead_score=0,
+                ai_reason="Анализируем публичный коммерческий сигнал",
+                ai_source="pending",
+                status=LeadStatus.ANALYZING,
             )
             session.add(lead)
             try:
                 await session.flush()
-                contact.current_lead_score = max(
-                    contact.current_lead_score, analysis.lead_score
-                )
                 await ContactEventRepository(session).add(
                     contact.id,
                     ContactEventType.LEAD_CREATED,
                     lead_id=lead.id,
                     payload={
-                        "score": analysis.lead_score,
-                        "intent": analysis.intent.value,
-                        "product_category": analysis.product_category,
-                        "is_lead": analysis.is_lead,
-                        "confidence": analysis.confidence,
-                        "funnel_stage": analysis.funnel_stage.value,
-                        "urgency": analysis.urgency.value,
+                        "status": LeadStatus.ANALYZING.value,
+                        "public_signal_id": signal.public_signal_id,
                     },
                 )
+                public_signal = await session.scalar(
+                    select(PublicSignal).where(PublicSignal.comment_id == signal.comment_id)
+                )
+                if public_signal is not None:
+                    public_signal.pipeline_stage = "LEAD_COMMITTED"
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                existing = await session.scalar(
+                    select(Lead).where(Lead.comment_id == signal.comment_id)
+                )
+                if existing is None:
+                    raise
+                return self._to_result(existing, created=False)
+            logger.info(
+                "lead_analyzing_committed lead_id=%s contact_id=%s",
+                lead.id,
+                contact.id,
+            )
+            return self._to_result(lead, created=True)
+
+    async def analyze_lead(self, lead_id: int) -> ProcessedLead:
+        """Run enrichment after the initial lead and notification have been committed."""
+        async with self.session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise RuntimeError(f"Lead {lead_id} was not found")
+            context = await self._build_context(session, lead.comment_id)
+            lead.ai_attempt_count += 1
+            lead.ai_last_attempt_at = datetime.now(UTC)
+            await session.commit()
+        try:
+            analysis, analysis_source = await self._analyze(context)
+        except Exception as exc:
+            async with self.session_factory() as session:
+                lead = await session.get(Lead, lead_id)
+                if lead is None:
+                    raise RuntimeError(f"Lead {lead_id} was not found") from exc
+                if lead.status == LeadStatus.ANALYZING:
+                    lead.status = LeadStatus.AI_PENDING
+                lead.ai_reason = "Нужна дополнительная проверка; сигнал сохранён и доступен менеджеру"
+                public_signal = await session.scalar(
+                    select(PublicSignal).where(PublicSignal.comment_id == lead.comment_id)
+                )
+                if public_signal is not None:
+                    public_signal.status = PublicSignalStatus.FAILED
+                    public_signal.pipeline_stage = "AI_PENDING"
+                    public_signal.error = type(exc).__name__
+                await session.commit()
+                if isinstance(exc, AIAnalysisError):
+                    logger.warning("lead_ai_pending lead_id=%s", lead_id)
+                else:
+                    logger.exception(
+                        "lead_analysis_stage_failed lead_id=%s error_type=%s",
+                        lead_id,
+                        type(exc).__name__,
+                    )
+                return self._to_result(lead, created=False)
+
+        async with self.session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise RuntimeError(f"Lead {lead_id} was not found")
+            comment = await session.get(Comment, lead.comment_id)
+            post = await session.get(Post, comment.post_id) if comment is not None else None
+            contact = await session.get(Contact, lead.contact_id)
+            if comment is None or post is None or contact is None:
+                raise RuntimeError("Analyzing lead references missing database rows")
+            previous_score = lead.lead_score
+            lead.intent = analysis.intent.value
+            lead.product_category = analysis.product_category
+            lead.lead_score = analysis.lead_score
+            lead.ai_reason = analysis.reason
+            lead.analysis_details = analysis.model_dump(mode="json")
+            lead.language = analysis.language
+            lead.ai_source = analysis_source
+            if lead.status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING}:
+                lead.status = LeadStatus.NEW if analysis.is_lead else LeadStatus.NOT_LEAD
+            contact.current_lead_score = max(contact.current_lead_score, analysis.lead_score)
+            feedback = await session.scalar(
+                select(AIFeedback).where(AIFeedback.lead_id == lead.id)
+            )
+            if feedback is None:
                 session.add(
                     AIFeedback(
                         contact_id=contact.id,
@@ -129,22 +201,31 @@ class LeadService:
                         predicted_score=analysis.lead_score,
                     )
                 )
-                await session.commit()
-            except IntegrityError:
-                await session.rollback()
-                existing = await session.scalar(
-                    select(Lead).where(Lead.comment_id == signal.comment_id)
-                )
-                if existing is None:
-                    raise
-                return self._to_result(existing, created=False)
-            logger.info(
-                "lead_created lead_id=%s contact_id=%s score=%s",
-                lead.id,
+            await ContactEventRepository(session).add(
                 contact.id,
-                lead.lead_score,
+                ContactEventType.LEAD_SCORE_CHANGED,
+                lead_id=lead.id,
+                payload={
+                    "from": previous_score,
+                    "to": analysis.lead_score,
+                    "intent": analysis.intent.value,
+                    "product_category": analysis.product_category,
+                    "confidence": analysis.confidence,
+                    "funnel_stage": analysis.funnel_stage.value,
+                    "urgency": analysis.urgency.value,
+                },
             )
-            return self._to_result(lead, created=True)
+            public_signal = await session.scalar(
+                select(PublicSignal).where(PublicSignal.comment_id == lead.comment_id)
+            )
+            if public_signal is not None:
+                public_signal.status = PublicSignalStatus.ANALYZED
+                public_signal.pipeline_stage = "COMPLETE"
+                public_signal.error = None
+                public_signal.analyzed_at = datetime.now(UTC)
+            await session.commit()
+            logger.info("lead_analysis_completed lead_id=%s score=%s", lead.id, lead.lead_score)
+            return self._to_result(lead, created=False)
 
     async def backfill_unanalyzed_comments(self, limit: int = 25) -> list[ProcessedLead]:
         """Analyze stored signals that do not have a Lead yet, including baseline history.
@@ -213,66 +294,14 @@ class LeadService:
             lead = await session.get(Lead, lead_id)
             if lead is None or lead.status != LeadStatus.AI_PENDING:
                 return None
-            context = await self._build_context(session, lead.comment_id)
-            lead.ai_attempt_count += 1
-            lead.ai_last_attempt_at = datetime.now(UTC)
-            await session.commit()
-        try:
-            analysis, analysis_source = await self._analyze(context)
-        except AIAnalysisError:
-            return None
-
-        async with self.session_factory() as session:
-            lead = await session.get(Lead, lead_id)
-            if lead is None or lead.status != LeadStatus.AI_PENDING:
-                return None
-            comment = await session.get(Comment, lead.comment_id)
-            post = await session.get(Post, comment.post_id) if comment is not None else None
-            contact = await session.get(Contact, lead.contact_id)
-            if comment is None or post is None or contact is None:
-                raise RuntimeError("Pending lead references missing database rows")
-            lead.intent = analysis.intent.value
-            lead.product_category = analysis.product_category
-            lead.lead_score = analysis.lead_score
-            lead.ai_reason = analysis.reason
-            lead.analysis_details = analysis.model_dump(mode="json")
-            lead.language = analysis.language
-            lead.ai_source = analysis_source
-            lead.status = LeadStatus.NEW if analysis.is_lead else LeadStatus.NOT_LEAD
-            contact.current_lead_score = max(contact.current_lead_score, analysis.lead_score)
-            feedback = await session.scalar(
-                select(AIFeedback).where(AIFeedback.lead_id == lead.id)
-            )
-            if feedback is None:
-                session.add(
-                    AIFeedback(
-                        contact_id=contact.id,
-                        lead_id=lead.id,
-                        comment_text=comment.text,
-                        post_context=post.caption,
-                        predicted_intent=analysis.intent.value,
-                        predicted_product=analysis.product_category,
-                        predicted_score=analysis.lead_score,
-                    )
-                )
-                await ContactEventRepository(session).add(
-                    contact.id,
-                    ContactEventType.LEAD_CREATED,
-                    lead_id=lead.id,
-                    payload={
-                        "score": analysis.lead_score,
-                        "intent": analysis.intent.value,
-                        "product_category": analysis.product_category,
-                        "is_lead": analysis.is_lead,
-                        "confidence": analysis.confidence,
-                        "funnel_stage": analysis.funnel_stage.value,
-                        "urgency": analysis.urgency.value,
-                        "from_ai_pending": True,
-                    },
-                )
-            await session.commit()
-            logger.info("pending_lead_processed lead_id=%s score=%s", lead.id, lead.lead_score)
-            return self._to_result(lead, created=True)
+        result = await self.analyze_lead(lead_id)
+        return ProcessedLead(
+            lead_id=result.lead_id,
+            score=result.score,
+            status=result.status,
+            created=True,
+            is_hot=result.is_hot,
+        )
 
     async def _create_pending(self, signal: PersistedSignal) -> ProcessedLead:
         async with self.session_factory() as session:
@@ -332,7 +361,8 @@ class LeadService:
             details = analysis.model_dump(mode="json")
             details.update(
                 {
-                    "is_lead": lead.status not in {LeadStatus.NOT_LEAD, LeadStatus.AI_PENDING},
+                    "is_lead": lead.status
+                    not in {LeadStatus.NOT_LEAD, LeadStatus.AI_PENDING, LeadStatus.ANALYZING},
                     "lead_score": lead.lead_score,
                     "intent": lead.intent,
                     "product_category": lead.product_category,

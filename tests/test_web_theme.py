@@ -32,3 +32,17 @@ def test_lead_detail_and_radar_expose_deep_responsive_analysis():
     assert "recommended_action" in lead_detail
     assert "risk_flags" in lead_detail
     assert 'data-label="AI-оценка"' in radar
+
+
+def test_v41_signal_first_states_and_notification_modes_are_manager_readable():
+    system = (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
+    competitors = (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(
+        encoding="utf-8"
+    )
+    radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+
+    assert "УВЕДОМЛЕНИЯ МЕНЕДЖЕРУ" in system
+    assert "Каждый новый комментарий" in competitors
+    assert "Только покупательский интерес" in competitors
+    assert "Только горячие лиды" in competitors
+    assert "Сигнал уже сохранён и виден менеджеру" in radar

@@ -74,7 +74,7 @@
           <p>{{ comment.text or 'Пустой комментарий' }}</p>
           <small>{{ post.caption[:105] }}{% if post.caption|length > 105 %}…{% endif %}</small>
         </div>
-        <div class="score {% if lead and lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead and lead.status.value == 'AI_PENDING' %}pending{% elif lead %}warm{% else %}muted{% endif %}">{% if lead and lead.status.value != 'AI_PENDING' %}{{ lead.lead_score }}{% elif lead %}AI{% else %}…{% endif %}</div>
+        <div class="score {% if lead and lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead and lead.status.value in ['ANALYZING','AI_PENDING'] %}pending{% elif lead %}warm{% else %}muted{% endif %}">{% if lead and lead.status.value not in ['ANALYZING','AI_PENDING'] %}{{ lead.lead_score }}{% elif lead %}…{% else %}…{% endif %}</div>
       </a>
       {% else %}<div class="empty">Сигналов пока нет.</div>{% endfor %}
     </div>

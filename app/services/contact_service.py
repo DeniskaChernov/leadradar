@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import Comment, ContactEventType
+from app.db.models import Comment, ContactEventType, PublicSignal
 from app.db.repositories import (
     CommentRepository,
     CompetitorRepository,
@@ -27,6 +28,7 @@ class PersistedSignal:
     competitor_id: int
     created: bool
     is_baseline: bool
+    public_signal_id: int | None = None
 
 
 class ContactService:
@@ -64,6 +66,9 @@ class ContactService:
             comments = CommentRepository(session)
             existing = await comments.get_by_platform_id(comment_data.platform_comment_id)
             if existing is not None:
+                public_signal = await session.scalar(
+                    select(PublicSignal).where(PublicSignal.comment_id == existing.id)
+                )
                 return PersistedSignal(
                     comment_id=existing.id,
                     contact_id=existing.contact_id,
@@ -71,6 +76,7 @@ class ContactService:
                     competitor_id=existing.competitor_id,
                     created=False,
                     is_baseline=existing.is_baseline,
+                    public_signal_id=public_signal.id if public_signal else None,
                 )
 
             try:
@@ -92,12 +98,20 @@ class ContactService:
                 )
                 session.add(comment)
                 await session.flush()
+                public_signal = PublicSignal(
+                    comment_id=comment.id,
+                    contact_id=contact.id,
+                    competitor_id=competitor.id,
+                )
+                session.add(public_signal)
+                await session.flush()
                 await ContactEventRepository(session).add(
                     contact.id,
                     ContactEventType.COMMENT_FOUND,
                     payload={
                         "platform_comment_id": comment_data.platform_comment_id,
                         "post_id": post.id,
+                        "public_signal_id": public_signal.id,
                         "is_baseline": is_baseline,
                     },
                 )
@@ -116,6 +130,7 @@ class ContactService:
                     competitor_id=competitor.id,
                     created=True,
                     is_baseline=is_baseline,
+                    public_signal_id=public_signal.id,
                 )
             except IntegrityError:
                 await session.rollback()
@@ -124,6 +139,9 @@ class ContactService:
                 )
                 if existing is None:
                     return None
+                public_signal = await session.scalar(
+                    select(PublicSignal).where(PublicSignal.comment_id == existing.id)
+                )
                 return PersistedSignal(
                     comment_id=existing.id,
                     contact_id=existing.contact_id,
@@ -131,4 +149,5 @@ class ContactService:
                     competitor_id=existing.competitor_id,
                     created=False,
                     is_baseline=existing.is_baseline,
+                    public_signal_id=public_signal.id if public_signal else None,
                 )

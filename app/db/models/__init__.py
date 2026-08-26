@@ -17,8 +17,11 @@ from app.db.models.entities import (
     MonitorRun,
     MonitorRunStatus,
     NotificationLog,
+    NotificationPolicy,
     NotificationStatus,
     Post,
+    PublicSignal,
+    PublicSignalStatus,
     TaskStatus,
 )
 
@@ -41,8 +44,10 @@ __all__ = [
     "MonitorRun",
     "MonitorRunStatus",
     "NotificationLog",
+    "NotificationPolicy",
     "NotificationStatus",
     "Post",
+    "PublicSignal",
+    "PublicSignalStatus",
     "TaskStatus",
 ]
-

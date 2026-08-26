@@ -6,13 +6,20 @@ from datetime import UTC, datetime, timedelta
 from html import escape
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import Comment, Lead, LeadStatus, NotificationLog, NotificationStatus
+from app.db.models import (
+    Comment,
+    Competitor,
+    Lead,
+    LeadStatus,
+    NotificationLog,
+    NotificationPolicy,
+    NotificationStatus,
+)
 from app.services.lead_workflow_service import LeadCard, LeadWorkflowService
 
 logger = logging.getLogger(__name__)
@@ -28,6 +35,8 @@ class TelegramLeadNotifier:
         *,
         hot_threshold: int,
         max_attempts: int = 3,
+        notification_policy: NotificationPolicy = NotificationPolicy.ALL_NEW_COMMENTS,
+        delivery_enabled: bool = True,
     ) -> None:
         self.bot = bot
         self.session_factory = session_factory
@@ -35,13 +44,46 @@ class TelegramLeadNotifier:
         self.admin_chat_ids = admin_chat_ids
         self.hot_threshold = hot_threshold
         self.max_attempts = max_attempts
+        self.notification_policy = notification_policy
+        self.delivery_enabled = delivery_enabled
         self._delivery_lock = asyncio.Lock()
 
+    async def notify_new_signal(self, lead_id: int) -> int:
+        if not self.delivery_enabled:
+            return 0
+        if await self._effective_policy(lead_id) != NotificationPolicy.ALL_NEW_COMMENTS:
+            return 0
+        async with self._delivery_lock:
+            return await self._queue_and_deliver(lead_id)
+
+    async def notify_analyzed_lead(self, lead_id: int) -> int:
+        if not self.delivery_enabled:
+            return 0
+        policy = await self._effective_policy(lead_id)
+        card = await self.workflow.get_lead_card(lead_id)
+        if policy == NotificationPolicy.ALL_NEW_COMMENTS:
+            await self.refresh_lead_messages(lead_id)
+            return 0
+        is_commercial = card.status != LeadStatus.NOT_LEAD
+        is_hot = is_commercial and card.score >= self.hot_threshold
+        if policy == NotificationPolicy.COMMERCIAL_ONLY and is_commercial:
+            async with self._delivery_lock:
+                return await self._queue_and_deliver(lead_id)
+        if policy == NotificationPolicy.HOT_ONLY and is_hot:
+            async with self._delivery_lock:
+                return await self._queue_and_deliver(lead_id)
+        return 0
+
     async def notify_hot_lead(self, lead_id: int) -> int:
+        if not self.delivery_enabled:
+            return 0
         async with self._delivery_lock:
             return await self._notify_hot_lead(lead_id)
 
     async def _notify_hot_lead(self, lead_id: int) -> int:
+        return await self._queue_and_deliver(lead_id)
+
+    async def _queue_and_deliver(self, lead_id: int) -> int:
         targets = await self._target_chat_ids(lead_id)
         if not targets:
             logger.warning("hot_lead_not_sent lead_id=%s reason=no_manager_chat_ids", lead_id)
@@ -51,8 +93,19 @@ class TelegramLeadNotifier:
         return await self._deliver_pending(lead_id=lead_id)
 
     async def flush_pending(self) -> int:
+        if not self.delivery_enabled:
+            return 0
         async with self._delivery_lock:
             return await self._flush_pending()
+
+    async def _effective_policy(self, lead_id: int) -> NotificationPolicy:
+        async with self.session_factory() as session:
+            configured = await session.scalar(
+                select(Competitor.notification_policy)
+                .join(Lead, Lead.competitor_id == Competitor.id)
+                .where(Lead.id == lead_id)
+            )
+        return configured or self.notification_policy
 
     async def _flush_pending(self) -> int:
         await self._reconcile_hot_leads()
@@ -76,6 +129,7 @@ class TelegramLeadNotifier:
                         NotificationLog.lead_id == lead_id,
                         NotificationLog.status == NotificationStatus.SENT,
                         NotificationLog.message_id.is_not(None),
+                        NotificationLog.content_version < 2,
                     )
                 )
             ).all()
@@ -87,13 +141,54 @@ class TelegramLeadNotifier:
                     text=render_lead_card(card),
                     reply_markup=lead_keyboard(card),
                 )
-            except TelegramAPIError as exc:
+                async with self.session_factory() as session:
+                    log = await session.get(NotificationLog, item.id)
+                    if log is not None and log.content_version < 2:
+                        log.content_version = 2
+                        log.error = None
+                        await session.commit()
+            except Exception as exc:
                 logger.warning(
                     "telegram_message_refresh_failed lead_id=%s chat_id=%s error_type=%s",
                     lead_id,
                     item.chat_id,
                     type(exc).__name__,
                 )
+                await self._send_enrichment_fallback(item.id, card, exc)
+
+    async def _send_enrichment_fallback(
+        self, log_id: int, card: LeadCard, edit_error: Exception
+    ) -> None:
+        async with self.session_factory() as session:
+            log = await session.get(NotificationLog, log_id)
+            if (
+                log is None
+                or log.enrichment_followup_sent_at is not None
+                or log.content_version >= 2
+            ):
+                return
+            chat_id = log.chat_id
+        try:
+            await self.bot.send_message(
+                chat_id,
+                render_enrichment_followup(card),
+                reply_markup=lead_keyboard(card),
+            )
+        except Exception as fallback_error:
+            logger.error(
+                "telegram_enrichment_fallback_failed lead_id=%s chat_id=%s error_type=%s",
+                card.lead_id,
+                chat_id,
+                type(fallback_error).__name__,
+            )
+            return
+        async with self.session_factory() as session:
+            log = await session.get(NotificationLog, log_id)
+            if log is not None and log.content_version < 2:
+                log.content_version = 2
+                log.enrichment_followup_sent_at = datetime.now(UTC)
+                log.error = f"edit failed: {type(edit_error).__name__}"
+                await session.commit()
 
     async def _reconcile_hot_leads(self) -> None:
         async with self.session_factory() as session:
@@ -188,9 +283,10 @@ class TelegramLeadNotifier:
         lead_id, chat_id, attempt_count = claimed
         try:
             card = await self.workflow.get_lead_card(lead_id)
+            initial = card.status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING}
             message = await self.bot.send_message(
                 chat_id,
-                render_lead_card(card),
+                render_signal_card(card) if initial else render_lead_card(card),
                 reply_markup=lead_keyboard(card),
             )
             async with self.session_factory() as session:
@@ -198,6 +294,7 @@ class TelegramLeadNotifier:
                 if log is not None and log.status == NotificationStatus.PROCESSING:
                     log.status = NotificationStatus.SENT
                     log.message_id = message.message_id
+                    log.content_version = 1 if initial else 2
                     await session.commit()
             return True
         except Exception as exc:
@@ -224,7 +321,12 @@ class TelegramLeadNotifier:
 
 
 def render_lead_card(card: LeadCard) -> str:
-    heat = "🔥 SUPER HOT" if card.recent_signal_count >= 2 else "🔥 HOT LEAD"
+    if card.status == LeadStatus.NOT_LEAD:
+        heat = "✅ Сигнал проверен · не лид"
+    elif card.score >= 85 or card.recent_signal_count >= 2:
+        heat = "🔥 Горячий лид"
+    else:
+        heat = "📌 Коммерческий сигнал"
     manager = (
         f"\n\n👨‍💼 Менеджер: <code>{card.assigned_manager_telegram_id}</code>"
         if card.assigned_manager_telegram_id
@@ -249,6 +351,26 @@ def render_lead_card(card: LeadCard) -> str:
     )
 
 
+def render_signal_card(card: LeadCard) -> str:
+    return (
+        "🔔 <b>Новый сигнал</b>\n\n"
+        f"@{escape(card.username)}\n"
+        f"\"{escape(card.comment)}\"\n\n"
+        f"Источник: {escape(card.competitor.upper())}\n"
+        "Товар: определяется…\n\n"
+        "⏳ Анализируем интерес клиента"
+    )
+
+
+def render_enrichment_followup(card: LeadCard) -> str:
+    return (
+        f"🧠 <b>Анализ сигнала завершён · {card.score}/100</b>\n"
+        f"@{escape(card.username)} · {escape(card.intent)}\n"
+        f"Интерес: {escape(card.product_category or 'не определён')}\n"
+        f"{escape(card.ai_reason[:500])}"
+    )
+
+
 def lead_keyboard(card: LeadCard) -> InlineKeyboardMarkup:
     rows = [
         [
@@ -256,7 +378,7 @@ def lead_keyboard(card: LeadCard) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📹 Reel", url=card.post_url),
         ]
     ]
-    if card.status.value == "NEW":
+    if card.status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING, LeadStatus.NEW}:
         rows.append(
             [
                 InlineKeyboardButton(

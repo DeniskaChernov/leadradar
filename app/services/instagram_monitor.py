@@ -99,18 +99,15 @@ class InstagramMonitor:
         )
         for lead in pending_leads:
             stats.leads_created += 1
-            if lead.is_hot:
-                try:
-                    stats.hot_notifications += await self.notifier.notify_hot_lead(
-                        lead.lead_id
-                    )
-                except Exception as exc:
-                    stats.errors += 1
-                    logger.exception(
-                        "pending_lead_notification_failed lead_id=%s error_type=%s",
-                        lead.lead_id,
-                        type(exc).__name__,
-                    )
+            try:
+                stats.hot_notifications += await self._notify_analyzed(lead.lead_id, lead.is_hot)
+            except Exception as exc:
+                stats.errors += 1
+                logger.exception(
+                    "pending_lead_notification_failed lead_id=%s error_type=%s",
+                    lead.lead_id,
+                    type(exc).__name__,
+                )
         if self.analyze_baseline_comments and self.historical_analysis_batch_size > 0:
             try:
                 historical = await self.lead_service.backfill_unanalyzed_comments(
@@ -222,22 +219,38 @@ class InstagramMonitor:
             if not signal.created:
                 continue
             stats.comments_created += 1
-            lead = await self.lead_service.process_signal(signal)
-            if lead is None or not lead.created:
+            if signal.is_baseline:
+                continue
+            lead = await self.lead_service.ensure_analyzing(signal)
+            if not lead.created:
                 continue
             stats.leads_created += 1
-            if lead.is_hot:
-                try:
-                    stats.hot_notifications += await self.notifier.notify_hot_lead(
-                        lead.lead_id
-                    )
-                except Exception as exc:
-                    stats.errors += 1
-                    logger.exception(
-                        "lead_notification_failed lead_id=%s error_type=%s",
-                        lead.lead_id,
-                        type(exc).__name__,
-                    )
+            notified_initially = False
+            try:
+                sent = await self._notify_new_signal(lead.lead_id)
+                notified_initially = sent > 0
+                stats.hot_notifications += sent
+            except Exception as exc:
+                stats.errors += 1
+                logger.exception(
+                    "signal_notification_failed lead_id=%s error_type=%s",
+                    lead.lead_id,
+                    type(exc).__name__,
+                )
+            analyzed = await self.lead_service.analyze_lead(lead.lead_id)
+            try:
+                stats.hot_notifications += await self._notify_analyzed(
+                    analyzed.lead_id,
+                    analyzed.is_hot,
+                    initial_already_sent=notified_initially,
+                )
+            except Exception as exc:
+                stats.errors += 1
+                logger.exception(
+                    "lead_enrichment_notification_failed lead_id=%s error_type=%s",
+                    analyzed.lead_id,
+                    type(exc).__name__,
+                )
         await self._mark_comments_fetched(
             check.post_id,
             remote_comments_count=reel.comments_count,
@@ -248,6 +261,23 @@ class InstagramMonitor:
             previous_coverage=check.previous_coverage,
             stopped_on_known_comment=batch.stopped_on_known_comment,
         )
+
+    async def _notify_new_signal(self, lead_id: int) -> int:
+        notify = getattr(self.notifier, "notify_new_signal", None)
+        if notify is not None:
+            return await notify(lead_id)
+        # Compatibility for custom integrations while they adopt the V4 protocol.
+        return await self.notifier.notify_hot_lead(lead_id)
+
+    async def _notify_analyzed(
+        self, lead_id: int, is_hot: bool, *, initial_already_sent: bool = False
+    ) -> int:
+        notify = getattr(self.notifier, "notify_analyzed_lead", None)
+        if notify is not None:
+            return await notify(lead_id)
+        if is_hot and not initial_already_sent:
+            return await self.notifier.notify_hot_lead(lead_id)
+        return 0
 
     async def _prepare_post(self, reel: InstagramPost) -> PostCheck:
         async with self.session_factory() as session:

@@ -51,6 +51,7 @@ class ContactEventType(StrEnum):
 
 
 class LeadStatus(StrEnum):
+    ANALYZING = "ANALYZING"
     AI_PENDING = "AI_PENDING"
     NEW = "NEW"
     TAKEN = "TAKEN"
@@ -76,6 +77,18 @@ class NotificationStatus(StrEnum):
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     SENT = "SENT"
+    FAILED = "FAILED"
+
+
+class NotificationPolicy(StrEnum):
+    ALL_NEW_COMMENTS = "ALL_NEW_COMMENTS"
+    COMMERCIAL_ONLY = "COMMERCIAL_ONLY"
+    HOT_ONLY = "HOT_ONLY"
+
+
+class PublicSignalStatus(StrEnum):
+    ANALYZING = "ANALYZING"
+    ANALYZED = "ANALYZED"
     FAILED = "FAILED"
 
 
@@ -110,6 +123,9 @@ class Competitor(Base):
     tier: Mapped[str] = mapped_column(String(8), default="A", index=True)
     poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=180)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    notification_policy: Mapped[NotificationPolicy | None] = mapped_column(
+        Enum(NotificationPolicy, native_enum=False), index=True
+    )
     notes: Mapped[str | None] = mapped_column(Text)
     website_url: Mapped[str | None] = mapped_column(Text)
     catalog_managed: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -250,6 +266,33 @@ class Comment(Base):
     contact: Mapped[Contact] = relationship(back_populates="comments")
     post: Mapped[Post] = relationship(back_populates="comments")
     lead: Mapped[Lead | None] = relationship(back_populates="comment")
+    public_signal: Mapped[PublicSignal | None] = relationship(back_populates="comment")
+
+
+class PublicSignal(Base):
+    __tablename__ = "public_signals"
+    __table_args__ = (
+        UniqueConstraint("comment_id", name="uq_public_signals_comment_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    comment_id: Mapped[int] = mapped_column(ForeignKey("comments.id"), index=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
+    competitor_id: Mapped[int] = mapped_column(ForeignKey("competitors.id"), index=True)
+    status: Mapped[PublicSignalStatus] = mapped_column(
+        Enum(PublicSignalStatus, native_enum=False),
+        default=PublicSignalStatus.ANALYZING,
+        index=True,
+    )
+    pipeline_stage: Mapped[str] = mapped_column(String(64), default="PERSISTED")
+    error: Mapped[str | None] = mapped_column(Text)
+    analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    comment: Mapped[Comment] = relationship(back_populates="public_signal")
 
 
 class Lead(Base):
@@ -367,6 +410,10 @@ class NotificationLog(Base):
     lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
     chat_id: Mapped[int] = mapped_column(index=True)
     message_id: Mapped[int | None] = mapped_column()
+    content_version: Mapped[int] = mapped_column(Integer, default=1)
+    enrichment_followup_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     status: Mapped[NotificationStatus] = mapped_column(
         Enum(NotificationStatus, native_enum=False), default=NotificationStatus.PENDING
     )

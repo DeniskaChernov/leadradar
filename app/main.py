@@ -15,6 +15,7 @@ from aiogram.types import BotCommand
 
 from app.bot.handlers import build_router
 from app.config import Settings, get_settings
+from app.db.models import NotificationPolicy
 from app.db.session import (
     backup_sqlite_database,
     create_engine,
@@ -181,6 +182,8 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         settings.telegram_admin_chat_ids,
         hot_threshold=settings.hot_lead_threshold,
         max_attempts=settings.telegram_notification_max_attempts,
+        notification_policy=NotificationPolicy(settings.notification_policy),
+        delivery_enabled=settings.instagram_provider not in {"mock", "replay"},
     )
     monitor = InstagramMonitor(
         session_factory=session_factory,

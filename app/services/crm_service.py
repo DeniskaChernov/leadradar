@@ -17,19 +17,21 @@ from app.db.models import (
     DealStatus,
     Lead,
     LeadStatus,
+    NotificationPolicy,
     TaskStatus,
 )
 from app.db.repositories.events import ContactEventRepository
 from app.services.lead_workflow_service import LeadAlreadyAssignedError, LeadWorkflowError
 
 ALLOWED_STAGE_TRANSITIONS: dict[LeadStatus, set[LeadStatus]] = {
+    LeadStatus.ANALYZING: {LeadStatus.TAKEN, LeadStatus.NOT_LEAD},
     LeadStatus.NEW: {LeadStatus.TAKEN, LeadStatus.NOT_LEAD},
     LeadStatus.TAKEN: {LeadStatus.CONTACTED, LeadStatus.QUALIFIED, LeadStatus.LOST, LeadStatus.NOT_LEAD},
     LeadStatus.CONTACTED: {LeadStatus.QUALIFIED, LeadStatus.OFFER_SENT, LeadStatus.NEGOTIATION, LeadStatus.LOST},
     LeadStatus.QUALIFIED: {LeadStatus.OFFER_SENT, LeadStatus.NEGOTIATION, LeadStatus.LOST},
     LeadStatus.OFFER_SENT: {LeadStatus.NEGOTIATION, LeadStatus.WON, LeadStatus.LOST},
     LeadStatus.NEGOTIATION: {LeadStatus.OFFER_SENT, LeadStatus.WON, LeadStatus.LOST},
-    LeadStatus.AI_PENDING: set(),
+    LeadStatus.AI_PENDING: {LeadStatus.TAKEN, LeadStatus.NOT_LEAD},
     LeadStatus.WON: set(),
     LeadStatus.LOST: set(),
     LeadStatus.NOT_LEAD: set(),
@@ -415,6 +417,7 @@ class CRMService:
         active: bool | None = None,
         tier: str | None = None,
         category: str | None = None,
+        notification_policy: str | None = None,
     ) -> Competitor:
         async with self.session_factory() as session:
             competitor = await session.get(Competitor, competitor_id)
@@ -430,6 +433,15 @@ class CRMService:
                 competitor.poll_interval_seconds = {"A": 180, "B": 600, "C": 1800}[normalized_tier]
             if category is not None:
                 competitor.category = category.upper()
+            if notification_policy is not None:
+                normalized_policy = notification_policy.strip().upper()
+                if normalized_policy == "INHERIT":
+                    competitor.notification_policy = None
+                else:
+                    try:
+                        competitor.notification_policy = NotificationPolicy(normalized_policy)
+                    except ValueError as exc:
+                        raise LeadWorkflowError("Неизвестный режим уведомлений") from exc
             await session.commit()
             return competitor
 

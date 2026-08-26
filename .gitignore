@@ -9,6 +9,7 @@ __pycache__/
 .coverage
 htmlcov/
 .backups/
+.runtime/
 lead_radar.db
 *.db-journal
 *.sqlite3

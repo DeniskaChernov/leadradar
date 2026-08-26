@@ -6,7 +6,16 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 
 from app.config import get_settings
-from app.db.models import Comment, Contact, ContactEvent, Deal, Lead, NotificationLog, Post
+from app.db.models import (
+    Comment,
+    Contact,
+    ContactEvent,
+    Deal,
+    Lead,
+    NotificationLog,
+    Post,
+    PublicSignal,
+)
 from app.db.session import create_engine, create_session_factory
 
 
@@ -25,7 +34,16 @@ async def inspect_integrity() -> IntegrityResult:
     session_factory = create_session_factory(engine)
     try:
         async with session_factory() as session:
-            models = (Contact, Post, Comment, Lead, Deal, ContactEvent, NotificationLog)
+            models = (
+                Contact,
+                Post,
+                Comment,
+                PublicSignal,
+                Lead,
+                Deal,
+                ContactEvent,
+                NotificationLog,
+            )
             counts = {
                 model.__tablename__: await session.scalar(select(func.count(model.id))) or 0
                 for model in models
@@ -41,6 +59,9 @@ async def inspect_integrity() -> IntegrityResult:
                 .having(func.count() > 1),
                 "lead comments": select(Lead.comment_id, func.count())
                 .group_by(Lead.comment_id)
+                .having(func.count() > 1),
+                "public signal comments": select(PublicSignal.comment_id, func.count())
+                .group_by(PublicSignal.comment_id)
                 .having(func.count() > 1),
                 "deal leads": select(Deal.lead_id, func.count())
                 .where(Deal.lead_id.is_not(None))

@@ -40,10 +40,10 @@
         {% if lead.status.value in ['TAKEN','CONTACTED'] %}<button class="stage-btn" data-stage="QUALIFIED" data-lead-id="{{ lead.id }}"><span>3</span><div><b>Интерес подтверждён</b><small>Понятно, что человеку действительно нужен товар</small></div></button>{% endif %}
         {% if lead.status.value in ['CONTACTED','QUALIFIED','NEGOTIATION'] %}<button class="stage-btn" data-stage="OFFER_SENT" data-lead-id="{{ lead.id }}"><span>4</span><div><b>Отправили предложение</b><small>Цена, фото, каталог или конкретная модель</small></div></button>{% endif %}
         {% if lead.status.value in ['CONTACTED','QUALIFIED','OFFER_SENT'] %}<button class="stage-btn" data-stage="NEGOTIATION" data-lead-id="{{ lead.id }}"><span>5</span><div><b>Переговоры</b><small>Обсуждаем детали и ведём к решению</small></div></button>{% endif %}
-        {% if lead.status.value == 'AI_PENDING' %}<div class="empty compact">Локальные правила не уверены. Сигнал можно оставить в очереди или включить ограниченный OpenAI-анализ в разделе «Система».</div>{% endif %}
+        {% if lead.status.value == 'ANALYZING' %}<div class="empty compact">Сигнал уже сохранён и отправлен менеджеру. Анализ интереса выполняется в фоне.</div>{% elif lead.status.value == 'AI_PENDING' %}<div class="empty compact">Нужна дополнительная проверка. Сигнал остаётся рабочим и не скрывается от менеджера.</div>{% endif %}
         {% if lead.status.value in ['WON','LOST','NOT_LEAD'] %}<div class="empty compact">Этот лид уже закрыт: <b>{{ lead_status_label(lead.status) }}</b>.</div>{% endif %}
       </div>
-      {% if lead.status.value not in ['WON','LOST','NOT_LEAD','AI_PENDING'] %}
+      {% if lead.status.value not in ['WON','LOST','NOT_LEAD'] %}
       <div class="danger-zone"><button class="btn danger ghost" data-lead-action="not-lead" data-lead-id="{{ lead.id }}">Это не лид</button><span>Используйте только если комментарий действительно не связан с покупкой.</span></div>
       {% endif %}
     </section>

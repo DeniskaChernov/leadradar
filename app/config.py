@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     http_max_attempts: int = Field(default=3, ge=1, le=5)
     telegram_notification_max_attempts: int = Field(default=3, ge=1, le=10)
     telegram_notification_flush_interval_seconds: int = Field(default=30, ge=10, le=3600)
+    notification_policy: str = "ALL_NEW_COMMENTS"
 
     @property
     def external_spend_unlocked(self) -> bool:
@@ -121,6 +122,15 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"rules", "hybrid", "openai"}:
             raise ValueError("AI_MODE must be rules, hybrid, or openai")
+        return normalized
+
+    @field_validator("notification_policy")
+    @classmethod
+    def validate_notification_policy(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        allowed = {"ALL_NEW_COMMENTS", "COMMERCIAL_ONLY", "HOT_ONLY"}
+        if normalized not in allowed:
+            raise ValueError(f"NOTIFICATION_POLICY must be one of: {', '.join(sorted(allowed))}")
         return normalized
 
 

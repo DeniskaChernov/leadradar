@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 
-from app.db.models import Comment, Contact, ContactEvent, ContactEventType, Post
+from app.db.models import Comment, Contact, ContactEvent, ContactEventType, Post, PublicSignal
 from app.schemas.instagram import InstagramComment, InstagramPost
 from app.services.contact_service import ContactService
 
@@ -42,6 +42,7 @@ async def test_contact_upsert_and_comment_deduplication(session_factory):
     async with session_factory() as session:
         assert await session.scalar(select(func.count(Contact.id))) == 1
         assert await session.scalar(select(func.count(Comment.id))) == 2
+        assert await session.scalar(select(func.count(PublicSignal.id))) == 2
         events = (
             await session.scalars(
                 select(ContactEvent).where(

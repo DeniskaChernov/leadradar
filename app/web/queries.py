@@ -27,6 +27,8 @@ from app.db.models import (
 )
 
 OPEN_LEAD_STATUSES = [
+    LeadStatus.ANALYZING,
+    LeadStatus.AI_PENDING,
     LeadStatus.NEW,
     LeadStatus.TAKEN,
     LeadStatus.CONTACTED,
@@ -61,13 +63,17 @@ class WebQueryService:
             )
             counts["analyzed"] = int(
                 await session.scalar(
-                    select(func.count(Lead.id)).where(Lead.status != LeadStatus.AI_PENDING)
+                    select(func.count(Lead.id)).where(
+                        Lead.status.not_in([LeadStatus.ANALYZING, LeadStatus.AI_PENDING])
+                    )
                 )
                 or 0
             )
             counts["ai_pending"] = int(
                 await session.scalar(
-                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.AI_PENDING)
+                    select(func.count(Lead.id)).where(
+                        Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING])
+                    )
                 )
                 or 0
             )
@@ -239,7 +245,9 @@ class WebQueryService:
             )
             pending = int(
                 await session.scalar(
-                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.AI_PENDING)
+                    select(func.count(Lead.id)).where(
+                        Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING])
+                    )
                 )
                 or 0
             )
@@ -291,7 +299,12 @@ class WebQueryService:
             elif normalized_kind == "hot":
                 stmt = stmt.where(Lead.lead_score >= self.hot_threshold)
             elif normalized_kind == "pending":
-                stmt = stmt.where(or_(Lead.id.is_(None), Lead.status == LeadStatus.AI_PENDING))
+                stmt = stmt.where(
+                    or_(
+                        Lead.id.is_(None),
+                        Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING]),
+                    )
+                )
             return (await session.execute(stmt)).all()
 
     async def leads(

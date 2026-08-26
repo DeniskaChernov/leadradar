@@ -1,4 +1,15 @@
-# Lead Radar V3.5 — release notes
+# Lead Radar V4.1 Foundation — release notes
+
+## V4.1 Foundation · Signal First
+
+- новый комментарий сохраняется как уникальный `PublicSignal` до любых внешних действий;
+- первый Telegram-сигнал отправляется до AI, enrichment и profile analysis;
+- сообщение после анализа редактируется на месте, с идемпотентным concise fallback;
+- появились режимы уведомлений для всей системы и отдельного конкурента;
+- baseline и replay гарантированно не отправляют production-уведомления;
+- сбой AI оставляет менеджеру рабочий лид со статусом «Нужна дополнительная проверка»;
+- новая миграция проверена на существующей и пустой БД;
+- 62 теста, Ruff, compileall, integrity scan и 13 web routes прошли без внешних вызовов.
 
 ## V3.5 · deep lead intelligence
 

@@ -84,7 +84,7 @@ class LeadWorkflowService:
                 .where(
                     Lead.id == lead_id,
                     Lead.assigned_manager_telegram_id.is_(None),
-                    Lead.status == LeadStatus.NEW,
+                    Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING, LeadStatus.NEW]),
                 )
                 .values(
                     assigned_manager_telegram_id=manager_id,
@@ -367,7 +367,7 @@ class LeadWorkflowService:
             ai_pending = (
                 await session.scalar(
                     select(func.count(Lead.id)).where(
-                        Lead.status == LeadStatus.AI_PENDING
+                        Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING])
                     )
                 )
                 or 0

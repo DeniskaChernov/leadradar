@@ -322,11 +322,34 @@ def build_web_app(
         )
         replay_scenario = getattr(getattr(controller.monitor, "provider", None), "scenario", None)
         replay_status = replay_scenario.status() if replay_scenario is not None else None
+        notification_modes = {
+            "ALL_NEW_COMMENTS": (
+                "Каждый новый комментарий",
+                "Менеджер сразу видит каждый новый уникальный сигнал. История и replay не уведомляют.",
+            ),
+            "COMMERCIAL_ONLY": (
+                "Только покупательский интерес",
+                "Уведомление появится после бесплатной первичной классификации.",
+            ),
+            "HOT_ONLY": (
+                "Только горячие лиды",
+                "Менеджер получает только сигналы, достигшие HOT-порога.",
+            ),
+        }
+        notification_policy_info = notification_modes[settings.notification_policy]
+        production_notifications = bool(settings.telegram_bot_token) and settings.instagram_provider not in {
+            "mock",
+            "replay",
+        }
         integrations = {
             "Telegram": {
                 "configured": bool(settings.telegram_bot_token),
-                "enabled": bool(settings.telegram_bot_token),
-                "detail": "Уведомления и вход в Mini App",
+                "enabled": production_notifications,
+                "detail": (
+                    "Production-уведомления включены"
+                    if production_notifications
+                    else "Replay/mock не отправляет production-уведомления"
+                ),
             },
             "Локальный анализ": {
                 "configured": True,
@@ -356,6 +379,7 @@ def build_web_app(
                 usage_breakdown=usage_breakdown,
                 scan_plan=scan_plan,
                 replay_status=replay_status,
+                notification_policy_info=notification_policy_info,
             ),
         )
 
@@ -688,11 +712,21 @@ def build_web_app(
                 active=active,
                 tier=str(payload.get("tier")) if payload.get("tier") else None,
                 category=str(payload.get("category")) if payload.get("category") else None,
+                notification_policy=(
+                    str(payload.get("notification_policy"))
+                    if payload.get("notification_policy")
+                    else None
+                ),
             )
             return {
                 "ok": True,
                 "active": competitor.active,
                 "tier": competitor.tier,
+                "notification_policy": (
+                    competitor.notification_policy.value
+                    if competitor.notification_policy
+                    else "INHERIT"
+                ),
                 "message": "Настройки конкурента сохранены",
             }
         except LeadWorkflowError as exc:
