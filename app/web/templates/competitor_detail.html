@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ competitor.display_name or competitor.normalized_handle }} · Конкуренты{% endblock %}
+{% block heading %}{{ competitor.display_name or '@' ~ competitor.normalized_handle }}{% endblock %}
+{% block subheading %}Коммерческий спрос, публикации и возможности на основе наблюдаемых данных{% endblock %}
+{% block content %}
+<div class="detail-back"><a href="/competitors">← Все конкуренты</a></div>
+
+<section class="panel competitor-intel-hero">
+  <div><span class="eyebrow">COMPETITOR INTELLIGENCE V2</span><h2>@{{ competitor.normalized_handle }}</h2><p>{{ competitor.notes or 'Наблюдаемый игрок мебельного рынка.' }}</p><div class="source-boundary">Только сохранённые публичные комментарии. Ответы в Direct и скрытая активность системе неизвестны.</div></div>
+  <div class="competitor-intel-score"><strong>{{ commercial_rate }}%</strong><span>commercial intent rate</span><small>{{ commercial }} из {{ comments }} комментариев</small></div>
+</section>
+
+<div class="metrics competitor-detail-metrics">
+  <div class="metric"><span>Reels</span><strong>{{ posts|length }}</strong><small>наблюдаемых публикаций</small></div>
+  <div class="metric"><span>Покупатели</span><strong>{{ unique_buyers }}</strong><small>уникальных контактов</small></div>
+  <div class="metric accent"><span>HOT</span><strong>{{ hot }}</strong><small>{{ hot_rate }}% от наблюдаемых</small></div>
+  <div class="metric"><span>Сравнивают</span><strong>{{ multi_competitor }}</strong><small>видны у нескольких компаний</small></div>
+  <div class="metric"><span>Цена</span><strong>{{ price_rate }}%</strong><small>доля вопросов</small></div>
+  <div class="metric"><span>Наличие</span><strong>{{ availability_rate }}%</strong><small>доля вопросов</small></div>
+  <div class="metric"><span>Доставка</span><strong>{{ delivery_rate }}%</strong><small>доля вопросов</small></div>
+  <div class="metric"><span>B2B / количество</span><strong>{{ quantity_rate }}%</strong><small>доля запросов</small></div>
+</div>
+
+<div class="grid two competitor-intel-grid">
+  <section class="panel opportunity-panel"><div class="panel-head"><div><h2>Возможности</h2><p>Как превратить наблюдаемый спрос в оффер или действие.</p></div></div><div class="opportunity-list">{% for item in opportunities %}<article><div><span>{{ intent_label(item.intent) if item.intent != 'PRODUCT' else item.title }}</span><strong>{{ item.signals }}</strong></div><p>{{ item.action }}</p></article>{% else %}<div class="empty compact">Коммерческих вопросов пока недостаточно для рекомендации.</div>{% endfor %}</div><div class="truth-note"><b>Граница данных</b><span>Мы не утверждаем, что конкурент не ответил клиенту: текущий provider не собирает публичные ответы и ничего не знает о Direct.</span></div></section>
+  <section class="panel"><div class="panel-head"><div><h2>Структура спроса</h2><p>Какие намерения и товары встречаются чаще.</p></div></div><div class="split-ranks"><div><h3>Намерения</h3>{% for intent, count in intent_counts %}<div class="rank-row"><span>{{ intent_label(intent) }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Пока нет данных.</div>{% endfor %}</div><div><h3>Товары</h3>{% for product, count in product_counts %}<div class="rank-row"><span>{{ product_label(product) }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Пока нет данных.</div>{% endfor %}</div></div></section>
+</div>
+
+<section class="panel"><div class="panel-head"><div><h2>Самые коммерчески эффективные публикации</h2><p>Ранжирование по сохранённым вопросам покупателей, а не только по просмотрам.</p></div></div><div class="table-wrap"><table><thead><tr><th>Публикация</th><th>Наблюдалось</th><th>Коммерческих</th><th>На 100</th><th>Покупателей</th><th>Цена</th><th>Наличие</th><th>Доставка</th><th>Количество</th></tr></thead><tbody>{% for item in post_performance %}<tr><td class="context"><a href="{{ item.post.url }}" target="_blank" rel="noopener">{{ item.post.caption[:100] or item.post.platform_post_id }}{% if item.post.caption|length > 100 %}…{% endif %} ↗</a><small>{{ coverage_label(item.post.coverage_status) }}</small></td><td>{{ item.observed_comments }}</td><td><b>{{ item.commercial_comments }}</b></td><td>{{ item.commercial_per_100 }}</td><td>{{ item.unique_buyers }}</td><td>{{ item.price }}</td><td>{{ item.availability }}</td><td>{{ item.delivery }}</td><td>{{ item.quantity }}</td></tr>{% else %}<tr><td colspan="9" class="empty">Публикаций пока нет.</td></tr>{% endfor %}</tbody></table></div></section>
+
+<div class="grid two competitor-bottom-grid">
+  <section class="panel"><div class="panel-head"><div><h2>Что спрашивают</h2><p>Сильнейшие сохранённые коммерческие комментарии.</p></div></div><div class="question-list">{% for item in questions %}<a href="/leads/{{ item.lead.id }}"><div><b>@{{ item.contact.username }}</b><span>{{ item.lead.lead_score }}/100 · {{ intent_label(item.lead.intent) }}</span></div><p>{{ item.comment.text }}</p></a>{% else %}<div class="empty compact">Коммерческих вопросов пока нет.</div>{% endfor %}</div></section>
+  <section class="panel"><div class="panel-head"><div><h2>Пересечение с конкурентами</h2><p>Контакты, замеченные также у других компаний.</p></div></div><div class="overlap-list">{% for item in overlaps %}<a href="/competitors/{{ item.competitor.id }}"><b>@{{ item.competitor.normalized_handle }}</b><span>{{ item.contacts }} общих контактов</span></a>{% else %}<div class="empty compact">Пересечений пока нет.</div>{% endfor %}</div></section>
+</div>
+{% endblock %}

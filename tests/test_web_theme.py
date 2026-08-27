@@ -80,3 +80,18 @@ def test_significant_changes_are_actionable_and_explainable():
     assert "СУЩЕСТВЕННЫЕ ИЗМЕНЕНИЯ" in contact
     assert "Мелкие колебания" not in contact
     assert "мелкие колебания оценки" in contact
+
+
+def test_competitor_intelligence_explains_data_boundary_and_actions():
+    overview = (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(
+        encoding="utf-8"
+    )
+    detail = (PROJECT_ROOT / "app/web/templates/competitor_detail.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "COMPETITOR INTELLIGENCE V2" in overview
+    assert "Пересечение спроса" in overview
+    assert "Самые коммерчески эффективные публикации" in detail
+    assert "Мы не утверждаем, что конкурент не ответил клиенту" in detail
+    assert "Direct" in detail

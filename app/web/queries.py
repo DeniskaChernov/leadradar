@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime, timedelta
+from itertools import combinations
 
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -750,35 +751,7 @@ class WebQueryService:
             ).all()
             result = []
             for competitor in competitors:
-                posts = (
-                    await session.scalars(
-                        select(Post)
-                        .where(Post.competitor_id == competitor.id)
-                        .order_by(desc(Post.published_at), desc(Post.id))
-                    )
-                ).all()
-                comments = int(
-                    await session.scalar(
-                        select(func.count(Comment.id)).where(Comment.competitor_id == competitor.id)
-                    )
-                    or 0
-                )
-                leads = int(
-                    await session.scalar(
-                        select(func.count(Lead.id)).where(Lead.competitor_id == competitor.id)
-                    )
-                    or 0
-                )
-                hot = int(
-                    await session.scalar(
-                        select(func.count(Lead.id)).where(
-                            Lead.competitor_id == competitor.id,
-                            Lead.lead_score >= self.hot_threshold,
-                            Lead.status != LeadStatus.NOT_LEAD,
-                        )
-                    )
-                    or 0
-                )
+                stats = await self._competitor_stats(session, competitor)
                 won = int(
                     await session.scalar(
                         select(func.count(Deal.id))
@@ -801,14 +774,13 @@ class WebQueryService:
                     )
                     or 0
                 )
-                hot_rate = round((hot / comments) * 100, 1) if comments else 0.0
-                if comments < 10:
+                if stats["comments"] < 10:
                     recommendation = "Набираем данные"
                     recommendation_tone = "muted"
-                elif hot_rate >= 15 or won > 0:
+                elif stats["commercial_rate"] >= 15 or won > 0:
                     recommendation = "Усилить мониторинг"
                     recommendation_tone = "good"
-                elif hot_rate >= 5:
+                elif stats["commercial_rate"] >= 5:
                     recommendation = "Оставить в работе"
                     recommendation_tone = "info"
                 else:
@@ -817,11 +789,7 @@ class WebQueryService:
                 result.append(
                     {
                         "competitor": competitor,
-                        "posts": posts,
-                        "comments": comments,
-                        "leads": leads,
-                        "hot": hot,
-                        "hot_rate": hot_rate,
+                        **stats,
                         "won": won,
                         "revenue": revenue,
                         "recommendation": recommendation,
@@ -829,6 +797,308 @@ class WebQueryService:
                     }
                 )
             return result
+
+    async def competitor_intelligence(self, competitor_id: int) -> dict | None:
+        async with self.session_factory() as session:
+            competitor = await session.get(Competitor, competitor_id)
+            if competitor is None:
+                return None
+            stats = await self._competitor_stats(session, competitor)
+            commercial_rows = (
+                await session.execute(
+                    select(Lead, Comment, Contact, Post)
+                    .join(Comment, Comment.id == Lead.comment_id)
+                    .join(Contact, Contact.id == Lead.contact_id)
+                    .join(Post, Post.id == Comment.post_id)
+                    .where(
+                        Lead.competitor_id == competitor_id,
+                        Lead.status != LeadStatus.NOT_LEAD,
+                        Lead.lead_score >= 50,
+                    )
+                    .order_by(desc(Lead.lead_score), desc(Comment.discovered_at))
+                )
+            ).all()
+            post_performance = []
+            for post in stats["posts"]:
+                rows = [row for row in commercial_rows if row[1].post_id == post.id]
+                observed = int(
+                    await session.scalar(
+                        select(func.count(Comment.id)).where(Comment.post_id == post.id)
+                    )
+                    or 0
+                )
+                intents = Counter(lead.intent for lead, _comment, _contact, _post in rows)
+                post_performance.append(
+                    {
+                        "post": post,
+                        "observed_comments": observed,
+                        "commercial_comments": len(rows),
+                        "commercial_per_100": (
+                            round(len(rows) / observed * 100, 1) if observed else 0.0
+                        ),
+                        "unique_buyers": len(
+                            {contact.id for _lead, _comment, contact, _post in rows}
+                        ),
+                        "price": intents["PRICE"],
+                        "availability": intents["AVAILABILITY"],
+                        "delivery": intents["DELIVERY"],
+                        "quantity": intents["QUANTITY"],
+                    }
+                )
+            post_performance.sort(
+                key=lambda item: (
+                    item["commercial_comments"],
+                    item["commercial_per_100"],
+                ),
+                reverse=True,
+            )
+            intent_counts = Counter(
+                lead.intent for lead, _comment, _contact, _post in commercial_rows
+            )
+            product_counts = Counter(
+                lead.product_category
+                for lead, _comment, _contact, _post in commercial_rows
+                if lead.product_category
+            )
+            opportunities = self._competitor_opportunities(intent_counts, product_counts)
+            questions = [
+                {
+                    "lead": lead,
+                    "comment": comment,
+                    "contact": contact,
+                    "post": post,
+                }
+                for lead, comment, contact, post in commercial_rows[:20]
+            ]
+            contact_ids = {contact.id for _lead, _comment, contact, _post in commercial_rows}
+            overlaps = []
+            if contact_ids:
+                overlap_rows = (
+                    await session.execute(
+                        select(Competitor, func.count(func.distinct(Comment.contact_id)))
+                        .join(Comment, Comment.competitor_id == Competitor.id)
+                        .where(
+                            Comment.contact_id.in_(contact_ids),
+                            Competitor.id != competitor_id,
+                        )
+                        .group_by(Competitor.id)
+                        .order_by(desc(func.count(func.distinct(Comment.contact_id))))
+                    )
+                ).all()
+                overlaps = [
+                    {"competitor": item, "contacts": count}
+                    for item, count in overlap_rows
+                ]
+            return {
+                "competitor": competitor,
+                **stats,
+                "intent_counts": intent_counts.most_common(),
+                "product_counts": product_counts.most_common(),
+                "post_performance": post_performance,
+                "opportunities": opportunities,
+                "questions": questions,
+                "overlaps": overlaps,
+                "public_response_observable": False,
+            }
+
+    async def competitor_overlap_network(self) -> list[dict]:
+        async with self.session_factory() as session:
+            rows = (
+                await session.execute(
+                    select(Comment.contact_id, Competitor.id, Competitor.normalized_handle)
+                    .join(Competitor, Competitor.id == Comment.competitor_id)
+                    .distinct()
+                )
+            ).all()
+        by_contact: dict[int, set[tuple[int, str]]] = {}
+        for contact_id, competitor_id, handle in rows:
+            by_contact.setdefault(contact_id, set()).add((competitor_id, handle))
+        pair_counts: Counter[tuple[tuple[int, str], tuple[int, str]]] = Counter()
+        for companies in by_contact.values():
+            for left, right in combinations(sorted(companies), 2):
+                pair_counts[(left, right)] += 1
+        return [
+            {
+                "left_id": left[0],
+                "left": left[1],
+                "right_id": right[0],
+                "right": right[1],
+                "contacts": count,
+            }
+            for (left, right), count in pair_counts.most_common(20)
+        ]
+
+    async def competitor_intelligence_overview(self) -> dict[str, int | float]:
+        async with self.session_factory() as session:
+            comments = int(await session.scalar(select(func.count(Comment.id))) or 0)
+            commercial = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(
+                        Lead.status != LeadStatus.NOT_LEAD,
+                        Lead.lead_score >= 50,
+                    )
+                )
+                or 0
+            )
+            unique_buyers = int(
+                await session.scalar(
+                    select(func.count(func.distinct(Lead.contact_id))).where(
+                        Lead.status != LeadStatus.NOT_LEAD,
+                        Lead.lead_score >= 50,
+                    )
+                )
+                or 0
+            )
+            source_counts = (
+                select(Comment.contact_id, func.count(func.distinct(Comment.competitor_id)).label("n"))
+                .group_by(Comment.contact_id)
+                .subquery()
+            )
+            multi = int(
+                await session.scalar(
+                    select(func.count()).select_from(source_counts).where(source_counts.c.n >= 2)
+                )
+                or 0
+            )
+        return {
+            "observed_comments": comments,
+            "commercial_comments": commercial,
+            "commercial_rate": round(commercial / comments * 100, 1) if comments else 0.0,
+            "unique_buyers": unique_buyers,
+            "multi_competitor": multi,
+        }
+
+    async def _competitor_stats(
+        self, session: AsyncSession, competitor: Competitor
+    ) -> dict:
+        posts = list(
+            await session.scalars(
+                select(Post)
+                .where(Post.competitor_id == competitor.id)
+                .order_by(desc(Post.published_at), desc(Post.id))
+            )
+        )
+        comments = int(
+            await session.scalar(
+                select(func.count(Comment.id)).where(Comment.competitor_id == competitor.id)
+            )
+            or 0
+        )
+        leads = int(
+            await session.scalar(
+                select(func.count(Lead.id)).where(Lead.competitor_id == competitor.id)
+            )
+            or 0
+        )
+        commercial = int(
+            await session.scalar(
+                select(func.count(Lead.id)).where(
+                    Lead.competitor_id == competitor.id,
+                    Lead.status != LeadStatus.NOT_LEAD,
+                    Lead.lead_score >= 50,
+                )
+            )
+            or 0
+        )
+        hot = int(
+            await session.scalar(
+                select(func.count(Lead.id)).where(
+                    Lead.competitor_id == competitor.id,
+                    Lead.lead_score >= self.hot_threshold,
+                    Lead.status != LeadStatus.NOT_LEAD,
+                )
+            )
+            or 0
+        )
+        unique_buyers = int(
+            await session.scalar(
+                select(func.count(func.distinct(Lead.contact_id))).where(
+                    Lead.competitor_id == competitor.id,
+                    Lead.status != LeadStatus.NOT_LEAD,
+                    Lead.lead_score >= 50,
+                )
+            )
+            or 0
+        )
+        intent_rows = (
+            await session.execute(
+                select(Lead.intent, func.count(Lead.id))
+                .where(
+                    Lead.competitor_id == competitor.id,
+                    Lead.status != LeadStatus.NOT_LEAD,
+                    Lead.lead_score >= 50,
+                )
+                .group_by(Lead.intent)
+            )
+        ).all()
+        intents = Counter({str(intent): int(count) for intent, count in intent_rows})
+        contact_source_counts = (
+            select(Comment.contact_id, func.count(func.distinct(Comment.competitor_id)).label("n"))
+            .group_by(Comment.contact_id)
+            .subquery()
+        )
+        multi_competitor = int(
+            await session.scalar(
+                select(func.count(func.distinct(Comment.contact_id)))
+                .join(
+                    contact_source_counts,
+                    contact_source_counts.c.contact_id == Comment.contact_id,
+                )
+                .where(
+                    Comment.competitor_id == competitor.id,
+                    contact_source_counts.c.n >= 2,
+                )
+            )
+            or 0
+        )
+        return {
+            "posts": posts,
+            "comments": comments,
+            "leads": leads,
+            "commercial": commercial,
+            "commercial_rate": round(commercial / comments * 100, 1) if comments else 0.0,
+            "hot": hot,
+            "hot_rate": round(hot / comments * 100, 1) if comments else 0.0,
+            "unique_buyers": unique_buyers,
+            "multi_competitor": multi_competitor,
+            "price_rate": round(intents["PRICE"] / comments * 100, 1) if comments else 0.0,
+            "availability_rate": (
+                round(intents["AVAILABILITY"] / comments * 100, 1) if comments else 0.0
+            ),
+            "delivery_rate": (
+                round(intents["DELIVERY"] / comments * 100, 1) if comments else 0.0
+            ),
+            "quantity_rate": (
+                round(intents["QUANTITY"] / comments * 100, 1) if comments else 0.0
+            ),
+        }
+
+    @staticmethod
+    def _competitor_opportunities(
+        intents: Counter, products: Counter
+    ) -> list[dict[str, object]]:
+        definitions = (
+            ("PRICE", "Цена", "Показать стартовую цену или понятный диапазон в рекламе и карточке товара."),
+            ("AVAILABILITY", "Наличие", "Продвигать позиции в наличии и добавить быстрый резерв."),
+            ("DELIVERY", "Доставка", "Сделать сроки и стоимость доставки частью оффера."),
+            ("QUANTITY", "Количество / B2B", "Подготовить расчёт под количество и оптовые условия."),
+        )
+        result = [
+            {"intent": intent, "title": title, "signals": intents[intent], "action": action}
+            for intent, title, action in definitions
+            if intents[intent]
+        ]
+        if not result and products:
+            product, count = products.most_common(1)[0]
+            result.append(
+                {
+                    "intent": "PRODUCT",
+                    "title": "Подтвердить товарный спрос",
+                    "signals": count,
+                    "action": f"Проверить оффер и наличие для категории {product}.",
+                }
+            )
+        return result
 
     async def market_candidates(self) -> list[MarketCandidate]:
         async with self.session_factory() as session:

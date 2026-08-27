@@ -322,6 +322,8 @@ def build_web_app(
         rows = await queries.competitors()
         candidates = await queries.market_candidates()
         overview = await queries.market_overview()
+        intelligence_overview = await queries.competitor_intelligence_overview()
+        overlaps = await queries.competitor_overlap_network()
         return templates.TemplateResponse(
             request=request,
             name="competitors.html",
@@ -330,8 +332,21 @@ def build_web_app(
                 rows=rows,
                 candidates=candidates,
                 market_overview=overview,
+                intelligence_overview=intelligence_overview,
+                overlaps=overlaps,
                 categories=COMPETITOR_CATEGORY_LABELS,
             ),
+        )
+
+    @app.get("/competitors/{competitor_id}", response_class=HTMLResponse)
+    async def competitor_detail(request: Request, competitor_id: int):
+        data = await queries.competitor_intelligence(competitor_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail="Конкурент не найден")
+        return templates.TemplateResponse(
+            request=request,
+            name="competitor_detail.html",
+            context=base_context(request, **data),
         )
 
     @app.get("/roadmap", response_class=HTMLResponse)
