@@ -854,3 +854,24 @@ class ExternalUsage(Base):
     success: Mapped[bool] = mapped_column(Boolean, default=True)
     details_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class OpeningSignal(Base):
+    __tablename__ = "opening_signals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    place_name: Mapped[str] = mapped_column(String(255), index=True)
+    place_type: Mapped[str] = mapped_column(String(64), default="OTHER")
+    city: Mapped[str] = mapped_column(String(128), default="Tashkent")
+    address: Mapped[str | None] = mapped_column(Text)
+    opening_timeline: Mapped[str | None] = mapped_column(String(128))
+    google_place_id: Mapped[str | None] = mapped_column(String(255))
+    confidence: Mapped[int] = mapped_column(Integer, default=50)
+    source_type: Mapped[str] = mapped_column(String(64), default="INSTAGRAM_PUBLIC_SIGNAL")
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id"), index=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"))
+    review_status: Mapped[str] = mapped_column(String(32), default="PENDING_REVIEW", index=True)
+    reviewed_by_manager_id: Mapped[int | None] = mapped_column(Integer)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+

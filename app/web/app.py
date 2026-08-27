@@ -662,6 +662,49 @@ def build_web_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/openings")
+    async def list_openings_review_queue():
+        from app.services.place_opening_service import PlaceOpeningService
+
+        service = PlaceOpeningService(workflow.session_factory)
+        queue = await service.get_review_queue()
+        return {
+            "ok": True,
+            "queue": [
+                {
+                    "id": item.id,
+                    "place_name": item.place_name,
+                    "place_type": item.place_type,
+                    "city": item.city,
+                    "opening_timeline": item.opening_timeline,
+                    "confidence": item.confidence,
+                    "review_status": item.review_status,
+                    "contact_id": item.contact_id,
+                }
+                for item in queue
+            ],
+        }
+
+    @app.post("/api/openings/{opening_id}/review")
+    async def review_opening_endpoint(request: Request, opening_id: int):
+        from app.services.place_opening_service import PlaceOpeningService
+
+        payload = await _json_or_form(request)
+        decision = str(payload.get("decision") or "").strip()
+        service = PlaceOpeningService(workflow.session_factory)
+        try:
+            signal = await service.review_opening_signal(
+                opening_id, manager_id(request), decision
+            )
+            return {
+                "ok": True,
+                "opening_id": signal.id,
+                "review_status": signal.review_status,
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 
     @app.post("/api/tasks/{task_id}/complete")
     async def complete_task(request: Request, task_id: int):

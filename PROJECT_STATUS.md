@@ -2,11 +2,23 @@
 
 ## Текущая версия
 
-**V4.6 Meta Catalog Mapping & Export Recipes · Master Phase 9 complete**
+**V4.7 Google Future Openings & Place Resolution · Master Phase 10 complete**
 
-Текущая цель: сохранить стабильность Phases 1–9 и перейти к Phase 10 (Google Future Openings & Place Resolution).
+Текущая цель: выпустить Phase 11 — UI Refinement (ликвидный интерфейс, a11y, performance) и Phase 12 — Hardening.
+
+## Master TZ Phase 10 — завершён
+
+- Добавлена Alembic миграция `b1c2d3e4f5a6_opening_signals.py` и ORM-модель `OpeningSignal`;
+- Создан сервис `PlaceOpeningService` (`app/services/place_opening_service.py`):
+  - Детектирование сигналов открытия ресторанов, кафе, отелей, офисов и шоурумов в комментариях/публикациях;
+  - Идемпотентное сохранение сигналов открытий со статусом `PENDING_REVIEW` и оценкой уверенности 50-95%;
+  - Очередь модерации для менеджера с переводом в `VERIFIED` или `REJECTED`;
+- Добавлены Web API эндпоинты `GET /api/openings` и `POST /api/openings/{opening_id}/review`;
+- Написана группа тестов `tests/test_place_openings.py` (4/4 pass);
+- 132 теста, Ruff lint и 17 integrity checks проходят на 100%.
 
 ## Master TZ Phase 9 — завершён
+
 
 - Создан модуль `app/services/export_recipe_service.py` с `CatalogMapper` и `ExportRecipeService`;
 - `CatalogMapper` сопоставляет 12 товарных категорий Lead Radar с иерархической таксономией Meta Custom Audiences / Google Product Taxonomy;

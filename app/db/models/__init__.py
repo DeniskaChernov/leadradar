@@ -28,6 +28,7 @@ from app.db.models.entities import (
     NotificationLog,
     NotificationPolicy,
     NotificationStatus,
+    OpeningSignal,
     Post,
     PublicSignal,
     PublicSignalStatus,
@@ -69,7 +70,9 @@ __all__ = [
     "NotificationLog",
     "NotificationPolicy",
     "NotificationStatus",
+    "OpeningSignal",
     "Post",
+
     "PublicSignal",
     "PublicSignalStatus",
     "SignalSubjectType",
