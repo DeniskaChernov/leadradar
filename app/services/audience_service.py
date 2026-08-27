@@ -21,6 +21,7 @@ from app.db.models import (
     LeadStatus,
     PublicSignal,
 )
+from app.services.b2b_policy import B2BPolicy
 
 # ---------------------------------------------------------------------------
 # Segment registry
@@ -184,7 +185,10 @@ INTEREST_HALF_LIVES: dict[str, float] = {
     "AVAILABILITY": 10.0,
     "DELIVERY": 14.0,
     "QUANTITY": 30.0,
+    "BUY": 21.0,
+    "CATALOG": 21.0,
     "FOLLOWER": 180.0,
+    "BUSINESS_ROLE": 365.0,
     "BUYER_ROLE": 365.0,
 }
 
@@ -354,54 +358,76 @@ class AudienceEngine:
             commercial = [
                 (lead, comment)
                 for lead, comment in rows
-                if lead.status != LeadStatus.NOT_LEAD and lead.lead_score >= 50
+                if (
+                    (lead.analysis_details or {}).get("is_commercial") is True
+                    or (
+                        (lead.analysis_details or {}).get("intelligence_version")
+                        != "3.0"
+                        and lead.status != LeadStatus.NOT_LEAD
+                        and lead.lead_score >= 50
+                    )
+                )
             ]
-            sources = {comment.competitor_id for comment in comments}
+            sources = {comment.competitor_id for _lead, comment in commercial}
             product_counts = Counter(
                 lead.product_category for lead, _comment in commercial if lead.product_category
             )
             intent_counts = Counter(lead.intent for lead, _comment in commercial)
-            raw_text = " ".join(comment.text.lower() for comment in comments)
+            raw_text = " ".join(comment.text.lower() for _lead, comment in commercial)
             explicit_quantity = max(
                 self._extract_explicit_quantities(raw_text),
                 default=contact.desired_quantity or 0,
             )
-            b2b_markers = (
-                "оптом",
-                "wholesale",
-                "ulgurji",
-                "кафе",
-                "ресторан",
-                "гостиниц",
-                "kafe",
-                "restoran",
-                "mehmonxona",
-                "производ",
-                "перепрод",
-                "дилер",
+            b2b_decision = B2BPolicy.assess(
+                raw_text,
+                product="HORECA" if "HORECA" in product_counts else None,
+                quantity_override=explicit_quantity or None,
             )
-            is_b2b = (
-                explicit_quantity >= 20
-                or any(marker in raw_text for marker in b2b_markers)
-                or "HORECA" in product_counts
-            )
-            dates = [self._aware(comment.discovered_at) for comment in comments]
+            is_b2b = b2b_decision.role.value == "B2B_HORECA"
+            dates = [
+                self._aware(comment.discovered_at) for _lead, comment in commercial
+            ]
             first_seen = min(dates, default=self._aware(contact.first_seen_at))
             last_seen = max(dates, default=self._aware(contact.last_seen_at))
             recency_days = max(0, (now - last_seen).days)
             score_values = [lead.lead_score for lead, _comment in commercial]
             max_score = max(score_values, default=0)
             source_bonus = min(18, max(0, len(sources) - 1) * 9)
+            decayed_activity = sum(
+                calculate_decayed_interest_score(
+                    18.0,
+                    lead.intent,
+                    max(
+                        0.0,
+                        (
+                            now - self._aware(comment.discovered_at)
+                        ).total_seconds()
+                        / 86400,
+                    ),
+                )
+                for lead, comment in commercial
+            )
             activity_score = min(
                 100,
-                len(comments) * 8
-                + len(commercial) * 10
+                round(decayed_activity)
                 + source_bonus
-                + (20 if recency_days <= 7 else 8 if recency_days <= 30 else 0),
+                + (
+                    20
+                    if commercial and recency_days <= 7
+                    else 8
+                    if commercial and recency_days <= 30
+                    else 0
+                ),
             )
             value_score = min(
                 100,
-                max_score + (10 if is_b2b else 0) + (8 if explicit_quantity >= 20 else 0),
+                max_score
+                + (10 if is_b2b else 0)
+                + (
+                    8
+                    if explicit_quantity >= B2BPolicy.PROBABLE_QUANTITY
+                    else 0
+                ),
             )
             fit_score = min(100, max_score + min(12, len(product_counts) * 4))
             stage_order = {

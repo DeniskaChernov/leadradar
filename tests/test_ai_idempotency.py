@@ -11,6 +11,7 @@ from app.services.ai_service import (
     BudgetedCachedOpenAIAnalyzer,
     LeadAnalysisContext,
     OpenAILeadAnalyzer,
+    PreviousSignal,
 )
 from app.services.usage_service import ExternalUsageService
 from tests.test_lead_workflow import create_lead
@@ -116,6 +117,25 @@ async def test_context_fingerprint_deterministic_and_sensitive(session_factory):
     assert analyzer.context_fingerprint(ctx1) == analyzer.context_fingerprint(ctx2)
     # Different comment produces different fingerprint
     assert analyzer.context_fingerprint(ctx1) != analyzer.context_fingerprint(ctx3)
+
+    ctx_with_reaction = LeadAnalysisContext(
+        competitor="aiko.uz",
+        post_caption="Диван",
+        comment="Цена?",
+        username="user1",
+        previous_signals=[
+            PreviousSignal(
+                competitor="other",
+                post_caption="Диван",
+                comment="Красиво!",
+                discovered_at="2026-08-27T10:00:00Z",
+            )
+        ],
+        previous_interests=[],
+    )
+    assert analyzer.context_fingerprint(ctx1) == analyzer.context_fingerprint(
+        ctx_with_reaction
+    )
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from app.services.b2b_policy import B2BPolicy
+
 
 @dataclass(frozen=True, slots=True)
 class ActionRecommendation:
@@ -43,7 +45,9 @@ class NextBestActionEngine:
         evidence_list = list(evidence_ids)
 
         # 1. High-volume B2B HoReCa orders
-        if buyer_role == "B2B_HORECA" or (quantity and quantity >= 10):
+        if buyer_role == "B2B_HORECA" or (
+            quantity and quantity >= B2BPolicy.PROBABLE_QUANTITY
+        ):
             qty_str = f" на {quantity} единиц" if quantity else ""
             return ActionRecommendation(
                 action_type="B2B_PROPOSAL",

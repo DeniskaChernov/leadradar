@@ -50,6 +50,13 @@ class BuyerRole(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+class CommercialSignalQuality(StrEnum):
+    NON_COMMERCIAL = "NON_COMMERCIAL"
+    WEAK_COMMERCIAL = "WEAK_COMMERCIAL"
+    MEDIUM_COMMERCIAL = "MEDIUM_COMMERCIAL"
+    STRONG_COMMERCIAL = "STRONG_COMMERCIAL"
+
+
 class LeadAnalysis(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -70,3 +77,20 @@ class LeadAnalysis(BaseModel):
     buyer_role: BuyerRole = BuyerRole.UNKNOWN
     factors: dict[str, int] = Field(default_factory=dict)
     evidence_ids: list[int] = Field(default_factory=list)
+    contradiction_ids: list[int] = Field(default_factory=list)
+    is_commercial: bool = False
+    commercial_quality: CommercialSignalQuality = (
+        CommercialSignalQuality.NON_COMMERCIAL
+    )
+    commercial_stage: FunnelStage = FunnelStage.NON_COMMERCIAL
+    intent_score: int = Field(default=0, ge=0, le=100)
+    activity_score: int = Field(default=0, ge=0, le=100)
+    specificity_score: int = Field(default=0, ge=0, le=100)
+    value_score: int = Field(default=0, ge=0, le=100)
+    fit_score: int = Field(default=0, ge=0, le=100)
+    source_quality_score: int = Field(default=0, ge=0, le=100)
+    confidence_score: int = Field(default=0, ge=0, le=100)
+    priority_score: int = Field(default=0, ge=0, le=100)
+    quantity: int | None = Field(default=None, ge=1)
+    next_best_action: str = "Проверить контекст и выбрать следующее действие."
+    short_reason: str = ""

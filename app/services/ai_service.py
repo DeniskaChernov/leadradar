@@ -22,6 +22,14 @@ from app.schemas.leads import (
     PurchaseHorizon,
     Urgency,
 )
+from app.services.b2b_policy import B2BPolicy
+from app.services.lead_scoring_v3 import (
+    HistoricalSignal,
+    LeadScorerV3,
+    infer_historical_intent,
+    parse_observed_at,
+    signal_quality,
+)
 from app.services.usage_service import ExternalUsageService
 
 logger = logging.getLogger(__name__)
@@ -51,6 +59,9 @@ class LeadAnalysisContext:
     evidence_ids: list[int] = field(default_factory=list)
     public_signal_id: int | None = None
     lead_id: int | None = None
+    stable_contact_id: str | None = None
+    vertical: str = "FURNITURE"
+    catalog_context_version: str = "catalog:v1"
 
 
 class LeadAnalyzer(Protocol):
@@ -154,7 +165,7 @@ class RuleBasedLeadAnalyzer:
 
         if re.fullmatch(r"\+{1,3}", raw.replace(" ", "")):
             if self._caption_has_commercial_plus_cta(caption):
-                score = min(99, 92 + self._history_boost(context))
+                score = 92
                 return self._result(
                     True,
                     score,
@@ -188,7 +199,7 @@ class RuleBasedLeadAnalyzer:
             "для проекта",
         )
         if any(marker in text for marker in designer_markers):
-            score = min(99, 88 + self._history_boost(context))
+            score = 88
             return self._result(
                 True,
                 score,
@@ -215,7 +226,7 @@ class RuleBasedLeadAnalyzer:
             "choyxona",
         )
         if any(marker in text for marker in business_markers):
-            score = min(99, 90 + self._history_boost(context))
+            score = 90
             return self._result(
                 True,
                 score,
@@ -382,7 +393,7 @@ class RuleBasedLeadAnalyzer:
             # generic availability word too, but the real question is about delivery.
             intent, base_score, reason, _phrases = matched_checks[0]
             specificity_boost = min(6, (len(matched_checks) - 1) * 3)
-            score = min(99, base_score + specificity_boost + self._history_boost(context))
+            score = min(99, base_score + specificity_boost)
             evidence = [reason]
             evidence.extend(
                 f"Дополнительный сигнал: {extra_reason}"
@@ -404,7 +415,7 @@ class RuleBasedLeadAnalyzer:
             r"\b\d{1,3}\s*(шт\w*|штук\w*|dona\w*|дона\w*|та|персон\w*|киши\w*|kishi\w*|комплект\w*|стул\w*|стол\w*|кресл\w*|диван\w*)\b",
             text,
         ):
-            score = min(99, 90 + self._history_boost(context))
+            score = 90
             return self._result(
                 True,
                 score,
@@ -417,7 +428,7 @@ class RuleBasedLeadAnalyzer:
 
         objection_markers = ("дорого", "слишком дорого", "qimmat", "киммат", "қиммат")
         if any(marker in text for marker in objection_markers):
-            score = min(79, 58 + self._history_boost(context))
+            score = 58
             return self._result(
                 score >= 65,
                 score,
@@ -580,18 +591,26 @@ class RuleBasedLeadAnalyzer:
 
     @staticmethod
     def _history_boost(context: LeadAnalysisContext) -> int:
-        # Repeated interest matters, but interest across different sellers is even stronger:
-        # it usually means the person is actively comparing the market rather than casually
-        # reacting to one account. The cap prevents history from turning weak comments into HOT
-        # leads by itself.
-        repetition = min(9, len(context.previous_signals) * 3)
-        other_sources = {
-            item.competitor
-            for item in context.previous_signals
-            if item.competitor and item.competitor != context.competitor
-        }
-        comparison_boost = min(6, len(other_sources) * 3)
-        return min(15, repetition + comparison_boost)
+        history = RuleBasedLeadAnalyzer._validated_history(context)
+        boost, _sequence = LeadScorerV3._history_scores(history, Intent.OTHER)
+        return boost
+
+    @staticmethod
+    def _validated_history(context: LeadAnalysisContext) -> list[HistoricalSignal]:
+        result: list[HistoricalSignal] = []
+        for item in context.previous_signals:
+            intent = infer_historical_intent(item.comment)
+            if intent is None:
+                continue
+            result.append(
+                HistoricalSignal(
+                    competitor=item.competitor,
+                    intent=intent,
+                    quality=signal_quality(is_lead=True, intent=intent),
+                    observed_at=parse_observed_at(item.discovered_at),
+                )
+            )
+        return result
 
     @staticmethod
     def _detect_buyer_role(
@@ -620,26 +639,9 @@ class RuleBasedLeadAnalyzer:
         if any(marker in text for marker in designer_markers):
             return BuyerRole.DESIGNER_CONTRACTOR
 
-        business_markers = (
-            "для кафе",
-            "для ресторана",
-            "для гостиницы",
-            "для объекта",
-            "для отеля",
-            "оптом",
-            "ulgurji",
-            "kafe uchun",
-            "restoran uchun",
-            "mehmonxona uchun",
-            "choyxona",
-        )
-        quantity_match = re.search(
-            r"\b(\d{1,3})\s*(шт\w*|штук\w*|dona\w*|дона\w*|та|персон\w*|киши\w*|kishi\w*|комплект\w*|стул\w*|стол\w*|кресл\w*|диван\w*|chair\w*|table\w*)\b",
-            text,
-        )
-        qty = int(quantity_match.group(1)) if quantity_match else 0
-        if any(marker in text for marker in business_markers) or qty >= 10 or product == "HORECA":
-            return BuyerRole.B2B_HORECA
+        b2b = B2BPolicy.assess(text, product=product)
+        if b2b.role == BuyerRole.B2B_HORECA:
+            return b2b.role
 
         if is_lead:
             return BuyerRole.B2C_CONSUMER
@@ -749,17 +751,38 @@ class RuleBasedLeadAnalyzer:
                 spec += 5
             specificity_score = min(10, spec)
 
-        history_boost = RuleBasedLeadAnalyzer._history_boost(context) if context else 0
-
+        evidence_ids = list(context.evidence_ids) if context and context.evidence_ids else []
+        history = RuleBasedLeadAnalyzer._validated_history(context) if context else []
+        scoring = LeadScorerV3.score(
+            is_lead=is_lead,
+            intent=intent,
+            legacy_intent_score=intent_strength,
+            text=raw,
+            product=product,
+            evidence_ids=evidence_ids,
+            history=history,
+            current_competitor=context.competitor if context else "",
+            urgency_score={Urgency.LOW: 30, Urgency.MEDIUM: 60, Urgency.HIGH: 95}[urgency],
+        )
+        confidence = scoring.confidence_score
+        score = scoring.priority_score
         factors = {
-            "intent_strength": intent_strength,
-            "specificity_score": specificity_score,
+            "intent_strength": scoring.intent_score,
+            "intent_score": scoring.intent_score,
+            "activity_score": scoring.activity_score,
+            "specificity_score": scoring.specificity_score,
+            "value_score": scoring.value_score,
+            "fit_score": scoring.fit_score,
+            "source_quality_score": scoring.source_quality_score,
+            "confidence_score": scoring.confidence_score,
+            "priority_score": scoring.priority_score,
             "role_score": role_score,
-            "history_boost": history_boost,
+            "history_boost": scoring.history_boost,
+            "sequence_score": scoring.sequence_score,
+            "validated_commercial_count": scoring.validated_commercial_count,
+            "validated_competitor_count": scoring.validated_competitor_count,
             "objection_penalty": objection_penalty,
         }
-
-        evidence_ids = list(context.evidence_ids) if context and context.evidence_ids else []
 
         actions = {
             Intent.BUY: "Связаться в течение 10 минут, подтвердить модель, количество и удобный способ оформления.",
@@ -793,10 +816,24 @@ class RuleBasedLeadAnalyzer:
             evidence=details[:6],
             risk_flags=(risk_flags or [])[:6],
             recommended_action=recommended_action,
-            intelligence_version="2.0",
+            intelligence_version=LeadScorerV3.VERSION,
             buyer_role=buyer_role,
             factors=factors,
             evidence_ids=evidence_ids,
+            is_commercial=scoring.quality.value != "NON_COMMERCIAL",
+            commercial_quality=scoring.quality,
+            commercial_stage=stage,
+            intent_score=scoring.intent_score,
+            activity_score=scoring.activity_score,
+            specificity_score=scoring.specificity_score,
+            value_score=scoring.value_score,
+            fit_score=scoring.fit_score,
+            source_quality_score=scoring.source_quality_score,
+            confidence_score=scoring.confidence_score,
+            priority_score=scoring.priority_score,
+            quantity=scoring.b2b.quantity,
+            next_best_action=recommended_action,
+            short_reason=reason,
         )
 
 
@@ -813,8 +850,14 @@ class OpenAILeadAnalyzer:
             self.client = AsyncOpenAI(api_key=api_key)
 
     async def analyze(self, context: LeadAnalysisContext) -> LeadAnalysis:
+        context_payload = asdict(context)
+        context_payload["previous_signals"] = [
+            asdict(signal)
+            for signal in context.previous_signals
+            if infer_historical_intent(signal.comment) is not None
+        ]
         payload = {
-            **asdict(context),
+            **context_payload,
             "catalog_scope": [
                 "wicker furniture",
                 "artificial rattan furniture",
@@ -831,7 +874,7 @@ class OpenAILeadAnalyzer:
             ),
         }
         system_prompt = (
-            "You are the lead-intelligence layer for a furniture seller (version 2.0). Qualify public Instagram "
+            "You are the evidence-first lead-intelligence layer for a furniture seller (version 3.0). Qualify public Instagram "
             "comments in Russian, Uzbek Latin, Uzbek Cyrillic, or mixed language. The outcome must "
             "help a sales manager decide whether to act, why, how quickly, and what to say next. "
             "Use only supplied evidence. Never infer private traits, contact details, income, or "
@@ -843,7 +886,7 @@ class OpenAILeadAnalyzer:
             "Negation overrides keyword matches. Distinguish active purchase intent from research, "
             "price objections, and ambiguous questions. Score 0–100 consistently; confidence means "
             "confidence in the classification, not purchase probability. Provide short observable "
-            "evidence, uncertainty flags, intelligence_version '2.0', buyer_role, factors breakdown, "
+            "evidence, uncertainty flags, intelligence_version '3.0', buyer_role, decomposed component scores, "
             "evidence_ids, and one concrete manager action. Do not reveal hidden "
             "chain-of-thought or invent a rationale. Return only the validated structured result."
         )
@@ -856,14 +899,32 @@ class OpenAILeadAnalyzer:
                 reasoning={"effort": "medium"},
                 max_output_tokens=900,
                 store=False,
-                prompt_cache_key="lead-radar-qualifier-v2",
+                prompt_cache_key="lead-radar-qualifier-v3",
             )
             parsed = response.output_parsed
             if parsed is None:
                 raise AIAnalysisError("OpenAI returned no parsed lead analysis")
-            if isinstance(parsed, LeadAnalysis):
-                return parsed
-            return LeadAnalysis.model_validate(parsed)
+            analysis = (
+                parsed
+                if isinstance(parsed, LeadAnalysis)
+                else LeadAnalysis.model_validate(parsed)
+            )
+            valid_evidence_ids = sorted(
+                set(analysis.evidence_ids) & set(context.evidence_ids)
+            )
+            confidence = analysis.confidence
+            confidence_score = analysis.confidence_score or confidence
+            if not valid_evidence_ids:
+                confidence = min(confidence, 65)
+                confidence_score = min(confidence_score, 65)
+            return analysis.model_copy(
+                update={
+                    "evidence_ids": valid_evidence_ids,
+                    "confidence": confidence,
+                    "confidence_score": confidence_score,
+                    "intelligence_version": "3.0",
+                }
+            )
         except AIAnalysisError:
             raise
         except Exception as exc:
@@ -900,6 +961,9 @@ class BudgetedCachedOpenAIAnalyzer:
             "post_caption": (context.post_caption or "").strip(),
             "comment": (context.comment or "").strip(),
             "username": (context.username or "").strip().lower(),
+            "stable_contact_id": context.stable_contact_id,
+            "vertical": context.vertical,
+            "catalog_context_version": context.catalog_context_version,
             "previous_signals": [
                 {
                     "competitor": (s.competitor or "").strip().lower(),
@@ -907,6 +971,7 @@ class BudgetedCachedOpenAIAnalyzer:
                     "discovered_at": s.discovered_at,
                 }
                 for s in sorted(context.previous_signals, key=lambda x: x.discovered_at)
+                if infer_historical_intent(s.comment) is not None
             ],
             "previous_interests": sorted(context.previous_interests),
             "known_customer_context": dict(sorted(context.known_customer_context.items())),

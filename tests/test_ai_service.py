@@ -43,7 +43,41 @@ async def test_openai_structured_response_parsing():
     assert responses.kwargs["text_format"] is LeadAnalysis
     assert responses.kwargs["store"] is False
     assert responses.kwargs["reasoning"] == {"effort": "medium"}
-    assert responses.kwargs["prompt_cache_key"] == "lead-radar-qualifier-v2"
+    assert responses.kwargs["prompt_cache_key"] == "lead-radar-qualifier-v3"
+
+
+async def test_openai_cannot_persist_unknown_evidence_ids():
+    result = LeadAnalysis(
+        is_lead=True,
+        lead_score=88,
+        intent=Intent.BUY,
+        product_category="TABLE",
+        language="ru",
+        reason="Direct order request",
+        confidence=92,
+        confidence_score=92,
+        evidence_ids=[7, 999],
+    )
+    analyzer = OpenAILeadAnalyzer(
+        "unused",
+        "configured-model",
+        client=SimpleNamespace(responses=FakeResponses(result)),
+    )
+
+    parsed = await analyzer.analyze(
+        LeadAnalysisContext(
+            competitor="aiko.uz",
+            post_caption="Стол",
+            comment="Хочу заказать",
+            username="buyer",
+            previous_signals=[],
+            previous_interests=[],
+            evidence_ids=[7],
+        )
+    )
+
+    assert parsed.evidence_ids == [7]
+    assert parsed.intelligence_version == "3.0"
 
 
 async def test_rules_understand_uzbek_cyrillic_price_questions():

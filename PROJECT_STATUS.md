@@ -2,9 +2,39 @@
 
 ## Текущая версия
 
-**V6.17 Production Ready · ALL V6 Master Specification Phases (V6.0–V6.17) Fully Complete**
+**CORE HARDENING IN PROGRESS · NOT READY FOR LIVE PILOT**
 
-Текущая цель: готовность к пилотному запуску на рынке, поддержание 100% стабильности и мониторинг.
+Текущая цель: доказать корректность ядра по новому Master Task. Старые заявления «100% complete»
+и «Production Ready» считаются историческими и не являются доказательством готовности.
+
+## Честная матрица готовности
+
+| Feature | Implementation status | Test status | Live tested | Production ready |
+|---|---|---|---|---|
+| Audit + network freeze | Implemented | Offline automated | No | No |
+| AI request/budget ledger | Implemented | Concurrency + migration | No | No |
+| Lead Scoring V3 | Implemented in rule pipeline | 30 golden + component tests | No | No |
+| Audience Engine V3 | Legacy engine; rebuild pending | Legacy tests only | No | No |
+| Rattan Vertical V2 | Prototype/legacy | Small fixture only | No | No |
+| Unit Economics ledger | Not implemented | Calculator tests only | No | No |
+| Premium UI / Telegram Bot | Partial | Smoke/unit only | No | No |
+| Real Agent / MCP | Prototype/mock | Fixture tests only | No | No |
+| Meta / Google | Not connected | Offline prototype only | No | No |
+| Offline 500–1000 signal pilot | Not run | Missing | No | No |
+| Controlled live pilot | Blocked | Missing gate evidence | No | No |
+
+## Phase C — Lead Scoring V3
+
+- реальный rule pipeline переведён на Intelligence `3.0` с отдельными component scores;
+- добавлены `CommercialSignalQuality`, explainable priority и отдельный confidence;
+- реакции и шум исключены из history/multi-competitor boost;
+- sequence progression сильнее одинаковых повторов, повторения имеют diminishing returns;
+- intent-specific decay реально используется в history и Audience activity;
+- `B2BPolicy 1.0` централизует contextual/30+/50+ thresholds;
+- AI fingerprint учитывает только коммерческую историю, stable contact identity, vertical и catalog context version;
+- OpenAI output не может сохранить выдуманные Evidence IDs; без Evidence confidence снижается;
+- текущая golden calibration содержит только 30 сценариев — pilot gate 150–300 ещё не выполнен;
+- полный offline suite: 167 тестов, внешних вызовов нет.
 
 ## Post-audit hardening — AI cost ledger
 
@@ -18,7 +48,7 @@
 - `.env.example` документирует глобальный `EXTERNAL_KILL_SWITCH`;
 - migration matrix, schema check, Ruff и 159 offline-тестов проходят без внешних вызовов.
 
-## Master Specification V6 — Итоговое выполнение
+## Архив прежних заявлений V6 — требует повторной проверки по новому Master Task
 
 - **Phase V6.0 (Audit & Security Gate)** — **ЗАВЕРШЕНО**:
   - Составлены обязательные документы аудита: `V6_PRE_IMPLEMENTATION_AUDIT.md`, `V6_SECURITY_AUDIT.md`, `V6_DATA_INTEGRITY_AUDIT.md`, `V6_UI_UX_AUDIT.md`, `V6_BOT_UX_AUDIT.md`, `V6_DESIGN_SYSTEM_AUDIT.md`.

@@ -522,6 +522,16 @@ class LeadService:
             evidence_ids=evidence_ids,
             public_signal_id=public_signal_id,
             lead_id=lead_id,
+            stable_contact_id=(
+                f"instagram:{contact.platform_user_id}"
+                if contact.platform_user_id
+                else f"contact:{contact.id}"
+            ),
+            vertical=(
+                public_signal.vertical.value
+                if public_signal is not None
+                else "FURNITURE"
+            ),
         )
 
     async def _analyze(self, context: LeadAnalysisContext):

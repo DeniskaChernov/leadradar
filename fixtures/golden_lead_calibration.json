@@ -46,7 +46,7 @@
     "post_caption": "Удобные плетеные стулья",
     "expected_is_lead": true,
     "expected_intent": "QUANTITY",
-    "expected_buyer_role": "B2B_HORECA",
+    "expected_buyer_role": "B2C_CONSUMER",
     "min_score": 88,
     "language": "ru"
   },
@@ -87,7 +87,7 @@
     "expected_is_lead": true,
     "expected_intent": "CONTACT",
     "expected_buyer_role": "B2C_CONSUMER",
-    "min_score": 75,
+    "min_score": 70,
     "language": "ru"
   },
   {
@@ -127,7 +127,7 @@
     "expected_is_lead": true,
     "expected_intent": "BUY",
     "expected_buyer_role": "B2C_CONSUMER",
-    "min_score": 88,
+    "min_score": 85,
     "language": "ru"
   },
   {
@@ -167,7 +167,7 @@
     "expected_is_lead": true,
     "expected_intent": "BUY",
     "expected_buyer_role": "B2C_CONSUMER",
-    "min_score": 90,
+    "min_score": 85,
     "language": "uz"
   },
   {
@@ -177,7 +177,7 @@
     "expected_is_lead": true,
     "expected_intent": "PRICE",
     "expected_buyer_role": "B2C_CONSUMER",
-    "min_score": 80,
+    "min_score": 75,
     "language": "uz"
   },
   {
@@ -187,7 +187,7 @@
     "expected_is_lead": true,
     "expected_intent": "AVAILABILITY",
     "expected_buyer_role": "B2C_CONSUMER",
-    "min_score": 80,
+    "min_score": 75,
     "language": "uz"
   },
   {
@@ -226,8 +226,8 @@
     "post_caption": "Qulay o'rindiqlar",
     "expected_is_lead": true,
     "expected_intent": "QUANTITY",
-    "expected_buyer_role": "B2B_HORECA",
-    "min_score": 88,
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 85,
     "language": "uz"
   },
   {
