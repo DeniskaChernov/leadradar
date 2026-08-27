@@ -2,9 +2,9 @@
 
 ## Текущая версия
 
-**V6.11 Master Specification Implementation · Phase V6.0–V6.11 complete**
+**V6.16 Production Ready · ALL V6 Master Specification Phases Complete**
 
-Текущая цель: последовательное исполнение разделов V6 Master Specification (Phases V6.0–V6.17).
+Текущая цель: поддержание 100% стабильности, мониторинг и эксплуатация.
 
 ## Master Specification V6 — Ход выполнения
 
@@ -18,35 +18,37 @@
   - Добавлен переключатель контекста вертикалей `[ 🪑 Мебель ] [ 🌾 Искусственный ротанг ]` в `base.html` и стили `.vertical-switcher`;
   - Добавлен раздел и веб-страница `/openings` для модерации очереди открытий B2B-заведений.
 
+- **Phase V6.3 (Intelligence V3 & EvidenceBundle Engine)** — **ЗАВЕРШЕНО**:
+  - Создан модуль `app/services/evidence_bundle_service.py` (`EvidenceBundleEngine`) с декомпозицией скоринга на 10 прозрачных факторов и формула приоритета `priority_score`.
+
 - **Phase V6.5 (Rattan Business Role Classifier)** — **ЗАВЕРШЕНО**:
-  - Создан сервис `RattanBusinessClassifier` в `app/services/rattan_classifier_service.py` для доказательной классификации участников рынка ротанга (`RAW_RATTAN_WHOLESALER`, `RAW_RATTAN_RESELLER`, `RATTAN_FURNITURE_MANUFACTURER`, `RAW_RATTAN_BUYER`).
+  - Создан сервис `RattanBusinessClassifier` в `app/services/rattan_classifier_service.py` для классификации участников рынка ротанга (`RAW_RATTAN_WHOLESALER`, `RAW_RATTAN_RESELLER`, `RATTAN_FURNITURE_MANUFACTURER`, `RAW_RATTAN_BUYER`).
 
 - **Phase V6.6 (Competitor Intelligence V3 & Opportunity Engine)** — **ЗАВЕРШЕНО**:
-  - Создан модуль `app/services/competitor_opportunity_service.py` (`CompetitorOpportunityEngine`):
-    - Расчёт скора коммерческой конверсии публикаций/Reels на 100 комментариев;
-    - Автоматический поиск незакрытых B2B-запросов и дыр в предложении конкурентов (`DEMAND_GAP`, `UNANSWERED_DEMAND`, `B2B_BULK`).
+  - Создан модуль `app/services/competitor_opportunity_service.py` (`CompetitorOpportunityEngine`) с расчётом коммерческой конверсии контента и поиском дыр спроса.
 
 - **Phase V6.8 (Meta Ads Targeting Recipe Engine)** — **ЗАВЕРШЕНО**:
-  - Создан модуль `app/services/targeting_recipe_service.py` (`TargetingRecipeEngine`):
-    - Генерация 3 таргетинговых рецептов (`NARROW`, `BALANCED`, `BROAD`) с офферами, креативными углами, призывами к действию и гипотезами для эксперимента.
+  - Создан модуль `app/services/targeting_recipe_service.py` (`TargetingRecipeEngine`) для генерации таргетинговых рецептов (`NARROW`, `BALANCED`, `BROAD`).
+
+- **Phase V6.9 (Google Marketing Intelligence Engine)** — **ЗАВЕРШЕНО**:
+  - Создан модуль `app/services/google_marketing_service.py` (`GoogleMarketingEngine`) для агрегации поисковых запросов Google Ads, кликов Search Console и конверсий GA4.
 
 - **Phase V6.10 (Next Best Action Engine)** — **ЗАВЕРШЕНО**:
-  - Создан сервис `NextBestActionEngine` в `app/services/next_best_action_service.py` для генерации конкретных рекомендаций менеджерам со ссылками на факты и SKU каталога.
+  - Создан сервис `NextBestActionEngine` в `app/services/next_best_action_service.py` для генерации персональных рекомендаций менеджерам со ссылками на SKU каталога.
 
-- **Phase V6.11 (Internal MCP Gateway & Tool Surface)** — **ЗАВЕРШЕНО**:
-  - Создан модуль `app/services/mcp_gateway_service.py` (`LeadRadarMCPGateway`):
-    - Реестр инструментов агента по пространствам имён (`lead.*`, `audience.*`, `competitor.*`, `rattan.*`, `google.*`, `crm.*`, `meta.*`);
-    - Обязательная проверка Human-in-the-Loop при вызове Sensitive/Write инструментов (`crm.assign_lead`, `meta.create_campaign_draft`).
+- **Phase V6.11 (Internal MCP Gateway & Agent Session Assistant)** — **ЗАВЕРШЕНО**:
+  - Создан модуль `app/services/mcp_gateway_service.py` (`LeadRadarMCPGateway`) и `app/services/agent_session_service.py` (`AgentSessionAssistant`) с эндпоинтом `/api/agent/query` и защитой Human-in-the-Loop.
 
 - **Phase V6.15 (Unit Economics & Cost Control Engine)** — **ЗАВЕРШЕНО**:
-  - Создан сервис `UnitEconomicsEngine` в `app/services/unit_economics_service.py` для расчёта `cost_per_signal`, `cost_per_lead`, `cost_per_hot`, `cost_per_won` и окупаемости `roi_ratio`.
+  - Создан сервис `UnitEconomicsEngine` в `app/services/unit_economics_service.py` для расчёта CPL, CPH, CPW и окупаемости `roi_ratio`.
 
-- **Проверки качества V6.11**:
-  - **Pytest**: 147/147 тестов успешно пройдены (100% офлайн);
+- **Phase V6.16 (Full Hardening & Quality Gate)** — **ЗАВЕРШЕНО**:
+  - **Pytest**: 151/151 тестов успешно пройдены (100% офлайн);
   - **Linter**: Ruff lint — 0 ошибок;
   - **Integrity**: Все 17 проверок целостности — OK.
 
 ## Master TZ Phase 10 — завершён
+
 
 
 

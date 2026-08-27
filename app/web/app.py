@@ -720,6 +720,37 @@ def build_web_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/agent/query")
+    async def agent_query_endpoint(request: Request):
+        from app.services.agent_session_service import AgentSessionAssistant
+
+        payload = await _json_or_form(request)
+        query = str(payload.get("query") or "").strip()
+        context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+        approval = bool(payload.get("approval_granted", False))
+
+        response = AgentSessionAssistant.process_query(
+            query,
+            page_context=context,
+            approval_granted=approval,
+        )
+        return {
+            "ok": True,
+            "reply": response.reply,
+            "suggested_actions": response.suggested_actions,
+            "evidence_citations": response.evidence_citations,
+            "tool_results": [
+                {
+                    "tool_name": r.tool_name,
+                    "success": r.success,
+                    "output": r.output,
+                    "approval_granted": r.approval_granted,
+                }
+                for r in response.tool_results
+            ],
+        }
+
+
 
 
     @app.post("/api/tasks/{task_id}/complete")
