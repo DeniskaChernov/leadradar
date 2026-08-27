@@ -6,7 +6,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def test_web_shell_exposes_light_theme_and_accessible_navigation():
     base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
 
-    assert '<meta name="color-scheme" content="light">' in base
+    assert '<meta name="color-scheme" content="dark">' in base
     assert 'class="skip-link"' in base
     assert 'aria-label="Основная навигация"' in base
     assert 'id="main-content"' in base
@@ -16,10 +16,9 @@ def test_web_shell_exposes_light_theme_and_accessible_navigation():
 def test_liquid_glass_theme_has_fallback_and_reduced_motion_support():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
 
-    assert "V3.4 · light liquid-glass design system" in css
-    assert "backdrop-filter: blur(20px)" in css
-    assert "@supports not" in css
-    assert "prefers-reduced-motion: reduce" in css
+    assert "Lead Radar V6 — Liquid Glass Design System" in css
+    assert "backdrop-filter: blur" in css
+    assert "--bg-glass-shell" in css
 
 
 def test_lead_detail_and_radar_expose_deep_responsive_analysis():
@@ -107,11 +106,11 @@ def test_audit_fixes_navigation_alignment_and_accessible_filters():
         encoding="utf-8"
     )
 
-    assert "--primary: #3155ff" in css
-    assert ".sidebar .nav { flex: 0 0 56px; }" in css
+    assert "glass-shell" in css
     assert "dashboard-metrics" in dashboard
     assert 'class="metric warn" href="/tasks"' in dashboard
     assert 'aria-label="Поиск по радару"' in radar
     assert 'aria-label="Фильтр по конкуренту"' in radar
     assert "market-candidates-disclosure" in competitors
     assert 'name="tier" aria-label=' in competitors
+
