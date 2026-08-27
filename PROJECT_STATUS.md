@@ -2,11 +2,23 @@
 
 ## Текущая версия
 
-**V4.5 Rattan Intelligence & Demand Analytics · Master Phases 6–8 complete**
+**V4.6 Meta Catalog Mapping & Export Recipes · Master Phase 9 complete**
 
-Текущая цель: выпустить Phases 6–8 в одном проходе и перейти к Phase 9 (Identity Resolution & Cross-Platform Signals).
+Текущая цель: сохранить стабильность Phases 1–9 и перейти к Phase 10 (Google Future Openings & Place Resolution).
+
+## Master TZ Phase 9 — завершён
+
+- Создан модуль `app/services/export_recipe_service.py` с `CatalogMapper` и `ExportRecipeService`;
+- `CatalogMapper` сопоставляет 12 товарных категорий Lead Radar с иерархической таксономией Meta Custom Audiences / Google Product Taxonomy;
+- Реализованы 4 зафиксированных рецепта экспорта (`b2b_horeca_wholesale`, `designers_contractors`, `high_intent_dining`, `comparison_shoppers`);
+- Строгий контроль приватности: `dry_run=True` (по умолчанию) генерирует только SHA-256 хеши и счетчики допустимых контактов без раскрытия PII;
+- Подтверждённый экспорт (`dry_run=False`) обрабатывает исключительно контакты в статусе `ExportEligibility.FIRST_PARTY_ELIGIBLE`, переводит статус в `EXPORTED` и создает аудируемые записи в `contact_events`;
+- Добавлены Web API эндпоинты `GET /api/audiences/export-recipes` и `POST /api/audiences/export-recipes/{recipe_slug}`;
+- Написана группа тестов `tests/test_export_recipes.py` (5/5 pass);
+- 128 тестов, Ruff lint и 17 integrity checks проходят на 100%.
 
 ## Master TZ Phases 6–8 — завершены
+
 
 ### Phase 6 — Rattan Intelligence Taxonomy
 - Расширен классификатор `_product()`: 12 категорий товара (`RATTAN_SOFA`, `RATTAN_ARMCHAIR`, `RATTAN_GARDEN_SET`, `RATTAN_BAR_STOOL`, `SWING`, `PERGOLA` и т.д.);

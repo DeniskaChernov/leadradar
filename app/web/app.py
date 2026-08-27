@@ -14,6 +14,7 @@ from app.db.models import LeadStatus
 from app.services.ai_service import HybridLeadAnalyzer, RuleBasedLeadAnalyzer
 from app.services.audience_service import AudienceEngine
 from app.services.crm_service import CRMService
+from app.services.export_recipe_service import ExportRecipeService
 from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowService
 from app.services.market_intelligence_service import MarketIntelligenceService
@@ -618,16 +619,49 @@ def build_web_app(
         lead_id_raw = payload.get("lead_id")
         lead_id = int(lead_id_raw) if lead_id_raw not in (None, "") else None
         try:
-            task = await crm.schedule_contact(
+            await crm.schedule_next_contact(
                 contact_id,
                 manager_id(request),
-                due_at=due_at,
+                due_at,
                 note=str(payload.get("note") or ""),
                 lead_id=lead_id,
             )
-            return {"ok": True, "task_id": task.id, "message": "Следующий контакт запланирован"}
+            return {"ok": True, "message": "Запланирован следующий контакт"}
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=400, detail=_human_workflow_error(exc)) from exc
+
+    @app.get("/api/audiences/export-recipes")
+    async def list_export_recipes():
+        from app.services.export_recipe_service import RECIPES, CatalogMapper
+
+        return {
+            "ok": True,
+            "recipes": [
+                {
+                    "slug": r.slug,
+                    "name": r.name,
+                    "description": r.description,
+                    "meta_category": CatalogMapper.get_meta_category(
+                        r.product_category
+                    ),
+                }
+                for r in RECIPES.values()
+            ],
+        }
+
+    @app.post("/api/audiences/export-recipes/{recipe_slug}")
+    async def run_export_recipe_endpoint(request: Request, recipe_slug: str):
+        payload = await _json_or_form(request)
+        dry_run = str(payload.get("dry_run", "true")).lower() in ("true", "1", "yes")
+        export_service = ExportRecipeService(workflow.session_factory)
+        try:
+            res = await export_service.run_export_recipe(
+                recipe_slug, dry_run=dry_run, manager_id=manager_id(request)
+            )
+            return {"ok": True, **res}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 
     @app.post("/api/tasks/{task_id}/complete")
     async def complete_task(request: Request, task_id: int):
