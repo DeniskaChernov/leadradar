@@ -131,12 +131,12 @@
       <p>Фиксируйте ответ, даже если сделка ещё не определилась. Это часть обучающей истории.</p>
       <form data-api-form action="/api/contacts/{{ contact.id }}/reply" data-reload="1">
         {% if leads %}<input type="hidden" name="lead_id" value="{{ leads[0].id }}">{% endif %}
-        <textarea name="text" rows="2" placeholder="Например: попросил цену и фото в бежевом цвете"></textarea>
+        <textarea name="text" rows="2" aria-label="Результат контакта" placeholder="Например: попросил цену и фото в бежевом цвете"></textarea>
         <button class="btn" type="submit">Зафиксировать ответ</button>
       </form>
     </section>
 
-    <section class="panel action-form-card"><h3>Добавить заметку</h3><form data-api-form action="/api/contacts/{{ contact.id }}/notes" data-reload="1"><textarea name="text" rows="3" placeholder="Свободная заметка для команды"></textarea><button class="btn" type="submit">Сохранить заметку</button></form></section>
+    <section class="panel action-form-card"><h3>Добавить заметку</h3><form data-api-form action="/api/contacts/{{ contact.id }}/notes" data-reload="1"><textarea name="text" rows="3" aria-label="Заметка о клиенте" placeholder="Свободная заметка для команды"></textarea><button class="btn" type="submit">Сохранить заметку</button></form></section>
 
     <section class="panel action-form-card"><h3>Следующий контакт</h3><form data-api-form action="/api/contacts/{{ contact.id }}/tasks" data-reload="1"><label>Когда<input name="due_at" type="datetime-local" required></label><label>Что сделать<input name="note" placeholder="Позвонить, отправить фото, уточнить решение"></label>{% if leads %}<label>Связать с лидом<select name="lead_id"><option value="">Без привязки</option>{% for item in leads %}<option value="{{ item.id }}">Лид #{{ item.id }} · {{ lead_status_label(item.status) }}</option>{% endfor %}</select></label>{% endif %}<button class="btn" type="submit">Поставить задачу</button></form></section>
 

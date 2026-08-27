@@ -25,13 +25,13 @@
 
 <div class="page-help"><b>Что система нашла</b><span>Здесь только данные, которые уже сохранены в нашей базе: клиенты, сигналы, горячие лиды, задачи и продажи.</span></div>
 
-<div class="metrics">
+<div class="metrics dashboard-metrics">
   <a class="metric" href="/contacts"><span>Клиенты</span><strong>{{ counts.contacts }}</strong><small>уникальных профилей</small></a>
   <a class="metric" href="/radar"><span>Сигналы</span><strong>{{ counts.comments }}</strong><small>+{{ counts.new_comments_24h }} за 24 часа</small></a>
   <a class="metric" href="/radar?kind=pending"><span>Ждут разбора</span><strong>{{ counts.unprocessed + counts.ai_pending }}</strong><small>локальная очередь + AI</small></a>
   <a class="metric accent" href="/leads"><span>Горячие лиды</span><strong>{{ counts.hot }}</strong><small>оценка от {{ settings.hot_lead_threshold }}/100</small></a>
   <a class="metric change" href="/#changes"><span>Стали горячее</span><strong>{{ counts.significant_changes_24h }}</strong><small>существенных изменений за 24 часа</small></a>
-  <a class="metric warn" href="/"><span>Нужно связаться</span><strong>{{ counts.tasks_today }}</strong><small>{{ counts.tasks_due }} уже просрочено</small></a>
+  <a class="metric warn" href="/tasks"><span>Нужно связаться</span><strong>{{ counts.tasks_today }}</strong><small>{{ counts.tasks_due }} уже просрочено</small></a>
   <a class="metric success" href="/deals?status=WON"><span>Продажи</span><strong>{{ counts.won }}</strong><small>{{ money(counts.revenue) }} сум</small></a>
 </div>
 

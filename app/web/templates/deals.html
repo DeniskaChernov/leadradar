@@ -4,7 +4,7 @@
 {% block subheading %}Деньги и результат работы с лидами{% endblock %}
 {% block content %}
 <div class="page-help"><b>Почему сделки важны для Lead Radar</b><span>Именно результат сделки учит систему отличать красивый комментарий от лида, который действительно приносит деньги.</span></div>
-<form class="filters" method="get"><input name="q" value="{{ q }}" placeholder="Клиент, товар или конкурент"><select name="status"><option value="">Все сделки</option>{% for s in ['NEW','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}<option value="{{ s }}" {% if status_filter==s %}selected{% endif %}>{{ deal_status_label(s) }}</option>{% endfor %}</select><button class="btn">Применить</button><a class="btn ghost" href="/deals">Сбросить</a></form>
+<form class="filters" method="get"><input name="q" value="{{ q }}" aria-label="Поиск сделок" placeholder="Клиент, товар или конкурент"><select name="status" aria-label="Статус сделки"><option value="">Все сделки</option>{% for s in ['NEW','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}<option value="{{ s }}" {% if status_filter==s %}selected{% endif %}>{{ deal_status_label(s) }}</option>{% endfor %}</select><button class="btn">Применить</button><a class="btn ghost" href="/deals">Сбросить</a></form>
 <div class="deal-grid">
 {% for deal, lead, contact, competitor in rows %}
 <article class="deal-card status-border-{{ deal.status.value|lower }}">

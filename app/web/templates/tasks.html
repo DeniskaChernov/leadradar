@@ -5,8 +5,8 @@
 {% block content %}
 <div class="page-help"><b>Не теряйте тёплых клиентов</b><span>Следующее действие ставится прямо из карточки лида или клиента. Просроченные задачи всегда поднимаются наверх.</span></div>
 <form class="filters" method="get">
-  <input name="q" value="{{ q }}" placeholder="Клиент или текст задачи">
-  <select name="view">
+  <input name="q" value="{{ q }}" aria-label="Поиск задач" placeholder="Клиент или текст задачи">
+  <select name="view" aria-label="Состояние задач">
     <option value="open" {% if view=='open' %}selected{% endif %}>Все открытые</option>
     <option value="overdue" {% if view=='overdue' %}selected{% endif %}>Просроченные</option>
     <option value="today" {% if view=='today' %}selected{% endif %}>На ближайшие 24 часа</option>

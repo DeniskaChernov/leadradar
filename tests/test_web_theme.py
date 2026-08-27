@@ -95,3 +95,23 @@ def test_competitor_intelligence_explains_data_boundary_and_actions():
     assert "Самые коммерчески эффективные публикации" in detail
     assert "Мы не утверждаем, что конкурент не ответил клиенту" in detail
     assert "Direct" in detail
+
+
+def test_audit_fixes_navigation_alignment_and_accessible_filters():
+    css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
+    dashboard = (PROJECT_ROOT / "app/web/templates/dashboard.html").read_text(
+        encoding="utf-8"
+    )
+    radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    competitors = (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "--primary: #3155ff" in css
+    assert ".sidebar .nav { flex: 0 0 56px; }" in css
+    assert "dashboard-metrics" in dashboard
+    assert 'class="metric warn" href="/tasks"' in dashboard
+    assert 'aria-label="Поиск по радару"' in radar
+    assert 'aria-label="Фильтр по конкуренту"' in radar
+    assert "market-candidates-disclosure" in competitors
+    assert 'name="tier" aria-label=' in competitors

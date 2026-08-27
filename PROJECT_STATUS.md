@@ -2,7 +2,7 @@
 
 ## Текущая версия
 
-**V4.1 Foundation · Stage 3/7 · Competitor Intelligence V2**
+**V4.1 Foundation · Stage 3/7 · Competitor Intelligence V2 · Audit Pass**
 
 Текущая цель: перейти от одного AIKO к системной карте мебельного рынка и подготовить Lead Radar к
 контролируемому пилоту нескольких конкурентов без бесконтрольного расхода API.
@@ -16,6 +16,18 @@
 динамические аудитории на основе уже сохранённых публичных сигналов.
 
 ## Новое в V4.1 Foundation
+
+### System & UI Audit Pass
+
+- исправлена ссылка KPI «Нужно связаться»: теперь она открывает задачи, а не текущий обзор;
+- мобильная нижняя навигация переведена в один горизонтально прокручиваемый ряд: все 11 разделов
+  доступны и больше не обрезаются;
+- определён отсутствовавший design token `--primary`, KPI выровнены в симметричную сетку 4 + 3,
+  длинный список кандидатов свёрнут в доступный disclosure-блок;
+- фильтры, textarea и настройки конкурентов получили доступные названия; повторный DOM-аудит
+  14 основных экранов не нашёл неподписанных полей, duplicate id или horizontal overflow;
+- штатный `Ctrl+C` теперь считается чистой остановкой и не печатает traceback `KeyboardInterrupt`;
+- browser console чиста, 77 тестов и integrity scan проходят без Instagram/OpenAI-вызовов.
 
 ### Competitor Intelligence V2
 
@@ -205,7 +217,7 @@ API-токены.
 - Результат синхронизации: **16 competitors / 1 active / 24 открытых market candidates**.
 - Повторная синхронизация каталога дважды создала `0` конкурентов и `0` кандидатов.
 - Локальный web smoke: `/health` и `/` успешны; `/api/scan` возвращает блокировку `409`.
-- полный `pytest`: **75 passed**; тесты не обращаются к Instagram/OpenAI и не расходуют API-токены.
+- полный `pytest`: **77 passed**; тесты не обращаются к Instagram/OpenAI и не расходуют API-токены.
 - `ruff check .`, compileall и data-integrity check: passed.
 - новые `/competitors` и `/competitors/{id}` проверены на рабочей БД: browser console чиста,
   horizontal overflow отсутствует.

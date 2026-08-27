@@ -341,7 +341,12 @@ def main() -> None:
     args = parser.parse_args()
     if args.once and args.web_only:
         parser.error("--once and --web-only cannot be used together")
-    raise SystemExit(asyncio.run(run(once=args.once, web_only=args.web_only)))
+    try:
+        exit_code = asyncio.run(run(once=args.once, web_only=args.web_only))
+    except KeyboardInterrupt:
+        logging.getLogger(__name__).info("shutdown_requested")
+        exit_code = 0
+    raise SystemExit(exit_code)
 
 
 if __name__ == "__main__":
