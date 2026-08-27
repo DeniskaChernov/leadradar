@@ -2,10 +2,21 @@
 
 ## Текущая версия
 
-**V4.2 Reliability · Master Phase 2 complete · Notification Hardening**
+**V4.3 Intelligence · Master Phase 3 complete · Intelligence V2 (Factor Breakdown & Role Calibration)**
 
-Текущая цель: сохранить стабильность Phases 1–2 и после подтверждения перейти к Phase 3 —
-versioned Intelligence V2 без бесконтрольного расхода API.
+Текущая цель: сохранить стабильность Phases 1–3 и после подтверждения перейти к Phase 4 —
+Audience Engine V2 (multi-factor segment transitions, RFM-style commercial engagement, audience export).
+
+## Master TZ Phase 3 — завершён
+
+- версия интеллекта зафиксирована как `intelligence_version: "2.0"`;
+- скоринг разложен на явные факторы: `intent_strength`, `specificity_score`, `role_score`, `history_boost`, `objection_penalty`;
+- добавлена типизация ролей покупателей `BuyerRole`: `B2C_CONSUMER`, `B2B_HORECA`, `DESIGNER_CONTRACTOR`, `JOB_SEEKER`, `UNKNOWN`;
+- `LeadAnalysisContext` и `LeadAnalysis` связывают найденные `evidence_ids` напрямую с universal signals и evidence-моделью;
+- история скоринга в `contact_events` фиксирует полную декомпозицию факторов, роль покупателя и версию аналитики;
+- откалиброван золотой датасет `fixtures/golden_lead_calibration.json` (30+ примеров на RU, UZ Latin, UZ Cyrillic);
+- система надежно разделяет стадии воронки, B2B/HoReCa объёмы (10+ шт / ресторан / опт), запросы дизайнеров (3D-модели / проекты), возражения по цене и некоммерческие реакции/вакансии;
+- 93 теста, Ruff lint и 17 integrity checks проходят на 100% без внешних API-вызовов.
 
 ## Master TZ Phase 2 — завершён
 
@@ -20,7 +31,6 @@ versioned Intelligence V2 без бесконтрольного расхода A
 - integrity scan проверяет оба типа notification targets и idempotency keys;
 - миграция `7d2c4e8f1a90` проверена на копии текущей и чистой БД, повторном upgrade,
   downgrade/re-upgrade и schema check;
-- 89 тестов и Ruff проходят без Instagram/OpenAI-вызовов;
 - подробный контракт: `docs/V4_NOTIFICATION_PIPELINE.md`.
 
 ## Master TZ Phase 1 — завершён
@@ -49,7 +59,7 @@ versioned Intelligence V2 без бесконтрольного расхода A
 
 ## На какой стадии мы сейчас
 
-**Master Phase 2 из 12 завершена; Phase 3 ожидает подтверждения владельца.**
+**Master Phase 3 из 12 завершена; Phase 4 готова к реализации.**
 
 Ранее выполненные стадии 1–3 старого roadmap сохраняются как рабочий фундамент: CRM,
 Mini App, сделки, replay, локальный AI, защита расходов, мультиконкурентный радар и аудитории.

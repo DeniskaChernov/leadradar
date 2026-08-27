@@ -1,0 +1,303 @@
+[
+  {
+    "id": "ru_buy_direct_01",
+    "comment": "Хочу заказать обеденный комплект со столом и 6 стульями",
+    "post_caption": "Новая коллекция ротанговой мебели для вашего дома",
+    "expected_is_lead": true,
+    "expected_intent": "BUY",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 90,
+    "expected_product": "DINING_SET",
+    "language": "ru"
+  },
+  {
+    "id": "ru_price_01",
+    "comment": "Здравствуйте, какая цена?",
+    "post_caption": "Стильный кофейный столик из искусственного ротанга",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 80,
+    "language": "ru"
+  },
+  {
+    "id": "ru_delivery_01",
+    "comment": "В Самарканд есть доставка?",
+    "post_caption": "Подвесные кресла и садовая мебель",
+    "expected_is_lead": true,
+    "expected_intent": "DELIVERY",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 75,
+    "language": "ru"
+  },
+  {
+    "id": "ru_availability_01",
+    "comment": "Есть в наличии в Ташкенте?",
+    "post_caption": "Комплект мебели для террасы",
+    "expected_is_lead": true,
+    "expected_intent": "AVAILABILITY",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 80,
+    "language": "ru"
+  },
+  {
+    "id": "ru_quantity_01",
+    "comment": "20 стульев",
+    "post_caption": "Удобные плетеные стулья",
+    "expected_is_lead": true,
+    "expected_intent": "QUANTITY",
+    "expected_buyer_role": "B2B_HORECA",
+    "min_score": 88,
+    "language": "ru"
+  },
+  {
+    "id": "ru_horeca_01",
+    "comment": "Нужна мебель для летней террасы кафе, 10 столов и 40 стульев, оптом",
+    "post_caption": "Производство мебели для дома и бизнеса",
+    "expected_is_lead": true,
+    "expected_intent": "BUY",
+    "expected_buyer_role": "B2B_HORECA",
+    "min_score": 90,
+    "language": "ru"
+  },
+  {
+    "id": "ru_designer_01",
+    "comment": "Здравствуйте, я дизайнер, ищу мебель для дизайн-проекта, есть 3D модели?",
+    "post_caption": "Дизайнерские столы и стулья премиум качества",
+    "expected_is_lead": true,
+    "expected_intent": "BUY",
+    "expected_buyer_role": "DESIGNER_CONTRACTOR",
+    "min_score": 85,
+    "language": "ru"
+  },
+  {
+    "id": "ru_catalog_01",
+    "comment": "Отправьте пожалуйста каталог в директ",
+    "post_caption": "Широкий ассортимент уличной мебели",
+    "expected_is_lead": true,
+    "expected_intent": "CATALOG",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 75,
+    "language": "ru"
+  },
+  {
+    "id": "ru_contact_01",
+    "comment": "Напишите мне в директ или телеграм",
+    "post_caption": "Новинки сезона",
+    "expected_is_lead": true,
+    "expected_intent": "CONTACT",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 75,
+    "language": "ru"
+  },
+  {
+    "id": "ru_color_01",
+    "comment": "В белом цвете есть?",
+    "post_caption": "Кресла из ротанга в темном цвете",
+    "expected_is_lead": true,
+    "expected_intent": "COLOR",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 65,
+    "language": "ru"
+  },
+  {
+    "id": "ru_size_01",
+    "comment": "Подскажите размеры стола",
+    "post_caption": "Большой обеденный стол",
+    "expected_is_lead": true,
+    "expected_intent": "SIZE",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 65,
+    "language": "ru"
+  },
+  {
+    "id": "ru_objection_01",
+    "comment": "Очень дорого для такого комплекта",
+    "post_caption": "Премиум мебель",
+    "expected_is_lead": false,
+    "expected_intent": "PRICE",
+    "expected_buyer_role": "UNKNOWN",
+    "max_score": 75,
+    "language": "ru"
+  },
+  {
+    "id": "ru_plus_cta_01",
+    "comment": "+",
+    "post_caption": "Напишите плюс в комментариях, чтобы получить каталог и цены",
+    "expected_is_lead": true,
+    "expected_intent": "BUY",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 88,
+    "language": "ru"
+  },
+  {
+    "id": "ru_praise_reaction_01",
+    "comment": "Красиво очень, супер! 🔥",
+    "post_caption": "Уютная веранда",
+    "expected_is_lead": false,
+    "expected_intent": "REACTION",
+    "expected_buyer_role": "UNKNOWN",
+    "max_score": 20,
+    "language": "ru"
+  },
+  {
+    "id": "ru_job_01",
+    "comment": "Здравствуйте, работа нужна, есть вакансии?",
+    "post_caption": "Мы расширяем производство мебели",
+    "expected_is_lead": false,
+    "expected_intent": "SPAM",
+    "expected_buyer_role": "JOB_SEEKER",
+    "max_score": 10,
+    "language": "ru"
+  },
+  {
+    "id": "ru_negation_01",
+    "comment": "Не нужно, покупать не буду",
+    "post_caption": "Специальное предложение на столы",
+    "expected_is_lead": false,
+    "expected_intent": "OTHER",
+    "expected_buyer_role": "UNKNOWN",
+    "max_score": 20,
+    "language": "ru"
+  },
+  {
+    "id": "uz_lat_buy_01",
+    "comment": "Shu stol stul to'plamini sotib olmoqchiman",
+    "post_caption": "Yangi qulay mebellar",
+    "expected_is_lead": true,
+    "expected_intent": "BUY",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 90,
+    "language": "uz"
+  },
+  {
+    "id": "uz_lat_price_01",
+    "comment": "Narxi qancha ekan?",
+    "post_caption": "Sifatli rotang mebellari",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 80,
+    "language": "uz"
+  },
+  {
+    "id": "uz_lat_availability_01",
+    "comment": "Bormi hozir?",
+    "post_caption": "Bog' uchun mebellar to'plami",
+    "expected_is_lead": true,
+    "expected_intent": "AVAILABILITY",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 80,
+    "language": "uz"
+  },
+  {
+    "id": "uz_lat_delivery_01",
+    "comment": "Samarqandga yetkazib berish bormi?",
+    "post_caption": "Barcha viloyatlarga xizmat ko'rsatamiz",
+    "expected_is_lead": true,
+    "expected_intent": "DELIVERY",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 75,
+    "language": "uz"
+  },
+  {
+    "id": "uz_lat_horeca_01",
+    "comment": "Kafe uchun 12 ta stol va 48 ta stul kerak, ulgurji narx bormi?",
+    "post_caption": "Biznes va xonadonlar uchun mebellar",
+    "expected_is_lead": true,
+    "expected_intent": "BUY",
+    "expected_buyer_role": "B2B_HORECA",
+    "min_score": 90,
+    "language": "uz"
+  },
+  {
+    "id": "uz_lat_designer_01",
+    "comment": "Dizayn proyekt uchun 3d model bormi sizlarda?",
+    "post_caption": "Zamonaviy terassa mebellari",
+    "expected_is_lead": true,
+    "expected_intent": "BUY",
+    "expected_buyer_role": "DESIGNER_CONTRACTOR",
+    "min_score": 85,
+    "language": "uz"
+  },
+  {
+    "id": "uz_lat_quantity_01",
+    "comment": "10 dona stul",
+    "post_caption": "Qulay o'rindiqlar",
+    "expected_is_lead": true,
+    "expected_intent": "QUANTITY",
+    "expected_buyer_role": "B2B_HORECA",
+    "min_score": 88,
+    "language": "uz"
+  },
+  {
+    "id": "uz_lat_reaction_01",
+    "comment": "Zo'r chiqibdi, gap yo'q! Mashallah",
+    "post_caption": "Mijozimiz xonadonidan video",
+    "expected_is_lead": false,
+    "expected_intent": "REACTION",
+    "expected_buyer_role": "UNKNOWN",
+    "max_score": 20,
+    "language": "uz"
+  },
+  {
+    "id": "uz_lat_job_01",
+    "comment": "Ish kerak, ish bormi sizlarda?",
+    "post_caption": "Mebel fabrikasi",
+    "expected_is_lead": false,
+    "expected_intent": "SPAM",
+    "expected_buyer_role": "JOB_SEEKER",
+    "max_score": 10,
+    "language": "uz"
+  },
+  {
+    "id": "uz_cyrl_price_01",
+    "comment": "Нархи қанча?",
+    "post_caption": "Ротанг мебеллари",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 80,
+    "language": "uz-cyrl"
+  },
+  {
+    "id": "uz_cyrl_availability_01",
+    "comment": "Борми сотувда?",
+    "post_caption": "Овқатланиш столлари",
+    "expected_is_lead": true,
+    "expected_intent": "AVAILABILITY",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 80,
+    "language": "uz-cyrl"
+  },
+  {
+    "id": "uz_cyrl_delivery_01",
+    "comment": "Етказиб бериш борми?",
+    "post_caption": "Тошкент ва вилоятлар",
+    "expected_is_lead": true,
+    "expected_intent": "DELIVERY",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 75,
+    "language": "uz-cyrl"
+  },
+  {
+    "id": "uz_cyrl_buy_01",
+    "comment": "6 кишилик комплект керак, сотиб олмокчиман",
+    "post_caption": "Сифатли ротанг",
+    "expected_is_lead": true,
+    "expected_intent": "BUY",
+    "expected_buyer_role": "B2C_CONSUMER",
+    "min_score": 90,
+    "language": "uz-cyrl"
+  },
+  {
+    "id": "uz_cyrl_reaction_01",
+    "comment": "Зўр, чиройли чиқибди! Буюрсин",
+    "post_caption": "Янги тўплам",
+    "expected_is_lead": false,
+    "expected_intent": "REACTION",
+    "expected_buyer_role": "UNKNOWN",
+    "max_score": 20,
+    "language": "uz-cyrl"
+  }
+]

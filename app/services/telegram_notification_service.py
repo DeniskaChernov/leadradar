@@ -221,8 +221,10 @@ class TelegramLeadNotifier:
                         NotificationLog.content_version < 2,
                         or_(
                             NotificationLog.edit_claim_token.is_(None),
-                            NotificationLog.edit_lease_expires_at.is_(None),
-                            NotificationLog.edit_lease_expires_at <= now,
+                            and_(
+                                NotificationLog.edit_lease_expires_at.is_not(None),
+                                NotificationLog.edit_lease_expires_at <= now,
+                            ),
                         ),
                     )
                     .values(

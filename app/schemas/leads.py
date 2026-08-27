@@ -42,6 +42,14 @@ class PurchaseHorizon(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+class BuyerRole(StrEnum):
+    B2C_CONSUMER = "B2C_CONSUMER"
+    B2B_HORECA = "B2B_HORECA"
+    DESIGNER_CONTRACTOR = "DESIGNER_CONTRACTOR"
+    JOB_SEEKER = "JOB_SEEKER"
+    UNKNOWN = "UNKNOWN"
+
+
 class LeadAnalysis(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -58,3 +66,7 @@ class LeadAnalysis(BaseModel):
     evidence: list[str] = Field(default_factory=list, max_length=6)
     risk_flags: list[str] = Field(default_factory=list, max_length=6)
     recommended_action: str = "Проверить контекст и решить, требуется ли ответ менеджера."
+    intelligence_version: str = "2.0"
+    buyer_role: BuyerRole = BuyerRole.UNKNOWN
+    factors: dict[str, int] = Field(default_factory=dict)
+    evidence_ids: list[int] = Field(default_factory=list)

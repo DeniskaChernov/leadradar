@@ -12,7 +12,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import AnalysisCache
-from app.schemas.leads import FunnelStage, Intent, LeadAnalysis, PurchaseHorizon, Urgency
+from app.schemas.leads import (
+    BuyerRole,
+    FunnelStage,
+    Intent,
+    LeadAnalysis,
+    PurchaseHorizon,
+    Urgency,
+)
 from app.services.usage_service import ExternalBudgetExceeded, ExternalUsageService
 
 logger = logging.getLogger(__name__)
@@ -39,6 +46,8 @@ class LeadAnalysisContext:
     previous_signals: list[PreviousSignal]
     previous_interests: list[str]
     known_customer_context: dict[str, str | int | None] = field(default_factory=dict)
+    evidence_ids: list[int] = field(default_factory=list)
+    public_signal_id: int | None = None
 
 
 class LeadAnalyzer(Protocol):
@@ -163,6 +172,59 @@ class RuleBasedLeadAnalyzer:
                 risk_flags=["Смысл «+» зависит от призыва в публикации"],
             )
 
+        designer_markers = (
+            "дизайн-проект",
+            "дизайнер",
+            "дизайн проект",
+            "3d модель",
+            "3д модель",
+            "3d model",
+            "dizayner",
+            "dizayn loyiha",
+            "proyekt uchun",
+            "для проекта",
+        )
+        if any(marker in text for marker in designer_markers):
+            score = min(99, 88 + self._history_boost(context))
+            return self._result(
+                True,
+                score,
+                Intent.BUY,
+                self._product(f"{caption} {text}") or "DESIGN_PROJECT",
+                language,
+                "Запрос от дизайнера или под дизайн-проект/комплектацию объекта.",
+                context,
+                buyer_role=BuyerRole.DESIGNER_CONTRACTOR,
+                role_score=85,
+            )
+
+        business_markers = (
+            "для кафе",
+            "для ресторана",
+            "для гостиницы",
+            "для объекта",
+            "для отеля",
+            "оптом",
+            "ulgurji",
+            "kafe uchun",
+            "restoran uchun",
+            "mehmonxona uchun",
+            "choyxona",
+        )
+        if any(marker in text for marker in business_markers):
+            score = min(99, 90 + self._history_boost(context))
+            return self._result(
+                True,
+                score,
+                Intent.BUY,
+                self._product(f"{caption} {text}") or "HORECA",
+                language,
+                "Пользователь описывает коммерческое или оптовое применение мебели (HoReCa / B2B).",
+                context,
+                buyer_role=BuyerRole.B2B_HORECA,
+                role_score=90,
+            )
+
         checks: list[tuple[Intent, tuple[str, ...], int, str]] = [
             (
                 Intent.BUY,
@@ -238,6 +300,18 @@ class RuleBasedLeadAnalyzer:
                 "Пользователь уточняет доставку, что обычно относится к стадии выбора или заказа.",
             ),
             (
+                Intent.COLOR,
+                ("цвет", "цвета", "цвете", "rang", "ранг"),
+                74,
+                "Пользователь уточняет вариант цвета товара.",
+            ),
+            (
+                Intent.SIZE,
+                ("размер", "размеры", "o'lcham", "olcham", "ўлчам"),
+                74,
+                "Пользователь уточняет размер товара.",
+            ),
+            (
                 Intent.AVAILABILITY,
                 (
                     "в наличии",
@@ -292,18 +366,6 @@ class RuleBasedLeadAnalyzer:
                 78,
                 "Пользователь просит контакт или обратную связь.",
             ),
-            (
-                Intent.COLOR,
-                ("цвет", "цвета", "rang", "ранг"),
-                68,
-                "Пользователь уточняет вариант цвета товара.",
-            ),
-            (
-                Intent.SIZE,
-                ("размер", "размеры", "o'lcham", "olcham", "ўлчам"),
-                68,
-                "Пользователь уточняет размер товара.",
-            ),
         ]
         matched_checks: list[tuple[Intent, int, str, list[str]]] = []
         for intent, phrases, base_score, reason in checks:
@@ -334,6 +396,21 @@ class RuleBasedLeadAnalyzer:
                 evidence=evidence[:4],
             )
 
+        if re.search(
+            r"\b\d{1,3}\s*(шт\w*|штук\w*|dona\w*|дона\w*|та|персон\w*|киши\w*|kishi\w*|комплект\w*|стул\w*|стол\w*|кресл\w*|диван\w*)\b",
+            text,
+        ):
+            score = min(99, 90 + self._history_boost(context))
+            return self._result(
+                True,
+                score,
+                Intent.QUANTITY,
+                self._product(f"{caption} {text}"),
+                language,
+                "Пользователь указывает конкретное количество, что является сильным коммерческим сигналом.",
+                context,
+            )
+
         objection_markers = ("дорого", "слишком дорого", "qimmat", "киммат", "қиммат")
         if any(marker in text for marker in objection_markers):
             score = min(79, 58 + self._history_boost(context))
@@ -348,44 +425,6 @@ class RuleBasedLeadAnalyzer:
                 risk_flags=["Ценовое возражение"],
             )
 
-        if re.search(
-            r"\b\d{1,3}\s*(шт|штук|dona|дона|та|персон|киши|kishi|kishilik|кишилик)\b",
-            text,
-        ):
-            score = min(99, 90 + self._history_boost(context))
-            return self._result(
-                True,
-                score,
-                Intent.QUANTITY,
-                self._product(f"{caption} {text}"),
-                language,
-                "Пользователь указывает конкретное количество, что является сильным коммерческим сигналом.",
-                context,
-            )
-
-        business_markers = (
-            "для кафе",
-            "для ресторана",
-            "для гостиницы",
-            "для объекта",
-            "оптом",
-            "ulgurji",
-            "kafe uchun",
-            "restoran uchun",
-            "mehmonxona uchun",
-        )
-        if any(marker in text for marker in business_markers):
-            score = min(99, 90 + self._history_boost(context))
-            return self._result(
-                True,
-                score,
-                Intent.BUY,
-                self._product(f"{caption} {text}") or "HORECA",
-                language,
-                "Пользователь описывает коммерческое или оптовое применение мебели.",
-                context,
-            )
-
         if any(word in text for word in self._reaction_words) and len(text.split()) <= 16:
             return self._result(
                 False,
@@ -395,6 +434,7 @@ class RuleBasedLeadAnalyzer:
                 language,
                 "Комментарий похож на похвалу или реакцию, а не на запрос о покупке.",
                 context,
+                buyer_role=BuyerRole.UNKNOWN,
             )
 
         return None
@@ -412,6 +452,7 @@ class RuleBasedLeadAnalyzer:
             "По локальным правилам покупательское намерение не определено уверенно.",
             context,
             risk_flags=["Недостаточно явных коммерческих признаков"],
+            buyer_role=BuyerRole.UNKNOWN,
         )
 
     @staticmethod
@@ -488,6 +529,58 @@ class RuleBasedLeadAnalyzer:
         return min(15, repetition + comparison_boost)
 
     @staticmethod
+    def _detect_buyer_role(
+        text: str,
+        caption: str,
+        is_lead: bool,
+        intent: Intent,
+        reason: str,
+        product: str | None,
+    ) -> BuyerRole:
+        if re.search(r"\b(ish\s+kerak|работа\s+нужна|ваканси\w*|резюме|ish\s+bormi\w*)\b", text):
+            return BuyerRole.JOB_SEEKER
+
+        designer_markers = (
+            "дизайн-проект",
+            "дизайнер",
+            "дизайн проект",
+            "3d модель",
+            "3д модель",
+            "3d model",
+            "dizayner",
+            "dizayn loyiha",
+            "proyekt uchun",
+            "для проекта",
+        )
+        if any(marker in text for marker in designer_markers):
+            return BuyerRole.DESIGNER_CONTRACTOR
+
+        business_markers = (
+            "для кафе",
+            "для ресторана",
+            "для гостиницы",
+            "для объекта",
+            "для отеля",
+            "оптом",
+            "ulgurji",
+            "kafe uchun",
+            "restoran uchun",
+            "mehmonxona uchun",
+            "choyxona",
+        )
+        quantity_match = re.search(
+            r"\b(\d{1,3})\s*(шт\w*|штук\w*|dona\w*|дона\w*|та|персон\w*|киши\w*|kishi\w*|комплект\w*|стул\w*|стол\w*|кресл\w*|диван\w*|chair\w*|table\w*)\b",
+            text,
+        )
+        qty = int(quantity_match.group(1)) if quantity_match else 0
+        if any(marker in text for marker in business_markers) or qty >= 10 or product == "HORECA":
+            return BuyerRole.B2B_HORECA
+
+        if is_lead:
+            return BuyerRole.B2C_CONSUMER
+        return BuyerRole.UNKNOWN
+
+    @staticmethod
     def _result(
         is_lead: bool,
         score: int,
@@ -499,8 +592,14 @@ class RuleBasedLeadAnalyzer:
         *,
         evidence: list[str] | None = None,
         risk_flags: list[str] | None = None,
+        buyer_role: BuyerRole | None = None,
+        intent_strength: int | None = None,
+        specificity_score: int | None = None,
+        role_score: int | None = None,
+        objection_penalty: int = 0,
     ) -> LeadAnalysis:
         raw = RuleBasedLeadAnalyzer._norm(context.comment) if context else ""
+        caption = RuleBasedLeadAnalyzer._norm(context.post_caption) if context else ""
         urgent_markers = (
             "срочно",
             "сегодня",
@@ -548,6 +647,55 @@ class RuleBasedLeadAnalyzer:
         if product:
             details.append(f"Товарный контекст: {product}")
 
+        # Determine BuyerRole
+        if buyer_role is None:
+            buyer_role = RuleBasedLeadAnalyzer._detect_buyer_role(
+                text=raw,
+                caption=caption,
+                is_lead=is_lead,
+                intent=intent,
+                reason=reason,
+                product=product,
+            )
+
+        # Determine role_score
+        if role_score is None:
+            if buyer_role == BuyerRole.B2B_HORECA:
+                role_score = 90
+            elif buyer_role == BuyerRole.DESIGNER_CONTRACTOR:
+                role_score = 85
+            elif buyer_role == BuyerRole.B2C_CONSUMER:
+                role_score = 70
+            elif buyer_role == BuyerRole.JOB_SEEKER:
+                role_score = 5
+            else:
+                role_score = 20
+
+        # Determine intent_strength
+        if intent_strength is None:
+            intent_strength = score
+
+        # Determine specificity_score
+        if specificity_score is None:
+            spec = 0
+            if product:
+                spec += 5
+            if context and any(ch.isdigit() for ch in (context.comment or "")):
+                spec += 5
+            specificity_score = min(10, spec)
+
+        history_boost = RuleBasedLeadAnalyzer._history_boost(context) if context else 0
+
+        factors = {
+            "intent_strength": intent_strength,
+            "specificity_score": specificity_score,
+            "role_score": role_score,
+            "history_boost": history_boost,
+            "objection_penalty": objection_penalty,
+        }
+
+        evidence_ids = list(context.evidence_ids) if context and context.evidence_ids else []
+
         actions = {
             Intent.BUY: "Связаться в течение 10 минут, подтвердить модель, количество и удобный способ оформления.",
             Intent.QUANTITY: "Уточнить точное количество, сроки и подготовить расчёт с оптовыми условиями.",
@@ -580,6 +728,10 @@ class RuleBasedLeadAnalyzer:
             evidence=details[:6],
             risk_flags=(risk_flags or [])[:6],
             recommended_action=recommended_action,
+            intelligence_version="2.0",
+            buyer_role=buyer_role,
+            factors=factors,
+            evidence_ids=evidence_ids,
         )
 
 
@@ -614,19 +766,20 @@ class OpenAILeadAnalyzer:
             ),
         }
         system_prompt = (
-            "You are the lead-intelligence layer for a furniture seller. Qualify public Instagram "
+            "You are the lead-intelligence layer for a furniture seller (version 2.0). Qualify public Instagram "
             "comments in Russian, Uzbek Latin, Uzbek Cyrillic, or mixed language. The outcome must "
             "help a sales manager decide whether to act, why, how quickly, and what to say next. "
             "Use only supplied evidence. Never infer private traits, contact details, income, or "
             "facts that are not present. Evaluate the comment together with the Reel caption and "
             "CTA, product fit, request specificity, repetition across prior signals, comparison "
-            "across competitors, and manager-entered CRM context. A plus sign is commercial only "
+            "across competitors, buyer role (B2C, HoReCa/B2B, Designer), and manager-entered CRM context. A plus sign is commercial only "
             "when the Reel explicitly asks for it to receive a price, catalog, or contact. Praise, "
             "emoji, congratulations, job requests, and unrelated conversation are not leads. "
             "Negation overrides keyword matches. Distinguish active purchase intent from research, "
             "price objections, and ambiguous questions. Score 0–100 consistently; confidence means "
             "confidence in the classification, not purchase probability. Provide short observable "
-            "evidence, uncertainty flags, and one concrete manager action. Do not reveal hidden "
+            "evidence, uncertainty flags, intelligence_version '2.0', buyer_role, factors breakdown, "
+            "evidence_ids, and one concrete manager action. Do not reveal hidden "
             "chain-of-thought or invent a rationale. Return only the validated structured result."
         )
         try:

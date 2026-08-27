@@ -16,6 +16,7 @@ from app.db.models import (
     Competitor,
     Contact,
     ContactEventType,
+    Evidence,
     Lead,
     LeadStatus,
     Post,
@@ -239,6 +240,10 @@ class LeadService:
                     "confidence": analysis.confidence,
                     "funnel_stage": analysis.funnel_stage.value,
                     "urgency": analysis.urgency.value,
+                    "buyer_role": analysis.buyer_role.value,
+                    "intelligence_version": analysis.intelligence_version,
+                    "factors": analysis.factors,
+                    "evidence_ids": analysis.evidence_ids,
                 },
             )
             public_signal = await session.scalar(
@@ -481,6 +486,20 @@ class LeadService:
                 .limit(10)
             )
         ).all()
+        public_signal = await session.scalar(
+            select(PublicSignal).where(PublicSignal.comment_id == comment.id)
+        )
+        evidence_ids: list[int] = []
+        public_signal_id: int | None = None
+        if public_signal is not None:
+            public_signal_id = public_signal.id
+            evidence_ids = list(
+                await session.scalars(
+                    select(Evidence.id)
+                    .where(Evidence.public_signal_id == public_signal.id)
+                    .order_by(Evidence.id)
+                )
+            )
         return LeadAnalysisContext(
             competitor=competitor.normalized_handle,
             post_caption=post.caption,
@@ -500,6 +519,8 @@ class LeadService:
                 "purchase_timeline": contact.purchase_timeline,
                 "qualification_note": contact.qualification_note,
             },
+            evidence_ids=evidence_ids,
+            public_signal_id=public_signal_id,
         )
 
 
