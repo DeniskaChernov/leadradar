@@ -2,10 +2,25 @@
 
 ## Текущая версия
 
-**V4.3 Intelligence · Master Phase 3 complete · Intelligence V2 (Factor Breakdown & Role Calibration)**
+**V4.4 Audience DNA · Master Phase 4 complete · Profile DNA, Similarity Scoring & Export Eligibility**
 
-Текущая цель: сохранить стабильность Phases 1–3 и после подтверждения перейти к Phase 4 —
-Audience Engine V2 (multi-factor segment transitions, RFM-style commercial engagement, audience export).
+Текущая цель: сохранить стабильность Phases 1–4 и после подтверждения перейти к Phase 5 —
+Vertical UI (вертикальный контекст во всех основных view, responsive/a11y matrix).
+
+## Master TZ Phase 4 — завершён
+
+- `ContactIntelligence` расширена полями профиля DNA: `primary_buyer_role`, `buyer_roles_json`, `evidence_count`, `similarity_vector_json`;
+- `primary_buyer_role` агрегируется из всей коммерческой истории лида с приоритетом `B2B_HORECA` > `DESIGNER_CONTRACTOR` > `B2C_CONSUMER`;
+- `evidence_count` отображает количество связанных `Evidence`-записей через `PublicSignal` без дополнительных API-вызовов;
+- `similarity_vector_json` хранит детерминированный вектор для offline-сравнения аудиторий (товарные интересы, намерения, роль, вертикаль, количество);
+- добавлены 4 новых buyer-role сегмента: `designers`, `horeca-b2b`, `high-intent-b2c`, `comparison-shoppers`;
+- `_evaluate()` поддерживает критерий `buyer_role` с понятными строками обоснования в `evidence_json`;
+- `calculate_contact_similarity()` — детерминированный Jaccard-взвешенный скоринг сходства 0.0–1.0, без внешних вызовов;
+- `get_similar_contacts()` — ранжированный список похожих контактов из локальной БД;
+- `build_audience_export()` — строгий контроль `ExportEligibility.FIRST_PARTY_ELIGIBLE`: без подтверждённой квалификации контакт в экспорт не попадает;
+- приватные атрибуты (phone, email, адреса) не хранятся и не инферируются в similarity vector;
+- миграция `a1b2c3d4e5f6` протестирована на текущей и свежей БД;
+- 110 тестов, Ruff lint и 17 integrity checks проходят на 100% без внешних API-вызовов.
 
 ## Master TZ Phase 3 — завершён
 

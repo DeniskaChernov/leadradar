@@ -4,6 +4,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -14,10 +15,24 @@ from app.db.models import (
     Comment,
     Contact,
     ContactIntelligence,
+    Evidence,
     ExportEligibility,
     Lead,
     LeadStatus,
+    PublicSignal,
 )
+
+# ---------------------------------------------------------------------------
+# Segment registry
+# ---------------------------------------------------------------------------
+
+_BUYER_ROLE_PRIORITY = {
+    "B2B_HORECA": 4,
+    "DESIGNER_CONTRACTOR": 3,
+    "B2C_CONSUMER": 2,
+    "JOB_SEEKER": 1,
+    "UNKNOWN": 0,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,7 +147,89 @@ SEGMENTS = (
         "Ротанг с высокой наблюдаемой коммерческой ценностью.",
         {"product": "RATTAN_FURNITURE", "min_value": 75},
     ),
+    # Phase 4 — buyer-role-based segments
+    SegmentDefinition(
+        "designers",
+        "Дизайнеры и комплектаторы",
+        "Контакты с ролью дизайнера или комплектатора проекта.",
+        {"buyer_role": "DESIGNER_CONTRACTOR"},
+    ),
+    SegmentDefinition(
+        "horeca-b2b",
+        "HoReCa и коммерческий сектор",
+        "Явный коммерческий спрос: рестораны, кафе, гостиницы, опт.",
+        {"buyer_role": "B2B_HORECA"},
+    ),
+    SegmentDefinition(
+        "high-intent-b2c",
+        "Горячие розничные покупатели",
+        "B2C-покупатели с HOT-статусом и максимальным intent.",
+        {"buyer_role": "B2C_CONSUMER", "hot": True},
+    ),
+    SegmentDefinition(
+        "comparison-shoppers",
+        "Сравнивают конкурентов (Multi-brand)",
+        "Покупатели, замеченные у 2+ разных продавцов.",
+        {"sources": 2},
+    ),
 )
+
+
+# ---------------------------------------------------------------------------
+# Similarity weights
+# ---------------------------------------------------------------------------
+
+_PRODUCT_WEIGHT = 0.40
+_INTENT_WEIGHT = 0.25
+_BUYER_ROLE_WEIGHT = 0.20
+_VERTICAL_WEIGHT = 0.10
+_QUANTITY_BAND_WEIGHT = 0.05
+
+
+def _jaccard(set_a: set, set_b: set) -> float:
+    """Deterministic Jaccard similarity for two sets."""
+    if not set_a and not set_b:
+        return 1.0
+    union = set_a | set_b
+    if not union:
+        return 0.0
+    return len(set_a & set_b) / len(union)
+
+
+def calculate_contact_similarity(
+    intel_a: ContactIntelligence,
+    intel_b: ContactIntelligence,
+) -> float:
+    """
+    Deterministic similarity score between two ContactIntelligence records.
+    Returns a float in [0.0, 1.0]. No external API calls.
+    Grounded in observable public signal data only.
+    """
+    products_a = {item["value"] for item in (intel_a.product_interests_json or [])}
+    products_b = {item["value"] for item in (intel_b.product_interests_json or [])}
+    product_sim = _jaccard(products_a, products_b)
+
+    intents_a = {item["value"] for item in (intel_a.top_intents_json or [])}
+    intents_b = {item["value"] for item in (intel_b.top_intents_json or [])}
+    intent_sim = _jaccard(intents_a, intents_b)
+
+    role_sim = 1.0 if intel_a.primary_buyer_role == intel_b.primary_buyer_role else 0.0
+    vertical_sim = 1.0 if intel_a.vertical == intel_b.vertical else 0.0
+    quantity_sim = 1.0 if intel_a.quantity_band == intel_b.quantity_band else 0.0
+
+    score = (
+        _PRODUCT_WEIGHT * product_sim
+        + _INTENT_WEIGHT * intent_sim
+        + _BUYER_ROLE_WEIGHT * role_sim
+        + _VERTICAL_WEIGHT * vertical_sim
+        + _QUANTITY_BAND_WEIGHT * quantity_sim
+    )
+    return round(min(1.0, max(0.0, score)), 4)
+
+
+# ---------------------------------------------------------------------------
+# Audience Engine
+# ---------------------------------------------------------------------------
 
 
 class AudienceEngine:
@@ -295,6 +392,59 @@ class AudienceEngine:
                 for lead, _comment in reversed(rows)
                 if (lead.analysis_details or {}).get("purchase_horizon") not in (None, "UNKNOWN")
             ]
+
+            # ------------------------------------------------------------------
+            # Phase 4 — Profile DNA: buyer role aggregation
+            # ------------------------------------------------------------------
+            observed_roles: list[str] = []
+            for lead, _comment in commercial:
+                details = lead.analysis_details or {}
+                # V2 factor breakdown stores buyer_role directly in analysis_details
+                role = details.get("buyer_role") or details.get("v2_buyer_role")
+                if role and role != "UNKNOWN":
+                    observed_roles.append(str(role))
+            # Fallback: derive from B2B flag if no V2 roles yet
+            if not observed_roles and is_b2b:
+                observed_roles.append("B2B_HORECA")
+
+            unique_roles = sorted(set(observed_roles))
+            primary_buyer_role = max(
+                unique_roles if unique_roles else ["UNKNOWN"],
+                key=lambda r: _BUYER_ROLE_PRIORITY.get(r, 0),
+            )
+
+            # ------------------------------------------------------------------
+            # Phase 4 — Evidence count from linked public signals
+            # ------------------------------------------------------------------
+            comment_ids = [comment.id for comment in comments]
+            evidence_count = 0
+            if comment_ids:
+                # Count evidence rows linked through PublicSignal for this contact's comments
+                ps_ids_result = await session.execute(
+                    select(PublicSignal.id).where(
+                        PublicSignal.comment_id.in_(comment_ids)
+                    )
+                )
+                ps_ids = [row[0] for row in ps_ids_result.all()]
+                if ps_ids:
+                    ev_count_result = await session.execute(
+                        select(Evidence.id).where(Evidence.public_signal_id.in_(ps_ids))
+                    )
+                    evidence_count = len(ev_count_result.all())
+
+            # ------------------------------------------------------------------
+            # Phase 4 — Similarity vector (pre-computed, used for get_similar_contacts)
+            # ------------------------------------------------------------------
+            similarity_vector: dict[str, Any] = {
+                "products": sorted(product_counts.keys()),
+                "intents": sorted(intent_counts.keys()),
+                "buyer_role": primary_buyer_role,
+                "vertical": (
+                    "ARTIFICIAL_RATTAN" if "RATTAN_FURNITURE" in product_counts else "FURNITURE"
+                ),
+                "quantity_band": self._quantity_band(explicit_quantity),
+            }
+
             intelligence.vertical = (
                 "ARTIFICIAL_RATTAN" if "RATTAN_FURNITURE" in product_counts else "FURNITURE"
             )
@@ -319,6 +469,11 @@ class AudienceEngine:
             )
             intelligence.first_seen_at = first_seen
             intelligence.last_seen_at = last_seen
+            # Phase 4 DNA
+            intelligence.primary_buyer_role = primary_buyer_role
+            intelligence.buyer_roles_json = unique_roles
+            intelligence.evidence_count = evidence_count
+            intelligence.similarity_vector_json = similarity_vector
             await session.flush()
 
             segments = list(
@@ -339,6 +494,7 @@ class AudienceEngine:
                 "quantity": explicit_quantity,
                 "value": value_score,
                 "reactivated": reactivated,
+                "buyer_role": primary_buyer_role,
             }
             for segment in segments:
                 active, evidence, expires_at = self._evaluate(
@@ -363,6 +519,87 @@ class AudienceEngine:
                 membership.evaluated_at = now
             await session.commit()
             return intelligence
+
+    async def get_similar_contacts(
+        self, contact_id: int, limit: int = 5
+    ) -> list[dict[str, Any]]:
+        """
+        Find similar contacts by deterministic similarity scoring.
+        Compares pre-computed similarity vectors in ContactIntelligence.
+        No external API calls. Returns contacts ranked by similarity descending.
+        """
+        async with self.session_factory() as session:
+            source = await session.scalar(
+                select(ContactIntelligence).where(
+                    ContactIntelligence.contact_id == contact_id
+                )
+            )
+            if source is None:
+                return []
+            all_intel = list(
+                await session.scalars(
+                    select(ContactIntelligence).where(
+                        ContactIntelligence.contact_id != contact_id
+                    )
+                )
+            )
+
+        scored = [
+            {"contact_id": intel.contact_id, "score": calculate_contact_similarity(source, intel)}
+            for intel in all_intel
+        ]
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        return scored[:limit]
+
+    async def build_audience_export(
+        self,
+        segment_slug: str,
+        require_export_eligible: bool = True,
+    ) -> list[dict[str, Any]]:
+        """
+        Build export records for a segment.
+        Strictly enforces ExportEligibility.FIRST_PARTY_ELIGIBLE when
+        require_export_eligible=True (the default).
+        Never includes synthetic or inferred private data.
+        """
+        async with self.session_factory() as session:
+            segment = await session.scalar(
+                select(AudienceSegment).where(AudienceSegment.slug == segment_slug)
+            )
+            if segment is None:
+                return []
+
+            query = (
+                select(Contact, ContactIntelligence)
+                .join(ContactIntelligence, ContactIntelligence.contact_id == Contact.id)
+                .join(
+                    AudienceMembership,
+                    (AudienceMembership.contact_id == Contact.id)
+                    & (AudienceMembership.segment_id == segment.id)
+                    & (AudienceMembership.active.is_(True)),
+                )
+            )
+            if require_export_eligible:
+                query = query.where(
+                    ContactIntelligence.export_eligibility
+                    == ExportEligibility.FIRST_PARTY_ELIGIBLE
+                )
+
+            rows = (await session.execute(query)).all()
+
+        return [
+            {
+                "contact_id": contact.id,
+                "username": contact.username,
+                "phone": contact.phone,
+                "primary_buyer_role": intel.primary_buyer_role,
+                "segment": segment_slug,
+                "value_score": intel.value_score,
+                "evidence_count": intel.evidence_count,
+                "export_eligibility": intel.export_eligibility.value,
+            }
+            for contact, intel in rows
+        ]
 
     @staticmethod
     def _evaluate(criteria: dict, facts: dict, last_seen: datetime):
@@ -397,6 +634,10 @@ class AudienceEngine:
         if criteria.get("reactivated"):
             active &= bool(facts["reactivated"])
             evidence.append("возвращение после паузы 30+ дней")
+        # Phase 4 — buyer role matching
+        if buyer_role := criteria.get("buyer_role"):
+            active &= facts.get("buyer_role") == buyer_role
+            evidence.append(f"роль покупателя: {buyer_role}")
         return active, evidence if active else [], expires_at
 
     @staticmethod

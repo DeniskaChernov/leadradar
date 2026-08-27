@@ -538,6 +538,11 @@ class ContactIntelligence(Base):
         default=ExportEligibility.NOT_EXPORTABLE,
         index=True,
     )
+    # Phase 4 — Profile DNA fields
+    primary_buyer_role: Mapped[str] = mapped_column(String(32), default="UNKNOWN", index=True)
+    buyer_roles_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    evidence_count: Mapped[int] = mapped_column(Integer, default=0)
+    similarity_vector_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
