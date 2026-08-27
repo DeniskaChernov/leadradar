@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.db.models import ExternalBudgetReservation, ReservationStatus
 from app.services.usage_service import ExternalBudgetExceeded, ExternalUsageService
 
 
@@ -36,20 +37,42 @@ async def test_budget_reservation_atomic_limits(session_factory):
 
 
 @pytest.mark.asyncio
-async def test_budget_reservation_concurrent_race(session_factory):
-    usage_svc = ExternalUsageService(session_factory)
+async def test_budget_reservation_concurrent_race(file_session_factory):
+    first = ExternalUsageService(file_session_factory)
+    second = ExternalUsageService(file_session_factory)
     limit = 3
 
     # 10 concurrent reservation attempts against limit=3
-    async def try_reserve():
+    async def try_reserve(usage_svc):
         try:
             return await usage_svc.reserve_budget("openai", "lead_analysis", limit, units=1)
         except ExternalBudgetExceeded:
             return None
 
-    results = await asyncio.gather(*[try_reserve() for _ in range(10)])
+    results = await asyncio.gather(
+        *[try_reserve(first if index % 2 else second) for index in range(10)]
+    )
     successful = [r for r in results if r is not None]
     assert len(successful) <= 3
+
+
+@pytest.mark.asyncio
+async def test_expired_budget_reservation_is_reclaimed(session_factory):
+    usage_svc = ExternalUsageService(session_factory)
+    expired_id = await usage_svc.reserve_budget("openai", "lead_analysis", 1, lease_seconds=1)
+    async with session_factory() as session:
+        reservation = await session.get(ExternalBudgetReservation, expired_id)
+        assert reservation is not None
+        reservation.expires_at = reservation.created_at
+        await session.commit()
+
+    replacement_id = await usage_svc.reserve_budget("openai", "lead_analysis", 1)
+
+    assert replacement_id != expired_id
+    async with session_factory() as session:
+        expired = await session.get(ExternalBudgetReservation, expired_id)
+        assert expired is not None
+        assert expired.status == ReservationStatus.EXPIRED
 
 
 def test_cost_preview_estimation():

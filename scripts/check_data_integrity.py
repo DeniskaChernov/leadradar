@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from app.config import get_settings
 from app.db.models import (
+    AIRequest,
     AudienceMembership,
     AudienceSegment,
     BusinessAlias,
@@ -17,6 +18,7 @@ from app.db.models import (
     ContactIntelligence,
     Deal,
     Evidence,
+    ExternalBudgetReservation,
     Lead,
     NotificationLog,
     Post,
@@ -59,15 +61,15 @@ async def inspect_integrity() -> IntegrityResult:
                 SignificantChange,
                 SignificantChangeNotification,
                 Evidence,
+                AIRequest,
+                ExternalBudgetReservation,
             )
             counts = {
                 model.__tablename__: await session.scalar(select(func.count(model.id))) or 0
                 for model in models
             }
             checks = {
-                "comment IDs": select(
-                    Comment.platform, Comment.platform_comment_id, func.count()
-                )
+                "comment IDs": select(Comment.platform, Comment.platform_comment_id, func.count())
                 .group_by(Comment.platform, Comment.platform_comment_id)
                 .having(func.count() > 1),
                 "post URLs": select(Post.platform, Post.url, func.count())
@@ -79,9 +81,7 @@ async def inspect_integrity() -> IntegrityResult:
                 "public signal comments": select(PublicSignal.comment_id, func.count())
                 .group_by(PublicSignal.comment_id)
                 .having(func.count() > 1),
-                "public signal dedupe keys": select(
-                    PublicSignal.dedupe_key, func.count()
-                )
+                "public signal dedupe keys": select(PublicSignal.dedupe_key, func.count())
                 .group_by(PublicSignal.dedupe_key)
                 .having(func.count() > 1),
                 "public signal external identities": select(
@@ -97,9 +97,7 @@ async def inspect_integrity() -> IntegrityResult:
                     PublicSignal.external_id,
                 )
                 .having(func.count() > 1),
-                "business canonical keys": select(
-                    BusinessEntity.canonical_key, func.count()
-                )
+                "business canonical keys": select(BusinessEntity.canonical_key, func.count())
                 .group_by(BusinessEntity.canonical_key)
                 .having(func.count() > 1),
                 "business aliases": select(
@@ -127,9 +125,7 @@ async def inspect_integrity() -> IntegrityResult:
                     AudienceMembership.contact_id,
                     func.count(),
                 )
-                .group_by(
-                    AudienceMembership.segment_id, AudienceMembership.contact_id
-                )
+                .group_by(AudienceMembership.segment_id, AudienceMembership.contact_id)
                 .having(func.count() > 1),
                 "deal leads": select(Deal.lead_id, func.count())
                 .where(Deal.lead_id.is_not(None))
@@ -145,9 +141,7 @@ async def inspect_integrity() -> IntegrityResult:
                 )
                 .group_by(NotificationLog.idempotency_key)
                 .having(func.count() > 1),
-                "significant changes per lead": select(
-                    SignificantChange.lead_id, func.count()
-                )
+                "significant changes per lead": select(SignificantChange.lead_id, func.count())
                 .group_by(SignificantChange.lead_id)
                 .having(func.count() > 1),
                 "significant change notification targets": select(
@@ -165,10 +159,25 @@ async def inspect_integrity() -> IntegrityResult:
                 )
                 .group_by(SignificantChangeNotification.idempotency_key)
                 .having(func.count() > 1),
+                "AI request contexts": select(
+                    AIRequest.lead_id,
+                    AIRequest.analysis_version,
+                    AIRequest.context_fingerprint,
+                    func.count(),
+                )
+                .group_by(
+                    AIRequest.lead_id,
+                    AIRequest.analysis_version,
+                    AIRequest.context_fingerprint,
+                )
+                .having(func.count() > 1),
+                "AI request claim tokens": select(AIRequest.claim_token, func.count())
+                .where(AIRequest.claim_token.is_not(None))
+                .group_by(AIRequest.claim_token)
+                .having(func.count() > 1),
             }
             duplicates = {
-                name: len((await session.execute(query)).all())
-                for name, query in checks.items()
+                name: len((await session.execute(query)).all()) for name, query in checks.items()
             }
             return IntegrityResult(counts=counts, duplicates=duplicates)
     finally:

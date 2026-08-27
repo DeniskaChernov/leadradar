@@ -174,7 +174,9 @@ class LeadService:
                     raise RuntimeError(f"Lead {lead_id} was not found") from exc
                 if lead.status == LeadStatus.ANALYZING:
                     lead.status = LeadStatus.AI_PENDING
-                lead.ai_reason = "Нужна дополнительная проверка; сигнал сохранён и доступен менеджеру"
+                lead.ai_reason = (
+                    "Нужна дополнительная проверка; сигнал сохранён и доступен менеджеру"
+                )
                 public_signal = await session.scalar(
                     select(PublicSignal).where(PublicSignal.comment_id == lead.comment_id)
                 )
@@ -213,9 +215,7 @@ class LeadService:
             if lead.status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING}:
                 lead.status = LeadStatus.NEW if analysis.is_lead else LeadStatus.NOT_LEAD
             contact.current_lead_score = max(contact.current_lead_score, analysis.lead_score)
-            feedback = await session.scalar(
-                select(AIFeedback).where(AIFeedback.lead_id == lead.id)
-            )
+            feedback = await session.scalar(select(AIFeedback).where(AIFeedback.lead_id == lead.id))
             if feedback is None:
                 session.add(
                     AIFeedback(
@@ -300,14 +300,18 @@ class LeadService:
             return []
         async with self.session_factory() as session:
             rows = (
-                await session.execute(
-                    select(Comment)
-                    .outerjoin(Lead, Lead.comment_id == Comment.id)
-                    .where(Lead.id.is_(None))
-                    .order_by(Comment.created_at_platform.desc(), Comment.id.desc())
-                    .limit(limit)
+                (
+                    await session.execute(
+                        select(Comment)
+                        .outerjoin(Lead, Lead.comment_id == Comment.id)
+                        .where(Lead.id.is_(None))
+                        .order_by(Comment.created_at_platform.desc(), Comment.id.desc())
+                        .limit(limit)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
         results: list[ProcessedLead] = []
         for comment in rows:
@@ -404,12 +408,7 @@ class LeadService:
         status and reason. Only the new JSON explanation is filled for rows that do not have it.
         """
         async with self.session_factory() as session:
-            lead_ids = list(
-                await session.scalars(
-                    select(Lead.id)
-                    .order_by(Lead.id)
-                )
-            )
+            lead_ids = list(await session.scalars(select(Lead.id).order_by(Lead.id)))
 
         rules = RuleBasedLeadAnalyzer()
         updated = 0
@@ -443,9 +442,7 @@ class LeadService:
                 updated += 1
         return updated
 
-    async def _build_context(
-        self, session: AsyncSession, comment_id: int
-    ) -> LeadAnalysisContext:
+    async def _build_context(self, session: AsyncSession, comment_id: int) -> LeadAnalysisContext:
         row = (
             await session.execute(
                 select(Comment, Contact, Post, Competitor)
@@ -489,6 +486,7 @@ class LeadService:
         public_signal = await session.scalar(
             select(PublicSignal).where(PublicSignal.comment_id == comment.id)
         )
+        lead_id = await session.scalar(select(Lead.id).where(Lead.comment_id == comment.id))
         evidence_ids: list[int] = []
         public_signal_id: int | None = None
         if public_signal is not None:
@@ -513,7 +511,9 @@ class LeadService:
                 "city": contact.city,
                 "interest_summary": contact.interest_summary,
                 "desired_quantity": contact.desired_quantity,
-                "budget_from": str(contact.budget_from) if contact.budget_from is not None else None,
+                "budget_from": str(contact.budget_from)
+                if contact.budget_from is not None
+                else None,
                 "budget_to": str(contact.budget_to) if contact.budget_to is not None else None,
                 "desired_color": contact.desired_color,
                 "purchase_timeline": contact.purchase_timeline,
@@ -521,8 +521,8 @@ class LeadService:
             },
             evidence_ids=evidence_ids,
             public_signal_id=public_signal_id,
+            lead_id=lead_id,
         )
-
 
     async def _analyze(self, context: LeadAnalysisContext):
         analyze_with_source = getattr(self.analyzer, "analyze_with_source", None)

@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -6,11 +7,13 @@ from sqlalchemy import select
 from app.db.models import AIRequest, AIRequestStatus
 from app.schemas.leads import BuyerRole, FunnelStage, Intent, LeadAnalysis, PurchaseHorizon, Urgency
 from app.services.ai_service import (
+    AIAnalysisError,
     BudgetedCachedOpenAIAnalyzer,
     LeadAnalysisContext,
     OpenAILeadAnalyzer,
 )
 from app.services.usage_service import ExternalUsageService
+from tests.test_lead_workflow import create_lead
 
 
 def _sample_analysis():
@@ -30,9 +33,9 @@ def _sample_analysis():
     )
 
 
-
 @pytest.mark.asyncio
 async def test_ai_request_idempotency_prevents_duplicate_calls(session_factory):
+    lead_id = await create_lead(session_factory)
     mock_inner = MagicMock(spec=OpenAILeadAnalyzer)
     mock_inner.model = "gpt-5-mini"
     mock_inner.analyze = AsyncMock(return_value=_sample_analysis())
@@ -54,6 +57,7 @@ async def test_ai_request_idempotency_prevents_duplicate_calls(session_factory):
         username="john_doe",
         previous_signals=[],
         previous_interests=[],
+        lead_id=lead_id,
     )
 
     # 1. First call executes inner analysis
@@ -79,7 +83,9 @@ async def test_context_fingerprint_deterministic_and_sensitive(session_factory):
     mock_inner = MagicMock()
     mock_inner.model = "gpt-5-mini"
     usage_svc = ExternalUsageService(session_factory)
-    analyzer = BudgetedCachedOpenAIAnalyzer(mock_inner, session_factory, usage_svc, enabled=True, daily_limit=10)
+    analyzer = BudgetedCachedOpenAIAnalyzer(
+        mock_inner, session_factory, usage_svc, enabled=True, daily_limit=10
+    )
 
     ctx1 = LeadAnalysisContext(
         competitor="aiko.uz",
@@ -110,3 +116,54 @@ async def test_context_fingerprint_deterministic_and_sensitive(session_factory):
     assert analyzer.context_fingerprint(ctx1) == analyzer.context_fingerprint(ctx2)
     # Different comment produces different fingerprint
     assert analyzer.context_fingerprint(ctx1) != analyzer.context_fingerprint(ctx3)
+
+
+@pytest.mark.asyncio
+async def test_two_ai_workers_make_one_external_call(file_session_factory):
+    lead_id = await create_lead(file_session_factory)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_analysis(_context):
+        started.set()
+        await release.wait()
+        return _sample_analysis()
+
+    inner = MagicMock(spec=OpenAILeadAnalyzer)
+    inner.model = "gpt-5-mini"
+    inner.analyze = AsyncMock(side_effect=slow_analysis)
+    context = LeadAnalysisContext(
+        competitor="aiko.uz",
+        post_caption="Плетёный диван",
+        comment="Цена?",
+        username="john_doe",
+        previous_signals=[],
+        previous_interests=[],
+        lead_id=lead_id,
+    )
+    first = BudgetedCachedOpenAIAnalyzer(
+        inner,
+        file_session_factory,
+        ExternalUsageService(file_session_factory),
+        enabled=True,
+        daily_limit=10,
+        worker_id="worker-a",
+    )
+    second = BudgetedCachedOpenAIAnalyzer(
+        inner,
+        file_session_factory,
+        ExternalUsageService(file_session_factory),
+        enabled=True,
+        daily_limit=10,
+        worker_id="worker-b",
+    )
+
+    first_task = asyncio.create_task(first.analyze(context))
+    await started.wait()
+    with pytest.raises(AIAnalysisError, match="другим процессом"):
+        await second.analyze(context)
+    release.set()
+    result = await first_task
+
+    assert result.lead_score == 85
+    assert inner.analyze.await_count == 1

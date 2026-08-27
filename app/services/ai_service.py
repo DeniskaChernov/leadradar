@@ -7,8 +7,10 @@ import re
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar, Protocol
+from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import AIRequest, AIRequestStatus
@@ -48,6 +50,7 @@ class LeadAnalysisContext:
     known_customer_context: dict[str, str | int | None] = field(default_factory=dict)
     evidence_ids: list[int] = field(default_factory=list)
     public_signal_id: int | None = None
+    lead_id: int | None = None
 
 
 class LeadAnalyzer(Protocol):
@@ -464,7 +467,9 @@ class RuleBasedLeadAnalyzer:
     def _language(value: str) -> str:
         lowered = value.lower()
         uz_cyrillic_markers = ("нарх", "қанча", "канча", "борми", "керак", "етказ", "кишилик")
-        if any(ch in lowered for ch in "ўқғҳ") or any(marker in lowered for marker in uz_cyrillic_markers):
+        if any(ch in lowered for ch in "ўқғҳ") or any(
+            marker in lowered for marker in uz_cyrillic_markers
+        ):
             return "uz-cyrl"
         uz_markers = ("narx", "qancha", "kancha", "bormi", "kerak", "yetkaz", "kishilik")
         if any(marker in lowered for marker in uz_markers):
@@ -511,10 +516,53 @@ class RuleBasedLeadAnalyzer:
             # Specific compound sets — highest priority
             (("обеден", "dining", "стол со стул", "комплект стол", "komplekt stol"), "DINING_SET"),
             # Rattan sub-types — before generic rattan
-            (("диван ротанг", "диваны ротанг", "диваны из ротанга", "ротанг диван", "ротанговый диван", "плетен диван", "диван плетен", "rattan sofa", "rattan divan"), "RATTAN_SOFA"),
-            (("кресло ротанг", "ротанг кресл", "плетен кресл", "плетеное кресло", "плетеные кресла", "rattan armchair", "rattan kreslo"), "RATTAN_ARMCHAIR"),
-            (("гарнитур ротанг", "ротанг набор", "комплект ротанг", "rattan garden set", "rattan komplekt"), "RATTAN_GARDEN_SET"),
-            (("барный стул", "барные стулья", "bar stool", "высокий стул", "баркаунтер", "bar stol"), "RATTAN_BAR_STOOL"),
+            (
+                (
+                    "диван ротанг",
+                    "диваны ротанг",
+                    "диваны из ротанга",
+                    "ротанг диван",
+                    "ротанговый диван",
+                    "плетен диван",
+                    "диван плетен",
+                    "rattan sofa",
+                    "rattan divan",
+                ),
+                "RATTAN_SOFA",
+            ),
+            (
+                (
+                    "кресло ротанг",
+                    "ротанг кресл",
+                    "плетен кресл",
+                    "плетеное кресло",
+                    "плетеные кресла",
+                    "rattan armchair",
+                    "rattan kreslo",
+                ),
+                "RATTAN_ARMCHAIR",
+            ),
+            (
+                (
+                    "гарнитур ротанг",
+                    "ротанг набор",
+                    "комплект ротанг",
+                    "rattan garden set",
+                    "rattan komplekt",
+                ),
+                "RATTAN_GARDEN_SET",
+            ),
+            (
+                (
+                    "барный стул",
+                    "барные стулья",
+                    "bar stool",
+                    "высокий стул",
+                    "баркаунтер",
+                    "bar stol",
+                ),
+                "RATTAN_BAR_STOOL",
+            ),
             (("качел", "swing", "хорч"), "SWING"),
             (("пергол", "pergola", "беседк"), "PERGOLA"),
             # Generic rattan — catch-all for unspecified rattan
@@ -841,7 +889,7 @@ class BudgetedCachedOpenAIAnalyzer:
         self.usage = usage
         self.enabled = enabled
         self.daily_limit = daily_limit
-        self.worker_id = worker_id
+        self.worker_id = worker_id if worker_id != "default-worker" else f"ai-{uuid4().hex[:12]}"
 
     def context_fingerprint(self, context: LeadAnalysisContext) -> str:
         """Calculates canonical SHA-256 context fingerprint factoring all parameters."""
@@ -870,113 +918,175 @@ class BudgetedCachedOpenAIAnalyzer:
     async def analyze(self, context: LeadAnalysisContext) -> LeadAnalysis:
         fingerprint = self.context_fingerprint(context)
         now = datetime.now(UTC)
+        if context.lead_id is None:
+            raise AIAnalysisError("AI request requires a persisted lead_id")
 
-        # 1. Check existing AIRequest ledger first
-        async with self.session_factory() as session:
-            existing = await session.scalar(
-                select(AIRequest).where(
-                    AIRequest.analysis_version == self.ANALYSIS_VERSION,
-                    AIRequest.context_fingerprint == fingerprint,
-                )
+        cached, request_id, claim_token = await self._claim_request(
+            context.lead_id, fingerprint, now
+        )
+        if cached is not None:
+            return cached
+        if request_id is None or claim_token is None:
+            raise AIAnalysisError(
+                "AI анализ для данного контекста уже выполняется другим процессом."
             )
-            if existing is not None:
-                if existing.status == AIRequestStatus.SUCCEEDED and existing.result_json:
-                    return LeadAnalysis.model_validate(existing.result_json)
-                if (
-                    existing.status == AIRequestStatus.CLAIMED
-                    and existing.claim_expires_at is not None
-                    and existing.claim_expires_at > now
-                    and existing.worker_id != self.worker_id
-                ):
-                    raise AIAnalysisError(
-                        "AI анализ для данного контекста уже выполняется другим процессом."
-                    )
 
         if not self.enabled:
+            await self._release_request_claim(
+                request_id,
+                claim_token,
+                AIRequestStatus.RETRYABLE,
+                "OpenAI disabled",
+            )
             raise AIAnalysisError(
                 "OpenAI отключён для экономии токенов. Неоднозначный сигнал оставлен в очереди AI."
             )
 
-        # 2. Atomic Two-Phase Budget Reservation
-        reservation_id = await self.usage.reserve_budget(
-            "openai",
-            "lead_analysis",
-            self.daily_limit,
-            units=1,
-            request_fingerprint=fingerprint,
-            lease_seconds=120,
-        )
-
-        # 3. Atomically Claim AIRequest
-        async with self.session_factory() as session:
-            req = await session.scalar(
-                select(AIRequest).where(
-                    AIRequest.analysis_version == self.ANALYSIS_VERSION,
-                    AIRequest.context_fingerprint == fingerprint,
-                )
+        try:
+            reservation_id = await self.usage.reserve_budget(
+                "openai",
+                "lead_analysis",
+                self.daily_limit,
+                units=1,
+                request_fingerprint=fingerprint,
+                lease_seconds=120,
             )
-            if req is None:
-                lead_id = getattr(context, "public_signal_id", None) or 1
-                req = AIRequest(
-                    lead_id=lead_id,
-                    analysis_version=self.ANALYSIS_VERSION,
-                    context_fingerprint=fingerprint,
-                    model=self.inner.model,
-                    status=AIRequestStatus.CLAIMED,
-                    claimed_at=now,
-                    claim_expires_at=now + timedelta(seconds=120),
-                    worker_id=self.worker_id,
-                    attempt_count=1,
-                )
-                session.add(req)
-            else:
-                req.status = AIRequestStatus.CLAIMED
-                req.claimed_at = now
-                req.claim_expires_at = now + timedelta(seconds=120)
-                req.worker_id = self.worker_id
-                req.attempt_count += 1
-            await session.commit()
+        except Exception as exc:
+            await self._release_request_claim(
+                request_id, claim_token, AIRequestStatus.RETRYABLE, str(exc)
+            )
+            raise
 
-        # 4. Perform actual call
         try:
             analysis = await self.inner.analyze(context)
         except Exception as exc:
             await self.usage.release_reservation(reservation_id)
-            async with self.session_factory() as session:
-                req = await session.scalar(
-                    select(AIRequest).where(
-                        AIRequest.analysis_version == self.ANALYSIS_VERSION,
-                        AIRequest.context_fingerprint == fingerprint,
-                    )
-                )
-                if req is not None:
-                    req.status = AIRequestStatus.FAILED
-                    req.error = str(exc)
-                    await session.commit()
+            await self._release_request_claim(
+                request_id, claim_token, AIRequestStatus.FAILED, str(exc)
+            )
             raise
 
-        # 5. Finalize reservation and mark SUCCEEDED
+        async with self.session_factory() as session:
+            saved = (
+                await session.execute(
+                    update(AIRequest)
+                    .where(
+                        AIRequest.id == request_id,
+                        AIRequest.status == AIRequestStatus.CLAIMED,
+                        AIRequest.claim_token == claim_token,
+                    )
+                    .values(
+                        status=AIRequestStatus.SUCCEEDED,
+                        result_json=analysis.model_dump(mode="json"),
+                        error=None,
+                        claim_expires_at=None,
+                        claim_token=None,
+                        worker_id=None,
+                    )
+                    .returning(AIRequest.id)
+                )
+            ).scalar_one_or_none()
+            await session.commit()
+        if saved is None:
+            await self.usage.release_reservation(reservation_id)
+            raise AIAnalysisError("AI result lost its durable claim before persistence")
+
         await self.usage.finalize_reservation(
             reservation_id,
             units=1,
             success=True,
             details={"model": self.inner.model, "fingerprint": fingerprint},
         )
+
+        return analysis
+
+    async def _claim_request(
+        self, lead_id: int, fingerprint: str, now: datetime
+    ) -> tuple[LeadAnalysis | None, int | None, str | None]:
+        token = uuid4().hex
         async with self.session_factory() as session:
-            req = await session.scalar(
+            request = AIRequest(
+                lead_id=lead_id,
+                analysis_version=self.ANALYSIS_VERSION,
+                context_fingerprint=fingerprint,
+                model=self.inner.model,
+                status=AIRequestStatus.CLAIMED,
+                claimed_at=now,
+                claim_expires_at=now + timedelta(seconds=120),
+                worker_id=self.worker_id,
+                claim_token=token,
+                attempt_count=1,
+            )
+            session.add(request)
+            try:
+                await session.commit()
+                return None, request.id, token
+            except IntegrityError:
+                await session.rollback()
+
+        async with self.session_factory() as session:
+            existing = await session.scalar(
                 select(AIRequest).where(
+                    AIRequest.lead_id == lead_id,
                     AIRequest.analysis_version == self.ANALYSIS_VERSION,
                     AIRequest.context_fingerprint == fingerprint,
                 )
             )
-            if req is not None:
-                req.status = AIRequestStatus.SUCCEEDED
-                req.result_json = analysis.model_dump(mode="json")
-                req.error = None
-                await session.commit()
+            if existing is None:
+                return None, None, None
+            if existing.status == AIRequestStatus.SUCCEEDED and existing.result_json:
+                return LeadAnalysis.model_validate(existing.result_json), None, None
+            claimed_id = (
+                await session.execute(
+                    update(AIRequest)
+                    .where(
+                        AIRequest.id == existing.id,
+                        or_(
+                            AIRequest.status != AIRequestStatus.CLAIMED,
+                            AIRequest.claim_expires_at.is_(None),
+                            AIRequest.claim_expires_at <= now,
+                        ),
+                    )
+                    .values(
+                        status=AIRequestStatus.CLAIMED,
+                        claimed_at=now,
+                        claim_expires_at=now + timedelta(seconds=120),
+                        worker_id=self.worker_id,
+                        claim_token=token,
+                        attempt_count=AIRequest.attempt_count + 1,
+                        error=None,
+                    )
+                    .execution_options(synchronize_session=False)
+                    .returning(AIRequest.id)
+                )
+            ).scalar_one_or_none()
+            await session.commit()
+        return None, claimed_id, token if claimed_id is not None else None
 
-        return analysis
-
+    async def _release_request_claim(
+        self,
+        request_id: int,
+        claim_token: str,
+        status: AIRequestStatus,
+        error: str,
+    ) -> None:
+        async with self.session_factory() as session:
+            await session.execute(
+                update(AIRequest)
+                .where(
+                    AIRequest.id == request_id,
+                    AIRequest.status == AIRequestStatus.CLAIMED,
+                    AIRequest.claim_token == claim_token,
+                )
+                .values(
+                    status=status,
+                    error=error[:1000],
+                    claim_expires_at=None,
+                    claim_token=None,
+                    worker_id=None,
+                )
+            )
+            await session.commit()
 
 
 class HybridLeadAnalyzer:
@@ -991,9 +1101,7 @@ class HybridLeadAnalyzer:
         self.openai = openai
         self.mode = mode
 
-    async def analyze_with_source(
-        self, context: LeadAnalysisContext
-    ) -> tuple[LeadAnalysis, str]:
+    async def analyze_with_source(self, context: LeadAnalysisContext) -> tuple[LeadAnalysis, str]:
         if self.mode in {"rules", "hybrid"}:
             local = self.rules.classify(context)
             if local is not None:

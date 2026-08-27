@@ -138,7 +138,6 @@ class ReservationStatus(StrEnum):
 
 
 class Vertical(StrEnum):
-
     FURNITURE = "FURNITURE"
     ARTIFICIAL_RATTAN = "ARTIFICIAL_RATTAN"
 
@@ -232,7 +231,9 @@ class BusinessAlias(Base):
     __tablename__ = "business_aliases"
     __table_args__ = (
         UniqueConstraint(
-            "business_id", "alias_type", "normalized_value",
+            "business_id",
+            "alias_type",
+            "normalized_value",
             name="uq_business_aliases_business_type_value",
         ),
         CheckConstraint(
@@ -249,9 +250,7 @@ class BusinessAlias(Base):
     value: Mapped[str] = mapped_column(String(512))
     normalized_value: Mapped[str] = mapped_column(String(512), index=True)
     source_url: Mapped[str | None] = mapped_column(Text)
-    evidence_id: Mapped[int | None] = mapped_column(
-        ForeignKey("evidence.id"), index=True
-    )
+    evidence_id: Mapped[int | None] = mapped_column(ForeignKey("evidence.id"), index=True)
     confidence: Mapped[int] = mapped_column(Integer, default=50)
     verified: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -294,9 +293,7 @@ class Competitor(Base):
 
 class MarketCandidate(Base):
     __tablename__ = "market_candidates"
-    __table_args__ = (
-        UniqueConstraint("display_name", name="uq_market_candidates_display_name"),
-    )
+    __table_args__ = (UniqueConstraint("display_name", name="uq_market_candidates_display_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     display_name: Mapped[str] = mapped_column(String(255))
@@ -357,12 +354,8 @@ class Post(Base):
 class Contact(Base):
     __tablename__ = "contacts"
     __table_args__ = (
-        UniqueConstraint(
-            "platform", "platform_user_id", name="uq_contacts_platform_user_id"
-        ),
-        UniqueConstraint(
-            "platform", "normalized_username", name="uq_contacts_platform_username"
-        ),
+        UniqueConstraint("platform", "platform_user_id", name="uq_contacts_platform_user_id"),
+        UniqueConstraint("platform", "normalized_username", name="uq_contacts_platform_username"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -396,17 +389,13 @@ class Contact(Base):
     comments: Mapped[list[Comment]] = relationship(back_populates="contact")
     events: Mapped[list[ContactEvent]] = relationship(back_populates="contact")
     leads: Mapped[list[Lead]] = relationship(back_populates="contact")
-    intelligence: Mapped[ContactIntelligence | None] = relationship(
-        back_populates="contact"
-    )
+    intelligence: Mapped[ContactIntelligence | None] = relationship(back_populates="contact")
 
 
 class Comment(Base):
     __tablename__ = "comments"
     __table_args__ = (
-        UniqueConstraint(
-            "platform", "platform_comment_id", name="uq_comments_platform_comment_id"
-        ),
+        UniqueConstraint("platform", "platform_comment_id", name="uq_comments_platform_comment_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -432,7 +421,9 @@ class PublicSignal(Base):
     __table_args__ = (
         UniqueConstraint("comment_id", name="uq_public_signals_comment_id"),
         UniqueConstraint(
-            "platform", "signal_type", "external_id",
+            "platform",
+            "signal_type",
+            "external_id",
             name="uq_public_signals_external_identity",
         ),
         CheckConstraint(
@@ -456,9 +447,7 @@ class PublicSignal(Base):
         index=True,
     )
     contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id"), index=True)
-    business_id: Mapped[int | None] = mapped_column(
-        ForeignKey("business_entities.id"), index=True
-    )
+    business_id: Mapped[int | None] = mapped_column(ForeignKey("business_entities.id"), index=True)
     competitor_id: Mapped[int] = mapped_column(ForeignKey("competitors.id"), index=True)
     platform: Mapped[str] = mapped_column(String(32), default="instagram", index=True)
     signal_type: Mapped[SignalType] = mapped_column(
@@ -503,16 +492,12 @@ class Evidence(Base):
     __table_args__ = (
         UniqueConstraint("evidence_key", name="uq_evidence_evidence_key"),
         CheckConstraint("strength >= 0 AND strength <= 100", name="ck_evidence_strength"),
-        CheckConstraint(
-            "confidence >= 0 AND confidence <= 100", name="ck_evidence_confidence"
-        ),
+        CheckConstraint("confidence >= 0 AND confidence <= 100", name="ck_evidence_confidence"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     evidence_key: Mapped[str] = mapped_column(String(512), index=True)
-    public_signal_id: Mapped[int] = mapped_column(
-        ForeignKey("public_signals.id"), index=True
-    )
+    public_signal_id: Mapped[int] = mapped_column(ForeignKey("public_signals.id"), index=True)
     source_type: Mapped[str] = mapped_column(String(64), index=True)
     source_url: Mapped[str | None] = mapped_column(Text)
     text: Mapped[str | None] = mapped_column(Text)
@@ -529,9 +514,7 @@ class Evidence(Base):
 
 class ContactIntelligence(Base):
     __tablename__ = "contact_intelligence"
-    __table_args__ = (
-        UniqueConstraint("contact_id", name="uq_contact_intelligence_contact_id"),
-    )
+    __table_args__ = (UniqueConstraint("contact_id", name="uq_contact_intelligence_contact_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
@@ -609,9 +592,7 @@ class AudienceMembership(Base):
 
 class SignificantChange(Base):
     __tablename__ = "significant_changes"
-    __table_args__ = (
-        UniqueConstraint("lead_id", name="uq_significant_changes_lead_id"),
-    )
+    __table_args__ = (UniqueConstraint("lead_id", name="uq_significant_changes_lead_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
@@ -624,22 +605,20 @@ class SignificantChange(Base):
     summary: Mapped[str] = mapped_column(Text)
     before_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     after_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
 
 
 class SignificantChangeNotification(Base):
     __tablename__ = "significant_change_notifications"
     __table_args__ = (
-        UniqueConstraint(
-            "change_id", "chat_id", name="uq_significant_change_notifications_target"
-        ),
+        UniqueConstraint("change_id", "chat_id", name="uq_significant_change_notifications_target"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    change_id: Mapped[int] = mapped_column(
-        ForeignKey("significant_changes.id"), index=True
-    )
+    change_id: Mapped[int] = mapped_column(ForeignKey("significant_changes.id"), index=True)
     chat_id: Mapped[int] = mapped_column(index=True)
     message_id: Mapped[int | None] = mapped_column()
     status: Mapped[NotificationStatus] = mapped_column(
@@ -651,9 +630,7 @@ class SignificantChangeNotification(Base):
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lease_owner: Mapped[str | None] = mapped_column(String(128), index=True)
     lease_token: Mapped[str | None] = mapped_column(String(64), index=True)
-    lease_expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), index=True
-    )
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     delivery_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     uncertain_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -699,9 +676,7 @@ class Lead(Base):
 
 class Deal(Base):
     __tablename__ = "deals"
-    __table_args__ = (
-        UniqueConstraint("lead_id", name="uq_deals_lead_id"),
-    )
+    __table_args__ = (UniqueConstraint("lead_id", name="uq_deals_lead_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
@@ -781,12 +756,8 @@ class NotificationLog(Base):
     chat_id: Mapped[int] = mapped_column(index=True)
     message_id: Mapped[int | None] = mapped_column()
     content_version: Mapped[int] = mapped_column(Integer, default=1)
-    enrichment_followup_sent_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
-    enrichment_followup_started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
+    enrichment_followup_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    enrichment_followup_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[NotificationStatus] = mapped_column(
         Enum(NotificationStatus, native_enum=False), default=NotificationStatus.PENDING
     )
@@ -796,9 +767,7 @@ class NotificationLog(Base):
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lease_owner: Mapped[str | None] = mapped_column(String(128), index=True)
     lease_token: Mapped[str | None] = mapped_column(String(64), index=True)
-    lease_expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), index=True
-    )
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     delivery_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     uncertain_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -825,7 +794,9 @@ class MonitorRun(Base):
     )
     stats_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     error: Mapped[str | None] = mapped_column(Text)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -870,7 +841,9 @@ class ExternalUsage(Base):
     units: Mapped[int] = mapped_column(Integer, default=1)
     success: Mapped[bool] = mapped_column(Boolean, default=True)
     details_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
 
 
 class OpeningSignal(Base):
@@ -915,6 +888,7 @@ class AIRequest(Base):
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     claim_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     worker_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    claim_token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
@@ -923,7 +897,9 @@ class AIRequest(Base):
     response_cache_key: Mapped[str | None] = mapped_column(String(64), index=True)
     result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
@@ -942,7 +918,7 @@ class ExternalBudgetReservation(Base):
         Enum(ReservationStatus, native_enum=False), default=ReservationStatus.RESERVED, index=True
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-

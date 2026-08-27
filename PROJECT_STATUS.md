@@ -6,6 +6,18 @@
 
 Текущая цель: готовность к пилотному запуску на рынке, поддержание 100% стабильности и мониторинг.
 
+## Post-audit hardening — AI cost ledger
+
+- GitHub `origin/main` сверён: локальная разработка продолжена от Phase B без конфликтов;
+- добавлена отсутствовавшая миграция `e8a4c2f91b70` для `ai_requests` и
+  `external_budget_reservations`;
+- AI ledger теперь использует реальный `lead_id`, атомарный claim и уникальный claim token;
+- два независимых AI-воркера не выполняют один контекст одновременно;
+- SQLite budget reservation сериализуется между процессами через раннюю write-lock транзакцию;
+- expired reservations становятся `EXPIRED`, finalize/release выполняются compare-and-set;
+- `.env.example` документирует глобальный `EXTERNAL_KILL_SWITCH`;
+- migration matrix, schema check, Ruff и 159 offline-тестов проходят без внешних вызовов.
+
 ## Master Specification V6 — Итоговое выполнение
 
 - **Phase V6.0 (Audit & Security Gate)** — **ЗАВЕРШЕНО**:

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import ExternalBudgetReservation, ExternalUsage, ReservationStatus
@@ -79,10 +79,27 @@ class ExternalUsageService:
     ) -> int:
         if daily_limit <= 0:
             raise ExternalBudgetExceeded(f"Лимит внешних запросов {service} установлен в 0")
+        if units <= 0:
+            raise ValueError("units must be positive")
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds must be positive")
         async with self._lock:
             now = datetime.now(UTC)
             start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             async with self.session_factory() as session:
+                bind = session.get_bind()
+                if bind.dialect.name == "sqlite":
+                    # SQLite has no row-level SELECT FOR UPDATE. Taking the write lock before
+                    # reading serializes the check-and-reserve transaction across processes.
+                    await session.execute(text("BEGIN IMMEDIATE"))
+                await session.execute(
+                    update(ExternalBudgetReservation)
+                    .where(
+                        ExternalBudgetReservation.status == ReservationStatus.RESERVED,
+                        ExternalBudgetReservation.expires_at <= now,
+                    )
+                    .values(status=ReservationStatus.EXPIRED, finalized_at=now)
+                )
                 used = await session.scalar(
                     select(func.coalesce(func.sum(ExternalUsage.units), 0)).where(
                         ExternalUsage.service == service,
@@ -90,7 +107,9 @@ class ExternalUsageService:
                     )
                 )
                 active_res = await session.scalar(
-                    select(func.coalesce(func.sum(ExternalBudgetReservation.units_reserved), 0)).where(
+                    select(
+                        func.coalesce(func.sum(ExternalBudgetReservation.units_reserved), 0)
+                    ).where(
                         ExternalBudgetReservation.service == service,
                         ExternalBudgetReservation.created_at >= start,
                         ExternalBudgetReservation.status == ReservationStatus.RESERVED,
@@ -115,7 +134,6 @@ class ExternalUsageService:
                 await session.commit()
                 return reservation.id
 
-
     async def finalize_reservation(
         self,
         reservation_id: int,
@@ -124,16 +142,34 @@ class ExternalUsageService:
         success: bool = True,
         details: dict[str, Any] | None = None,
     ) -> None:
+        if units <= 0:
+            raise ValueError("units must be positive")
         now = datetime.now(UTC)
         async with self.session_factory() as session:
-            reservation = await session.get(ExternalBudgetReservation, reservation_id)
-            if reservation is not None and reservation.status == ReservationStatus.RESERVED:
-                reservation.status = ReservationStatus.FINALIZED
-                reservation.finalized_at = now
+            reservation = (
+                await session.execute(
+                    update(ExternalBudgetReservation)
+                    .where(
+                        ExternalBudgetReservation.id == reservation_id,
+                        ExternalBudgetReservation.status == ReservationStatus.RESERVED,
+                        ExternalBudgetReservation.expires_at > now,
+                        ExternalBudgetReservation.units_reserved >= units,
+                    )
+                    .values(
+                        status=ReservationStatus.FINALIZED,
+                        finalized_at=now,
+                    )
+                    .returning(
+                        ExternalBudgetReservation.service,
+                        ExternalBudgetReservation.operation,
+                    )
+                )
+            ).one_or_none()
+            if reservation is not None:
                 session.add(
                     ExternalUsage(
-                        service=reservation.service,
-                        operation=reservation.operation,
+                        service=reservation[0],
+                        operation=reservation[1],
                         units=units,
                         success=success,
                         details_json=details or {},
@@ -143,10 +179,18 @@ class ExternalUsageService:
 
     async def release_reservation(self, reservation_id: int) -> None:
         async with self.session_factory() as session:
-            reservation = await session.get(ExternalBudgetReservation, reservation_id)
-            if reservation is not None and reservation.status == ReservationStatus.RESERVED:
-                reservation.status = ReservationStatus.RELEASED
-                await session.commit()
+            await session.execute(
+                update(ExternalBudgetReservation)
+                .where(
+                    ExternalBudgetReservation.id == reservation_id,
+                    ExternalBudgetReservation.status == ReservationStatus.RESERVED,
+                )
+                .values(
+                    status=ReservationStatus.RELEASED,
+                    finalized_at=datetime.now(UTC),
+                )
+            )
+            await session.commit()
 
     async def assert_available(self, service: str, daily_limit: int, units: int = 1) -> None:
         if daily_limit <= 0:
@@ -217,7 +261,9 @@ class ExternalUsageService:
             units = (records_count + 49) // 50
             calls = max(1, records_count // 100)
             tokens = calls * 650
-            cost_min = Decimal(str(units)) * Decimal("0.001") + Decimal(str(tokens)) * Decimal("0.0000003")
+            cost_min = Decimal(str(units)) * Decimal("0.001") + Decimal(str(tokens)) * Decimal(
+                "0.0000003"
+            )
             cost_max = cost_min * Decimal("1.25")
         elif operation == "historical_backfill":
             units = (records_count + 19) // 20
@@ -241,4 +287,3 @@ class ExternalUsageService:
             estimated_cost_usd_min=cost_min.quantize(Decimal("0.0001")),
             estimated_cost_usd_max=cost_max.quantize(Decimal("0.0001")),
         )
-
