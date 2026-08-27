@@ -17,7 +17,7 @@
 
 <section class="operations-strip panel">
   <div><span class="op-icon">🎯</span><p><b>{{ counts.unprocessed + counts.ai_pending }} сигналов требуют разбора</b><small>{{ counts.unprocessed }} ещё не классифицировано · {{ counts.ai_pending }} ждут AI</small></p></div>
-  <div><span class="op-icon">🔔</span><p><b>{% if telegram_manager_count %}Уведомления включены для {{ telegram_manager_count }} менеджер{% if telegram_manager_count != 1 %}ов{% endif %}{% else %}Менеджеры для уведомлений не настроены{% endif %}</b><small>{{ counts.notifications_pending }} в очереди · {{ counts.notifications_failed }} с ошибкой доставки</small></p></div>
+  <div><span class="op-icon">🔔</span><p><b>{% if telegram_manager_count %}Уведомления включены для {{ telegram_manager_count }} менеджер{% if telegram_manager_count != 1 %}ов{% endif %}{% else %}Менеджеры для уведомлений не настроены{% endif %}</b><small>{{ counts.notifications_pending }} в очереди · {{ counts.notifications_failed }} с ошибкой · {{ counts.notifications_uncertain }} требуют сверки</small></p></div>
   <a class="btn tiny" href="/system">Диагностика</a>
 </section>
 

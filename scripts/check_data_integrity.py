@@ -140,6 +140,11 @@ async def inspect_integrity() -> IntegrityResult:
                 )
                 .group_by(NotificationLog.lead_id, NotificationLog.chat_id)
                 .having(func.count() > 1),
+                "notification idempotency keys": select(
+                    NotificationLog.idempotency_key, func.count()
+                )
+                .group_by(NotificationLog.idempotency_key)
+                .having(func.count() > 1),
                 "significant changes per lead": select(
                     SignificantChange.lead_id, func.count()
                 )
@@ -154,6 +159,11 @@ async def inspect_integrity() -> IntegrityResult:
                     SignificantChangeNotification.change_id,
                     SignificantChangeNotification.chat_id,
                 )
+                .having(func.count() > 1),
+                "significant change notification idempotency keys": select(
+                    SignificantChangeNotification.idempotency_key, func.count()
+                )
+                .group_by(SignificantChangeNotification.idempotency_key)
                 .having(func.count() > 1),
             }
             duplicates = {

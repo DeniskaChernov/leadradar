@@ -2,10 +2,26 @@
 
 ## Текущая версия
 
-**V4.1 Foundation · Master Phase 1 complete · Data Foundation**
+**V4.2 Reliability · Master Phase 2 complete · Notification Hardening**
 
-Текущая цель: сохранить стабильность Phase 1 и после подтверждения перейти к Phase 2 —
-hardening real-time notification pipeline без бесконтрольного расхода API.
+Текущая цель: сохранить стабильность Phases 1–2 и после подтверждения перейти к Phase 3 —
+versioned Intelligence V2 без бесконтрольного расхода API.
+
+## Master TZ Phase 2 — завершён
+
+- Telegram outbox получил durable lease с уникальным worker/token и атомарным claim;
+- стабильные `idempotency_key` защищены unique-индексами для лидов и значимых изменений;
+- зависший claim до начала отправки безопасно возвращается в очередь;
+- после начала отправки неизвестный результат переводится в `UNCERTAIN` без автоповтора;
+- неоднозначную доставку можно явно подтвердить или безопасно вернуть в очередь с audit fields;
+- `chat_id`/`message_id` сохраняются, а обогащение сообщения имеет один edit claim и не более
+  одного fallback;
+- Dashboard отдельно показывает неопределённые доставки, System объясняет recovery policy;
+- integrity scan проверяет оба типа notification targets и idempotency keys;
+- миграция `7d2c4e8f1a90` проверена на копии текущей и чистой БД, повторном upgrade,
+  downgrade/re-upgrade и schema check;
+- 89 тестов и Ruff проходят без Instagram/OpenAI-вызовов;
+- подробный контракт: `docs/V4_NOTIFICATION_PIPELINE.md`.
 
 ## Master TZ Phase 1 — завершён
 
@@ -18,7 +34,7 @@ hardening real-time notification pipeline без бесконтрольного 
 - fixture Armo/Exon/ротанг даёт одну BusinessEntity без hardcode;
 - BOTANIST/Emil сохранён как `NEEDS_VERIFICATION` без выдуманных идентификаторов;
 - создан `docs/V4_ARCHITECTURE.md`;
-- Phase 2 не начата и ожидает подтверждения владельца.
+- Phase 2 затем выполнена отдельным проверяемым этапом без изменения Phase 1 IDs.
 
 ## Master TZ Phase 0 — завершён
 
@@ -33,7 +49,7 @@ hardening real-time notification pipeline без бесконтрольного 
 
 ## На какой стадии мы сейчас
 
-**Master Phase 1 из 12 завершена; Phase 2 ожидает подтверждения владельца.**
+**Master Phase 2 из 12 завершена; Phase 3 ожидает подтверждения владельца.**
 
 Ранее выполненные стадии 1–3 старого roadmap сохраняются как рабочий фундамент: CRM,
 Mini App, сделки, replay, локальный AI, защита расходов, мультиконкурентный радар и аудитории.

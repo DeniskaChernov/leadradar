@@ -196,6 +196,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         settings.telegram_admin_chat_ids,
         hot_threshold=settings.hot_lead_threshold,
         max_attempts=settings.telegram_notification_max_attempts,
+        lease_seconds=settings.telegram_notification_lease_seconds,
         notification_policy=NotificationPolicy(settings.notification_policy),
         delivery_enabled=settings.instagram_provider not in {"mock", "replay"},
     )

@@ -81,6 +81,7 @@ class NotificationStatus(StrEnum):
     PROCESSING = "PROCESSING"
     SENT = "SENT"
     FAILED = "FAILED"
+    UNCERTAIN = "UNCERTAIN"
 
 
 class NotificationPolicy(StrEnum):
@@ -613,6 +614,7 @@ class SignificantChangeNotification(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     change_id: Mapped[int] = mapped_column(
         ForeignKey("significant_changes.id"), index=True
     )
@@ -625,6 +627,15 @@ class SignificantChangeNotification(Base):
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_owner: Mapped[str | None] = mapped_column(String(128), index=True)
+    lease_token: Mapped[str | None] = mapped_column(String(64), index=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    delivery_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    uncertain_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -743,11 +754,15 @@ class NotificationLog(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
     chat_id: Mapped[int] = mapped_column(index=True)
     message_id: Mapped[int | None] = mapped_column()
     content_version: Mapped[int] = mapped_column(Integer, default=1)
     enrichment_followup_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    enrichment_followup_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
     status: Mapped[NotificationStatus] = mapped_column(
@@ -757,6 +772,18 @@ class NotificationLog(Base):
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_owner: Mapped[str | None] = mapped_column(String(128), index=True)
+    lease_token: Mapped[str | None] = mapped_column(String(64), index=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    delivery_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    uncertain_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution: Mapped[str | None] = mapped_column(String(64))
+    edit_claim_token: Mapped[str | None] = mapped_column(String(64), index=True)
+    edit_lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    edit_attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     http_max_attempts: int = Field(default=3, ge=1, le=5)
     telegram_notification_max_attempts: int = Field(default=3, ge=1, le=10)
     telegram_notification_flush_interval_seconds: int = Field(default=30, ge=10, le=3600)
+    telegram_notification_lease_seconds: int = Field(default=120, ge=30, le=1800)
     notification_policy: str = "ALL_NEW_COMMENTS"
 
     @property

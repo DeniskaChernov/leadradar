@@ -130,6 +130,23 @@ class WebQueryService:
                 )
                 or 0
             )
+            counts["notifications_uncertain"] = int(
+                await session.scalar(
+                    select(func.count(NotificationLog.id)).where(
+                        NotificationLog.status == NotificationStatus.UNCERTAIN
+                    )
+                )
+                or 0
+            )
+            counts["notifications_uncertain"] += int(
+                await session.scalar(
+                    select(func.count(SignificantChangeNotification.id)).where(
+                        SignificantChangeNotification.status
+                        == NotificationStatus.UNCERTAIN
+                    )
+                )
+                or 0
+            )
             counts["significant_changes_24h"] = int(
                 await session.scalar(
                     select(func.count(SignificantChange.id)).where(

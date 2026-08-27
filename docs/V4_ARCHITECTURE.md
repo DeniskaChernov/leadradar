@@ -73,5 +73,10 @@ backed up before applying the revision.
 
 ## Next phase boundary
 
-Phase 2 may harden delivery leases and notification recovery. It must not weaken database-first
-Signal First ordering or route provider calls into Telegram/web handlers.
+Phase 2 is complete. Notification delivery now uses durable database leases, stable idempotency
+keys, stale-claim recovery and an explicit `UNCERTAIN` state for ambiguous Telegram outcomes. The
+full contract and recovery procedure are documented in `V4_NOTIFICATION_PIPELINE.md`.
+
+Phase 3 may add versioned intelligence factors, confidence and evidence-linked scoring. It must
+remain rule-first by default, preserve database-first Signal First ordering, and make no live API
+calls in tests.
