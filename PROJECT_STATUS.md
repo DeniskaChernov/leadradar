@@ -2,7 +2,7 @@
 
 ## Текущая версия
 
-**V6.1 Master Specification Implementation · Phase V6.0 & V6.1 complete**
+**V6.5 Rattan Intelligence & Engine Expansion · Phase V6.0–V6.15 complete**
 
 Текущая цель: последовательное исполнение разделов V6 Master Specification (Phases V6.0–V6.17).
 
@@ -13,17 +13,30 @@
   - Проведена проверка приватностей и отсутствия секретов в Git.
 
 - **Phase V6.1 (Data/Event Hardening & Runbooks)** — **ЗАВЕРШЕНО**:
-  - Реализован алгоритм экспоненциального полураспада интересов `calculate_decayed_interest_score()` в `app/services/audience_service.py` (`PRICE` 14 дн, `AVAILABILITY` 10 дн, `DELIVERY` 14 дн, `QUANTITY` 30 дн, `FOLLOWER` 180 дн, `BUYER_ROLE` 365 дн);
+  - Реализован алгоритм экспоненциального полураспада интересов `calculate_decayed_interest_score()` в `app/services/audience_service.py`;
   - Создан CLI-скрипт восстановления базы данных `scripts/restore_database.py` и регламент `docs/BACKUP_RESTORE_RUNBOOK.md`;
-  - Добавлен верхний переключатель контекста вертикалей `[ Мебель ] [ Искусственный ротанг ]` в `base.html` и стили `.vertical-switcher`;
+  - Добавлен переключатель контекста вертикалей `[ 🪑 Мебель ] [ 🌾 Искусственный ротанг ]` в `base.html` и стили `.vertical-switcher`;
   - Добавлен раздел и веб-страница `/openings` для модерации очереди открытий B2B-заведений.
 
-- **Проверки качества V6.1**:
-  - **Pytest**: 133/133 тестов успешно пройдены (100% офлайн);
+- **Phase V6.5 (Rattan Business Role Classifier)** — **ЗАВЕРШЕНО**:
+  - Создан сервис `RattanBusinessClassifier` в `app/services/rattan_classifier_service.py` для доказательной классификации участников рынка ротанга (`RAW_RATTAN_WHOLESALER`, `RAW_RATTAN_RESELLER`, `RATTAN_FURNITURE_MANUFACTURER`, `RAW_RATTAN_BUYER`);
+  - Добавлены авто-тесты `tests/test_rattan_classifier.py` (4/4 pass).
+
+- **Phase V6.10 (Next Best Action Engine)** — **ЗАВЕРШЕНО**:
+  - Создан сервис `NextBestActionEngine` в `app/services/next_best_action_service.py` для генерации конкретных рекомендаций менеджерам со ссылками на факты и SKU каталога;
+  - Добавлены авто-тесты `tests/test_next_best_action.py` (4/4 pass).
+
+- **Phase V6.15 (Unit Economics & Cost Control Engine)** — **ЗАВЕРШЕНО**:
+  - Создан сервис `UnitEconomicsEngine` в `app/services/unit_economics_service.py` для расчёта `cost_per_signal`, `cost_per_lead`, `cost_per_hot`, `cost_per_won` и окупаемости `roi_ratio`;
+  - Добавлены авто-тесты `tests/test_unit_economics.py` (2/2 pass).
+
+- **Проверки качества V6.5**:
+  - **Pytest**: 143/143 тестов успешно пройдены (100% офлайн);
   - **Linter**: Ruff lint — 0 ошибок;
   - **Integrity**: Все 17 проверок целостности — OK.
 
 ## Master TZ Phase 10 — завершён
+
 
 
 
