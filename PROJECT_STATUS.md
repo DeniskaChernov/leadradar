@@ -2,20 +2,29 @@
 
 ## Текущая версия
 
-**V5.0 Production Ready · ALL Master Roadmap Phases (1–12) Complete**
+**V6.1 Master Specification Implementation · Phase V6.0 & V6.1 complete**
 
-Текущая цель: поддержание 100% стабильности, мониторинг и готовая продуктовая эксплуатация.
+Текущая цель: последовательное исполнение разделов V6 Master Specification (Phases V6.0–V6.17).
 
-## Master Roadmap Phases 11–12 — завершены (UI Refinement & Quality Hardening)
+## Master Specification V6 — Ход выполнения
 
-- **UI Refinement**: Ликвидная гибридная тема, адаптивная верстка без горизонтального скролла на мобильных, полная поддержка доступности (ARIA labels, focus outlines, keyboard navigation, touch targets >= 44px);
-- **Hardening**: 132 авто-теста проходят на 100% в полностью офлайн-режиме без внешних сетевых вызовов;
-- **Linter Quality**: Ruff check проходит на 100% без предупреждений (0 errors);
-- **Data Integrity**: Все 17 проверок целостности данных выполняются со статусом `OK`;
-- **Database Migrations**: Все миграции Alembic (`a1b2c3d4e5f6`, `b1c2d3e4f5a6` и предыдущие) применены и сверены со схемой;
-- **Production Safety**: Сохранена строгость правил `AGENTS.md` (никаких API-токенов в коде, не собираются приватные данные, изоляция через adapter interface).
+- **Phase V6.0 (Audit & Security Gate)** — **ЗАВЕРШЕНО**:
+  - Составлены обязательные документы аудита: `V6_PRE_IMPLEMENTATION_AUDIT.md`, `V6_SECURITY_AUDIT.md`, `V6_DATA_INTEGRITY_AUDIT.md`, `V6_UI_UX_AUDIT.md`, `V6_BOT_UX_AUDIT.md`, `V6_DESIGN_SYSTEM_AUDIT.md`;
+  - Проведена проверка приватностей и отсутствия секретов в Git.
+
+- **Phase V6.1 (Data/Event Hardening & Runbooks)** — **ЗАВЕРШЕНО**:
+  - Реализован алгоритм экспоненциального полураспада интересов `calculate_decayed_interest_score()` в `app/services/audience_service.py` (`PRICE` 14 дн, `AVAILABILITY` 10 дн, `DELIVERY` 14 дн, `QUANTITY` 30 дн, `FOLLOWER` 180 дн, `BUYER_ROLE` 365 дн);
+  - Создан CLI-скрипт восстановления базы данных `scripts/restore_database.py` и регламент `docs/BACKUP_RESTORE_RUNBOOK.md`;
+  - Добавлен верхний переключатель контекста вертикалей `[ Мебель ] [ Искусственный ротанг ]` в `base.html` и стили `.vertical-switcher`;
+  - Добавлен раздел и веб-страница `/openings` для модерации очереди открытий B2B-заведений.
+
+- **Проверки качества V6.1**:
+  - **Pytest**: 133/133 тестов успешно пройдены (100% офлайн);
+  - **Linter**: Ruff lint — 0 ошибок;
+  - **Integrity**: Все 17 проверок целостности — OK.
 
 ## Master TZ Phase 10 — завершён
+
 
 
 - Добавлена Alembic миграция `b1c2d3e4f5a6_opening_signals.py` и ORM-модель `OpeningSignal`;

@@ -568,3 +568,25 @@ async def test_evidence_count_reflects_linked_signals(session_factory):
     # the key assertion is that the field is populated (not None) and an integer
     assert isinstance(intel.evidence_count, int)
     assert intel.evidence_count >= 0
+
+
+# ---------------------------------------------------------------------------
+# Test 13: Interest Decay / Half-life calculation
+# ---------------------------------------------------------------------------
+
+
+def test_interest_decay_half_life():
+    from app.services.audience_service import calculate_decayed_interest_score
+
+    # PRICE half-life is 14 days. After 14 days, score of 100 should be 50.0
+    decayed_14d = calculate_decayed_interest_score(100.0, "PRICE", 14.0)
+    assert decayed_14d == 50.0
+
+    # AVAILABILITY half-life is 10 days. After 10 days, score of 80 should be 40.0
+    decayed_10d = calculate_decayed_interest_score(80.0, "AVAILABILITY", 10.0)
+    assert decayed_10d == 40.0
+
+    # Zero elapsed days -> score unchanged
+    decayed_0d = calculate_decayed_interest_score(90.0, "PRICE", 0.0)
+    assert decayed_0d == 90.0
+

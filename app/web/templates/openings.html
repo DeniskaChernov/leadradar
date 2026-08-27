@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Очередь открытий заведений — Lead Radar{% endblock %}
+{% block heading %}Радар открытий B2B-заведений{% endblock %}
+{% block subheading %}Отслеживание открывающихся ресторанов, кафе, отелей и офисов по публичным сигналам{% endblock %}
+
+{% block content %}
+<div class="panel">
+  <div class="panel-header">
+    <div>
+      <h2 class="panel-title">Сигналы новых открытий</h2>
+      <p class="panel-desc">Сформированная очередь потенциальных B2B-заказов на мебель и ротанг для новых мест</p>
+    </div>
+    <span class="pill primary">Всего в очереди: {{ queue|length }}</span>
+  </div>
+
+  {% if queue %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Заведение</th>
+          <th>Категория</th>
+          <th>Город / Адрес</th>
+          <th>Сроки открытия</th>
+          <th>Уверенность</th>
+          <th>Статус</th>
+          <th>Действие</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in queue %}
+        <tr>
+          <td><strong>{{ item.place_name }}</strong></td>
+          <td><span class="badge label">{{ item.place_type }}</span></td>
+          <td>{{ item.city or '—' }}</td>
+          <td>{{ item.opening_timeline or 'В ближайшее время' }}</td>
+          <td>
+            <span class="confidence-bar">
+              <span class="confidence-fill" style="width: {{ item.confidence }}%;"></span>
+              <small>{{ item.confidence }}%</small>
+            </span>
+          </td>
+          <td>
+            {% if item.review_status == 'VERIFIED' %}
+            <span class="badge success">Подтверждено</span>
+            {% elif item.review_status == 'REJECTED' %}
+            <span class="badge danger">Отклонено</span>
+            {% else %}
+            <span class="badge warning">Ожидает модерации</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="btn-group">
+              <button class="btn btn-sm success" onclick="reviewOpening({{ item.id }}, 'VERIFIED')">Подтвердить</button>
+              <button class="btn btn-sm danger" onclick="reviewOpening({{ item.id }}, 'REJECTED')">Отклонить</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <span class="empty-icon">🏪</span>
+    <h3>Очередь открытий пуста</h3>
+    <p>Новые сигналы об открытии ресторанов, кафе и отелей появятся здесь автоматически при их обнаружении в публичном мониторинге.</p>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+async function reviewOpening(openingId, decision) {
+  try {
+    const res = await fetch(`/api/openings/${openingId}/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      window.location.reload();
+    } else {
+      alert('Ошибка модерации: ' + (data.detail || 'Неизвестная ошибка'));
+    }
+  } catch (err) {
+    alert('Сетевая ошибка при принятии решения');
+  }
+}
+</script>
+{% endblock %}

@@ -30,6 +30,7 @@
       <a class="nav {% if active_path.startswith('/deals') %}active{% endif %}" href="/deals" {% if active_path.startswith('/deals') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="handshake">₽</i></span>Сделки</a>
       <a class="nav {% if active_path.startswith('/analytics') %}active{% endif %}" href="/analytics" {% if active_path.startswith('/analytics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="chart-no-axes-combined">◒</i></span>Аналитика</a>
       <a class="nav {% if active_path.startswith('/competitors') %}active{% endif %}" href="/competitors" {% if active_path.startswith('/competitors') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="building-2">◫</i></span>Конкуренты</a>
+      <a class="nav {% if active_path.startswith('/openings') %}active{% endif %}" href="/openings" {% if active_path.startswith('/openings') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="store">🏪</i></span>Открытия</a>
       <a class="nav {% if active_path.startswith('/roadmap') %}active{% endif %}" href="/roadmap" {% if active_path.startswith('/roadmap') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="route">↗</i></span>Развитие</a>
       <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system" {% if active_path.startswith('/system') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="settings-2">⚙</i></span>Система</a>
     </nav>
@@ -57,7 +58,19 @@
         <h1>{% block heading %}Lead Radar{% endblock %}</h1>
         <p>{% block subheading %}Публичный спрос конкурентов в одной базе{% endblock %}</p>
       </div>
+
+      <!-- Vertical Navigation Context Switcher (V6 Section 6) -->
+      <div class="vertical-switcher" role="radiogroup" aria-label="Выбор вертикали бизнеса">
+        <a href="?vertical=FURNITURE" class="switcher-tab {% if selected_vertical != 'ARTIFICIAL_RATTAN' %}active{% endif %}">
+          🪑 Мебель
+        </a>
+        <a href="?vertical=ARTIFICIAL_RATTAN" class="switcher-tab {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}active{% endif %}">
+          🌾 Искусственный ротанг
+        </a>
+      </div>
+
       <div class="top-actions">
+
         {% if search_paused %}
         <span class="status-pill paused">⏸ Поиск на паузе</span>
         {% elif safe_mode %}

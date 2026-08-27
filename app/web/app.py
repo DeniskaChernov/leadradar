@@ -354,7 +354,23 @@ def build_web_app(
             context=base_context(request, **data),
         )
 
+    @app.get("/openings", response_class=HTMLResponse)
+    async def openings(request: Request):
+        from app.services.place_opening_service import PlaceOpeningService
+
+        service = PlaceOpeningService(workflow.session_factory)
+        queue = await service.get_review_queue()
+        return templates.TemplateResponse(
+            request=request,
+            name="openings.html",
+            context=base_context(
+                request,
+                queue=queue,
+            ),
+        )
+
     @app.get("/roadmap", response_class=HTMLResponse)
+
     async def roadmap(request: Request):
         return templates.TemplateResponse(
             request=request,

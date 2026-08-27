@@ -176,8 +176,39 @@ SEGMENTS = (
 
 
 # ---------------------------------------------------------------------------
+# Interest Decay / Half-life Policy (V6 Section 21)
+# ---------------------------------------------------------------------------
+
+INTEREST_HALF_LIVES: dict[str, float] = {
+    "PRICE": 14.0,
+    "AVAILABILITY": 10.0,
+    "DELIVERY": 14.0,
+    "QUANTITY": 30.0,
+    "FOLLOWER": 180.0,
+    "BUYER_ROLE": 365.0,
+}
+
+
+def calculate_decayed_interest_score(
+    score: float,
+    topic: str,
+    days_elapsed: float,
+) -> float:
+    """Calculate decayed interest score using exponential half-life decay.
+
+    decayed_score = score * (0.5 ** (days_elapsed / half_life))
+    """
+    if days_elapsed <= 0:
+        return round(score, 2)
+    half_life = INTEREST_HALF_LIVES.get(topic.upper(), 30.0)
+    decayed = score * (0.5 ** (days_elapsed / half_life))
+    return round(max(0.0, min(100.0, decayed)), 2)
+
+
+# ---------------------------------------------------------------------------
 # Similarity weights
 # ---------------------------------------------------------------------------
+
 
 _PRODUCT_WEIGHT = 0.40
 _INTENT_WEIGHT = 0.25
