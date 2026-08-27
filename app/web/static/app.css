@@ -1403,4 +1403,29 @@ tr:hover td { background: rgba(230,240,253,.52); }
 .btn-sm.danger { background: rgba(255, 228, 230, 0.90); color: #be123c; border-color: rgba(225, 29, 72, 0.35); }
 .btn-sm:hover { filter: brightness(1.05); transform: translateY(-1px); }
 
+/* V6 · System Scan Plan & Replay Panel */
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; padding: 20px; }
+.plan-grid > div { padding: 16px 18px; border-radius: 16px; background: rgba(255, 255, 255, 0.65); border: 1px solid rgba(255, 255, 255, 0.85); box-shadow: 0 4px 14px rgba(90, 70, 50, 0.04); }
+.plan-grid span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.plan-grid b { display: block; font-size: 24px; font-weight: 800; color: #0f172a; margin-bottom: 4px; }
+.plan-grid small { display: block; font-size: 11px; color: #64748b; line-height: 1.4; }
+.plan-cap { border-color: rgba(245, 158, 11, 0.40) !important; background: linear-gradient(135deg, rgba(254, 243, 199, 0.70), rgba(254, 215, 170, 0.50)) !important; }
+.plan-cap b { color: #d97706 !important; }
+
+.replay-panel { padding: 20px; }
+.replay-body { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; padding: 18px 0 0; }
+.replay-body h3 { font-size: 18px; color: #0f172a; margin: 0 0 6px; }
+.replay-body p { margin: 0 0 8px; color: #334155; font-size: 14px; line-height: 1.45; }
+.replay-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+@media (max-width: 768px) {
+  .replay-body { grid-template-columns: 1fr; }
+}
+
+.market-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 18px 0 14px; padding: 12px 18px; border-radius: 16px; background: rgba(255, 255, 255, 0.50); border: 1px solid rgba(255, 255, 255, 0.80); }
+.explain-line { font-size: 13px; color: #475569; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot.green { background: #10b981; }
+.dot.grey { background: #94a3b8; }
+
+
 
