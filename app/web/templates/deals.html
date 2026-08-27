@@ -12,6 +12,13 @@
   <dl><dt>Клиент</dt><dd><a href="/contacts/{{ contact.id }}">@{{ contact.username }}</a></dd><dt>Источник</dt><dd>@{{ competitor.normalized_handle }}</dd><dt>Лид</dt><dd><a href="/leads/{{ lead.id }}">#{{ lead.id }} · {{ lead.lead_score }}/100</a></dd><dt>Количество</dt><dd>{{ deal.quantity or 'не указано' }}</dd>{% if deal.lost_reason %}<dt>Почему не купил</dt><dd>{{ deal.lost_reason }}</dd>{% endif %}</dl>
   <div class="card-actions"><a class="btn primary" href="/leads/{{ lead.id }}">Открыть сделку</a><a class="btn ghost" href="/contacts/{{ contact.id }}">Клиент</a></div>
 </article>
-{% else %}<div class="empty panel">Сделок пока нет. Создайте первую из карточки рабочего лида.</div>{% endfor %}
+{% else %}
+<div class="empty-state panel" style="grid-column: 1 / -1;">
+  <span class="empty-icon">🤝</span>
+  <h3>Сделок пока нет</h3>
+  <p>Создайте первую сделку из карточки рабочего лида, чтобы фиксировать продажи и обучать систему на реальных чеках.</p>
+  <a class="btn ghost btn-sm" href="/leads">Перейти к лидам →</a>
+</div>
+{% endfor %}
 </div>
 {% endblock %}

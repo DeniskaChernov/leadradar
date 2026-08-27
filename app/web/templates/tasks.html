@@ -28,6 +28,13 @@
     {% if task.status.value != 'DONE' %}<button class="btn success" data-task-complete="{{ task.id }}">✓ Выполнено</button>{% endif %}
   </div>
 </article>
-{% else %}<div class="empty panel">В этом разделе задач нет.</div>{% endfor %}
+{% else %}
+<div class="empty-state panel">
+  <span class="empty-icon">📋</span>
+  <h3>Задач пока нет</h3>
+  <p>Задачи создаются прямо из карточки клиента или лида, когда менеджеру нужно запланировать контакт.</p>
+  <a class="btn ghost btn-sm" href="/leads">Перейти к лидам →</a>
+</div>
+{% endfor %}
 </div>
 {% endblock %}

@@ -121,7 +121,7 @@
           {% endif %}
         </div>
       </div>
-      {% else %}<div class="empty">Сигналов нет.</div>{% endfor %}
+      {% else %}<div class="empty-box"><span class="empty-icon">💬</span><b>Сигналов нет</b><span>Активность клиента пока не зафиксирована в комментариях.</span></div>{% endfor %}
       </div>
     </section>
 
@@ -142,7 +142,7 @@
             {% endif %}
           </div>
         </div>
-      {% else %}<div class="empty">Истории действий пока нет.</div>{% endfor %}
+      {% else %}<div class="empty-box"><span class="empty-icon">📝</span><b>Истории действий пока нет</b><span>Все взаимодействия менеджера с клиентом будут сохраняться здесь.</span></div>{% endfor %}
       </div>
     </section>
   </div>
@@ -165,10 +165,10 @@
     <section class="panel"><div class="panel-head"><div><h2>Задачи</h2></div><a href="/tasks">Все →</a></div>
       {% set open_count = namespace(value=0) %}
       {% for task in tasks %}{% if task.status.value == 'OPEN' %}{% set open_count.value = open_count.value + 1 %}<div class="task-row"><div><b>{{ task.due_at.strftime('%d.%m.%Y %H:%M') }}</b><p>{{ task.note or 'Связаться с клиентом' }}</p></div><div class="task-row-actions"><button class="icon-btn" data-task-complete="{{ task.id }}" title="Выполнено">✓</button><button class="icon-btn muted-action" data-api-action="/api/tasks/{{ task.id }}/cancel" data-payload='{}' data-reload="1" title="Отменить">×</button></div></div>{% endif %}{% endfor %}
-      {% if open_count.value == 0 %}<div class="empty compact">Открытых задач нет.</div>{% endif %}
+      {% if open_count.value == 0 %}<div class="empty-box"><span class="empty-icon">✅</span><b>Открытых задач нет</b><span>Запланируйте следующий шаг для работы с клиентом.</span></div>{% endif %}
     </section>
 
-    <section class="panel"><div class="panel-head"><div><h2>Сделки</h2></div><a href="/deals">Все →</a></div>{% for deal in deals %}<div class="deal-row"><span class="tag status-{{ deal.status.value|lower }}">{{ deal_status_label(deal.status) }}</span><div><b>{{ deal.product_name or product_label(deal.product_category) }}</b><small>{% if deal.lost_reason %}{{ deal.lost_reason }}{% endif %}</small></div><strong>{{ money(deal.final_amount or deal.amount) }} сум</strong></div>{% else %}<div class="empty compact">Сделок пока нет.</div>{% endfor %}</section>
+    <section class="panel"><div class="panel-head"><div><h2>Сделки</h2></div><a href="/deals">Все →</a></div>{% for deal in deals %}<div class="deal-row"><span class="tag status-{{ deal.status.value|lower }}">{{ deal_status_label(deal.status) }}</span><div><b>{{ deal.product_name or product_label(deal.product_category) }}</b><small>{% if deal.lost_reason %}{{ deal.lost_reason }}{% endif %}</small></div><strong>{{ money(deal.final_amount or deal.amount) }} сум</strong></div>{% else %}<div class="empty-box"><span class="empty-icon">🤝</span><b>Сделок пока нет</b><span>Сделка появится при переводе клиента на стадию согласования или оплаты.</span></div>{% endfor %}</section>
   </aside>
 </div>
 {% endblock %}

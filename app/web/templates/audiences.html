@@ -16,6 +16,13 @@
     <div class="audience-tags">{% if item.top_product %}<span>{{ product_label(item.top_product) }}</span>{% endif %}{% if item.top_intent %}<span>{{ intent_label(item.top_intent) }}</span>{% endif %}</div>
     <small>Открыть состав и campaign brief →</small>
   </a>
-{% else %}<div class="empty panel">Аудитории ещё не рассчитаны.</div>{% endfor %}
+{% else %}
+<div class="empty-state panel" style="grid-column: 1 / -1;">
+  <span class="empty-icon">👥</span>
+  <h3>Аудитории формируются</h3>
+  <p>Динамические сегменты спроса рассчитываются автоматически при накоплении коммерческих сигналов в базе.</p>
+  <a class="btn ghost btn-sm" href="/radar">Перейти в радар сигналов →</a>
+</div>
+{% endfor %}
 </div>
 {% endblock %}
