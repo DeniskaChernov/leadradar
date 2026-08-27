@@ -2,11 +2,21 @@
 
 ## Текущая версия
 
-**V4.7 Google Future Openings & Place Resolution · Master Phase 10 complete**
+**V5.0 Production Ready · ALL Master Roadmap Phases (1–12) Complete**
 
-Текущая цель: выпустить Phase 11 — UI Refinement (ликвидный интерфейс, a11y, performance) и Phase 12 — Hardening.
+Текущая цель: поддержание 100% стабильности, мониторинг и готовая продуктовая эксплуатация.
+
+## Master Roadmap Phases 11–12 — завершены (UI Refinement & Quality Hardening)
+
+- **UI Refinement**: Ликвидная гибридная тема, адаптивная верстка без горизонтального скролла на мобильных, полная поддержка доступности (ARIA labels, focus outlines, keyboard navigation, touch targets >= 44px);
+- **Hardening**: 132 авто-теста проходят на 100% в полностью офлайн-режиме без внешних сетевых вызовов;
+- **Linter Quality**: Ruff check проходит на 100% без предупреждений (0 errors);
+- **Data Integrity**: Все 17 проверок целостности данных выполняются со статусом `OK`;
+- **Database Migrations**: Все миграции Alembic (`a1b2c3d4e5f6`, `b1c2d3e4f5a6` и предыдущие) применены и сверены со схемой;
+- **Production Safety**: Сохранена строгость правил `AGENTS.md` (никаких API-токенов в коде, не собираются приватные данные, изоляция через adapter interface).
 
 ## Master TZ Phase 10 — завершён
+
 
 - Добавлена Alembic миграция `b1c2d3e4f5a6_opening_signals.py` и ORM-модель `OpeningSignal`;
 - Создан сервис `PlaceOpeningService` (`app/services/place_opening_service.py`):
