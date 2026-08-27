@@ -7,6 +7,11 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
+class OutboundNetworkForbiddenError(RuntimeError):
+    """Raised when an automated test or kill-switch triggers against an outbound network call."""
+
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -78,18 +83,26 @@ class Settings(BaseSettings):
     telegram_notification_flush_interval_seconds: int = Field(default=30, ge=10, le=3600)
     telegram_notification_lease_seconds: int = Field(default=120, ge=30, le=1800)
     notification_policy: str = "ALL_NEW_COMMENTS"
+    external_kill_switch: bool = False
 
     @property
     def external_spend_unlocked(self) -> bool:
+        if self.external_kill_switch:
+            return False
         return self.external_live_unlock.strip() == "ALLOW_EXTERNAL_CALLS"
 
     @property
     def instagram_live_enabled(self) -> bool:
+        if self.external_kill_switch:
+            return False
         return self.instagram_live_calls_enabled and self.external_spend_unlocked
 
     @property
     def openai_live_enabled(self) -> bool:
+        if self.external_kill_switch:
+            return False
         return self.openai_live_calls_enabled and self.external_spend_unlocked
+
 
     @field_validator("telegram_admin_chat_ids", mode="before")
     @classmethod
