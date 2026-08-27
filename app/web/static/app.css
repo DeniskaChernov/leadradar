@@ -1475,3 +1475,29 @@ tr:hover td { background: rgba(230,240,253,.52); }
 
 
 
+.membership-reasons {
+  min-width: 260px;
+}
+
+.membership-reasons > span {
+  display: block;
+  margin: 0 0 8px;
+  color: var(--text-primary, #172033);
+  line-height: 1.35;
+}
+
+.membership-reasons > span:last-child {
+  margin-bottom: 0;
+}
+
+.membership-reasons b {
+  color: #168c68;
+}
+
+.membership-reasons small,
+.interest-meter > small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-secondary, #6c7484);
+  font-size: 13px;
+}

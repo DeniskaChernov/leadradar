@@ -16,11 +16,14 @@ from app.db.models import (
     Contact,
     ContactEvent,
     ContactIntelligence,
+    ContactInterestProfile,
     Deal,
     Evidence,
     ExternalBudgetReservation,
+    InterestEvidence,
     Lead,
     NotificationLog,
+    OutcomeDNA,
     Post,
     PublicSignal,
     SignificantChange,
@@ -49,6 +52,7 @@ async def inspect_integrity() -> IntegrityResult:
                 BusinessEntity,
                 BusinessAlias,
                 ContactIntelligence,
+                ContactInterestProfile,
                 AudienceSegment,
                 AudienceMembership,
                 Post,
@@ -61,6 +65,8 @@ async def inspect_integrity() -> IntegrityResult:
                 SignificantChange,
                 SignificantChangeNotification,
                 Evidence,
+                InterestEvidence,
+                OutcomeDNA,
                 AIRequest,
                 ExternalBudgetReservation,
             )
@@ -119,6 +125,28 @@ async def inspect_integrity() -> IntegrityResult:
                     ContactIntelligence.contact_id, func.count()
                 )
                 .group_by(ContactIntelligence.contact_id)
+                .having(func.count() > 1),
+                "interest evidence keys": select(
+                    InterestEvidence.interest_key, func.count()
+                )
+                .group_by(InterestEvidence.interest_key)
+                .having(func.count() > 1),
+                "contact interest profile scopes": select(
+                    ContactInterestProfile.contact_id,
+                    ContactInterestProfile.vertical,
+                    ContactInterestProfile.dimension,
+                    ContactInterestProfile.topic,
+                    func.count(),
+                )
+                .group_by(
+                    ContactInterestProfile.contact_id,
+                    ContactInterestProfile.vertical,
+                    ContactInterestProfile.dimension,
+                    ContactInterestProfile.topic,
+                )
+                .having(func.count() > 1),
+                "outcome DNA deals": select(OutcomeDNA.deal_id, func.count())
+                .group_by(OutcomeDNA.deal_id)
                 .having(func.count() > 1),
                 "audience memberships": select(
                     AudienceMembership.segment_id,

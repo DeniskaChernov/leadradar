@@ -130,6 +130,7 @@
           <th>Стадия</th>
           <th>Сигналов</th>
           <th>Источников</th>
+          <th>Почему контакт здесь</th>
           <th>Активность</th>
           <th>Ценность</th>
           <th>Экспорт</th>
@@ -142,6 +143,13 @@
           <td>{{ commercial_stage_label(intel.commercial_stage) }}</td>
           <td>{{ intel.signal_count }}</td>
           <td>{{ intel.source_count }}</td>
+          <td class="membership-reasons">
+            {% for reason in membership.reasons_json %}
+              <span><b>✓</b> {{ reason.text }}{% if reason.evidence_ids %}<small>Evidence: {{ reason.evidence_ids | join(', ') }}</small>{% endif %}</span>
+            {% else %}
+              <span class="muted">Объяснение будет построено при следующем пересчёте.</span>
+            {% endfor %}
+          </td>
           <td>{{ intel.activity_score }}</td>
           <td><b>{{ intel.value_score }}</b></td>
           <td><span class="tag {% if intel.export_eligibility.value=='FIRST_PARTY_ELIGIBLE' %}status-won{% else %}neutral{% endif %}">{{ export_eligibility_label(intel.export_eligibility) }}</span></td>
@@ -160,4 +168,3 @@
   {% endif %}
 </section>
 {% endblock %}
-

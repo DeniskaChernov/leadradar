@@ -4,6 +4,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from math import prod
 from typing import Any
 
 from sqlalchemy import select
@@ -15,10 +16,15 @@ from app.db.models import (
     Comment,
     Contact,
     ContactIntelligence,
+    ContactInterestProfile,
+    Deal,
+    DealStatus,
     Evidence,
     ExportEligibility,
+    InterestEvidence,
     Lead,
     LeadStatus,
+    OutcomeDNA,
     PublicSignal,
 )
 from app.services.b2b_policy import B2BPolicy
@@ -192,6 +198,9 @@ INTEREST_HALF_LIVES: dict[str, float] = {
     "BUYER_ROLE": 365.0,
 }
 
+INTEREST_PROFILE_ACTIVE_THRESHOLD = 20
+INTEREST_ENGINE_VERSION = "3.0"
+
 
 def calculate_decayed_interest_score(
     score: float,
@@ -322,6 +331,277 @@ class AudienceEngine:
             await self.recalculate_contact(contact_id)
         return len(contact_ids)
 
+    async def _sync_interest_evidence(
+        self,
+        session: AsyncSession,
+        contact_id: int,
+        commercial: list[tuple[Lead, Comment]],
+        now: datetime,
+    ) -> tuple[list[ContactInterestProfile], list[InterestEvidence], set[int]]:
+        """Persist deterministic interest observations and rebuild decayed profiles."""
+        comment_ids = [comment.id for _lead, comment in commercial]
+        signals = (
+            list(
+                await session.scalars(
+                    select(PublicSignal).where(PublicSignal.comment_id.in_(comment_ids))
+                )
+            )
+            if comment_ids
+            else []
+        )
+        signal_by_comment = {signal.comment_id: signal for signal in signals}
+        evidence_rows = (
+            list(
+                await session.scalars(
+                    select(Evidence).where(
+                        Evidence.public_signal_id.in_([signal.id for signal in signals])
+                    )
+                )
+            )
+            if signals
+            else []
+        )
+        evidence_by_signal: dict[int, list[Evidence]] = {}
+        for item in evidence_rows:
+            evidence_by_signal.setdefault(item.public_signal_id, []).append(item)
+
+        existing = list(
+            await session.scalars(
+                select(InterestEvidence).where(InterestEvidence.contact_id == contact_id)
+            )
+        )
+        existing_by_key = {item.interest_key: item for item in existing}
+        for item in existing:
+            item.active = False
+
+        evidenced_comment_ids: set[int] = set()
+        for lead, comment in commercial:
+            signal = signal_by_comment.get(comment.id)
+            if signal is None:
+                continue
+            candidates = evidence_by_signal.get(signal.id, [])
+            if not candidates:
+                continue
+            requested_ids = {
+                int(value)
+                for value in (lead.analysis_details or {}).get("evidence_ids", [])
+                if isinstance(value, int | str) and str(value).isdigit()
+            }
+            anchor = next(
+                (item for item in candidates if item.id in requested_ids),
+                min(candidates, key=lambda item: item.id),
+            )
+            evidenced_comment_ids.add(comment.id)
+            details = lead.analysis_details or {}
+            is_v3 = details.get("intelligence_version") == "3.0"
+            confidence = self._bounded_int(
+                details.get("confidence_score") if is_v3 else details.get("confidence"),
+                default=80,
+            )
+            vertical = getattr(signal.vertical, "value", signal.vertical) or "FURNITURE"
+            observations = [("INTENT", str(lead.intent), details.get("intent_score"))]
+            if lead.product_category:
+                observations.append(
+                    ("PRODUCT", str(lead.product_category), details.get("specificity_score"))
+                )
+            observed_at = self._aware(comment.discovered_at)
+            for dimension, topic, component_score in observations:
+                half_life = round(
+                    INTEREST_HALF_LIVES.get(topic.upper(), 45.0 if dimension == "PRODUCT" else 30.0)
+                )
+                interest_key = f"{contact_id}:{signal.id}:{dimension}:{topic}"
+                item = existing_by_key.get(interest_key)
+                if item is None:
+                    item = InterestEvidence(
+                        interest_key=interest_key,
+                        contact_id=contact_id,
+                        public_signal_id=signal.id,
+                        evidence_id=anchor.id,
+                        competitor_id=signal.competitor_id,
+                        vertical=str(vertical),
+                        dimension=dimension,
+                        topic=topic,
+                        strength=self._bounded_int(
+                            component_score if is_v3 else None,
+                            default=lead.lead_score,
+                        ),
+                        confidence=confidence,
+                        half_life_days=half_life,
+                        observed_at=observed_at,
+                        expires_at=observed_at + timedelta(days=half_life * 4),
+                    )
+                    session.add(item)
+                    existing_by_key[interest_key] = item
+                else:
+                    item.evidence_id = anchor.id
+                    item.competitor_id = signal.competitor_id
+                    item.vertical = str(vertical)
+                    item.strength = self._bounded_int(
+                        component_score if is_v3 else None,
+                        default=lead.lead_score,
+                    )
+                    item.confidence = confidence
+                    item.half_life_days = half_life
+                    item.observed_at = observed_at
+                    item.expires_at = observed_at + timedelta(days=half_life * 4)
+                item.active = item.expires_at > now
+
+        await session.flush()
+        active_observations = list(
+            await session.scalars(
+                select(InterestEvidence).where(
+                    InterestEvidence.contact_id == contact_id,
+                    InterestEvidence.active.is_(True),
+                    InterestEvidence.expires_at > now,
+                )
+            )
+        )
+        grouped: dict[tuple[str, str, str], list[InterestEvidence]] = {}
+        for item in active_observations:
+            grouped.setdefault((item.vertical, item.dimension, item.topic), []).append(item)
+
+        profiles = list(
+            await session.scalars(
+                select(ContactInterestProfile).where(
+                    ContactInterestProfile.contact_id == contact_id
+                )
+            )
+        )
+        profile_by_scope = {
+            (item.vertical, item.dimension, item.topic): item for item in profiles
+        }
+        active_scopes: set[tuple[str, str, str]] = set()
+        for scope, items in grouped.items():
+            active_scopes.add(scope)
+            effective_scores = []
+            for item in items:
+                age_days = max(0.0, (now - self._aware(item.observed_at)).total_seconds() / 86400)
+                decayed = item.strength * (0.5 ** (age_days / item.half_life_days))
+                effective_scores.append((decayed / 100) * (item.confidence / 100))
+            current_score = round((1 - prod(1 - min(0.99, score) for score in effective_scores)) * 100)
+            combined_confidence = round(
+                (1 - prod(1 - min(0.99, item.confidence / 100) for item in items)) * 100
+            )
+            profile = profile_by_scope.get(scope)
+            if profile is None:
+                profile = ContactInterestProfile(
+                    contact_id=contact_id,
+                    vertical=scope[0],
+                    dimension=scope[1],
+                    topic=scope[2],
+                    first_seen_at=min(item.observed_at for item in items),
+                    last_seen_at=max(item.observed_at for item in items),
+                )
+                session.add(profile)
+                profile_by_scope[scope] = profile
+            profile.current_score = max(0, min(100, current_score))
+            profile.confidence = max(0, min(100, combined_confidence))
+            profile.first_seen_at = min(item.observed_at for item in items)
+            profile.last_seen_at = max(item.observed_at for item in items)
+            profile.commercial_signal_count = len({item.public_signal_id for item in items})
+            profile.source_count = len({item.competitor_id for item in items})
+            profile.competitor_count = profile.source_count
+            profile.evidence_ids_json = sorted({item.evidence_id for item in items})
+            profile.calculated_at = now
+        for scope, profile in profile_by_scope.items():
+            if scope not in active_scopes:
+                profile.current_score = 0
+                profile.confidence = 0
+                profile.commercial_signal_count = 0
+                profile.source_count = 0
+                profile.competitor_count = 0
+                profile.evidence_ids_json = []
+                profile.calculated_at = now
+        await session.flush()
+        return list(profile_by_scope.values()), active_observations, evidenced_comment_ids
+
+    async def _sync_outcome_dna(
+        self,
+        session: AsyncSession,
+        contact_id: int,
+        commercial: list[tuple[Lead, Comment]],
+        now: datetime,
+    ) -> None:
+        """Snapshot only facts observed before WON, never the outcome itself."""
+        won_deals = list(
+            await session.scalars(
+                select(Deal).where(
+                    Deal.contact_id == contact_id,
+                    Deal.status == DealStatus.WON,
+                )
+            )
+        )
+        if not won_deals:
+            return
+        observations = list(
+            await session.scalars(
+                select(InterestEvidence).where(InterestEvidence.contact_id == contact_id)
+            )
+        )
+        for deal in won_deals:
+            cutoff = self._aware(deal.won_at or deal.updated_at or now)
+            pre_won = [item for item in observations if self._aware(item.observed_at) <= cutoff]
+            if not pre_won:
+                continue
+            pre_won_rows = [
+                (lead, comment)
+                for lead, comment in commercial
+                if self._aware(comment.discovered_at) <= cutoff
+            ]
+            roles = [
+                str((lead.analysis_details or {}).get("buyer_role"))
+                for lead, _comment in pre_won_rows
+                if (lead.analysis_details or {}).get("buyer_role") not in (None, "UNKNOWN")
+            ]
+            buyer_role = max(
+                set(roles) or {"UNKNOWN"},
+                key=lambda role: _BUYER_ROLE_PRIORITY.get(role, 0),
+            )
+            stage_order = {
+                "NON_COMMERCIAL": 0,
+                "AWARENESS": 1,
+                "CONSIDERATION": 2,
+                "PURCHASE_INTENT": 3,
+                "READY_TO_BUY": 4,
+            }
+            stages = [
+                str((lead.analysis_details or {}).get("funnel_stage") or "NON_COMMERCIAL")
+                for lead, _comment in pre_won_rows
+            ]
+            commercial_stage = max(
+                stages,
+                key=lambda stage: stage_order.get(stage, 0),
+                default="NON_COMMERCIAL",
+            )
+            raw_text = " ".join(comment.text.lower() for _lead, comment in pre_won_rows)
+            quantity = max(self._extract_explicit_quantities(raw_text), default=0)
+            vertical = Counter(item.vertical for item in pre_won).most_common(1)[0][0]
+            snapshot = await session.scalar(
+                select(OutcomeDNA).where(OutcomeDNA.deal_id == deal.id)
+            )
+            if snapshot is None:
+                snapshot = OutcomeDNA(deal_id=deal.id, contact_id=contact_id)
+                session.add(snapshot)
+            snapshot.vertical = vertical
+            snapshot.cutoff_at = cutoff
+            snapshot.product_topics_json = sorted(
+                {item.topic for item in pre_won if item.dimension == "PRODUCT"}
+            )
+            snapshot.intents_json = sorted(
+                {item.topic for item in pre_won if item.dimension == "INTENT"}
+            )
+            snapshot.buyer_role = buyer_role
+            snapshot.quantity_band = self._quantity_band(quantity)
+            snapshot.commercial_stage = commercial_stage
+            snapshot.commercial_signal_count = len(
+                {item.public_signal_id for item in pre_won}
+            )
+            snapshot.source_count = len({item.competitor_id for item in pre_won})
+            snapshot.competitor_count = snapshot.source_count
+            snapshot.evidence_ids_json = sorted({item.evidence_id for item in pre_won})
+            snapshot.engine_version = INTEREST_ENGINE_VERSION
+        await session.flush()
+
     async def recalculate_contact(self, contact_id: int) -> ContactIntelligence:
         await self.sync_segments()
         now = datetime.now(UTC)
@@ -368,11 +648,36 @@ class AudienceEngine:
                     )
                 )
             ]
-            sources = {comment.competitor_id for _lead, comment in commercial}
-            product_counts = Counter(
-                lead.product_category for lead, _comment in commercial if lead.product_category
+            profiles, interest_observations, evidenced_comment_ids = (
+                await self._sync_interest_evidence(
+                    session, contact_id, commercial, now
+                )
             )
-            intent_counts = Counter(lead.intent for lead, _comment in commercial)
+            commercial = [
+                (lead, comment)
+                for lead, comment in commercial
+                if comment.id in evidenced_comment_ids
+            ]
+            active_profiles = [
+                profile
+                for profile in profiles
+                if profile.current_score >= INTEREST_PROFILE_ACTIVE_THRESHOLD
+            ]
+            sources = {item.competitor_id for item in interest_observations}
+            product_counts = Counter(
+                {
+                    profile.topic: profile.commercial_signal_count
+                    for profile in active_profiles
+                    if profile.dimension == "PRODUCT"
+                }
+            )
+            intent_counts = Counter(
+                {
+                    profile.topic: profile.commercial_signal_count
+                    for profile in active_profiles
+                    if profile.dimension == "INTENT"
+                }
+            )
             raw_text = " ".join(comment.text.lower() for _lead, comment in commercial)
             explicit_quantity = max(
                 self._extract_explicit_quantities(raw_text),
@@ -384,9 +689,7 @@ class AudienceEngine:
                 quantity_override=explicit_quantity or None,
             )
             is_b2b = b2b_decision.role.value == "B2B_HORECA"
-            dates = [
-                self._aware(comment.discovered_at) for _lead, comment in commercial
-            ]
+            dates = sorted(self._aware(item.observed_at) for item in interest_observations)
             first_seen = min(dates, default=self._aware(contact.first_seen_at))
             last_seen = max(dates, default=self._aware(contact.last_seen_at))
             recency_days = max(0, (now - last_seen).days)
@@ -394,18 +697,9 @@ class AudienceEngine:
             max_score = max(score_values, default=0)
             source_bonus = min(18, max(0, len(sources) - 1) * 9)
             decayed_activity = sum(
-                calculate_decayed_interest_score(
-                    18.0,
-                    lead.intent,
-                    max(
-                        0.0,
-                        (
-                            now - self._aware(comment.discovered_at)
-                        ).total_seconds()
-                        / 86400,
-                    ),
-                )
-                for lead, comment in commercial
+                profile.current_score * 0.35
+                for profile in active_profiles
+                if profile.dimension == "INTENT"
             )
             activity_score = min(
                 100,
@@ -439,14 +733,14 @@ class AudienceEngine:
             }
             stages = [
                 str((lead.analysis_details or {}).get("funnel_stage") or "NON_COMMERCIAL")
-                for lead, _comment in rows
+                for lead, _comment in commercial
             ]
             commercial_stage = max(
                 stages, key=lambda item: stage_order.get(item, 0), default="NON_COMMERCIAL"
             )
             horizons = [
                 str((lead.analysis_details or {}).get("purchase_horizon"))
-                for lead, _comment in reversed(rows)
+                for lead, _comment in reversed(commercial)
                 if (lead.analysis_details or {}).get("purchase_horizon") not in (None, "UNKNOWN")
             ]
 
@@ -473,21 +767,7 @@ class AudienceEngine:
             # ------------------------------------------------------------------
             # Phase 4 — Evidence count from linked public signals
             # ------------------------------------------------------------------
-            comment_ids = [comment.id for comment in comments]
-            evidence_count = 0
-            if comment_ids:
-                # Count evidence rows linked through PublicSignal for this contact's comments
-                ps_ids_result = await session.execute(
-                    select(PublicSignal.id).where(
-                        PublicSignal.comment_id.in_(comment_ids)
-                    )
-                )
-                ps_ids = [row[0] for row in ps_ids_result.all()]
-                if ps_ids:
-                    ev_count_result = await session.execute(
-                        select(Evidence.id).where(Evidence.public_signal_id.in_(ps_ids))
-                    )
-                    evidence_count = len(ev_count_result.all())
+            evidence_count = len({item.evidence_id for item in interest_observations})
 
             # ------------------------------------------------------------------
             # Phase 4 — Similarity vector (pre-computed, used for get_similar_contacts)
@@ -517,8 +797,12 @@ class AudienceEngine:
             intelligence.customer_type = "B2B" if is_b2b else "B2C"
             intelligence.quantity_band = self._quantity_band(explicit_quantity)
             intelligence.purchase_horizon = horizons[0] if horizons else None
-            intelligence.product_interests_json = self._ranked(product_counts)
-            intelligence.top_intents_json = self._ranked(intent_counts)
+            intelligence.product_interests_json = self._ranked_profiles(
+                active_profiles, "PRODUCT"
+            )
+            intelligence.top_intents_json = self._ranked_profiles(
+                active_profiles, "INTENT"
+            )
             intelligence.export_eligibility = (
                 ExportEligibility.FIRST_PARTY_ELIGIBLE
                 if contact.phone and contact.qualification_updated_at is not None
@@ -552,9 +836,16 @@ class AudienceEngine:
                 "value": value_score,
                 "reactivated": reactivated,
                 "buyer_role": primary_buyer_role,
+                "profiles": {
+                    (profile.dimension, profile.topic): profile
+                    for profile in active_profiles
+                },
+                "evidence_ids": sorted(
+                    {item.evidence_id for item in interest_observations}
+                ),
             }
             for segment in segments:
-                active, evidence, expires_at = self._evaluate(
+                active, reasons, evidence_ids, expires_at = self._evaluate(
                     segment.criteria_json, facts, last_seen
                 )
                 membership = await session.scalar(
@@ -571,9 +862,13 @@ class AudienceEngine:
                     session.add(membership)
                 membership.active = active
                 membership.confidence = min(98, max(50, value_score if active else 50))
-                membership.evidence_json = evidence
+                membership.evidence_json = [reason["text"] for reason in reasons]
+                membership.reasons_json = reasons
+                membership.evidence_ids_json = evidence_ids
+                membership.engine_version = INTEREST_ENGINE_VERSION
                 membership.expires_at = expires_at
                 membership.evaluated_at = now
+            await self._sync_outcome_dna(session, contact_id, commercial, now)
             await session.commit()
             return intelligence
 
@@ -660,42 +955,114 @@ class AudienceEngine:
 
     @staticmethod
     def _evaluate(criteria: dict, facts: dict, last_seen: datetime):
-        evidence: list[str] = []
+        reasons: list[dict[str, Any]] = []
+        evidence_ids: set[int] = set()
         active = True
         expires_at = None
+
+        def add_reason(
+            criterion: str,
+            text: str,
+            ids: list[int] | None = None,
+            score: int | None = None,
+        ) -> None:
+            normalized_ids = sorted(set(ids or []))
+            evidence_ids.update(normalized_ids)
+            reason: dict[str, Any] = {
+                "criterion": criterion,
+                "text": text,
+                "evidence_ids": normalized_ids,
+                "observed_at": last_seen.isoformat(),
+            }
+            if score is not None:
+                reason["score"] = score
+            reasons.append(reason)
+
         if criteria.get("hot"):
             active &= bool(facts["hot"])
-            evidence.append("HOT-порог достигнут")
+            add_reason("HOT", "HOT-порог достигнут", facts["evidence_ids"], facts["value"])
         if days := criteria.get("days"):
             active &= int(facts["recency_days"]) < int(days)
             expires_at = last_seen + timedelta(days=int(days))
-            evidence.append(f"активность за {days} дн.")
+            add_reason("RECENCY", f"коммерческая активность за {days} дн.", facts["evidence_ids"])
         if product := criteria.get("product"):
-            active &= product in facts["products"]
-            evidence.append(f"товарный интерес: {product}")
+            profile = facts["profiles"].get(("PRODUCT", product))
+            active &= profile is not None
+            if profile is not None:
+                product_expiry = profile.last_seen_at + timedelta(
+                    days=round(INTEREST_HALF_LIVES.get(product, 45.0) * 4)
+                )
+                expires_at = min(expires_at, product_expiry) if expires_at else product_expiry
+                add_reason(
+                    "PRODUCT",
+                    f"{profile.commercial_signal_count} подтвержд. сигнал(а): {product}",
+                    profile.evidence_ids_json,
+                    profile.current_score,
+                )
         if intent := criteria.get("intent"):
-            active &= intent in facts["intents"]
-            evidence.append(f"намерение: {intent}")
+            profile = facts["profiles"].get(("INTENT", intent))
+            active &= profile is not None
+            if profile is not None:
+                intent_expiry = profile.last_seen_at + timedelta(
+                    days=round(INTEREST_HALF_LIVES.get(intent, 30.0) * 4)
+                )
+                expires_at = min(expires_at, intent_expiry) if expires_at else intent_expiry
+                add_reason(
+                    "INTENT",
+                    f"подтверждённое намерение: {intent}",
+                    profile.evidence_ids_json,
+                    profile.current_score,
+                )
         if sources := criteria.get("sources"):
             active &= int(facts["sources"]) >= int(sources)
-            evidence.append(f"источников: {facts['sources']}")
+            add_reason(
+                "SOURCES",
+                f"коммерческих источников: {facts['sources']}",
+                facts["evidence_ids"],
+            )
         if customer_type := criteria.get("customer_type"):
             active &= facts["customer_type"] == customer_type
-            evidence.append(f"тип: {customer_type}")
+            add_reason("CUSTOMER_TYPE", f"тип: {customer_type}", facts["evidence_ids"])
         if quantity := criteria.get("quantity"):
             active &= int(facts["quantity"]) >= int(quantity)
-            evidence.append(f"количество: {facts['quantity']}")
+            add_reason("QUANTITY", f"количество: {facts['quantity']}", facts["evidence_ids"])
         if min_value := criteria.get("min_value"):
             active &= int(facts["value"]) >= int(min_value)
-            evidence.append(f"value score: {facts['value']}")
+            add_reason("VALUE", f"value score: {facts['value']}", facts["evidence_ids"], facts["value"])
         if criteria.get("reactivated"):
             active &= bool(facts["reactivated"])
-            evidence.append("возвращение после паузы 30+ дней")
+            add_reason("REACTIVATED", "возвращение после паузы 30+ дней", facts["evidence_ids"])
         # Phase 4 — buyer role matching
         if buyer_role := criteria.get("buyer_role"):
             active &= facts.get("buyer_role") == buyer_role
-            evidence.append(f"роль покупателя: {buyer_role}")
-        return active, evidence if active else [], expires_at
+            add_reason("BUYER_ROLE", f"роль покупателя: {buyer_role}", facts["evidence_ids"])
+        return (
+            active,
+            reasons if active else [],
+            sorted(evidence_ids) if active else [],
+            expires_at,
+        )
+
+    @staticmethod
+    def _ranked_profiles(
+        profiles: list[ContactInterestProfile], dimension: str
+    ) -> list[dict[str, object]]:
+        ranked = sorted(
+            (profile for profile in profiles if profile.dimension == dimension),
+            key=lambda profile: (profile.current_score, profile.last_seen_at),
+            reverse=True,
+        )
+        return [
+            {
+                "value": profile.topic,
+                "count": profile.commercial_signal_count,
+                "confidence": profile.confidence,
+                "current_score": profile.current_score,
+                "source_count": profile.source_count,
+                "evidence_ids": profile.evidence_ids_json,
+            }
+            for profile in ranked[:8]
+        ]
 
     @staticmethod
     def _ranked(counter: Counter) -> list[dict[str, object]]:
@@ -726,6 +1093,14 @@ class AudienceEngine:
             int(match.group(1))
             for match in re.finditer(rf"\b(\d{{1,4}})\s*(?:{unit_pattern})\b", text)
         ]
+
+    @staticmethod
+    def _bounded_int(value: object, *, default: int) -> int:
+        try:
+            parsed = int(value) if value is not None else int(default)
+        except (TypeError, ValueError):
+            parsed = int(default)
+        return max(0, min(100, parsed))
 
     @staticmethod
     def _aware(value: datetime) -> datetime:

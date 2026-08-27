@@ -14,7 +14,7 @@
 | Audit + network freeze | Implemented | Offline automated | No | No |
 | AI request/budget ledger | Implemented | Concurrency + migration | No | No |
 | Lead Scoring V3 | Implemented in rule pipeline | 30 golden + component tests | No | No |
-| Audience Engine V3 | Legacy engine; rebuild pending | Legacy tests only | No | No |
+| Audience Engine V3 | Evidence-first core implemented | Unit/integration; golden expansion pending | UI offline | No |
 | Rattan Vertical V2 | Prototype/legacy | Small fixture only | No | No |
 | Unit Economics ledger | Not implemented | Calculator tests only | No | No |
 | Premium UI / Telegram Bot | Partial | Smoke/unit only | No | No |
@@ -34,7 +34,20 @@
 - AI fingerprint учитывает только коммерческую историю, stable contact identity, vertical и catalog context version;
 - OpenAI output не может сохранить выдуманные Evidence IDs; без Evidence confidence снижается;
 - текущая golden calibration содержит только 30 сценариев — pilot gate 150–300 ещё не выполнен;
-- полный offline suite: 167 тестов, внешних вызовов нет.
+- полный offline suite после Phase D: 171 тест, внешних вызовов нет.
+
+## Phase D — Audience Engine V3
+
+- добавлены идемпотентные `InterestEvidence`, связанные с реальными Evidence/PublicSignal;
+- `ContactInterestProfile` хранит decayed score, confidence, first/last seen, source count и Evidence IDs;
+- реакции и некоммерческий шум не создают interest evidence и не усиливают multi-competitor;
+- membership хранит структурированные причины, реальные Evidence IDs, expiry и engine version;
+- `OutcomeDNA` использует только признаки, наблюдавшиеся до `won_at`, без leakage статуса WON;
+- интерфейс сегмента показывает менеджеру «почему контакт здесь»;
+- миграция `f3b9d7a61c20` применена к рабочей БД, Alembic schema check чистый;
+- полная цепочка Alembic подтверждена отдельно на новой пустой SQLite БД;
+- текущая рабочая БД: 16 evidence-first interest profiles, 600 уникальных memberships, дубликатов нет;
+- audience golden/eval пока недостаточен, поэтому production/pilot ready остаётся `No`.
 
 ## Post-audit hardening — AI cost ledger
 

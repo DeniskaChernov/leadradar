@@ -512,6 +512,110 @@ class Evidence(Base):
     public_signal: Mapped[PublicSignal] = relationship(back_populates="evidence")
 
 
+class InterestEvidence(Base):
+    """A commercial interest observation derived from one persisted Evidence row."""
+
+    __tablename__ = "interest_evidence"
+    __table_args__ = (
+        UniqueConstraint("interest_key", name="uq_interest_evidence_interest_key"),
+        CheckConstraint("strength >= 0 AND strength <= 100", name="ck_interest_evidence_strength"),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 100",
+            name="ck_interest_evidence_confidence",
+        ),
+        CheckConstraint("half_life_days > 0", name="ck_interest_evidence_half_life_days"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    interest_key: Mapped[str] = mapped_column(String(512), index=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
+    public_signal_id: Mapped[int] = mapped_column(ForeignKey("public_signals.id"), index=True)
+    evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence.id"), index=True)
+    competitor_id: Mapped[int] = mapped_column(ForeignKey("competitors.id"), index=True)
+    vertical: Mapped[str] = mapped_column(String(64), default="FURNITURE", index=True)
+    dimension: Mapped[str] = mapped_column(String(32), index=True)
+    topic: Mapped[str] = mapped_column(String(128), index=True)
+    strength: Mapped[int] = mapped_column(Integer)
+    confidence: Mapped[int] = mapped_column(Integer)
+    half_life_days: Mapped[int] = mapped_column(Integer)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class ContactInterestProfile(Base):
+    """Current decayed score for one observable commercial topic."""
+
+    __tablename__ = "contact_interest_profiles"
+    __table_args__ = (
+        UniqueConstraint(
+            "contact_id",
+            "vertical",
+            "dimension",
+            "topic",
+            name="uq_contact_interest_profiles_scope",
+        ),
+        CheckConstraint(
+            "current_score >= 0 AND current_score <= 100",
+            name="ck_contact_interest_profiles_current_score",
+        ),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 100",
+            name="ck_contact_interest_profiles_confidence",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
+    vertical: Mapped[str] = mapped_column(String(64), default="FURNITURE", index=True)
+    dimension: Mapped[str] = mapped_column(String(32), index=True)
+    topic: Mapped[str] = mapped_column(String(128), index=True)
+    current_score: Mapped[int] = mapped_column(Integer, default=0)
+    confidence: Mapped[int] = mapped_column(Integer, default=0)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    commercial_signal_count: Mapped[int] = mapped_column(Integer, default=0)
+    source_count: Mapped[int] = mapped_column(Integer, default=0)
+    competitor_count: Mapped[int] = mapped_column(Integer, default=0)
+    evidence_ids_json: Mapped[list[int]] = mapped_column(JSON, default=list)
+    calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class OutcomeDNA(Base):
+    """Immutable feature snapshot observed before a deal was won."""
+
+    __tablename__ = "outcome_dna"
+    __table_args__ = (UniqueConstraint("deal_id", name="uq_outcome_dna_deal_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"), index=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
+    vertical: Mapped[str] = mapped_column(String(64), default="FURNITURE", index=True)
+    cutoff_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    product_topics_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    intents_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    buyer_role: Mapped[str] = mapped_column(String(32), default="UNKNOWN", index=True)
+    quantity_band: Mapped[str | None] = mapped_column(String(32))
+    commercial_stage: Mapped[str] = mapped_column(String(64), default="NON_COMMERCIAL")
+    commercial_signal_count: Mapped[int] = mapped_column(Integer, default=0)
+    source_count: Mapped[int] = mapped_column(Integer, default=0)
+    competitor_count: Mapped[int] = mapped_column(Integer, default=0)
+    evidence_ids_json: Mapped[list[int]] = mapped_column(JSON, default=list)
+    engine_version: Mapped[str] = mapped_column(String(32), default="3.0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class ContactIntelligence(Base):
     __tablename__ = "contact_intelligence"
     __table_args__ = (UniqueConstraint("contact_id", name="uq_contact_intelligence_contact_id"),)
@@ -582,6 +686,9 @@ class AudienceMembership(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     confidence: Mapped[int] = mapped_column(Integer, default=0)
     evidence_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    reasons_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    evidence_ids_json: Mapped[list[int]] = mapped_column(JSON, default=list)
+    engine_version: Mapped[str] = mapped_column(String(32), default="3.0")
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
