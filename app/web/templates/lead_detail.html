@@ -3,6 +3,11 @@
 {% block heading %}Лид #{{ lead.id }}{% endblock %}
 {% block subheading %}@{{ contact.username }} · {{ lead_status_label(lead.status) }}{% endblock %}
 {% block content %}
+<div class="detail-back-bar">
+  <a class="btn ghost btn-sm" href="/leads">← Назад ко всем лидам</a>
+  <span class="pill primary">Карточка лида #{{ lead.id }}</span>
+</div>
+
 {% set ai = lead.analysis_details or {} %}
 <div class="lead-hero {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %}">
   <div class="lead-score-xl"><span>{{ lead.lead_score }}</span><small>из 100</small></div>
@@ -55,7 +60,17 @@
 
     <section class="panel">
       <div class="panel-head"><div><h2>История интереса</h2><p>Другие сигналы этого же Instagram-пользователя</p></div><a href="/contacts/{{ contact.id }}">Вся карточка клиента →</a></div>
-      <div class="mini-history">{% for h_comment, h_competitor, h_post, h_lead in history %}<div class="mini-history-row"><span>{{ h_comment.discovered_at.strftime('%d.%m.%Y') }}</span><div><b>@{{ h_competitor.normalized_handle }}</b><p>{{ h_comment.text }}</p></div><div>{% if h_lead %}<strong>{{ h_lead.lead_score }}</strong><small>{{ intent_label(h_lead.intent) }}</small>{% else %}<small>не разобран</small>{% endif %}</div></div>{% endfor %}</div>
+      <div class="mini-history">
+        {% for h_comment, h_competitor, h_post, h_lead in history %}
+        <div class="mini-history-row"><span>{{ h_comment.discovered_at.strftime('%d.%m.%Y') }}</span><div><b>@{{ h_competitor.normalized_handle }}</b><p>{{ h_comment.text }}</p></div><div>{% if h_lead %}<strong>{{ h_lead.lead_score }}</strong><small>{{ intent_label(h_lead.intent) }}</small>{% else %}<small>не разобран</small>{% endif %}</div></div>
+        {% else %}
+        <div class="empty-box">
+          <span class="empty-icon">💬</span>
+          <b>Это первое обращение клиента</b>
+          <span>Предыдущих комментариев от этого аккаунта в базе не зафиксировано.</span>
+        </div>
+        {% endfor %}
+      </div>
     </section>
   </div>
 

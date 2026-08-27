@@ -54,7 +54,13 @@
         <span class="attention-icon hot">{{ lead.lead_score }}</span><div><b>@{{ contact.username }} · {{ intent_label(lead.intent) }}</b><p>{{ comment.text }}</p><small>Источник: @{{ competitor.normalized_handle }}</small></div><span>→</span>
       </a>
       {% endfor %}
-      {% if not recent_changes and not tasks and not hot_leads %}<div class="empty compact">Срочных действий пока нет.</div>{% endif %}
+      {% if not recent_changes and not tasks and not hot_leads %}
+      <div class="empty-box">
+        <span class="empty-icon">✨</span>
+        <b>Все срочные задачи закрыты</b>
+        <span>Новые горячие лиды, изменения статусов и задачи появятся здесь автоматически.</span>
+      </div>
+      {% endif %}
     </div>
   </section>
 
@@ -82,7 +88,13 @@
         </div>
         <div class="score {% if lead and lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead and lead.status.value in ['ANALYZING','AI_PENDING'] %}pending{% elif lead %}warm{% else %}muted{% endif %}">{% if lead and lead.status.value not in ['ANALYZING','AI_PENDING'] %}{{ lead.lead_score }}{% elif lead %}…{% else %}…{% endif %}</div>
       </a>
-      {% else %}<div class="empty">Сигналов пока нет.</div>{% endfor %}
+      {% else %}
+      <div class="empty-box">
+        <span class="empty-icon">📡</span>
+        <b>Сигналов пока нет</b>
+        <span>Новые комментарии появятся здесь после запуска проверки конкурентов.</span>
+      </div>
+      {% endfor %}
     </div>
   </section>
 
@@ -96,7 +108,13 @@
         <div class="run-stat"><b>{{ run.stats_json.get('comments_created', 0) }}</b><small>новых</small></div>
         <div class="run-stat"><b>{{ run.stats_json.get('errors', 0) }}</b><small>ошибок</small></div>
       </div>
-      {% else %}<div class="empty compact">Проверок ещё не было.</div>{% endfor %}
+      {% else %}
+      <div class="empty-box">
+        <span class="empty-icon">⚙️</span>
+        <b>Проверок ещё не было</b>
+        <span>Запустите проверку со страницы «Система» или дождитесь автоматического цикла.</span>
+      </div>
+      {% endfor %}
     </div>
     <div class="coverage-box">
       <h3>Насколько полно забраны комментарии</h3>
