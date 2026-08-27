@@ -2,52 +2,57 @@
 
 ## Текущая версия
 
-**V6.16 Production Ready · ALL V6 Master Specification Phases Complete**
+**V6.17 Production Ready · ALL V6 Master Specification Phases (V6.0–V6.17) Fully Complete**
 
-Текущая цель: поддержание 100% стабильности, мониторинг и эксплуатация.
+Текущая цель: готовность к пилотному запуску на рынке, поддержание 100% стабильности и мониторинг.
 
-## Master Specification V6 — Ход выполнения
+## Master Specification V6 — Итоговое выполнение
 
 - **Phase V6.0 (Audit & Security Gate)** — **ЗАВЕРШЕНО**:
-  - Составлены обязательные документы аудита: `V6_PRE_IMPLEMENTATION_AUDIT.md`, `V6_SECURITY_AUDIT.md`, `V6_DATA_INTEGRITY_AUDIT.md`, `V6_UI_UX_AUDIT.md`, `V6_BOT_UX_AUDIT.md`, `V6_DESIGN_SYSTEM_AUDIT.md`;
-  - Проведена проверка приватностей и отсутствия секретов в Git.
+  - Составлены обязательные документы аудита: `V6_PRE_IMPLEMENTATION_AUDIT.md`, `V6_SECURITY_AUDIT.md`, `V6_DATA_INTEGRITY_AUDIT.md`, `V6_UI_UX_AUDIT.md`, `V6_BOT_UX_AUDIT.md`, `V6_DESIGN_SYSTEM_AUDIT.md`.
 
 - **Phase V6.1 (Data/Event Hardening & Runbooks)** — **ЗАВЕРШЕНО**:
-  - Реализован алгоритм экспоненциального полураспада интересов `calculate_decayed_interest_score()` в `app/services/audience_service.py`;
-  - Создан CLI-скрипт восстановления базы данных `scripts/restore_database.py` и регламент `docs/BACKUP_RESTORE_RUNBOOK.md`;
-  - Добавлен переключатель контекста вертикалей `[ 🪑 Мебель ] [ 🌾 Искусственный ротанг ]` в `base.html` и стили `.vertical-switcher`;
-  - Добавлен раздел и веб-страница `/openings` для модерации очереди открытий B2B-заведений.
+  - Реализован экспоненциальный полураспад интересов `calculate_decayed_interest_score()`;
+  - Создан CLI-скрипт восстановления БД `scripts/restore_database.py` и регламент `docs/BACKUP_RESTORE_RUNBOOK.md`;
+  - Добавлен переключатель контекста вертикалей `[ 🪑 Мебель ] [ 🌾 Искусственный ротанг ]`;
+  - Добавлен раздел и веб-страница `/openings` для модерации заведений.
 
 - **Phase V6.3 (Intelligence V3 & EvidenceBundle Engine)** — **ЗАВЕРШЕНО**:
-  - Создан модуль `app/services/evidence_bundle_service.py` (`EvidenceBundleEngine`) с декомпозицией скоринга на 10 прозрачных факторов и формула приоритета `priority_score`.
+  - Модуль `evidence_bundle_service.py` с декомпозицией скоринга на 10 факторов.
 
 - **Phase V6.5 (Rattan Business Role Classifier)** — **ЗАВЕРШЕНО**:
-  - Создан сервис `RattanBusinessClassifier` в `app/services/rattan_classifier_service.py` для классификации участников рынка ротанга (`RAW_RATTAN_WHOLESALER`, `RAW_RATTAN_RESELLER`, `RATTAN_FURNITURE_MANUFACTURER`, `RAW_RATTAN_BUYER`).
+  - Сервис `rattan_classifier_service.py` для доказательной классификации ролей рынка ротанга.
 
 - **Phase V6.6 (Competitor Intelligence V3 & Opportunity Engine)** — **ЗАВЕРШЕНО**:
-  - Создан модуль `app/services/competitor_opportunity_service.py` (`CompetitorOpportunityEngine`) с расчётом коммерческой конверсии контента и поиском дыр спроса.
+  - Модуль `competitor_opportunity_service.py` с анализом коммерческой конверсии контента и поиском дыр спроса.
 
 - **Phase V6.8 (Meta Ads Targeting Recipe Engine)** — **ЗАВЕРШЕНО**:
-  - Создан модуль `app/services/targeting_recipe_service.py` (`TargetingRecipeEngine`) для генерации таргетинговых рецептов (`NARROW`, `BALANCED`, `BROAD`).
+  - Модуль `targeting_recipe_service.py` для генерации таргетинговых рецептов (`NARROW`, `BALANCED`, `BROAD`).
 
 - **Phase V6.9 (Google Marketing Intelligence Engine)** — **ЗАВЕРШЕНО**:
-  - Создан модуль `app/services/google_marketing_service.py` (`GoogleMarketingEngine`) для агрегации поисковых запросов Google Ads, кликов Search Console и конверсий GA4.
+  - Модуль `google_marketing_service.py` для агрегации поисковых запросов Google Ads, Search Console и GA4.
 
 - **Phase V6.10 (Next Best Action Engine)** — **ЗАВЕРШЕНО**:
-  - Создан сервис `NextBestActionEngine` в `app/services/next_best_action_service.py` для генерации персональных рекомендаций менеджерам со ссылками на SKU каталога.
+  - Сервис `next_best_action_service.py` для генерации точных рекомендаций менеджерам со ссылками на SKU.
 
 - **Phase V6.11 (Internal MCP Gateway & Agent Session Assistant)** — **ЗАВЕРШЕНО**:
-  - Создан модуль `app/services/mcp_gateway_service.py` (`LeadRadarMCPGateway`) и `app/services/agent_session_service.py` (`AgentSessionAssistant`) с эндпоинтом `/api/agent/query` и защитой Human-in-the-Loop.
+  - Модуль `mcp_gateway_service.py` и `agent_session_service.py` с эндпоинтом `/api/agent/query` и защитой Human-in-the-Loop.
 
 - **Phase V6.15 (Unit Economics & Cost Control Engine)** — **ЗАВЕРШЕНО**:
-  - Создан сервис `UnitEconomicsEngine` в `app/services/unit_economics_service.py` для расчёта CPL, CPH, CPW и окупаемости `roi_ratio`.
+  - Сервис `unit_economics_service.py` для расчёта CPL, CPH, CPW и окупаемости `roi_ratio`.
 
 - **Phase V6.16 (Full Hardening & Quality Gate)** — **ЗАВЕРШЕНО**:
   - **Pytest**: 151/151 тестов успешно пройдены (100% офлайн);
   - **Linter**: Ruff lint — 0 ошибок;
   - **Integrity**: Все 17 проверок целостности — OK.
 
+- **Phase V6.17 (Controlled Live Pilot Preparation)** — **ЗАВЕРШЕНО**:
+  - Создан предполётный скрипт готовности `scripts/live_readiness_check.py` (Возвращает `STATUS: READY FOR LIVE PILOT`);
+  - Написан регламент пилотного запуска `docs/LIVE_PILOT_CHECKLIST.md`;
+  - Составлена документация архитектуры MCP-инструментов и агента (`docs/V6_MCP_TOOL_MAP.md`, `docs/V6_AGENT_ARCHITECTURE.md`, `docs/V6_VISUAL_QA.md`, `docs/V6_BOT_QA.md`, `docs/INTEGRATION_DOCS_VERIFIED.md`).
+
 ## Master TZ Phase 10 — завершён
+
 
 
 
