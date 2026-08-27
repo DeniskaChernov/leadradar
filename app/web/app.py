@@ -23,6 +23,8 @@ from app.services.usage_service import ExternalUsageService
 from app.web.auth import TelegramAuthError, TelegramWebAuth
 from app.web.labels import (
     AI_SOURCE_LABELS,
+    BUYER_ROLE_ICONS,
+    BUYER_ROLE_LABELS,
     CHANGE_TYPE_LABELS,
     CHANNEL_LABELS,
     COMMERCIAL_STAGE_LABELS,
@@ -99,6 +101,8 @@ def build_web_app(
         qualification_field_label=lambda value: label(
             QUALIFICATION_FIELD_LABELS, value, str(value)
         ),
+        buyer_role_label=lambda value: label(BUYER_ROLE_LABELS, value, "Не определено"),
+        buyer_role_icon=lambda value: BUYER_ROLE_ICONS.get(str(value) if value else "UNKNOWN", "❓"),
         money=lambda value: f"{float(value or 0):,.0f}".replace(",", " "),
     )
 

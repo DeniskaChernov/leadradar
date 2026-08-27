@@ -30,6 +30,28 @@
 <section class="panel audience-profile">
   <div class="panel-head"><div><span class="eyebrow">АУДИТОРИЯ И ИНТЕРЕСЫ</span><h2>Наблюдаемый коммерческий профиль</h2><p>Интересы, обнаруженные Lead Radar только в наблюдаемых публичных источниках. Это не полный портрет человека.</p></div><span class="tag {% if intelligence.customer_type=='B2B' %}status-qualified{% else %}neutral{% endif %}">{{ intelligence.customer_type }}</span></div>
   <div class="intelligence-summary"><div><span>Стадия</span><b>{{ commercial_stage_label(intelligence.commercial_stage) }}</b></div><div><span>Активность</span><b>{{ intelligence.activity_score }}/100</b></div><div><span>Ценность</span><b>{{ intelligence.value_score }}/100</b></div><div><span>Сигналов</span><b>{{ intelligence.commercial_signal_count }} коммерческих из {{ intelligence.signal_count }}</b></div><div><span>Источников</span><b>{{ intelligence.source_count }}</b></div><div><span>Экспорт</span><b>{{ export_eligibility_label(intelligence.export_eligibility) }}</b></div></div>
+  {# Phase 4 — Profile DNA: buyer role and evidence #}
+  <div class="dna-profile-row">
+    <div class="dna-role-card">
+      <span class="eyebrow">РОЛЬ ПОКУПАТЕЛЯ</span>
+      <div class="dna-role-primary">
+        <span class="dna-role-icon" aria-hidden="true">{{ buyer_role_icon(intelligence.primary_buyer_role) }}</span>
+        <b>{{ buyer_role_label(intelligence.primary_buyer_role) }}</b>
+      </div>
+      {% if intelligence.buyer_roles_json and intelligence.buyer_roles_json|length > 1 %}
+      <div class="dna-roles-observed">
+        <span>Наблюдались роли:</span>
+        {% for role in intelligence.buyer_roles_json %}<span class="tag neutral compact">{{ buyer_role_icon(role) }} {{ buyer_role_label(role) }}</span>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="dna-evidence-card">
+      <span class="eyebrow">ДОКАЗАТЕЛЬНАЯ БАЗА</span>
+      <div class="dna-evidence-count"><b>{{ intelligence.evidence_count }}</b> <span>привязанных evidence-записей</span></div>
+      {% if intelligence.quantity_band %}<div><span>Объём заказа:</span> <b>{{ intelligence.quantity_band | replace('_', ' ') }}</b></div>{% endif %}
+      {% if intelligence.purchase_horizon %}<div><span>Горизонт покупки:</span> <b>{{ purchase_horizon_label(intelligence.purchase_horizon) }}</b></div>{% endif %}
+    </div>
+  </div>
   <div class="interest-columns"><div><h3>Коммерческие интересы</h3>{% for item in intelligence.product_interests_json %}<div class="interest-meter"><div><span>{{ product_label(item.value) }}</span><b>{{ item.confidence }}%</b></div><i style="width:{{ item.confidence }}%"></i></div>{% else %}<div class="empty compact">Товарные интересы пока не подтверждены.</div>{% endfor %}</div><div><h3>Динамические аудитории</h3><div class="audience-chip-list">{% for membership, segment in audiences %}<a href="/audiences/{{ segment.slug }}">{{ segment.name }}</a>{% else %}<span class="muted">Контакт пока не входит в активные сегменты.</span>{% endfor %}</div></div></div>
 </section>
 {% if significant_changes %}

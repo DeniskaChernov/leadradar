@@ -144,6 +144,22 @@ CHANNEL_LABELS = {
     "other": "Другой канал",
 }
 
+BUYER_ROLE_LABELS = {
+    "B2C_CONSUMER": "Розничный покупатель",
+    "B2B_HORECA": "B2B / HoReCa",
+    "DESIGNER_CONTRACTOR": "Дизайнер / комплектатор",
+    "JOB_SEEKER": "Ищет работу",
+    "UNKNOWN": "Не определено",
+}
+
+BUYER_ROLE_ICONS = {
+    "B2C_CONSUMER": "🛍️",
+    "B2B_HORECA": "🏨",
+    "DESIGNER_CONTRACTOR": "📐",
+    "JOB_SEEKER": "💼",
+    "UNKNOWN": "❓",
+}
+
 QUALIFICATION_FIELD_LABELS = {
     "phone": "Телефон",
     "preferred_channel": "Удобный канал",
@@ -186,3 +202,4 @@ def label(mapping: dict[str, str], value: object, fallback: str = "—") -> str:
         return fallback
     key = getattr(value, "value", value)
     return mapping.get(str(key), str(key).replace("_", " ").title())
+
