@@ -1,0 +1,74 @@
+"""
+test_v6_engines.py — Master Phase V6 tests for Competitor Opportunities, Meta Recipes, and MCP Gateway.
+"""
+
+from __future__ import annotations
+
+from app.services.competitor_opportunity_service import CompetitorOpportunityEngine
+from app.services.mcp_gateway_service import LeadRadarMCPGateway
+from app.services.targeting_recipe_service import TargetingRecipeEngine
+
+
+def test_competitor_scoring_and_opportunities():
+    score = CompetitorOpportunityEngine.score_post_content(
+        post_id="p-1",
+        total_comments=20,
+        price_count=5,
+        availability_count=2,
+        b2b_count=3,
+    )
+    assert score.commercial_intent_rate == 50.0
+    assert score.is_high_converting is True
+
+    opps = CompetitorOpportunityEngine.discover_opportunities(
+        competitor_name="AIKO",
+        unanswered_price_count=6,
+        unanswered_b2b_count=3,
+        top_requested_category="DINING_SET",
+    )
+    assert len(opps) >= 2
+    types = [o.opportunity_type for o in opps]
+    assert "B2B_BULK" in types
+    assert "UNANSWERED_DEMAND" in types
+
+
+def test_targeting_recipes_generation():
+    recipes = TargetingRecipeEngine.generate_recipes(
+        audience_name="Hot Dining Set Buyers",
+        top_category="DINING_SET",
+    )
+    assert len(recipes) == 3
+    recipe_types = [r.recipe_type for r in recipes]
+    assert "NARROW" in recipe_types
+    assert "BALANCED" in recipe_types
+    assert "BROAD" in recipe_types
+
+
+def test_mcp_gateway_read_tool_execution():
+    result = LeadRadarMCPGateway.execute_tool(
+        "lead.search",
+        {"query": "dining set"},
+        approval_granted=False,
+    )
+    assert result.success is True
+    assert result.output["ok"] is True
+
+
+def test_mcp_gateway_write_tool_requires_approval():
+    # Without approval -> fails
+    res_no = LeadRadarMCPGateway.execute_tool(
+        "meta.create_campaign_draft",
+        {"recipe_type": "NARROW", "budget_usd": 100},
+        approval_granted=False,
+    )
+    assert res_no.success is False
+    assert "requires explicit human approval" in res_no.output["error"]
+
+    # With approval -> succeeds
+    res_yes = LeadRadarMCPGateway.execute_tool(
+        "meta.create_campaign_draft",
+        {"recipe_type": "NARROW", "budget_usd": 100},
+        approval_granted=True,
+    )
+    assert res_yes.success is True
+    assert res_yes.approval_granted is True

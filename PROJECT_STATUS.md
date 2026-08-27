@@ -2,7 +2,7 @@
 
 ## Текущая версия
 
-**V6.5 Rattan Intelligence & Engine Expansion · Phase V6.0–V6.15 complete**
+**V6.11 Master Specification Implementation · Phase V6.0–V6.11 complete**
 
 Текущая цель: последовательное исполнение разделов V6 Master Specification (Phases V6.0–V6.17).
 
@@ -19,23 +19,35 @@
   - Добавлен раздел и веб-страница `/openings` для модерации очереди открытий B2B-заведений.
 
 - **Phase V6.5 (Rattan Business Role Classifier)** — **ЗАВЕРШЕНО**:
-  - Создан сервис `RattanBusinessClassifier` в `app/services/rattan_classifier_service.py` для доказательной классификации участников рынка ротанга (`RAW_RATTAN_WHOLESALER`, `RAW_RATTAN_RESELLER`, `RATTAN_FURNITURE_MANUFACTURER`, `RAW_RATTAN_BUYER`);
-  - Добавлены авто-тесты `tests/test_rattan_classifier.py` (4/4 pass).
+  - Создан сервис `RattanBusinessClassifier` в `app/services/rattan_classifier_service.py` для доказательной классификации участников рынка ротанга (`RAW_RATTAN_WHOLESALER`, `RAW_RATTAN_RESELLER`, `RATTAN_FURNITURE_MANUFACTURER`, `RAW_RATTAN_BUYER`).
+
+- **Phase V6.6 (Competitor Intelligence V3 & Opportunity Engine)** — **ЗАВЕРШЕНО**:
+  - Создан модуль `app/services/competitor_opportunity_service.py` (`CompetitorOpportunityEngine`):
+    - Расчёт скора коммерческой конверсии публикаций/Reels на 100 комментариев;
+    - Автоматический поиск незакрытых B2B-запросов и дыр в предложении конкурентов (`DEMAND_GAP`, `UNANSWERED_DEMAND`, `B2B_BULK`).
+
+- **Phase V6.8 (Meta Ads Targeting Recipe Engine)** — **ЗАВЕРШЕНО**:
+  - Создан модуль `app/services/targeting_recipe_service.py` (`TargetingRecipeEngine`):
+    - Генерация 3 таргетинговых рецептов (`NARROW`, `BALANCED`, `BROAD`) с офферами, креативными углами, призывами к действию и гипотезами для эксперимента.
 
 - **Phase V6.10 (Next Best Action Engine)** — **ЗАВЕРШЕНО**:
-  - Создан сервис `NextBestActionEngine` в `app/services/next_best_action_service.py` для генерации конкретных рекомендаций менеджерам со ссылками на факты и SKU каталога;
-  - Добавлены авто-тесты `tests/test_next_best_action.py` (4/4 pass).
+  - Создан сервис `NextBestActionEngine` в `app/services/next_best_action_service.py` для генерации конкретных рекомендаций менеджерам со ссылками на факты и SKU каталога.
+
+- **Phase V6.11 (Internal MCP Gateway & Tool Surface)** — **ЗАВЕРШЕНО**:
+  - Создан модуль `app/services/mcp_gateway_service.py` (`LeadRadarMCPGateway`):
+    - Реестр инструментов агента по пространствам имён (`lead.*`, `audience.*`, `competitor.*`, `rattan.*`, `google.*`, `crm.*`, `meta.*`);
+    - Обязательная проверка Human-in-the-Loop при вызове Sensitive/Write инструментов (`crm.assign_lead`, `meta.create_campaign_draft`).
 
 - **Phase V6.15 (Unit Economics & Cost Control Engine)** — **ЗАВЕРШЕНО**:
-  - Создан сервис `UnitEconomicsEngine` в `app/services/unit_economics_service.py` для расчёта `cost_per_signal`, `cost_per_lead`, `cost_per_hot`, `cost_per_won` и окупаемости `roi_ratio`;
-  - Добавлены авто-тесты `tests/test_unit_economics.py` (2/2 pass).
+  - Создан сервис `UnitEconomicsEngine` в `app/services/unit_economics_service.py` для расчёта `cost_per_signal`, `cost_per_lead`, `cost_per_hot`, `cost_per_won` и окупаемости `roi_ratio`.
 
-- **Проверки качества V6.5**:
-  - **Pytest**: 143/143 тестов успешно пройдены (100% офлайн);
+- **Проверки качества V6.11**:
+  - **Pytest**: 147/147 тестов успешно пройдены (100% офлайн);
   - **Linter**: Ruff lint — 0 ошибок;
   - **Integrity**: Все 17 проверок целостности — OK.
 
 ## Master TZ Phase 10 — завершён
+
 
 
 
