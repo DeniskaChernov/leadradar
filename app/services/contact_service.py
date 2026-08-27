@@ -7,7 +7,20 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import Comment, ContactEventType, PublicSignal
+from app.db.models import (
+    BusinessAlias,
+    BusinessAliasType,
+    BusinessEntity,
+    BusinessEntityStatus,
+    Comment,
+    Competitor,
+    ContactEventType,
+    Evidence,
+    PublicSignal,
+    SignalSubjectType,
+    SignalType,
+    Vertical,
+)
 from app.db.repositories import (
     CommentRepository,
     CompetitorRepository,
@@ -85,6 +98,7 @@ class ContactService:
                 contact, contact_created = await ContactRepository(session).upsert_from_comment(
                     comment_data
                 )
+                business = await self._ensure_business(session, competitor)
                 comment = Comment(
                     platform="instagram",
                     platform_comment_id=comment_data.platform_comment_id,
@@ -101,10 +115,43 @@ class ContactService:
                 public_signal = PublicSignal(
                     comment_id=comment.id,
                     contact_id=contact.id,
+                    business_id=business.id,
                     competitor_id=competitor.id,
+                    vertical=Vertical.FURNITURE,
+                    subject_type=SignalSubjectType.CONTACT,
+                    platform=comment.platform,
+                    signal_type=SignalType.COMMENT,
+                    external_id=comment.platform_comment_id,
+                    dedupe_key=self._comment_dedupe_key(
+                        comment.platform, comment.platform_comment_id
+                    ),
+                    source_url=post.url,
+                    source_account=competitor.normalized_handle,
+                    source_competitor_id=competitor.id,
+                    text=comment.text,
+                    payload_summary=comment.text[:500],
+                    published_at=comment.created_at_platform,
+                    discovered_at=comment.discovered_at,
+                    source_quality_score=70,
+                    confidence=100,
+                    is_baseline=is_baseline,
+                    raw_data=comment.raw_data,
                 )
                 session.add(public_signal)
                 await session.flush()
+                session.add(
+                    Evidence(
+                        evidence_key=f"{public_signal.dedupe_key}:source",
+                        public_signal_id=public_signal.id,
+                        source_type="INSTAGRAM_COMMENT",
+                        source_url=post.url,
+                        text=comment.text,
+                        strength=0,
+                        confidence=100,
+                        observed_at=comment.created_at_platform or comment.discovered_at,
+                        raw_data=comment.raw_data,
+                    )
+                )
                 await ContactEventRepository(session).add(
                     contact.id,
                     ContactEventType.COMMENT_FOUND,
@@ -151,3 +198,51 @@ class ContactService:
                     is_baseline=existing.is_baseline,
                     public_signal_id=public_signal.id if public_signal else None,
                 )
+
+    @staticmethod
+    def _comment_dedupe_key(platform: str, external_id: str) -> str:
+        return f"{platform.strip().lower()}:COMMENT:{external_id.strip()}"
+
+    @staticmethod
+    async def _ensure_business(
+        session: AsyncSession, competitor: Competitor
+    ) -> BusinessEntity:
+        if competitor.business_id is not None:
+            existing = await session.get(BusinessEntity, competitor.business_id)
+            if existing is not None:
+                return existing
+        canonical_key = f"legacy-competitor:{competitor.id}"
+        business = await session.scalar(
+            select(BusinessEntity).where(BusinessEntity.canonical_key == canonical_key)
+        )
+        if business is None:
+            name = competitor.display_name or competitor.normalized_handle
+            business = BusinessEntity(
+                canonical_key=canonical_key,
+                canonical_name=name,
+                normalized_name=name.strip().lower(),
+                verticals_json=[Vertical.FURNITURE.value],
+                website_url=competitor.website_url,
+                instagram_handle=competitor.normalized_handle,
+                primary_role=competitor.category,
+                entity_status=BusinessEntityStatus.NEEDS_VERIFICATION,
+                confidence=70,
+            )
+            session.add(business)
+            await session.flush()
+            session.add(
+                BusinessAlias(
+                    business_id=business.id,
+                    alias_type=BusinessAliasType.INSTAGRAM_HANDLE,
+                    value=competitor.normalized_handle,
+                    normalized_value=competitor.normalized_handle,
+                    source_url=(
+                        f"https://www.instagram.com/{competitor.normalized_handle}/"
+                    ),
+                    confidence=100,
+                    verified=True,
+                )
+            )
+        competitor.business_id = business.id
+        await session.flush()
+        return business

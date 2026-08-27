@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import normalize_instagram_handle
 from app.data.competitor_catalog import MARKET_CANDIDATES, MONITORED_COMPETITORS
-from app.db.models import Competitor, MarketCandidate
+from app.db.models import Competitor, MarketCandidate, Vertical
 
 
 class MarketIntelligenceService:
@@ -71,13 +71,15 @@ class MarketIntelligenceService:
                 if row is None:
                     row = MarketCandidate(
                         display_name=seed.display_name,
+                        vertical=Vertical(seed.vertical),
+                        contact_hint=seed.contact_hint or None,
                         instagram_handle=candidate_handle,
                         website_url=seed.website_url or None,
                         category=seed.category,
                         tier=seed.tier,
                         confidence=seed.confidence,
                         rationale=seed.rationale,
-                        status="PROMOTED" if is_monitored else "DISCOVERED",
+                        status="PROMOTED" if is_monitored else seed.status,
                     )
                     session.add(row)
                     created_candidates += 1
@@ -87,6 +89,7 @@ class MarketIntelligenceService:
                     )
                     row.website_url = row.website_url or seed.website_url or None
                     row.rationale = row.rationale or seed.rationale
+                    row.contact_hint = row.contact_hint or seed.contact_hint or None
                     row.confidence = max(row.confidence, seed.confidence)
                     if is_monitored and row.status != "PROMOTED":
                         row.status = "PROMOTED"

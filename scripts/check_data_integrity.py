@@ -9,11 +9,14 @@ from app.config import get_settings
 from app.db.models import (
     AudienceMembership,
     AudienceSegment,
+    BusinessAlias,
+    BusinessEntity,
     Comment,
     Contact,
     ContactEvent,
     ContactIntelligence,
     Deal,
+    Evidence,
     Lead,
     NotificationLog,
     Post,
@@ -41,6 +44,8 @@ async def inspect_integrity() -> IntegrityResult:
         async with session_factory() as session:
             models = (
                 Contact,
+                BusinessEntity,
+                BusinessAlias,
                 ContactIntelligence,
                 AudienceSegment,
                 AudienceMembership,
@@ -53,6 +58,7 @@ async def inspect_integrity() -> IntegrityResult:
                 NotificationLog,
                 SignificantChange,
                 SignificantChangeNotification,
+                Evidence,
             )
             counts = {
                 model.__tablename__: await session.scalar(select(func.count(model.id))) or 0
@@ -72,6 +78,44 @@ async def inspect_integrity() -> IntegrityResult:
                 .having(func.count() > 1),
                 "public signal comments": select(PublicSignal.comment_id, func.count())
                 .group_by(PublicSignal.comment_id)
+                .having(func.count() > 1),
+                "public signal dedupe keys": select(
+                    PublicSignal.dedupe_key, func.count()
+                )
+                .group_by(PublicSignal.dedupe_key)
+                .having(func.count() > 1),
+                "public signal external identities": select(
+                    PublicSignal.platform,
+                    PublicSignal.signal_type,
+                    PublicSignal.external_id,
+                    func.count(),
+                )
+                .where(PublicSignal.external_id.is_not(None))
+                .group_by(
+                    PublicSignal.platform,
+                    PublicSignal.signal_type,
+                    PublicSignal.external_id,
+                )
+                .having(func.count() > 1),
+                "business canonical keys": select(
+                    BusinessEntity.canonical_key, func.count()
+                )
+                .group_by(BusinessEntity.canonical_key)
+                .having(func.count() > 1),
+                "business aliases": select(
+                    BusinessAlias.business_id,
+                    BusinessAlias.alias_type,
+                    BusinessAlias.normalized_value,
+                    func.count(),
+                )
+                .group_by(
+                    BusinessAlias.business_id,
+                    BusinessAlias.alias_type,
+                    BusinessAlias.normalized_value,
+                )
+                .having(func.count() > 1),
+                "evidence keys": select(Evidence.evidence_key, func.count())
+                .group_by(Evidence.evidence_key)
                 .having(func.count() > 1),
                 "contact intelligence profiles": select(
                     ContactIntelligence.contact_id, func.count()

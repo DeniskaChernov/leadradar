@@ -23,6 +23,9 @@ class MarketCandidateSeed:
     website_url: str = ""
     instagram_handle: str = ""
     confidence: int = 50
+    vertical: str = "FURNITURE"
+    contact_hint: str = ""
+    status: str = "DISCOVERED"
 
 
 # Handles in this list were verified from official sites / public business pages during the
@@ -115,6 +118,16 @@ MONITORED_COMPETITORS: tuple[CompetitorSeed, ...] = (
 # verification before we allow a paid provider to monitor it. Keeping them inside the product
 # prevents the market map from living in somebody's notes or memory.
 MARKET_CANDIDATES: tuple[MarketCandidateSeed, ...] = (
+    MarketCandidateSeed(
+        "BOTANIST",
+        "RATTAN",
+        "B",
+        "Ручной кандидат для проверки; публичные сайт, аккаунт и ownership пока не подтверждены.",
+        confidence=20,
+        vertical="ARTIFICIAL_RATTAN",
+        contact_hint="Emil",
+        status="NEEDS_VERIFICATION",
+    ),
     MarketCandidateSeed("Lazuno Ok", "DIRECT", "A", "Искусственный ротанг, столы, стулья и комплекты.", "https://lazunok.uz", confidence=95),
     MarketCandidateSeed("Rotan", "DIRECT", "A", "Производство искусственного ротанга, столовая и HoReCa.", "https://rotan.uz", confidence=95),
     MarketCandidateSeed("Rotang Asia", "DIRECT", "A", "Бренд искусственного ротанга, представлен в Atlas Mebel.", confidence=85),

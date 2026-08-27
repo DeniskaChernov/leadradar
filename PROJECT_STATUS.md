@@ -2,10 +2,23 @@
 
 ## Текущая версия
 
-**V4.1 Foundation · Master Phase 0 complete · implementation awaiting approval**
+**V4.1 Foundation · Master Phase 1 complete · Data Foundation**
 
-Текущая цель: после утверждения Phase 0 начать аддитивный V4 data foundation без big-bang
-переписывания и без бесконтрольного расхода API.
+Текущая цель: сохранить стабильность Phase 1 и после подтверждения перейти к Phase 2 —
+hardening real-time notification pipeline без бесконтрольного расхода API.
+
+## Master TZ Phase 1 — завершён
+
+- добавлены `Vertical`, `BusinessEntity`, `BusinessAlias`, universal `PublicSignal` и `Evidence`;
+- legacy Instagram comments dual-write в universal signal/evidence без изменения старых IDs;
+- миграция backfill создаёт по одной business/alias на конкурента и evidence на сигнал;
+- unique external identity и `dedupe_key` защищают universal signals от дублей;
+- исправлена склейка разных людей при повторном использовании Instagram username;
+- добавлен evidence-based Entity Resolution: weak name не auto-merge, strong verified alias — merge;
+- fixture Armo/Exon/ротанг даёт одну BusinessEntity без hardcode;
+- BOTANIST/Emil сохранён как `NEEDS_VERIFICATION` без выдуманных идентификаторов;
+- создан `docs/V4_ARCHITECTURE.md`;
+- Phase 2 не начата и ожидает подтверждения владельца.
 
 ## Master TZ Phase 0 — завершён
 
@@ -16,11 +29,11 @@
 - подтверждённых аварийных P0-багов в текущем локальном режиме нет;
 - обнаружены High-риски identity merge, universal signal foundation, N+1 analytics,
   distributed idempotency и public web deployment guard;
-- Phase 1 не начата: по Master TZ требуется подтверждение владельца после аудита.
+- после подтверждения владельца Phase 1 выполнена отдельным проверяемым этапом.
 
 ## На какой стадии мы сейчас
 
-**Master Phase 0 из 12 завершена; Phase 1 ожидает подтверждения владельца.**
+**Master Phase 1 из 12 завершена; Phase 2 ожидает подтверждения владельца.**
 
 Ранее выполненные стадии 1–3 старого roadmap сохраняются как рабочий фундамент: CRM,
 Mini App, сделки, replay, локальный AI, защита расходов, мультиконкурентный радар и аудитории.
@@ -38,7 +51,7 @@ Mini App, сделки, replay, локальный AI, защита расход
 - фильтры, textarea и настройки конкурентов получили доступные названия; повторный DOM-аудит
   14 основных экранов не нашёл неподписанных полей, duplicate id или horizontal overflow;
 - штатный `Ctrl+C` теперь считается чистой остановкой и не печатает traceback `KeyboardInterrupt`;
-- browser console чиста, 77 тестов и integrity scan проходят без Instagram/OpenAI-вызовов.
+- browser console чиста, 83 теста и integrity scan проходят без Instagram/OpenAI-вызовов.
 
 ### Competitor Intelligence V2
 
@@ -228,7 +241,7 @@ API-токены.
 - Результат синхронизации: **16 competitors / 1 active / 24 открытых market candidates**.
 - Повторная синхронизация каталога дважды создала `0` конкурентов и `0` кандидатов.
 - Локальный web smoke: `/health` и `/` успешны; `/api/scan` возвращает блокировку `409`.
-- полный `pytest`: **77 passed**; тесты не обращаются к Instagram/OpenAI и не расходуют API-токены.
+- полный `pytest`: **83 passed**; тесты не обращаются к Instagram/OpenAI и не расходуют API-токены.
 - `ruff check .`, compileall и data-integrity check: passed.
 - новые `/competitors` и `/competitors/{id}` проверены на рабочей БД: browser console чиста,
   horizontal overflow отсутствует.

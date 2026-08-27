@@ -9,6 +9,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
@@ -49,6 +50,7 @@ class ContactEventType(StrEnum):
     QUALIFICATION_UPDATED = "QUALIFICATION_UPDATED"
     LEAD_REOPENED = "LEAD_REOPENED"
     SIGNIFICANT_CHANGE = "SIGNIFICANT_CHANGE"
+    CONTACT_IDENTITY_CHANGED = "CONTACT_IDENTITY_CHANGED"
 
 
 class LeadStatus(StrEnum):
@@ -118,10 +120,134 @@ class TaskStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class Vertical(StrEnum):
+    FURNITURE = "FURNITURE"
+    ARTIFICIAL_RATTAN = "ARTIFICIAL_RATTAN"
+
+
+class SignalSubjectType(StrEnum):
+    CONTACT = "CONTACT"
+    BUSINESS = "BUSINESS"
+    UNKNOWN = "UNKNOWN"
+
+
+class SignalType(StrEnum):
+    COMMENT = "COMMENT"
+    POST = "POST"
+    REEL = "REEL"
+    PROFILE = "PROFILE"
+    TAGGED_POST = "TAGGED_POST"
+    FOLLOWER_RELATION = "FOLLOWER_RELATION"
+    FOLLOWING_RELATION = "FOLLOWING_RELATION"
+    MARKETPLACE_LISTING = "MARKETPLACE_LISTING"
+    PRODUCT_PAGE = "PRODUCT_PAGE"
+    WEBSITE_MENTION = "WEBSITE_MENTION"
+    GOOGLE_PLACE_DISCOVERY = "GOOGLE_PLACE_DISCOVERY"
+    BUSINESS_OPENING = "BUSINESS_OPENING"
+    GOOGLE_REVIEW_REFERENCE = "GOOGLE_REVIEW_REFERENCE"
+    PRICE_MENTION = "PRICE_MENTION"
+    PRICE_CHANGE = "PRICE_CHANGE"
+    STOCK_MENTION = "STOCK_MENTION"
+    NEW_ARRIVAL = "NEW_ARRIVAL"
+    SEARCH_RESULT = "SEARCH_RESULT"
+    MANAGER_INPUT = "MANAGER_INPUT"
+    FIRST_PARTY_ACTION = "FIRST_PARTY_ACTION"
+    OTHER = "OTHER"
+
+
+class BusinessAliasType(StrEnum):
+    DOMAIN = "DOMAIN"
+    BRAND_NAME = "BRAND_NAME"
+    LEGAL_NAME = "LEGAL_NAME"
+    INSTAGRAM_HANDLE = "INSTAGRAM_HANDLE"
+    GOOGLE_PLACE_ID = "GOOGLE_PLACE_ID"
+    PUBLIC_PHONE = "PUBLIC_PHONE"
+    MARKETPLACE_SELLER_ID = "MARKETPLACE_SELLER_ID"
+    PUBLIC_TELEGRAM = "PUBLIC_TELEGRAM"
+    OTHER = "OTHER"
+
+
+class BusinessEntityStatus(StrEnum):
+    NEEDS_VERIFICATION = "NEEDS_VERIFICATION"
+    VERIFIED = "VERIFIED"
+    MERGED = "MERGED"
+    ARCHIVED = "ARCHIVED"
+
+
+class BusinessEntity(Base):
+    __tablename__ = "business_entities"
+    __table_args__ = (
+        UniqueConstraint("canonical_key", name="uq_business_entities_canonical_key"),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 100",
+            name="ck_business_entities_confidence",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    canonical_key: Mapped[str] = mapped_column(String(255), index=True)
+    canonical_name: Mapped[str] = mapped_column(String(255))
+    normalized_name: Mapped[str] = mapped_column(String(255), index=True)
+    verticals_json: Mapped[list[str]] = mapped_column(
+        JSON, default=lambda: [Vertical.FURNITURE.value]
+    )
+    country: Mapped[str | None] = mapped_column(String(2))
+    city: Mapped[str | None] = mapped_column(String(128))
+    website_url: Mapped[str | None] = mapped_column(Text)
+    instagram_handle: Mapped[str | None] = mapped_column(String(255), index=True)
+    primary_role: Mapped[str | None] = mapped_column(String(64), index=True)
+    entity_status: Mapped[BusinessEntityStatus] = mapped_column(
+        Enum(BusinessEntityStatus, native_enum=False),
+        default=BusinessEntityStatus.NEEDS_VERIFICATION,
+        index=True,
+    )
+    confidence: Mapped[int] = mapped_column(Integer, default=50)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    aliases: Mapped[list[BusinessAlias]] = relationship(back_populates="business")
+
+
+class BusinessAlias(Base):
+    __tablename__ = "business_aliases"
+    __table_args__ = (
+        UniqueConstraint(
+            "business_id", "alias_type", "normalized_value",
+            name="uq_business_aliases_business_type_value",
+        ),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 100",
+            name="ck_business_aliases_confidence",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("business_entities.id"), index=True)
+    alias_type: Mapped[BusinessAliasType] = mapped_column(
+        Enum(BusinessAliasType, native_enum=False), index=True
+    )
+    value: Mapped[str] = mapped_column(String(512))
+    normalized_value: Mapped[str] = mapped_column(String(512), index=True)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    evidence_id: Mapped[int | None] = mapped_column(
+        ForeignKey("evidence.id"), index=True
+    )
+    confidence: Mapped[int] = mapped_column(Integer, default=50)
+    verified: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    business: Mapped[BusinessEntity] = relationship(back_populates="aliases")
+
+
 class Competitor(Base):
     __tablename__ = "competitors"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int | None] = mapped_column(
+        ForeignKey("business_entities.id"), unique=True, index=True
+    )
     platform: Mapped[str] = mapped_column(String(32), default="instagram")
     handle: Mapped[str] = mapped_column(String(255))
     normalized_handle: Mapped[str] = mapped_column(String(255), unique=True, index=True)
@@ -156,6 +282,10 @@ class MarketCandidate(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     display_name: Mapped[str] = mapped_column(String(255))
+    vertical: Mapped[Vertical] = mapped_column(
+        Enum(Vertical, native_enum=False), default=Vertical.FURNITURE, index=True
+    )
+    contact_hint: Mapped[str | None] = mapped_column(String(255))
     instagram_handle: Mapped[str | None] = mapped_column(String(255), index=True)
     website_url: Mapped[str | None] = mapped_column(Text)
     category: Mapped[str] = mapped_column(String(64), default="DIRECT", index=True)
@@ -283,12 +413,56 @@ class PublicSignal(Base):
     __tablename__ = "public_signals"
     __table_args__ = (
         UniqueConstraint("comment_id", name="uq_public_signals_comment_id"),
+        UniqueConstraint(
+            "platform", "signal_type", "external_id",
+            name="uq_public_signals_external_identity",
+        ),
+        CheckConstraint(
+            "source_quality_score >= 0 AND source_quality_score <= 100",
+            name="ck_public_signals_source_quality_score",
+        ),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 100",
+            name="ck_public_signals_confidence",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     comment_id: Mapped[int] = mapped_column(ForeignKey("comments.id"), index=True)
-    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
+    vertical: Mapped[Vertical] = mapped_column(
+        Enum(Vertical, native_enum=False), default=Vertical.FURNITURE, index=True
+    )
+    subject_type: Mapped[SignalSubjectType] = mapped_column(
+        Enum(SignalSubjectType, native_enum=False),
+        default=SignalSubjectType.CONTACT,
+        index=True,
+    )
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id"), index=True)
+    business_id: Mapped[int | None] = mapped_column(
+        ForeignKey("business_entities.id"), index=True
+    )
     competitor_id: Mapped[int] = mapped_column(ForeignKey("competitors.id"), index=True)
+    platform: Mapped[str] = mapped_column(String(32), default="instagram", index=True)
+    signal_type: Mapped[SignalType] = mapped_column(
+        Enum(SignalType, native_enum=False), default=SignalType.COMMENT, index=True
+    )
+    external_id: Mapped[str | None] = mapped_column(String(255))
+    dedupe_key: Mapped[str] = mapped_column(String(512), unique=True, index=True)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    source_account: Mapped[str | None] = mapped_column(String(255), index=True)
+    source_competitor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("competitors.id"), index=True
+    )
+    text: Mapped[str | None] = mapped_column(Text)
+    payload_summary: Mapped[str | None] = mapped_column(Text)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    discovered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+    source_quality_score: Mapped[int] = mapped_column(Integer, default=70)
+    confidence: Mapped[int] = mapped_column(Integer, default=100)
+    is_baseline: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    raw_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     status: Mapped[PublicSignalStatus] = mapped_column(
         Enum(PublicSignalStatus, native_enum=False),
         default=PublicSignalStatus.ANALYZING,
@@ -303,6 +477,36 @@ class PublicSignal(Base):
     )
 
     comment: Mapped[Comment] = relationship(back_populates="public_signal")
+    evidence: Mapped[list[Evidence]] = relationship(back_populates="public_signal")
+
+
+class Evidence(Base):
+    __tablename__ = "evidence"
+    __table_args__ = (
+        UniqueConstraint("evidence_key", name="uq_evidence_evidence_key"),
+        CheckConstraint("strength >= 0 AND strength <= 100", name="ck_evidence_strength"),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 100", name="ck_evidence_confidence"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    evidence_key: Mapped[str] = mapped_column(String(512), index=True)
+    public_signal_id: Mapped[int] = mapped_column(
+        ForeignKey("public_signals.id"), index=True
+    )
+    source_type: Mapped[str] = mapped_column(String(64), index=True)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    text: Mapped[str | None] = mapped_column(Text)
+    topic: Mapped[str | None] = mapped_column(String(128), index=True)
+    intent: Mapped[str | None] = mapped_column(String(64), index=True)
+    strength: Mapped[int] = mapped_column(Integer, default=0)
+    confidence: Mapped[int] = mapped_column(Integer, default=100)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    raw_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    public_signal: Mapped[PublicSignal] = relationship(back_populates="evidence")
 
 
 class ContactIntelligence(Base):

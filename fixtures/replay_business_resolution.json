@@ -1,0 +1,30 @@
+{
+  "case": "ARMO_EXON_ROTANG_PUBLIC_LINKS",
+  "description": "Offline fixture: three public brand names share a verified official domain link.",
+  "candidates": [
+    {
+      "canonical_key": "fixture:armo",
+      "canonical_name": "Armo.kz",
+      "aliases": [
+        {"type": "BRAND_NAME", "value": "Armo.kz", "source_url": "https://armo.kz"},
+        {"type": "DOMAIN", "value": "rotang.kz", "source_url": "https://armo.kz", "verified": true}
+      ]
+    },
+    {
+      "canonical_key": "fixture:exon",
+      "canonical_name": "exon.kz",
+      "aliases": [
+        {"type": "BRAND_NAME", "value": "exon.kz", "source_url": "https://exon.kz"},
+        {"type": "DOMAIN", "value": "https://rotang.kz/", "source_url": "https://exon.kz", "verified": true}
+      ]
+    },
+    {
+      "canonical_key": "fixture:rotang",
+      "canonical_name": "ротанг.kz",
+      "aliases": [
+        {"type": "BRAND_NAME", "value": "ротанг.kz", "source_url": "https://rotang.kz"},
+        {"type": "DOMAIN", "value": "www.rotang.kz", "source_url": "https://rotang.kz", "verified": true}
+      ]
+    }
+  ]
+}

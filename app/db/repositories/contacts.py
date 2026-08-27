@@ -1,9 +1,9 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Contact
+from app.db.models import Contact, ContactEvent, ContactEventType
 from app.schemas.instagram import InstagramComment
 
 
@@ -19,11 +19,27 @@ class ContactRepository:
         self, platform: str, platform_user_id: str | None, username: str
     ) -> Contact | None:
         normalized = normalize_username(username)
-        predicates = [Contact.normalized_username == normalized]
         if platform_user_id:
-            predicates.insert(0, Contact.platform_user_id == platform_user_id)
+            by_id = await self.session.scalar(
+                select(Contact).where(
+                    Contact.platform == platform,
+                    Contact.platform_user_id == platform_user_id,
+                )
+            )
+            if by_id is not None:
+                return by_id
+            by_username = await self._find_by_username(platform, normalized)
+            if by_username is not None and by_username.platform_user_id is not None:
+                return None
+            return by_username
+        return await self._find_by_username(platform, normalized)
+
+    async def _find_by_username(self, platform: str, normalized: str) -> Contact | None:
         return await self.session.scalar(
-            select(Contact).where(Contact.platform == platform, or_(*predicates))
+            select(Contact).where(
+                Contact.platform == platform,
+                Contact.normalized_username == normalized,
+            )
         )
 
     async def upsert_from_comment(
@@ -32,6 +48,29 @@ class ContactRepository:
         now = datetime.now(UTC)
         normalized = normalize_username(comment.username)
         contact = await self.find(platform, comment.platform_user_id, normalized)
+        username_owner = await self._find_by_username(platform, normalized)
+        if (
+            comment.platform_user_id
+            and username_owner is not None
+            and username_owner is not contact
+            and username_owner.platform_user_id != comment.platform_user_id
+        ):
+            previous_normalized = username_owner.normalized_username
+            username_owner.normalized_username = (
+                f"__previous__:{username_owner.id}:{previous_normalized}"
+            )[:255]
+            self.session.add(
+                ContactEvent(
+                    contact_id=username_owner.id,
+                    event_type=ContactEventType.CONTACT_IDENTITY_CHANGED,
+                    payload_json={
+                        "reason": "username_reassigned_to_different_platform_user_id",
+                        "previous_normalized_username": previous_normalized,
+                        "new_platform_user_id": comment.platform_user_id,
+                    },
+                )
+            )
+            await self.session.flush()
         created = contact is None
         if contact is None:
             contact = Contact(
@@ -55,4 +94,3 @@ class ContactRepository:
             contact.last_seen_at = now
         await self.session.flush()
         return contact, created
-
