@@ -5,13 +5,13 @@ import json
 import logging
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import AnalysisCache
+from app.db.models import AIRequest, AIRequestStatus
 from app.schemas.leads import (
     BuyerRole,
     FunnelStage,
@@ -20,7 +20,7 @@ from app.schemas.leads import (
     PurchaseHorizon,
     Urgency,
 )
-from app.services.usage_service import ExternalBudgetExceeded, ExternalUsageService
+from app.services.usage_service import ExternalUsageService
 
 logger = logging.getLogger(__name__)
 
@@ -824,6 +824,8 @@ class OpenAILeadAnalyzer:
 
 
 class BudgetedCachedOpenAIAnalyzer:
+    ANALYSIS_VERSION = 3
+
     def __init__(
         self,
         inner: OpenAILeadAnalyzer,
@@ -832,69 +834,149 @@ class BudgetedCachedOpenAIAnalyzer:
         *,
         enabled: bool,
         daily_limit: int,
+        worker_id: str = "default-worker",
     ) -> None:
         self.inner = inner
         self.session_factory = session_factory
         self.usage = usage
         self.enabled = enabled
         self.daily_limit = daily_limit
+        self.worker_id = worker_id
+
+    def context_fingerprint(self, context: LeadAnalysisContext) -> str:
+        """Calculates canonical SHA-256 context fingerprint factoring all parameters."""
+        canonical_dict = {
+            "analysis_contract_version": self.ANALYSIS_VERSION,
+            "model": self.inner.model,
+            "competitor": (context.competitor or "").strip().lower(),
+            "post_caption": (context.post_caption or "").strip(),
+            "comment": (context.comment or "").strip(),
+            "username": (context.username or "").strip().lower(),
+            "previous_signals": [
+                {
+                    "competitor": (s.competitor or "").strip().lower(),
+                    "comment": (s.comment or "").strip(),
+                    "discovered_at": s.discovered_at,
+                }
+                for s in sorted(context.previous_signals, key=lambda x: x.discovered_at)
+            ],
+            "previous_interests": sorted(context.previous_interests),
+            "known_customer_context": dict(sorted(context.known_customer_context.items())),
+            "evidence_ids": sorted(context.evidence_ids),
+        }
+        raw = json.dumps(canonical_dict, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     async def analyze(self, context: LeadAnalysisContext) -> LeadAnalysis:
-        cache_key = self._cache_key(context)
+        fingerprint = self.context_fingerprint(context)
+        now = datetime.now(UTC)
+
+        # 1. Check existing AIRequest ledger first
         async with self.session_factory() as session:
-            cached = await session.scalar(
-                select(AnalysisCache).where(AnalysisCache.cache_key == cache_key)
+            existing = await session.scalar(
+                select(AIRequest).where(
+                    AIRequest.analysis_version == self.ANALYSIS_VERSION,
+                    AIRequest.context_fingerprint == fingerprint,
+                )
             )
-            if cached is not None:
-                cached.hit_count += 1
-                cached.last_used_at = datetime.now(UTC)
-                await session.commit()
-                return LeadAnalysis.model_validate(cached.result_json)
+            if existing is not None:
+                if existing.status == AIRequestStatus.SUCCEEDED and existing.result_json:
+                    return LeadAnalysis.model_validate(existing.result_json)
+                if (
+                    existing.status == AIRequestStatus.CLAIMED
+                    and existing.claim_expires_at is not None
+                    and existing.claim_expires_at > now
+                    and existing.worker_id != self.worker_id
+                ):
+                    raise AIAnalysisError(
+                        "AI анализ для данного контекста уже выполняется другим процессом."
+                    )
 
         if not self.enabled:
             raise AIAnalysisError(
                 "OpenAI отключён для экономии токенов. Неоднозначный сигнал оставлен в очереди AI."
             )
-        try:
-            await self.usage.assert_available("openai", self.daily_limit)
-        except ExternalBudgetExceeded as exc:
-            raise AIAnalysisError(str(exc)) from exc
 
+        # 2. Atomic Two-Phase Budget Reservation
+        reservation_id = await self.usage.reserve_budget(
+            "openai",
+            "lead_analysis",
+            self.daily_limit,
+            units=1,
+            request_fingerprint=fingerprint,
+            lease_seconds=120,
+        )
+
+        # 3. Atomically Claim AIRequest
+        async with self.session_factory() as session:
+            req = await session.scalar(
+                select(AIRequest).where(
+                    AIRequest.analysis_version == self.ANALYSIS_VERSION,
+                    AIRequest.context_fingerprint == fingerprint,
+                )
+            )
+            if req is None:
+                lead_id = getattr(context, "public_signal_id", None) or 1
+                req = AIRequest(
+                    lead_id=lead_id,
+                    analysis_version=self.ANALYSIS_VERSION,
+                    context_fingerprint=fingerprint,
+                    model=self.inner.model,
+                    status=AIRequestStatus.CLAIMED,
+                    claimed_at=now,
+                    claim_expires_at=now + timedelta(seconds=120),
+                    worker_id=self.worker_id,
+                    attempt_count=1,
+                )
+                session.add(req)
+            else:
+                req.status = AIRequestStatus.CLAIMED
+                req.claimed_at = now
+                req.claim_expires_at = now + timedelta(seconds=120)
+                req.worker_id = self.worker_id
+                req.attempt_count += 1
+            await session.commit()
+
+        # 4. Perform actual call
         try:
             analysis = await self.inner.analyze(context)
-        except Exception:
-            await self.usage.record("openai", "lead_analysis", success=False)
-            raise
-        await self.usage.record("openai", "lead_analysis", success=True)
-
-        async with self.session_factory() as session:
-            existing = await session.scalar(
-                select(AnalysisCache).where(AnalysisCache.cache_key == cache_key)
-            )
-            if existing is None:
-                session.add(
-                    AnalysisCache(
-                        cache_key=cache_key,
-                        model=self.inner.model,
-                        result_json=analysis.model_dump(mode="json"),
+        except Exception as exc:
+            await self.usage.release_reservation(reservation_id)
+            async with self.session_factory() as session:
+                req = await session.scalar(
+                    select(AIRequest).where(
+                        AIRequest.analysis_version == self.ANALYSIS_VERSION,
+                        AIRequest.context_fingerprint == fingerprint,
                     )
                 )
+                if req is not None:
+                    req.status = AIRequestStatus.FAILED
+                    req.error = str(exc)
+                    await session.commit()
+            raise
+
+        # 5. Finalize reservation and mark SUCCEEDED
+        await self.usage.finalize_reservation(
+            reservation_id,
+            units=1,
+            success=True,
+            details={"model": self.inner.model, "fingerprint": fingerprint},
+        )
+        async with self.session_factory() as session:
+            req = await session.scalar(
+                select(AIRequest).where(
+                    AIRequest.analysis_version == self.ANALYSIS_VERSION,
+                    AIRequest.context_fingerprint == fingerprint,
+                )
+            )
+            if req is not None:
+                req.status = AIRequestStatus.SUCCEEDED
+                req.result_json = analysis.model_dump(mode="json")
+                req.error = None
                 await session.commit()
+
         return analysis
 
-    def _cache_key(self, context: LeadAnalysisContext) -> str:
-        normalized = {
-            "analysis_contract": "lead-analysis-v2",
-            "model": self.inner.model,
-            "competitor": context.competitor,
-            "post_caption": context.post_caption,
-            "comment": context.comment,
-            "previous_signals": [asdict(item) for item in context.previous_signals],
-            "previous_interests": context.previous_interests,
-            "known_customer_context": context.known_customer_context,
-        }
-        raw = json.dumps(normalized, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 class HybridLeadAnalyzer:

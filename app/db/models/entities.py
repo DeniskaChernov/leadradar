@@ -121,7 +121,24 @@ class TaskStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class AIRequestStatus(StrEnum):
+    PENDING = "PENDING"
+    CLAIMED = "CLAIMED"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    RETRYABLE = "RETRYABLE"
+    PERMANENT_FAILURE = "PERMANENT_FAILURE"
+
+
+class ReservationStatus(StrEnum):
+    RESERVED = "RESERVED"
+    FINALIZED = "FINALIZED"
+    RELEASED = "RELEASED"
+    EXPIRED = "EXPIRED"
+
+
 class Vertical(StrEnum):
+
     FURNITURE = "FURNITURE"
     ARTIFICIAL_RATTAN = "ARTIFICIAL_RATTAN"
 
@@ -874,4 +891,58 @@ class OpeningSignal(Base):
     reviewed_by_manager_id: Mapped[int | None] = mapped_column(Integer)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AIRequest(Base):
+    __tablename__ = "ai_requests"
+    __table_args__ = (
+        UniqueConstraint(
+            "lead_id",
+            "analysis_version",
+            "context_fingerprint",
+            name="uq_ai_requests_lead_version_fingerprint",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
+    analysis_version: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    context_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    model: Mapped[str] = mapped_column(String(128))
+    status: Mapped[AIRequestStatus] = mapped_column(
+        Enum(AIRequestStatus, native_enum=False), default=AIRequestStatus.PENDING, index=True
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claim_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    worker_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    estimated_cost_usd: Mapped[Decimal] = mapped_column(Numeric(10, 6), default=Decimal("0.000000"))
+    actual_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
+    response_cache_key: Mapped[str | None] = mapped_column(String(64), index=True)
+    result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class ExternalBudgetReservation(Base):
+    __tablename__ = "external_budget_reservations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    service: Mapped[str] = mapped_column(String(64), index=True)
+    operation: Mapped[str] = mapped_column(String(128), index=True)
+    units_reserved: Mapped[int] = mapped_column(Integer, default=1)
+    estimated_cost_usd: Mapped[Decimal] = mapped_column(Numeric(10, 6), default=Decimal("0.000000"))
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+    status: Mapped[ReservationStatus] = mapped_column(
+        Enum(ReservationStatus, native_enum=False), default=ReservationStatus.RESERVED, index=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
 

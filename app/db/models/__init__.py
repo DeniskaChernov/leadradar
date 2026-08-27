@@ -1,5 +1,7 @@
 from app.db.models.entities import (
     AIFeedback,
+    AIRequest,
+    AIRequestStatus,
     AnalysisCache,
     AudienceMembership,
     AudienceSegment,
@@ -19,6 +21,7 @@ from app.db.models.entities import (
     DealStatus,
     Evidence,
     ExportEligibility,
+    ExternalBudgetReservation,
     ExternalUsage,
     Lead,
     LeadStatus,
@@ -32,6 +35,7 @@ from app.db.models.entities import (
     Post,
     PublicSignal,
     PublicSignalStatus,
+    ReservationStatus,
     SignalSubjectType,
     SignalType,
     SignificantChange,
@@ -42,7 +46,10 @@ from app.db.models.entities import (
 
 __all__ = [
     "AIFeedback",
+    "AIRequest",
+    "AIRequestStatus",
     "AnalysisCache",
+
     "AudienceMembership",
     "AudienceSegment",
     "BusinessAlias",
@@ -61,6 +68,7 @@ __all__ = [
     "DealStatus",
     "Evidence",
     "ExportEligibility",
+    "ExternalBudgetReservation",
     "ExternalUsage",
     "Lead",
     "LeadStatus",
@@ -75,6 +83,7 @@ __all__ = [
 
     "PublicSignal",
     "PublicSignalStatus",
+    "ReservationStatus",
     "SignalSubjectType",
     "SignalType",
     "SignificantChange",

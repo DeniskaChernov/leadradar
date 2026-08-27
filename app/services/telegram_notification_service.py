@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from html import escape
+from typing import ClassVar
 from uuid import uuid4
 
 from aiogram import Bot
@@ -40,6 +41,8 @@ logger = logging.getLogger(__name__)
 
 
 class TelegramLeadNotifier:
+    _claim_edit_lock: ClassVar[asyncio.Lock] = asyncio.Lock()
+
     def __init__(
         self,
         bot: Bot,
@@ -65,6 +68,7 @@ class TelegramLeadNotifier:
         self.lease_seconds = lease_seconds
         self.worker_id = worker_id or f"telegram-{uuid4().hex[:12]}"
         self._delivery_lock = asyncio.Lock()
+
 
     async def notify_new_signal(self, lead_id: int) -> int:
         if not self.delivery_enabled:
@@ -208,38 +212,40 @@ class TelegramLeadNotifier:
     async def _claim_message_edit(
         self, log_id: int
     ) -> tuple[int, int, str] | None:
-        now = datetime.now(UTC)
-        token = uuid4().hex
-        async with self.session_factory() as session:
-            claimed = (
-                await session.execute(
-                    update(NotificationLog)
-                    .where(
-                        NotificationLog.id == log_id,
-                        NotificationLog.status == NotificationStatus.SENT,
-                        NotificationLog.message_id.is_not(None),
-                        NotificationLog.content_version < 2,
-                        or_(
-                            NotificationLog.edit_claim_token.is_(None),
-                            and_(
-                                NotificationLog.edit_lease_expires_at.is_not(None),
-                                NotificationLog.edit_lease_expires_at <= now,
+        async with self._claim_edit_lock:
+            now = datetime.now(UTC)
+            token = uuid4().hex
+            async with self.session_factory() as session:
+                claimed = (
+                    await session.execute(
+                        update(NotificationLog)
+                        .where(
+                            NotificationLog.id == log_id,
+                            NotificationLog.status == NotificationStatus.SENT,
+                            NotificationLog.message_id.is_not(None),
+                            NotificationLog.content_version < 2,
+                            or_(
+                                NotificationLog.edit_claim_token.is_(None),
+                                and_(
+                                    NotificationLog.edit_lease_expires_at.is_not(None),
+                                    NotificationLog.edit_lease_expires_at <= now,
+                                ),
                             ),
-                        ),
+                        )
+                        .values(
+                            edit_claim_token=token,
+                            edit_lease_expires_at=now
+                            + timedelta(seconds=self.lease_seconds),
+                            edit_attempt_count=NotificationLog.edit_attempt_count + 1,
+                        )
+                        .returning(NotificationLog.chat_id, NotificationLog.message_id)
                     )
-                    .values(
-                        edit_claim_token=token,
-                        edit_lease_expires_at=now
-                        + timedelta(seconds=self.lease_seconds),
-                        edit_attempt_count=NotificationLog.edit_attempt_count + 1,
-                    )
-                    .returning(NotificationLog.chat_id, NotificationLog.message_id)
-                )
-            ).one_or_none()
-            await session.commit()
-        if claimed is None:
-            return None
-        return int(claimed[0]), int(claimed[1]), token
+                ).one_or_none()
+                await session.commit()
+            if claimed is None:
+                return None
+            return int(claimed[0]), int(claimed[1]), token
+
 
     async def _send_enrichment_fallback(
         self,
