@@ -537,6 +537,7 @@ async def _report_scan_result(
         f"Новых комментариев: {stats.comments_created}\n"
         f"Новых лидов: {stats.leads_created}\n"
         f"HOT-уведомлений: {stats.hot_notifications}\n"
+        f"Уведомлений об усилении интереса: {stats.change_notifications}\n"
         f"Ошибок: {stats.errors}"
     )
 

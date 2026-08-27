@@ -14,11 +14,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.models import (
     Comment,
     Competitor,
+    Contact,
     Lead,
     LeadStatus,
     NotificationLog,
     NotificationPolicy,
     NotificationStatus,
+    Post,
+    SignificantChange,
+    SignificantChangeNotification,
 )
 from app.services.lead_workflow_service import LeadCard, LeadWorkflowService
 
@@ -80,6 +84,15 @@ class TelegramLeadNotifier:
         async with self._delivery_lock:
             return await self._notify_hot_lead(lead_id)
 
+    async def notify_significant_change(self, change_id: int) -> int:
+        if not self.delivery_enabled:
+            return 0
+        async with self._delivery_lock:
+            targets = await self._change_target_chat_ids(change_id)
+            for chat_id in targets:
+                await self._ensure_change_log(change_id, chat_id)
+            return await self._deliver_pending_changes(change_id=change_id)
+
     async def _notify_hot_lead(self, lead_id: int) -> int:
         return await self._queue_and_deliver(lead_id)
 
@@ -109,12 +122,23 @@ class TelegramLeadNotifier:
 
     async def _flush_pending(self) -> int:
         await self._reconcile_hot_leads()
-        return await self._deliver_pending()
+        return await self._deliver_pending() + await self._deliver_pending_changes()
 
     async def _target_chat_ids(self, lead_id: int) -> list[int]:
         async with self.session_factory() as session:
             manager_id = await session.scalar(
                 select(Lead.assigned_manager_telegram_id).where(Lead.id == lead_id)
+            )
+        if manager_id:
+            return [int(manager_id)]
+        return list(dict.fromkeys(self.admin_chat_ids))
+
+    async def _change_target_chat_ids(self, change_id: int) -> list[int]:
+        async with self.session_factory() as session:
+            manager_id = await session.scalar(
+                select(Lead.assigned_manager_telegram_id)
+                .join(SignificantChange, SignificantChange.lead_id == Lead.id)
+                .where(SignificantChange.id == change_id)
             )
         if manager_id:
             return [int(manager_id)]
@@ -224,6 +248,24 @@ class TelegramLeadNotifier:
             except IntegrityError:
                 await session.rollback()
 
+    async def _ensure_change_log(self, change_id: int, chat_id: int) -> None:
+        async with self.session_factory() as session:
+            exists = await session.scalar(
+                select(SignificantChangeNotification.id).where(
+                    SignificantChangeNotification.change_id == change_id,
+                    SignificantChangeNotification.chat_id == chat_id,
+                )
+            )
+            if exists is not None:
+                return
+            session.add(
+                SignificantChangeNotification(change_id=change_id, chat_id=chat_id)
+            )
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+
     async def _deliver_pending(self, *, lead_id: int | None = None) -> int:
         now = datetime.now(UTC)
         retry_due = and_(
@@ -319,7 +361,112 @@ class TelegramLeadNotifier:
             )
             return False
 
+    async def _deliver_pending_changes(self, *, change_id: int | None = None) -> int:
+        now = datetime.now(UTC)
+        retry_due = and_(
+            SignificantChangeNotification.status == NotificationStatus.FAILED,
+            SignificantChangeNotification.next_attempt_at.is_not(None),
+            SignificantChangeNotification.next_attempt_at <= now,
+        )
+        async with self.session_factory() as session:
+            query = select(SignificantChangeNotification.id).where(
+                or_(
+                    SignificantChangeNotification.status == NotificationStatus.PENDING,
+                    retry_due,
+                ),
+                SignificantChangeNotification.attempt_count < self.max_attempts,
+            )
+            if change_id is not None:
+                query = query.where(SignificantChangeNotification.change_id == change_id)
+            log_ids = list(await session.scalars(query.order_by(SignificantChangeNotification.id)))
+        sent = 0
+        for log_id in log_ids:
+            sent += int(await self._claim_and_send_change(log_id))
+        return sent
 
+    async def _claim_and_send_change(self, log_id: int) -> bool:
+        now = datetime.now(UTC)
+        retry_due = and_(
+            SignificantChangeNotification.status == NotificationStatus.FAILED,
+            SignificantChangeNotification.next_attempt_at.is_not(None),
+            SignificantChangeNotification.next_attempt_at <= now,
+        )
+        async with self.session_factory() as session:
+            claimed = (
+                await session.execute(
+                    update(SignificantChangeNotification)
+                    .where(
+                        SignificantChangeNotification.id == log_id,
+                        or_(
+                            SignificantChangeNotification.status == NotificationStatus.PENDING,
+                            retry_due,
+                        ),
+                        SignificantChangeNotification.attempt_count < self.max_attempts,
+                    )
+                    .values(
+                        status=NotificationStatus.PROCESSING,
+                        attempt_count=SignificantChangeNotification.attempt_count + 1,
+                        last_attempt_at=now,
+                        next_attempt_at=None,
+                        error=None,
+                    )
+                    .returning(
+                        SignificantChangeNotification.change_id,
+                        SignificantChangeNotification.chat_id,
+                        SignificantChangeNotification.attempt_count,
+                    )
+                )
+            ).one_or_none()
+            await session.commit()
+        if claimed is None:
+            return False
+        change_id, chat_id, attempt_count = claimed
+        try:
+            async with self.session_factory() as session:
+                row = (
+                    await session.execute(
+                        select(SignificantChange, Contact, Lead, Comment, Post)
+                        .join(Contact, Contact.id == SignificantChange.contact_id)
+                        .join(Lead, Lead.id == SignificantChange.lead_id)
+                        .join(Comment, Comment.id == Lead.comment_id)
+                        .join(Post, Post.id == Comment.post_id)
+                        .where(SignificantChange.id == change_id)
+                    )
+                ).one()
+            change, contact, lead, _comment, post = row
+            message = await self.bot.send_message(
+                chat_id,
+                render_significant_change(change, contact),
+                reply_markup=significant_change_keyboard(contact, lead, post),
+            )
+            async with self.session_factory() as session:
+                log = await session.get(SignificantChangeNotification, log_id)
+                if log is not None and log.status == NotificationStatus.PROCESSING:
+                    log.status = NotificationStatus.SENT
+                    log.message_id = message.message_id
+                    await session.commit()
+            return True
+        except Exception as exc:
+            next_attempt = None
+            if attempt_count < self.max_attempts:
+                next_attempt = datetime.now(UTC) + timedelta(
+                    seconds=min(300, 10 * (2 ** (attempt_count - 1)))
+                )
+            async with self.session_factory() as session:
+                log = await session.get(SignificantChangeNotification, log_id)
+                if log is not None and log.status == NotificationStatus.PROCESSING:
+                    log.status = NotificationStatus.FAILED
+                    log.error = f"{type(exc).__name__}: {str(exc)[:300]}"
+                    log.next_attempt_at = next_attempt
+                    await session.commit()
+            logger.error(
+                "telegram_change_notification_failed change_id=%s chat_id=%s attempt=%s error_type=%s",
+                change_id,
+                chat_id,
+                attempt_count,
+                type(exc).__name__,
+            )
+            return False
 def render_lead_card(card: LeadCard) -> str:
     if card.status == LeadStatus.NOT_LEAD:
         heat = "✅ Сигнал проверен · не лид"
@@ -368,6 +515,39 @@ def render_enrichment_followup(card: LeadCard) -> str:
         f"@{escape(card.username)} · {escape(card.intent)}\n"
         f"Интерес: {escape(card.product_category or 'не определён')}\n"
         f"{escape(card.ai_reason[:500])}"
+    )
+
+
+def render_significant_change(change: SignificantChange, contact: Contact) -> str:
+    severity_label = {
+        "CRITICAL": "критическое",
+        "HIGH": "важное",
+        "MEDIUM": "заметное",
+    }.get(change.severity, "заметное")
+    return (
+        "🚨 <b>Лид стал горячее</b>\n\n"
+        f"@{escape(contact.username)}\n\n"
+        f"{escape(change.summary)}\n\n"
+        f"Приоритет: <b>{change.previous_priority} → {change.current_priority}</b>\n"
+        f"Уровень изменения: {severity_label}"
+    )
+
+
+def significant_change_keyboard(
+    contact: Contact, lead: Lead, post: Post
+) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="👤 Instagram", url=contact.profile_url),
+                InlineKeyboardButton(text="📹 Источник", url=post.url),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔥 Взять в работу", callback_data=f"lead:take:{lead.id}"
+                )
+            ],
+        ]
     )
 
 

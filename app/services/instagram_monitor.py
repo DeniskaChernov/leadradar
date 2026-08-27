@@ -27,6 +27,7 @@ class CycleStats:
     comments_created: int = 0
     leads_created: int = 0
     hot_notifications: int = 0
+    change_notifications: int = 0
     historical_analyzed: int = 0
     errors: int = 0
     budget_stops: int = 0
@@ -101,6 +102,10 @@ class InstagramMonitor:
             stats.leads_created += 1
             try:
                 stats.hot_notifications += await self._notify_analyzed(lead.lead_id, lead.is_hot)
+                if lead.significant_change_id is not None:
+                    stats.change_notifications += await self._notify_significant_change(
+                        lead.significant_change_id
+                    )
             except Exception as exc:
                 stats.errors += 1
                 logger.exception(
@@ -244,6 +249,10 @@ class InstagramMonitor:
                     analyzed.is_hot,
                     initial_already_sent=notified_initially,
                 )
+                if analyzed.significant_change_id is not None:
+                    stats.change_notifications += await self._notify_significant_change(
+                        analyzed.significant_change_id
+                    )
             except Exception as exc:
                 stats.errors += 1
                 logger.exception(
@@ -278,6 +287,12 @@ class InstagramMonitor:
         if is_hot and not initial_already_sent:
             return await self.notifier.notify_hot_lead(lead_id)
         return 0
+
+    async def _notify_significant_change(self, change_id: int) -> int:
+        notify = getattr(self.notifier, "notify_significant_change", None)
+        if notify is None:
+            return 0
+        return await notify(change_id)
 
     async def _prepare_post(self, reel: InstagramPost) -> PostCheck:
         async with self.session_factory() as session:

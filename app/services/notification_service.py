@@ -10,6 +10,8 @@ class LeadNotifier(Protocol):
 
     async def notify_hot_lead(self, lead_id: int) -> int: ...
 
+    async def notify_significant_change(self, change_id: int) -> int: ...
+
     async def flush_pending(self) -> int: ...
 
 
@@ -21,6 +23,9 @@ class NullLeadNotifier:
         return 0
 
     async def notify_hot_lead(self, lead_id: int) -> int:
+        return 0
+
+    async def notify_significant_change(self, change_id: int) -> int:
         return 0
 
     async def flush_pending(self) -> int:

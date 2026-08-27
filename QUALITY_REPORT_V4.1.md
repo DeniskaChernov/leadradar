@@ -14,6 +14,10 @@
 - Pending analysis was presented as a technical AI state instead of a manager-readable condition.
 - Integrity checks did not include the new public-signal identity boundary.
 - `ANALYZING` and retryable analysis states could not be taken into work by a manager.
+- Bare price-like numbers could be mistaken for a B2B quantity; quantity now requires an explicit
+  unit/product or first-party CRM value.
+- Reactivation remained active forever after any historical gap; it now evaluates the latest gap
+  and expires after 30 days.
 
 ## UX issues fixed
 
@@ -23,10 +27,11 @@
 - Добавлен отдельный раздел динамических аудиторий с понятными агрегатами и campaign brief.
 - Карточка клиента отделяет наблюдаемые публичные интересы от данных, введённых менеджером.
 - Экспортное состояние явно показывает, почему контакт пока нельзя использовать вне CRM.
+- Command Center показывает только существенные усиления интереса и сравнение приоритета.
+- Карточка клиента объясняет причины изменения без технических названий pipeline.
 
 ## Remaining known work
 
-- Significant Change Detector and material-change alerts.
 - Competitor Intelligence V2, opportunity analysis, demand gaps and overlap network.
 - Global grouped search.
 - Production validation of Telegram edit behavior with a live provider; automated tests currently
@@ -36,13 +41,13 @@
 
 ## Verified quality gate
 
-- `pytest`: 67 passed.
+- `pytest`: 72 passed.
 - `ruff check .`: passed.
 - `compileall`: passed.
-- Alembic: existing DB and a new empty DB both reached `b82f1d6a4c30`.
+- Alembic: existing DB and a new empty DB both reached `c93a1f7d2e40`.
 - Alembic autogenerate check: no pending operations.
 - DB integrity: zero duplicate comments, posts, leads, public signals, audience profiles,
-  memberships, deals and notification targets.
+  memberships, significant changes, deals and notification targets.
 - Web smoke: 15 routes returned HTTP 200, including audience list and detail.
 - Browser console: no warnings or errors.
 - External Instagram/OpenAI calls: zero.

@@ -26,6 +26,8 @@ from app.db.models.entities import (
     Post,
     PublicSignal,
     PublicSignalStatus,
+    SignificantChange,
+    SignificantChangeNotification,
     TaskStatus,
 )
 
@@ -57,5 +59,7 @@ __all__ = [
     "Post",
     "PublicSignal",
     "PublicSignalStatus",
+    "SignificantChange",
+    "SignificantChangeNotification",
     "TaskStatus",
 ]

@@ -118,7 +118,7 @@ SEGMENTS = (
         "reactivated",
         "Старые лиды снова активны",
         "Новый сигнал после перерыва не менее 30 дней.",
-        {"reactivated": True},
+        {"reactivated": True, "days": 30},
     ),
     SegmentDefinition(
         "rattan-wholesale",
@@ -326,9 +326,8 @@ class AudienceEngine:
                     select(AudienceSegment).where(AudienceSegment.active.is_(True))
                 )
             )
-            reactivated = any(
-                (dates[index] - dates[index - 1]) >= timedelta(days=30)
-                for index in range(1, len(dates))
+            reactivated = bool(
+                len(dates) >= 2 and dates[-1] - dates[-2] >= timedelta(days=30)
             )
             facts = {
                 "hot": max_score >= self.hot_threshold,

@@ -120,6 +120,20 @@ EVENT_LABELS = {
     "NEXT_CONTACT_CANCELLED": "Задача отменена",
     "QUALIFICATION_UPDATED": "Обновлена информация о клиенте",
     "LEAD_REOPENED": "Лид возвращён в работу",
+    "SIGNIFICANT_CHANGE": "Лид стал горячее",
+}
+
+CHANGE_TYPE_LABELS = {
+    "NEW_COMPETITOR": "Новый конкурент",
+    "NEW_STRONG_INTENT": "Новое сильное намерение",
+    "NEW_PRODUCT": "Новая товарная категория",
+    "SIGNIFICANT_QUANTITY": "Значимое количество",
+    "B2B_DETECTED": "Обнаружен B2B / HoReCa",
+    "ENTERED_HOT": "Вошёл в HOT",
+    "ENTERED_HIGH_VALUE": "Стал high-value",
+    "REACTIVATED": "Вернулся после паузы",
+    "VALUE_INCREASE": "Приоритет вырос",
+    "STAGE_ADVANCED": "Новая стадия покупки",
 }
 
 CHANNEL_LABELS = {

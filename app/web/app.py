@@ -12,15 +12,18 @@ from fastapi.templating import Jinja2Templates
 from app.config import Settings
 from app.db.models import LeadStatus
 from app.services.ai_service import HybridLeadAnalyzer, RuleBasedLeadAnalyzer
+from app.services.audience_service import AudienceEngine
 from app.services.crm_service import CRMService
 from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowService
 from app.services.market_intelligence_service import MarketIntelligenceService
 from app.services.monitor_controller import MonitorController
+from app.services.significant_change_service import SignificantChangeDetector
 from app.services.usage_service import ExternalUsageService
 from app.web.auth import TelegramAuthError, TelegramWebAuth
 from app.web.labels import (
     AI_SOURCE_LABELS,
+    CHANGE_TYPE_LABELS,
     CHANNEL_LABELS,
     COMMERCIAL_STAGE_LABELS,
     COMPETITOR_CATEGORY_LABELS,
@@ -62,10 +65,17 @@ def build_web_app(
     # Even if production OpenAI is unlocked elsewhere, this service has no network analyzer, so
     # an ambiguous signal becomes AI_PENDING instead of silently spending tokens.
     market_service = MarketIntelligenceService(workflow.session_factory)
+    local_audience_engine = AudienceEngine(
+        workflow.session_factory, settings.hot_lead_threshold
+    )
     local_lead_service = LeadService(
         workflow.session_factory,
         HybridLeadAnalyzer(RuleBasedLeadAnalyzer(), None, mode="hybrid"),
         settings.hot_lead_threshold,
+        audience_engine=local_audience_engine,
+        change_detector=SignificantChangeDetector(
+            workflow.session_factory, hot_threshold=settings.hot_lead_threshold
+        ),
     )
 
     templates.env.globals.update(
@@ -81,6 +91,7 @@ def build_web_app(
         export_eligibility_label=lambda value: label(EXPORT_ELIGIBILITY_LABELS, value),
         coverage_label=lambda value: label(COVERAGE_LABELS, value),
         event_label=lambda value: label(EVENT_LABELS, value),
+        change_type_label=lambda value: label(CHANGE_TYPE_LABELS, value),
         run_status_label=lambda value: label(RUN_STATUS_LABELS, value),
         trigger_label=lambda value: label(TRIGGER_LABELS, value),
         competitor_category_label=lambda value: label(COMPETITOR_CATEGORY_LABELS, value),

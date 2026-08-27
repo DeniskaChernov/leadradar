@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from app.services.audience_service import AudienceEngine
+    from app.services.significant_change_service import (
+        IntelligenceSnapshot,
+        SignificantChangeDetector,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +49,7 @@ class ProcessedLead:
     status: LeadStatus
     created: bool
     is_hot: bool
+    significant_change_id: int | None = None
 
 
 class LeadService:
@@ -54,11 +59,13 @@ class LeadService:
         analyzer: LeadAnalyzer,
         hot_threshold: int,
         audience_engine: AudienceEngine | None = None,
+        change_detector: SignificantChangeDetector | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.analyzer = analyzer
         self.hot_threshold = hot_threshold
         self.audience_engine = audience_engine
+        self.change_detector = change_detector
 
     async def process_signal(
         self, signal: PersistedSignal, *, allow_baseline: bool = False
@@ -76,6 +83,7 @@ class LeadService:
             status=analyzed.status,
             created=True,
             is_hot=analyzed.is_hot,
+            significant_change_id=analyzed.significant_change_id,
         )
 
     async def ensure_analyzing(self, signal: PersistedSignal) -> ProcessedLead:
@@ -137,14 +145,25 @@ class LeadService:
     async def analyze_lead(self, lead_id: int) -> ProcessedLead:
         """Run enrichment after the initial lead and notification have been committed."""
         contact_id: int | None = None
+        change_before: IntelligenceSnapshot | None = None
         async with self.session_factory() as session:
             lead = await session.get(Lead, lead_id)
             if lead is None:
                 raise RuntimeError(f"Lead {lead_id} was not found")
             context = await self._build_context(session, lead.comment_id)
+            contact_id = lead.contact_id
             lead.ai_attempt_count += 1
             lead.ai_last_attempt_at = datetime.now(UTC)
             await session.commit()
+        if self.change_detector is not None and contact_id is not None:
+            try:
+                change_before = await self.change_detector.snapshot(contact_id)
+            except Exception as exc:
+                logger.exception(
+                    "significant_change_snapshot_failed contact_id=%s error_type=%s",
+                    contact_id,
+                    type(exc).__name__,
+                )
         try:
             analysis, analysis_source = await self._analyze(context)
         except Exception as exc:
@@ -234,13 +253,34 @@ class LeadService:
             logger.info("lead_analysis_completed lead_id=%s score=%s", lead.id, lead.lead_score)
             contact_id = lead.contact_id
             result = self._to_result(lead, created=False)
+        audience_recalculated = self.audience_engine is None
         if self.audience_engine is not None and contact_id is not None:
             try:
                 await self.audience_engine.recalculate_contact(contact_id)
+                audience_recalculated = True
             except Exception as exc:
                 logger.exception(
                     "audience_recalculation_failed contact_id=%s error_type=%s",
                     contact_id,
+                    type(exc).__name__,
+                )
+        if (
+            self.change_detector is not None
+            and contact_id is not None
+            and change_before is not None
+            and audience_recalculated
+        ):
+            try:
+                change = await self.change_detector.detect_and_persist(
+                    contact_id, lead_id, change_before
+                )
+                if change is not None:
+                    result = replace(result, significant_change_id=change.id)
+            except Exception as exc:
+                logger.exception(
+                    "significant_change_detection_failed contact_id=%s lead_id=%s error_type=%s",
+                    contact_id,
+                    lead_id,
                     type(exc).__name__,
                 )
         return result
@@ -319,6 +359,7 @@ class LeadService:
             status=result.status,
             created=True,
             is_hot=result.is_hot,
+            significant_change_id=result.significant_change_id,
         )
 
     async def _create_pending(self, signal: PersistedSignal) -> ProcessedLead:

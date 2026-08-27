@@ -27,6 +27,8 @@ from app.db.models import (
     NotificationLog,
     NotificationStatus,
     Post,
+    SignificantChange,
+    SignificantChangeNotification,
     TaskStatus,
 )
 
@@ -101,10 +103,36 @@ class WebQueryService:
                 )
                 or 0
             )
+            counts["notifications_pending"] += int(
+                await session.scalar(
+                    select(func.count(SignificantChangeNotification.id)).where(
+                        SignificantChangeNotification.status.in_(
+                            [NotificationStatus.PENDING, NotificationStatus.PROCESSING]
+                        )
+                    )
+                )
+                or 0
+            )
             counts["notifications_failed"] = int(
                 await session.scalar(
                     select(func.count(NotificationLog.id)).where(
                         NotificationLog.status == NotificationStatus.FAILED
+                    )
+                )
+                or 0
+            )
+            counts["notifications_failed"] += int(
+                await session.scalar(
+                    select(func.count(SignificantChangeNotification.id)).where(
+                        SignificantChangeNotification.status == NotificationStatus.FAILED
+                    )
+                )
+                or 0
+            )
+            counts["significant_changes_24h"] = int(
+                await session.scalar(
+                    select(func.count(SignificantChange.id)).where(
+                        SignificantChange.created_at >= last_24h
                     )
                 )
                 or 0
@@ -182,6 +210,15 @@ class WebQueryService:
                     .limit(6)
                 )
             ).all()
+            recent_changes = (
+                await session.execute(
+                    select(SignificantChange, Contact, Lead)
+                    .join(Contact, Contact.id == SignificantChange.contact_id)
+                    .join(Lead, Lead.id == SignificantChange.lead_id)
+                    .order_by(desc(SignificantChange.created_at))
+                    .limit(6)
+                )
+            ).all()
             tasks = (
                 await session.execute(
                     select(ContactTask, Contact, Lead)
@@ -211,6 +248,7 @@ class WebQueryService:
             "counts": counts,
             "recent_signals": recent_signals,
             "hot_leads": hot_leads,
+            "recent_changes": recent_changes,
             "tasks": tasks,
             "recent_runs": recent_runs,
             "coverage": {getattr(key, "value", str(key)): value for key, value in coverage},
@@ -529,6 +567,14 @@ class WebQueryService:
                     .order_by(AudienceSegment.name)
                 )
             ).all()
+            significant_changes = list(
+                await session.scalars(
+                    select(SignificantChange)
+                    .where(SignificantChange.contact_id == contact_id)
+                    .order_by(desc(SignificantChange.created_at))
+                    .limit(30)
+                )
+            )
             return {
                 "contact": contact,
                 "signals": signals,
@@ -541,6 +587,7 @@ class WebQueryService:
                 "source_count": len(source_handles),
                 "intelligence": intelligence,
                 "audiences": audiences,
+                "significant_changes": significant_changes,
             }
 
     async def audiences(self) -> list[dict]:

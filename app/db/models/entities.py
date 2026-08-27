@@ -48,6 +48,7 @@ class ContactEventType(StrEnum):
     NEXT_CONTACT_CANCELLED = "NEXT_CONTACT_CANCELLED"
     QUALIFICATION_UPDATED = "QUALIFICATION_UPDATED"
     LEAD_REOPENED = "LEAD_REOPENED"
+    SIGNIFICANT_CHANGE = "SIGNIFICANT_CHANGE"
 
 
 class LeadStatus(StrEnum):
@@ -373,6 +374,53 @@ class AudienceMembership(Base):
     evidence_json: Mapped[list[str]] = mapped_column(JSON, default=list)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class SignificantChange(Base):
+    __tablename__ = "significant_changes"
+    __table_args__ = (
+        UniqueConstraint("lead_id", name="uq_significant_changes_lead_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
+    primary_type: Mapped[str] = mapped_column(String(64), index=True)
+    change_types_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    severity: Mapped[str] = mapped_column(String(16), default="MEDIUM", index=True)
+    previous_priority: Mapped[int] = mapped_column(Integer, default=0)
+    current_priority: Mapped[int] = mapped_column(Integer, default=0)
+    summary: Mapped[str] = mapped_column(Text)
+    before_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    after_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class SignificantChangeNotification(Base):
+    __tablename__ = "significant_change_notifications"
+    __table_args__ = (
+        UniqueConstraint(
+            "change_id", "chat_id", name="uq_significant_change_notifications_target"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    change_id: Mapped[int] = mapped_column(
+        ForeignKey("significant_changes.id"), index=True
+    )
+    chat_id: Mapped[int] = mapped_column(index=True)
+    message_id: Mapped[int | None] = mapped_column()
+    status: Mapped[NotificationStatus] = mapped_column(
+        Enum(NotificationStatus, native_enum=False), default=NotificationStatus.PENDING, index=True
+    )
+    error: Mapped[str | None] = mapped_column(Text)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

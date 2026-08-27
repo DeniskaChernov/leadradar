@@ -18,6 +18,8 @@ from app.db.models import (
     NotificationLog,
     Post,
     PublicSignal,
+    SignificantChange,
+    SignificantChangeNotification,
 )
 from app.db.session import create_engine, create_session_factory
 
@@ -49,6 +51,8 @@ async def inspect_integrity() -> IntegrityResult:
                 Deal,
                 ContactEvent,
                 NotificationLog,
+                SignificantChange,
+                SignificantChangeNotification,
             )
             counts = {
                 model.__tablename__: await session.scalar(select(func.count(model.id))) or 0
@@ -91,6 +95,21 @@ async def inspect_integrity() -> IntegrityResult:
                     NotificationLog.lead_id, NotificationLog.chat_id, func.count()
                 )
                 .group_by(NotificationLog.lead_id, NotificationLog.chat_id)
+                .having(func.count() > 1),
+                "significant changes per lead": select(
+                    SignificantChange.lead_id, func.count()
+                )
+                .group_by(SignificantChange.lead_id)
+                .having(func.count() > 1),
+                "significant change notification targets": select(
+                    SignificantChangeNotification.change_id,
+                    SignificantChangeNotification.chat_id,
+                    func.count(),
+                )
+                .group_by(
+                    SignificantChangeNotification.change_id,
+                    SignificantChangeNotification.chat_id,
+                )
                 .having(func.count() > 1),
             }
             duplicates = {

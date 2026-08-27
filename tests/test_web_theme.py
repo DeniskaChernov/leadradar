@@ -65,3 +65,18 @@ def test_audience_pages_explain_privacy_boundary_and_campaign_action():
     assert "Instagram username не превращается" in audiences
     assert "CAMPAIGN BRIEF" in detail
     assert "АУДИТОРИЯ И ИНТЕРЕСЫ" in contact
+
+
+def test_significant_changes_are_actionable_and_explainable():
+    dashboard = (PROJECT_ROOT / "app/web/templates/dashboard.html").read_text(
+        encoding="utf-8"
+    )
+    contact = (PROJECT_ROOT / "app/web/templates/contact_detail.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Стали горячее" in dashboard
+    assert "change.previous_priority" in dashboard
+    assert "СУЩЕСТВЕННЫЕ ИЗМЕНЕНИЯ" in contact
+    assert "Мелкие колебания" not in contact
+    assert "мелкие колебания оценки" in contact

@@ -32,6 +32,19 @@
   <div class="intelligence-summary"><div><span>Стадия</span><b>{{ commercial_stage_label(intelligence.commercial_stage) }}</b></div><div><span>Активность</span><b>{{ intelligence.activity_score }}/100</b></div><div><span>Ценность</span><b>{{ intelligence.value_score }}/100</b></div><div><span>Сигналов</span><b>{{ intelligence.commercial_signal_count }} коммерческих из {{ intelligence.signal_count }}</b></div><div><span>Источников</span><b>{{ intelligence.source_count }}</b></div><div><span>Экспорт</span><b>{{ export_eligibility_label(intelligence.export_eligibility) }}</b></div></div>
   <div class="interest-columns"><div><h3>Коммерческие интересы</h3>{% for item in intelligence.product_interests_json %}<div class="interest-meter"><div><span>{{ product_label(item.value) }}</span><b>{{ item.confidence }}%</b></div><i style="width:{{ item.confidence }}%"></i></div>{% else %}<div class="empty compact">Товарные интересы пока не подтверждены.</div>{% endfor %}</div><div><h3>Динамические аудитории</h3><div class="audience-chip-list">{% for membership, segment in audiences %}<a href="/audiences/{{ segment.slug }}">{{ segment.name }}</a>{% else %}<span class="muted">Контакт пока не входит в активные сегменты.</span>{% endfor %}</div></div></div>
 </section>
+{% if significant_changes %}
+<section class="panel significant-change-panel" id="significant-changes">
+  <div class="panel-head"><div><span class="eyebrow">СУЩЕСТВЕННЫЕ ИЗМЕНЕНИЯ</span><h2>Почему приоритет изменился</h2><p>Только изменения, которые влияют на решение менеджера; мелкие колебания оценки сюда не попадают.</p></div></div>
+  <div class="change-timeline">
+    {% for change in significant_changes %}
+    <article class="change-row severity-{{ change.severity|lower }}">
+      <div class="change-priority"><span>{{ change.previous_priority }}</span><b>→</b><strong>{{ change.current_priority }}</strong></div>
+      <div><div class="change-badges">{% for kind in change.change_types_json %}<span>{{ change_type_label(kind) }}</span>{% endfor %}</div><p>{{ change.summary }}</p><small>{{ change.created_at.strftime('%d.%m.%Y %H:%M') }}</small></div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
 {% endif %}
 
 <section class="panel customer-knowledge">

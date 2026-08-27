@@ -39,6 +39,7 @@ from app.services.market_intelligence_service import MarketIntelligenceService
 from app.services.monitor_controller import MonitorController
 from app.services.monitor_run_service import MonitorRunService
 from app.services.notification_service import NullLeadNotifier
+from app.services.significant_change_service import SignificantChangeDetector
 from app.services.telegram_notification_service import TelegramLeadNotifier
 from app.services.usage_service import ExternalUsageService
 from app.web.app import build_web_app
@@ -79,11 +80,15 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
     audience_engine = AudienceEngine(session_factory, settings.hot_lead_threshold)
     audience_contacts = await audience_engine.recalculate_all()
     logger.info("audience_engine_synced contacts=%s", audience_contacts)
+    change_detector = SignificantChangeDetector(
+        session_factory, hot_threshold=settings.hot_lead_threshold
+    )
     lead_service = LeadService(
         session_factory,
         analyzer,
         settings.hot_lead_threshold,
         audience_engine=audience_engine,
+        change_detector=change_detector,
     )
     workflow = LeadWorkflowService(session_factory, settings.hot_lead_threshold)
 

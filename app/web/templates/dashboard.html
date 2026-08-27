@@ -30,14 +30,20 @@
   <a class="metric" href="/radar"><span>Сигналы</span><strong>{{ counts.comments }}</strong><small>+{{ counts.new_comments_24h }} за 24 часа</small></a>
   <a class="metric" href="/radar?kind=pending"><span>Ждут разбора</span><strong>{{ counts.unprocessed + counts.ai_pending }}</strong><small>локальная очередь + AI</small></a>
   <a class="metric accent" href="/leads"><span>Горячие лиды</span><strong>{{ counts.hot }}</strong><small>оценка от {{ settings.hot_lead_threshold }}/100</small></a>
+  <a class="metric change" href="/#changes"><span>Стали горячее</span><strong>{{ counts.significant_changes_24h }}</strong><small>существенных изменений за 24 часа</small></a>
   <a class="metric warn" href="/"><span>Нужно связаться</span><strong>{{ counts.tasks_today }}</strong><small>{{ counts.tasks_due }} уже просрочено</small></a>
   <a class="metric success" href="/deals?status=WON"><span>Продажи</span><strong>{{ counts.won }}</strong><small>{{ money(counts.revenue) }} сум</small></a>
 </div>
 
 <div class="dashboard-grid">
-  <section class="panel attention-panel">
+  <section class="panel attention-panel" id="changes">
     <div class="panel-head"><div><h2>Требует внимания</h2><p>Лиды и задачи, которые лучше не откладывать</p></div></div>
     <div class="attention-list">
+      {% for change, contact, change_lead in recent_changes %}
+      <a class="attention-item change-alert" href="/contacts/{{ contact.id }}#significant-changes">
+        <span class="attention-icon change">↑</span><div><b>@{{ contact.username }} · {{ change_type_label(change.primary_type) }}</b><p>{{ change.summary }}</p><small>Приоритет {{ change.previous_priority }} → {{ change.current_priority }}</small></div><span>→</span>
+      </a>
+      {% endfor %}
       {% for task, contact, task_lead in tasks %}
       <a class="attention-item" href="/contacts/{{ contact.id }}">
         <span class="attention-icon">⏱</span><div><b>@{{ contact.username }}</b><p>{{ task.note or 'Связаться с клиентом' }}</p><small>{{ task.due_at.strftime('%d.%m.%Y %H:%M') }}</small></div><span>→</span>
@@ -48,7 +54,7 @@
         <span class="attention-icon hot">{{ lead.lead_score }}</span><div><b>@{{ contact.username }} · {{ intent_label(lead.intent) }}</b><p>{{ comment.text }}</p><small>Источник: @{{ competitor.normalized_handle }}</small></div><span>→</span>
       </a>
       {% endfor %}
-      {% if not tasks and not hot_leads %}<div class="empty compact">Срочных действий пока нет.</div>{% endif %}
+      {% if not recent_changes and not tasks and not hot_leads %}<div class="empty compact">Срочных действий пока нет.</div>{% endif %}
     </div>
   </section>
 
