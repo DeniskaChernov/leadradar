@@ -2,18 +2,29 @@
 
 ## Текущая версия
 
-**V4.1 Foundation · Stage 3/7 · Competitor Intelligence V2 · Audit Pass**
+**V4.1 Foundation · Master Phase 0 complete · implementation awaiting approval**
 
-Текущая цель: перейти от одного AIKO к системной карте мебельного рынка и подготовить Lead Radar к
-контролируемому пилоту нескольких конкурентов без бесконтрольного расхода API.
+Текущая цель: после утверждения Phase 0 начать аддитивный V4 data foundation без big-bang
+переписывания и без бесконтрольного расхода API.
+
+## Master TZ Phase 0 — завершён
+
+- полностью изучены `LEAD_RADAR_V4_MASTER_TZ_CODEX.md` и
+  `CODEX_START_PROMPT_LEAD_RADAR_V4.txt`;
+- создан `docs/V4_AUDIT_REPORT.md`: архитектура, Critical/High/Medium риски,
+  migration/UI/testing plans и порядок Phases 1–12;
+- подтверждённых аварийных P0-багов в текущем локальном режиме нет;
+- обнаружены High-риски identity merge, universal signal foundation, N+1 analytics,
+  distributed idempotency и public web deployment guard;
+- Phase 1 не начата: по Master TZ требуется подтверждение владельца после аудита.
 
 ## На какой стадии мы сейчас
 
-**Стадия 3 из 7 — мультиконкурентный радар.**
+**Master Phase 0 из 12 завершена; Phase 1 ожидает подтверждения владельца.**
 
-Стадии 1 и 2 закрыты: фундамент данных, CRM, Mini App, сделки, replay, локальный AI и защита
-расходов уже существуют. Стадия 3 добавляет покрытие рынка, измерение ценности источников и
-динамические аудитории на основе уже сохранённых публичных сигналов.
+Ранее выполненные стадии 1–3 старого roadmap сохраняются как рабочий фундамент: CRM,
+Mini App, сделки, replay, локальный AI, защита расходов, мультиконкурентный радар и аудитории.
+Новый порядок реализации и критерии приёмки зафиксированы в `docs/V4_AUDIT_REPORT.md`.
 
 ## Новое в V4.1 Foundation
 
