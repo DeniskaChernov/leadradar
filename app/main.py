@@ -30,6 +30,7 @@ from app.services.ai_service import (
     RuleBasedLeadAnalyzer,
     UnavailableLeadAnalyzer,
 )
+from app.services.audience_service import AudienceEngine
 from app.services.contact_service import ContactService
 from app.services.instagram_monitor import InstagramMonitor
 from app.services.lead_service import LeadService
@@ -75,7 +76,15 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         if settings.ai_mode in {"rules", "hybrid", "openai"}
         else UnavailableLeadAnalyzer()
     )
-    lead_service = LeadService(session_factory, analyzer, settings.hot_lead_threshold)
+    audience_engine = AudienceEngine(session_factory, settings.hot_lead_threshold)
+    audience_contacts = await audience_engine.recalculate_all()
+    logger.info("audience_engine_synced contacts=%s", audience_contacts)
+    lead_service = LeadService(
+        session_factory,
+        analyzer,
+        settings.hot_lead_threshold,
+        audience_engine=audience_engine,
+    )
     workflow = LeadWorkflowService(session_factory, settings.hot_lead_threshold)
 
     if once:

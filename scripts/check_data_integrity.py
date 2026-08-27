@@ -7,9 +7,12 @@ from sqlalchemy import func, select
 
 from app.config import get_settings
 from app.db.models import (
+    AudienceMembership,
+    AudienceSegment,
     Comment,
     Contact,
     ContactEvent,
+    ContactIntelligence,
     Deal,
     Lead,
     NotificationLog,
@@ -36,6 +39,9 @@ async def inspect_integrity() -> IntegrityResult:
         async with session_factory() as session:
             models = (
                 Contact,
+                ContactIntelligence,
+                AudienceSegment,
+                AudienceMembership,
                 Post,
                 Comment,
                 PublicSignal,
@@ -62,6 +68,20 @@ async def inspect_integrity() -> IntegrityResult:
                 .having(func.count() > 1),
                 "public signal comments": select(PublicSignal.comment_id, func.count())
                 .group_by(PublicSignal.comment_id)
+                .having(func.count() > 1),
+                "contact intelligence profiles": select(
+                    ContactIntelligence.contact_id, func.count()
+                )
+                .group_by(ContactIntelligence.contact_id)
+                .having(func.count() > 1),
+                "audience memberships": select(
+                    AudienceMembership.segment_id,
+                    AudienceMembership.contact_id,
+                    func.count(),
+                )
+                .group_by(
+                    AudienceMembership.segment_id, AudienceMembership.contact_id
+                )
                 .having(func.count() > 1),
                 "deal leads": select(Deal.lead_id, func.count())
                 .where(Deal.lead_id.is_not(None))

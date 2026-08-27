@@ -92,6 +92,12 @@ class PublicSignalStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class ExportEligibility(StrEnum):
+    NOT_EXPORTABLE = "NOT_EXPORTABLE"
+    FIRST_PARTY_ELIGIBLE = "FIRST_PARTY_ELIGIBLE"
+    EXPORTED = "EXPORTED"
+
+
 class CoverageStatus(StrEnum):
     UNKNOWN = "UNKNOWN"
     FULL = "FULL"
@@ -241,6 +247,9 @@ class Contact(Base):
     comments: Mapped[list[Comment]] = relationship(back_populates="contact")
     events: Mapped[list[ContactEvent]] = relationship(back_populates="contact")
     leads: Mapped[list[Lead]] = relationship(back_populates="contact")
+    intelligence: Mapped[ContactIntelligence | None] = relationship(
+        back_populates="contact"
+    )
 
 
 class Comment(Base):
@@ -293,6 +302,81 @@ class PublicSignal(Base):
     )
 
     comment: Mapped[Comment] = relationship(back_populates="public_signal")
+
+
+class ContactIntelligence(Base):
+    __tablename__ = "contact_intelligence"
+    __table_args__ = (
+        UniqueConstraint("contact_id", name="uq_contact_intelligence_contact_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
+    vertical: Mapped[str] = mapped_column(String(64), default="FURNITURE")
+    commercial_stage: Mapped[str] = mapped_column(String(64), default="NON_COMMERCIAL")
+    intent_strength: Mapped[int] = mapped_column(Integer, default=0)
+    signal_count: Mapped[int] = mapped_column(Integer, default=0)
+    commercial_signal_count: Mapped[int] = mapped_column(Integer, default=0)
+    source_count: Mapped[int] = mapped_column(Integer, default=0)
+    competitor_count: Mapped[int] = mapped_column(Integer, default=0)
+    activity_score: Mapped[int] = mapped_column(Integer, default=0)
+    value_score: Mapped[int] = mapped_column(Integer, default=0)
+    fit_score: Mapped[int] = mapped_column(Integer, default=0)
+    customer_type: Mapped[str] = mapped_column(String(16), default="B2C")
+    quantity_band: Mapped[str | None] = mapped_column(String(32))
+    purchase_horizon: Mapped[str | None] = mapped_column(String(32))
+    product_interests_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    top_intents_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    export_eligibility: Mapped[ExportEligibility] = mapped_column(
+        Enum(ExportEligibility, native_enum=False),
+        default=ExportEligibility.NOT_EXPORTABLE,
+        index=True,
+    )
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    contact: Mapped[Contact] = relationship(back_populates="intelligence")
+
+
+class AudienceSegment(Base):
+    __tablename__ = "audience_segments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text)
+    criteria_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class AudienceMembership(Base):
+    __tablename__ = "audience_memberships"
+    __table_args__ = (
+        UniqueConstraint(
+            "segment_id", "contact_id", name="uq_audience_memberships_segment_contact"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    segment_id: Mapped[int] = mapped_column(ForeignKey("audience_segments.id"), index=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    confidence: Mapped[int] = mapped_column(Integer, default=0)
+    evidence_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class Lead(Base):

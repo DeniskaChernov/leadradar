@@ -46,3 +46,22 @@ def test_v41_signal_first_states_and_notification_modes_are_manager_readable():
     assert "Только покупательский интерес" in competitors
     assert "Только горячие лиды" in competitors
     assert "Сигнал уже сохранён и виден менеджеру" in radar
+
+
+def test_audience_pages_explain_privacy_boundary_and_campaign_action():
+    base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    audiences = (PROJECT_ROOT / "app/web/templates/audiences.html").read_text(
+        encoding="utf-8"
+    )
+    detail = (PROJECT_ROOT / "app/web/templates/audience_detail.html").read_text(
+        encoding="utf-8"
+    )
+    contact = (PROJECT_ROOT / "app/web/templates/contact_detail.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'href="/audiences"' in base
+    assert "Чувствительные признаки не собираются" in audiences
+    assert "Instagram username не превращается" in audiences
+    assert "CAMPAIGN BRIEF" in detail
+    assert "АУДИТОРИЯ И ИНТЕРЕСЫ" in contact

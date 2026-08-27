@@ -20,10 +20,12 @@
 - The system page now explains the active notification mode in Russian.
 - Each competitor can inherit the global mode or select all comments, commercial signals, or HOT.
 - Radar, dashboard, lead list and lead detail explain active analysis without hiding the lead.
+- Добавлен отдельный раздел динамических аудиторий с понятными агрегатами и campaign brief.
+- Карточка клиента отделяет наблюдаемые публичные интересы от данных, введённых менеджером.
+- Экспортное состояние явно показывает, почему контакт пока нельзя использовать вне CRM.
 
 ## Remaining known work
 
-- Audience Engine and audience profiles.
 - Significant Change Detector and material-change alerts.
 - Competitor Intelligence V2, opportunity analysis, demand gaps and overlap network.
 - Global grouped search.
@@ -34,12 +36,13 @@
 
 ## Verified quality gate
 
-- `pytest`: 62 passed.
+- `pytest`: 67 passed.
 - `ruff check .`: passed.
 - `compileall`: passed.
-- Alembic: existing DB and empty DB both reached `a417d8e2c691`.
+- Alembic: existing DB and a new empty DB both reached `b82f1d6a4c30`.
 - Alembic autogenerate check: no pending operations.
-- DB integrity: zero duplicate comments, posts, leads, public signals, deals and notification targets.
-- Web smoke: 13 routes returned HTTP 200.
+- DB integrity: zero duplicate comments, posts, leads, public signals, audience profiles,
+  memberships, deals and notification targets.
+- Web smoke: 15 routes returned HTTP 200, including audience list and detail.
 - Browser console: no warnings or errors.
 - External Instagram/OpenAI calls: zero.

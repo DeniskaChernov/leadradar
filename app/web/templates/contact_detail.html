@@ -26,6 +26,14 @@
 <section class="cross-source-alert panel"><div class="attention-icon hot">{{ source_count }}</div><div><span class="eyebrow">СИЛЬНЫЙ СИГНАЛ</span><h3>Клиент сравнивает предложения у нескольких компаний</h3><p>Мы видели этого пользователя у: {% for handle in source_handles %}<b>@{{ handle }}</b>{% if not loop.last %}, {% endif %}{% endfor %}. Повторный интерес по разным источникам повышает приоритет лида.</p></div></section>
 {% endif %}
 
+{% if intelligence %}
+<section class="panel audience-profile">
+  <div class="panel-head"><div><span class="eyebrow">АУДИТОРИЯ И ИНТЕРЕСЫ</span><h2>Наблюдаемый коммерческий профиль</h2><p>Интересы, обнаруженные Lead Radar только в наблюдаемых публичных источниках. Это не полный портрет человека.</p></div><span class="tag {% if intelligence.customer_type=='B2B' %}status-qualified{% else %}neutral{% endif %}">{{ intelligence.customer_type }}</span></div>
+  <div class="intelligence-summary"><div><span>Стадия</span><b>{{ commercial_stage_label(intelligence.commercial_stage) }}</b></div><div><span>Активность</span><b>{{ intelligence.activity_score }}/100</b></div><div><span>Ценность</span><b>{{ intelligence.value_score }}/100</b></div><div><span>Сигналов</span><b>{{ intelligence.commercial_signal_count }} коммерческих из {{ intelligence.signal_count }}</b></div><div><span>Источников</span><b>{{ intelligence.source_count }}</b></div><div><span>Экспорт</span><b>{{ export_eligibility_label(intelligence.export_eligibility) }}</b></div></div>
+  <div class="interest-columns"><div><h3>Коммерческие интересы</h3>{% for item in intelligence.product_interests_json %}<div class="interest-meter"><div><span>{{ product_label(item.value) }}</span><b>{{ item.confidence }}%</b></div><i style="width:{{ item.confidence }}%"></i></div>{% else %}<div class="empty compact">Товарные интересы пока не подтверждены.</div>{% endfor %}</div><div><h3>Динамические аудитории</h3><div class="audience-chip-list">{% for membership, segment in audiences %}<a href="/audiences/{{ segment.slug }}">{{ segment.name }}</a>{% else %}<span class="muted">Контакт пока не входит в активные сегменты.</span>{% endfor %}</div></div></div>
+</section>
+{% endif %}
+
 <section class="panel customer-knowledge">
   <div class="panel-head">
     <div><h2>Что мы уже знаем о клиенте</h2><p>Эти данные вводит менеджер после реального общения. Они остаются в истории и учитываются при будущих сигналах.</p></div>

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -33,6 +34,9 @@ from app.services.contact_service import PersistedSignal
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from app.services.audience_service import AudienceEngine
+
 
 @dataclass(frozen=True, slots=True)
 class ProcessedLead:
@@ -49,10 +53,12 @@ class LeadService:
         session_factory: async_sessionmaker[AsyncSession],
         analyzer: LeadAnalyzer,
         hot_threshold: int,
+        audience_engine: AudienceEngine | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.analyzer = analyzer
         self.hot_threshold = hot_threshold
+        self.audience_engine = audience_engine
 
     async def process_signal(
         self, signal: PersistedSignal, *, allow_baseline: bool = False
@@ -130,6 +136,7 @@ class LeadService:
 
     async def analyze_lead(self, lead_id: int) -> ProcessedLead:
         """Run enrichment after the initial lead and notification have been committed."""
+        contact_id: int | None = None
         async with self.session_factory() as session:
             lead = await session.get(Lead, lead_id)
             if lead is None:
@@ -225,7 +232,18 @@ class LeadService:
                 public_signal.analyzed_at = datetime.now(UTC)
             await session.commit()
             logger.info("lead_analysis_completed lead_id=%s score=%s", lead.id, lead.lead_score)
-            return self._to_result(lead, created=False)
+            contact_id = lead.contact_id
+            result = self._to_result(lead, created=False)
+        if self.audience_engine is not None and contact_id is not None:
+            try:
+                await self.audience_engine.recalculate_contact(contact_id)
+            except Exception as exc:
+                logger.exception(
+                    "audience_recalculation_failed contact_id=%s error_type=%s",
+                    contact_id,
+                    type(exc).__name__,
+                )
+        return result
 
     async def backfill_unanalyzed_comments(self, limit: int = 25) -> list[ProcessedLead]:
         """Analyze stored signals that do not have a Lead yet, including baseline history.

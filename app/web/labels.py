@@ -78,6 +78,20 @@ PURCHASE_HORIZON_LABELS = {
     "UNKNOWN": "Не определён",
 }
 
+COMMERCIAL_STAGE_LABELS = {
+    "NON_COMMERCIAL": "Коммерческий интерес не подтверждён",
+    "AWARENESS": "Знакомится с товаром",
+    "CONSIDERATION": "Сравнивает предложения",
+    "PURCHASE_INTENT": "Планирует покупку",
+    "READY_TO_BUY": "Готов к покупке",
+}
+
+EXPORT_ELIGIBILITY_LABELS = {
+    "NOT_EXPORTABLE": "Не экспортируется",
+    "FIRST_PARTY_ELIGIBLE": "Есть допустимый first-party контакт",
+    "EXPORTED": "Экспортирован",
+}
+
 COVERAGE_LABELS = {
     "FULL": "Получено полностью",
     "PARTIAL": "Получено частично",

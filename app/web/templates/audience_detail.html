@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ segment.name }} · Lead Radar{% endblock %}
+{% block heading %}{{ segment.name }}{% endblock %}
+{% block subheading %}Кто входит в сегмент и какое маркетинговое решение следует принять{% endblock %}
+{% block content %}
+<div class="detail-back"><a href="/audiences">← Все аудитории</a></div>
+<section class="panel audience-hero"><div><span class="eyebrow">ДИНАМИЧЕСКИЙ СЕГМЕНТ</span><h2>{{ segment.name }}</h2><p>{{ segment.description }}</p></div><div class="audience-total"><strong>{{ members|length }}</strong><span>контактов сейчас</span></div></section>
+<section class="panel campaign-brief">
+  <div class="panel-head"><div><span class="eyebrow">CAMPAIGN BRIEF</span><h2>Что предложить этой аудитории</h2><p>Рекомендация построена из реальных намерений и товаров в сохранённых сигналах.</p></div></div>
+  <div class="brief-grid"><div><span>Оффер</span><b>{{ campaign_offer }}</b></div><div><span>Рекламный смысл</span><b>{{ campaign_message }}</b></div><div class="wide"><span>Посадочная страница</span><b>{{ landing_recommendation }}</b></div></div>
+</section>
+<div class="grid two audience-analysis">
+  <section class="panel"><h3>Что чаще спрашивают</h3>{% for value, count in top_intents %}<div class="rank-row"><span>{{ intent_label(value) }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Пока недостаточно коммерческих сигналов.</div>{% endfor %}</section>
+  <section class="panel"><h3>Какие товары интересуют</h3>{% for value, count in top_products %}<div class="rank-row"><span>{{ product_label(value) }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Категория ещё не определена.</div>{% endfor %}</section>
+  <section class="panel"><h3>Где обнаружен спрос</h3>{% for value, count in top_competitors %}<div class="rank-row"><span>@{{ value }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Источники не найдены.</div>{% endfor %}</section>
+  <section class="panel"><h3>Наблюдаемые препятствия</h3>{% for value, count in objections %}<div class="rank-row"><span>{{ value }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Явных возражений пока нет.</div>{% endfor %}</section>
+</div>
+<section class="panel"><div class="panel-head"><div><h2>Контакты сегмента</h2><p>Состав пересчитывается после новых сигналов; неактуальные membership автоматически выключаются.</p></div></div><div class="table-wrap embedded"><table><thead><tr><th>Контакт</th><th>Стадия</th><th>Сигналов</th><th>Источников</th><th>Активность</th><th>Ценность</th><th>Экспорт</th></tr></thead><tbody>{% for membership, contact, intel in members %}<tr><td><a href="/contacts/{{ contact.id }}"><b>@{{ contact.username }}</b></a><small>{{ contact.display_name or '' }}</small></td><td>{{ commercial_stage_label(intel.commercial_stage) }}</td><td>{{ intel.signal_count }}</td><td>{{ intel.source_count }}</td><td>{{ intel.activity_score }}</td><td><b>{{ intel.value_score }}</b></td><td><span class="tag {% if intel.export_eligibility.value=='FIRST_PARTY_ELIGIBLE' %}success{% else %}neutral{% endif %}">{{ export_eligibility_label(intel.export_eligibility) }}</span></td></tr>{% else %}<tr><td colspan="7" class="empty">Сейчас в аудитории нет контактов.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

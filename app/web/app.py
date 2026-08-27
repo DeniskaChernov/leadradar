@@ -22,10 +22,12 @@ from app.web.auth import TelegramAuthError, TelegramWebAuth
 from app.web.labels import (
     AI_SOURCE_LABELS,
     CHANNEL_LABELS,
+    COMMERCIAL_STAGE_LABELS,
     COMPETITOR_CATEGORY_LABELS,
     COVERAGE_LABELS,
     DEAL_STATUS_LABELS,
     EVENT_LABELS,
+    EXPORT_ELIGIBILITY_LABELS,
     FUNNEL_STAGE_LABELS,
     INTENT_LABELS,
     LEAD_STATUS_LABELS,
@@ -75,6 +77,8 @@ def build_web_app(
         funnel_stage_label=lambda value: label(FUNNEL_STAGE_LABELS, value),
         urgency_label=lambda value: label(URGENCY_LABELS, value),
         purchase_horizon_label=lambda value: label(PURCHASE_HORIZON_LABELS, value),
+        commercial_stage_label=lambda value: label(COMMERCIAL_STAGE_LABELS, value),
+        export_eligibility_label=lambda value: label(EXPORT_ELIGIBILITY_LABELS, value),
         coverage_label=lambda value: label(COVERAGE_LABELS, value),
         event_label=lambda value: label(EVENT_LABELS, value),
         run_status_label=lambda value: label(RUN_STATUS_LABELS, value),
@@ -279,6 +283,26 @@ def build_web_app(
         return templates.TemplateResponse(
             request=request,
             name="analytics.html",
+            context=base_context(request, **data),
+        )
+
+    @app.get("/audiences", response_class=HTMLResponse)
+    async def audiences(request: Request):
+        rows = await queries.audiences()
+        return templates.TemplateResponse(
+            request=request,
+            name="audiences.html",
+            context=base_context(request, rows=rows),
+        )
+
+    @app.get("/audiences/{slug}", response_class=HTMLResponse)
+    async def audience_detail(request: Request, slug: str):
+        data = await queries.audience_detail(slug)
+        if data is None:
+            raise HTTPException(status_code=404, detail="Аудитория не найдена")
+        return templates.TemplateResponse(
+            request=request,
+            name="audience_detail.html",
             context=base_context(request, **data),
         )
 
