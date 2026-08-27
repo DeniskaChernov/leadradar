@@ -263,45 +263,45 @@ code { color: #92400e; background: rgba(255, 255, 255, 0.70); border: 1px solid 
 .run-row b, .run-row small, .run-stat b, .run-stat small { display: block; }
 .run-row small, .run-stat small { color: var(--muted); font-size: 10px; }
 .run-stat { text-align: right; min-width: 45px; }
-.coverage-box { margin: 13px 16px 16px; padding: 12px; border-radius: 10px; background: #0c1823; }
-.coverage-box h3 { margin: 0 0 9px; font-size: 12px; }
-.coverage-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; color: var(--muted); font-size: 11px; }
-.coverage-bars b { color: var(--text); }
+.coverage-box { margin: 13px 16px 16px; padding: 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.65); border: 1px solid rgba(255, 255, 255, 0.85); color: #0f172a; }
+.coverage-box h3 { margin: 0 0 9px; font-size: 13px; color: #0f172a; font-weight: 700; }
+.coverage-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; color: var(--muted); font-size: 12px; }
+.coverage-bars b { color: #0f172a; }
 
-.filters { display: flex; gap: 8px; margin-bottom: 13px; align-items: stretch; }
-.filters input, .filters select, .action-form-card input, .action-form-card select, .action-form-card textarea, .form-grid input, .form-grid select { min-height: 39px; background: #0f1e2b; color: var(--text); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; outline: none; }
+.filters { display: flex; gap: 10px; margin-bottom: 16px; align-items: stretch; }
+.filters input, .filters select, .action-form-card input, .action-form-card select, .action-form-card textarea, .form-grid input, .form-grid select { min-height: 42px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(16px); color: #0f172a; border: 1px solid rgba(255, 255, 255, 0.90); border-radius: 12px; padding: 9px 14px; outline: none; font-size: 14px; box-shadow: 0 4px 12px rgba(90, 70, 50, 0.04); }
 .filters input { min-width: 260px; flex: 1; }
-.filters input:focus, .filters select:focus, input:focus, select:focus, textarea:focus { border-color: #387ba7; box-shadow: 0 0 0 3px rgba(51, 183, 255, .07); }
+.filters input:focus, .filters select:focus, input:focus, select:focus, textarea:focus { border-color: #d97706; box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15); background: #ffffff; }
 textarea { resize: vertical; }
 
-.table-wrap { border: 1px solid var(--line); border-radius: 13px; overflow: auto; background: var(--panel); box-shadow: var(--shadow); }
+.table-wrap { border: 1px solid rgba(255, 255, 255, 0.80); border-radius: 18px; overflow: auto; background: var(--panel); backdrop-filter: blur(35px); box-shadow: var(--shadow); }
 .table-wrap.embedded { border: 0; border-radius: 0; box-shadow: none; }
 table { width: 100%; border-collapse: collapse; min-width: 870px; }
-th { text-align: left; color: #92a7b9; background: #0d1a27; padding: 10px 12px; font-size: 10px; text-transform: uppercase; letter-spacing: .045em; position: sticky; top: 0; z-index: 2; }
-td { padding: 11px 12px; border-top: 1px solid var(--line-soft); vertical-align: top; }
-tr:hover td { background: #132434; }
+th { text-align: left; color: #475569; background: rgba(255, 255, 255, 0.80); padding: 12px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .045em; position: sticky; top: 0; z-index: 2; border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
+td { padding: 13px 14px; border-top: 1px solid rgba(0, 0, 0, 0.05); vertical-align: top; color: #1e293b; }
+tr:hover td { background: rgba(255, 255, 255, 0.55); }
 .user b, .user small, td small { display: block; }
-.user small, td small { color: var(--muted); margin-top: 3px; }
+.user small, td small { color: var(--muted); margin-top: 3px; font-size: 12px; }
 .comment-cell { max-width: 330px; }
-.context { max-width: 400px; color: #a9bbc9; font-size: 12px; }
+.context { max-width: 400px; color: #475569; font-size: 13px; }
 .score-line { display: flex; gap: 8px; align-items: center; min-width: 160px; }
 .score-line b, .score-line small { display: block; }
 .human-status { margin-top: 5px; }
 .clickable { cursor: pointer; }
 
-.tag { display: inline-flex; align-items: center; border: 1px solid #304a60; border-radius: 20px; padding: 3px 8px; font-size: 10px; color: #afc4d4; background: #142535; margin: 1px; }
-.tag.live { color: #6ae0b9; border-color: #2d6753; }
-.tag.neutral { color: #a8b7c4; }
-.tag.pending { color: #ffca85; border-color: #6c5232; }
-.status-won, .run-success, .coverage-full { color: #72e3bd !important; border-color: #2b6a54 !important; }
-.status-not_lead, .status-lost, .run-failed { color: #ff8c9d !important; border-color: #723646 !important; }
-.status-new { color: #89d7ff !important; border-color: #2e607a !important; }
-.status-taken, .status-contacted, .status-qualified, .status-offer_sent, .status-negotiation { color: #c2c7ff !important; border-color: #4b4f83 !important; }
-.coverage-partial, .coverage-latest_only { color: #ffc27a !important; border-color: #6b4b2c !important; }
-.tier { border: 1px solid #34516a; border-radius: 20px; padding: 3px 8px; font-size: 10px; color: #b4cadb; }
-.tier-a { color: #ffb0bc; border-color: #693946; }
-.tier-b { color: #ffd18c; border-color: #644d2e; }
-.tier-c { color: #9fd6f3; border-color: #31566c; }
+.tag { display: inline-flex; align-items: center; border: 1px solid rgba(217, 119, 6, 0.25); border-radius: 12px; padding: 4px 9px; font-size: 11px; font-weight: 600; color: #0f172a; background: rgba(255, 255, 255, 0.70); margin: 2px; }
+.tag.live { color: #047857; border-color: rgba(5, 150, 105, 0.35); background: rgba(209, 250, 229, 0.60); }
+.tag.neutral { color: #475569; }
+.tag.pending { color: #b45309; border-color: rgba(217, 119, 6, 0.35); background: rgba(254, 243, 199, 0.60); }
+.status-won, .run-success, .coverage-full { color: #047857 !important; border-color: rgba(5, 150, 105, 0.35) !important; background: rgba(209, 250, 229, 0.70) !important; }
+.status-not_lead, .status-lost, .run-failed { color: #be123c !important; border-color: rgba(225, 29, 72, 0.35) !important; background: rgba(255, 228, 230, 0.70) !important; }
+.status-new { color: #1d4ed8 !important; border-color: rgba(37, 99, 235, 0.35) !important; background: rgba(219, 234, 254, 0.70) !important; }
+.status-taken, .status-contacted, .status-qualified, .status-offer_sent, .status-negotiation { color: #6b21a8 !important; border-color: rgba(147, 51, 234, 0.35) !important; background: rgba(243, 232, 255, 0.70) !important; }
+.coverage-partial, .coverage-latest_only { color: #b45309 !important; border-color: rgba(217, 119, 6, 0.35) !important; background: rgba(254, 243, 199, 0.70) !important; }
+.tier { border: 1px solid rgba(217, 119, 6, 0.25); border-radius: 12px; padding: 4px 9px; font-size: 11px; font-weight: 600; color: #0f172a; background: rgba(255, 255, 255, 0.70); }
+.tier-a { color: #be123c; border-color: rgba(225, 29, 72, 0.35); background: rgba(255, 228, 230, 0.70); }
+.tier-b { color: #b45309; border-color: rgba(217, 119, 6, 0.35); background: rgba(254, 243, 199, 0.70); }
+.tier-c { color: #1d4ed8; border-color: rgba(37, 99, 235, 0.35); background: rgba(219, 234, 254, 0.70); }
 
 .kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(280px, 1fr); gap: 14px; overflow-x: auto; padding: 4px 2px 14px; align-items: start; }
 .kanban-col { min-height: 480px; border: 1px solid rgba(255, 255, 255, 0.75); border-radius: 20px; background: rgba(255, 255, 255, 0.35); backdrop-filter: blur(24px); box-shadow: 0 10px 30px rgba(90, 70, 50, 0.06); }
