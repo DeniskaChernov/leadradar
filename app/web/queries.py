@@ -906,6 +906,8 @@ class WebQueryService:
                     {"competitor": item, "contacts": count}
                     for item, count in overlap_rows
                 ]
+            gap = await self.demand_gap_score(competitor_id)
+            heatmap = await self.demand_heatmap(competitor_id=competitor_id, days=30)
             return {
                 "competitor": competitor,
                 **stats,
@@ -915,8 +917,11 @@ class WebQueryService:
                 "opportunities": opportunities,
                 "questions": questions,
                 "overlaps": overlaps,
+                "demand_gap": gap,
+                "heatmap": heatmap,
                 "public_response_observable": False,
             }
+
 
     async def competitor_overlap_network(self) -> list[dict]:
         async with self.session_factory() as session:
@@ -985,7 +990,157 @@ class WebQueryService:
             "multi_competitor": multi,
         }
 
+    async def demand_gap_score(self, competitor_id: int) -> dict:
+        """Compute competitor demand gap analytics with strict row limits."""
+        boundary_note = (
+            "Мы не знаем, ответил ли конкурент клиенту через Direct или другой канал: "
+            "данные ограничены сохранёнными публичными комментариями."
+        )
+        async with self.session_factory() as session:
+            leads = (
+                await session.scalars(
+                    select(Lead)
+                    .where(
+                        Lead.competitor_id == competitor_id,
+                        Lead.status != LeadStatus.NOT_LEAD,
+                        Lead.lead_score >= 50,
+                    )
+                    .limit(500)
+                )
+            ).all()
+            total_commercial = len(leads)
+            if not total_commercial:
+                return {
+                    "competitor_id": competitor_id,
+                    "total_commercial": 0,
+                    "unanswered_count": 0,
+                    "unanswered_rate": 0.0,
+                    "b2b_gap": 0,
+                    "multi_source_gap": 0,
+                    "boundary_note": boundary_note,
+                }
+            unanswered = [
+                lead
+                for lead in leads
+                if lead.status in (LeadStatus.NEW, LeadStatus.ANALYZING, LeadStatus.AI_PENDING)
+            ]
+            unanswered_count = len(unanswered)
+            unanswered_rate = round(unanswered_count / total_commercial * 100, 1)
+
+            b2b_roles = {"B2B_HORECA", "DESIGNER_CONTRACTOR"}
+            b2b_gap = sum(
+                1
+                for lead in unanswered
+                if (lead.analysis_details or {}).get("buyer_role") in b2b_roles
+                or lead.product_category in ("HORECA", "RATTAN_BAR_STOOL")
+            )
+
+            unanswered_contact_ids = {lead.contact_id for lead in unanswered}
+
+            multi_source_gap = 0
+            if unanswered_contact_ids:
+                source_counts = (
+                    await session.execute(
+                        select(Comment.contact_id)
+                        .where(Comment.contact_id.in_(unanswered_contact_ids))
+                        .group_by(Comment.contact_id)
+                        .having(func.count(func.distinct(Comment.competitor_id)) >= 2)
+                    )
+                ).scalars().all()
+                multi_source_gap = len(source_counts)
+
+            return {
+                "competitor_id": competitor_id,
+                "total_commercial": total_commercial,
+                "unanswered_count": unanswered_count,
+                "unanswered_rate": unanswered_rate,
+                "b2b_gap": b2b_gap,
+                "multi_source_gap": multi_source_gap,
+                "boundary_note": boundary_note,
+            }
+
+    async def demand_gap_overview(self) -> list[dict]:
+        """Summary demand gap table across all competitors."""
+        async with self.session_factory() as session:
+            competitors = (
+                await session.scalars(
+                    select(Competitor).order_by(Competitor.normalized_handle)
+                )
+            ).all()
+            results = []
+            for comp in competitors:
+                gap = await self.demand_gap_score(comp.id)
+                results.append(
+                    {
+                        "competitor": comp,
+                        **gap,
+                    }
+                )
+            results.sort(
+                key=lambda x: (x["unanswered_rate"], x["b2b_gap"]), reverse=True
+            )
+            return results
+
+    async def demand_heatmap(
+        self, competitor_id: int | None = None, days: int = 30
+    ) -> dict:
+        """Temporal and product demand heatmap over the last N days."""
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(days=days)
+        async with self.session_factory() as session:
+            stmt = (
+                select(Lead, Comment.discovered_at)
+                .join(Comment, Comment.id == Lead.comment_id)
+                .where(
+                    Lead.status != LeadStatus.NOT_LEAD,
+                    Lead.lead_score >= 50,
+                    Comment.discovered_at >= cutoff,
+                )
+            )
+            if competitor_id is not None:
+                stmt = stmt.where(Lead.competitor_id == competitor_id)
+            stmt = stmt.limit(500)
+            rows = (await session.execute(stmt)).all()
+
+            by_product: Counter[str] = Counter()
+            by_intent: Counter[str] = Counter()
+            by_day: Counter[str] = Counter()
+
+            for lead, discovered_at in rows:
+                if lead.product_category:
+                    by_product[lead.product_category] += 1
+                if lead.intent:
+                    by_intent[str(lead.intent)] += 1
+                day_str = (
+                    discovered_at.strftime("%Y-%m-%d")
+                    if discovered_at
+                    else now.strftime("%Y-%m-%d")
+                )
+                by_day[day_str] += 1
+
+            days_series = []
+            for i in range(days - 1, -1, -1):
+                d_date = now - timedelta(days=i)
+                d_str = d_date.strftime("%Y-%m-%d")
+                days_series.append(
+                    {
+                        "date": d_str,
+                        "label": d_date.strftime("%d.%m"),
+                        "count": by_day.get(d_str, 0),
+                    }
+                )
+
+            return {
+                "total_signals": len(rows),
+                "by_product": by_product.most_common(8),
+                "by_intent": by_intent.most_common(8),
+                "days_series": days_series,
+                "days_count": days,
+            }
+
+
     async def _competitor_stats(
+
         self, session: AsyncSession, competitor: Competitor
     ) -> dict:
         posts = list(

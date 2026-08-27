@@ -1,0 +1,22 @@
+[
+  {"comment": "У вас есть диваны из ротанга?", "post_caption": "плетеная мебель", "expected_is_lead": true, "expected_product": "RATTAN_SOFA", "note": "explicit rattan sofa query"},
+  {"comment": "Нарх?", "post_caption": "ротанговый диван", "expected_is_lead": true, "expected_product": "RATTAN_SOFA", "note": "UZ price query on rattan sofa post"},
+  {"comment": "Narx qancha?", "post_caption": "rattan sofa", "expected_is_lead": true, "expected_product": "RATTAN_SOFA", "note": "UZ latin price on rattan sofa"},
+  {"comment": "плетеное кресло - сколько стоит?", "post_caption": "мебель", "expected_is_lead": true, "expected_product": "RATTAN_ARMCHAIR", "note": "armchair price query"},
+  {"comment": "качели ротанговые в наличии?", "post_caption": "садовая мебель", "expected_is_lead": true, "expected_product": "SWING", "note": "swing availability"},
+  {"comment": "беседка из ротанга, цена?", "post_caption": "ротанг", "expected_is_lead": true, "expected_product": "PERGOLA", "note": "pergola price query"},
+  {"comment": "нужно 15 барных стульев для бара", "post_caption": "плетёные барные стулья", "expected_is_lead": true, "expected_product": "RATTAN_BAR_STOOL", "expected_buyer_role": "B2B_HORECA", "note": "B2B bar stool bulk order"},
+  {"comment": "нужно 8 кресел из ротанга для веранды кафе", "post_caption": "ротанг кресла", "expected_is_lead": true, "expected_buyer_role": "B2B_HORECA", "note": "cafe+rattan armchair B2B"},
+  {"comment": "для ресторана нужны плетёные диваны, сколько стоит 20 штук?", "post_caption": "диваны ротанг", "expected_is_lead": true, "expected_buyer_role": "B2B_HORECA", "note": "restaurant bulk rattan sofa"},
+  {"comment": "классно!", "post_caption": "ротанговый диван", "expected_is_lead": false, "note": "reaction only - no lead"},
+  {"comment": "нарх?", "post_caption": "ротанговый диван", "expected_is_lead": true, "expected_product": "RATTAN_SOFA", "note": "UZ cyrillic price on rattan sofa"},
+  {"comment": "rattan kreslo bormi?", "post_caption": "rattan armchair", "expected_is_lead": true, "expected_product": "RATTAN_ARMCHAIR", "note": "UZ availability rattan armchair"},
+  {"comment": "комплект ротанг 4 персоны - цена?", "post_caption": "садовый ротанг", "expected_is_lead": true, "expected_product": "RATTAN_GARDEN_SET", "note": "garden set price"},
+  {"comment": "9 стульев для кухни", "post_caption": "стулья", "expected_is_lead": true, "expected_buyer_role": "B2C_CONSUMER", "note": "9 chairs - still B2C, below threshold"},
+  {"comment": "10 стульев для офиса", "post_caption": "стулья", "expected_is_lead": true, "expected_buyer_role": "B2B_HORECA", "note": "10+ chairs = B2B threshold"},
+  {"comment": "ротанг хорошее?", "post_caption": "ротанг диван", "expected_is_lead": false, "note": "vague quality question - not lead"},
+  {"comment": "для гостиницы нужны плетёные кресла, 25 штук", "post_caption": "плетёная мебель", "expected_is_lead": true, "expected_buyer_role": "B2B_HORECA", "note": "hotel B2B rattan armchair"},
+  {"comment": "Swing bormi?", "post_caption": "качели садовые", "expected_is_lead": true, "expected_product": "SWING", "note": "UZ swing availability"},
+  {"comment": "pergola narxi qancha?", "post_caption": "pergola", "expected_is_lead": true, "expected_product": "PERGOLA", "note": "UZ pergola price"},
+  {"comment": "плетёный диван в красном цвете есть?", "post_caption": "диваны ротанг", "expected_is_lead": true, "expected_product": "RATTAN_SOFA", "note": "rattan sofa color inquiry"}
+]

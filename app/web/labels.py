@@ -42,7 +42,13 @@ INTENT_LABELS = {
 
 PRODUCT_LABELS = {
     "DINING_SET": "Обеденный комплект",
-    "RATTAN_FURNITURE": "Плетёная мебель",
+    "RATTAN_SOFA": "Диван плетёный",
+    "RATTAN_ARMCHAIR": "Кресло плетёное",
+    "RATTAN_GARDEN_SET": "Садовый гарнитур ротанг",
+    "RATTAN_BAR_STOOL": "Барный стул",
+    "SWING": "Качели",
+    "PERGOLA": "Пергола / беседка",
+    "RATTAN_FURNITURE": "Плетёная мебель (ротанг)",
     "CHAIRS": "Стулья / кресла",
     "TABLE": "Стол",
     "OUTDOOR_FURNITURE": "Мебель для сада / террасы",

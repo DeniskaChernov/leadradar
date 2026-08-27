@@ -318,6 +318,7 @@ class RuleBasedLeadAnalyzer:
                     "есть в наличии",
                     "есть?",
                     "есть ли",
+                    "у вас есть",
                     "bormi",
                     "mavjud",
                     "qolganmi",
@@ -500,16 +501,32 @@ class RuleBasedLeadAnalyzer:
 
     @staticmethod
     def _product(text: str) -> str | None:
+        """Map raw text to a product taxonomy category.
+
+        Ordered from most-specific to most-generic so that compound signals
+        (e.g. "ротанговый диван для ресторана") hit the right bucket first.
+        """
+        lowered = (text or "").lower()
         mapping = [
-            (("обеден", "dining", "стол со стул", "комплект"), "DINING_SET"),
+            # Specific compound sets — highest priority
+            (("обеден", "dining", "стол со стул", "комплект стол", "komplekt stol"), "DINING_SET"),
+            # Rattan sub-types — before generic rattan
+            (("диван ротанг", "диваны ротанг", "диваны из ротанга", "ротанг диван", "ротанговый диван", "плетен диван", "диван плетен", "rattan sofa", "rattan divan"), "RATTAN_SOFA"),
+            (("кресло ротанг", "ротанг кресл", "плетен кресл", "плетеное кресло", "плетеные кресла", "rattan armchair", "rattan kreslo"), "RATTAN_ARMCHAIR"),
+            (("гарнитур ротанг", "ротанг набор", "комплект ротанг", "rattan garden set", "rattan komplekt"), "RATTAN_GARDEN_SET"),
+            (("барный стул", "барные стулья", "bar stool", "высокий стул", "баркаунтер", "bar stol"), "RATTAN_BAR_STOOL"),
+            (("качел", "swing", "хорч"), "SWING"),
+            (("пергол", "pergola", "беседк"), "PERGOLA"),
+            # Generic rattan — catch-all for unspecified rattan
             (("ротанг", "rattan", "плетен"), "RATTAN_FURNITURE"),
+            # Standard categories
             (("стул", "кресл", "chair"), "CHAIRS"),
             (("стол", "table"), "TABLE"),
-            (("террас", "садов", "garden", "outdoor"), "OUTDOOR_FURNITURE"),
+            (("террас", "садов", "garden", "outdoor", "уличн"), "OUTDOOR_FURNITURE"),
             (("кафе", "ресторан", "horeca"), "HORECA"),
         ]
         for markers, category in mapping:
-            if any(marker in text for marker in markers):
+            if any(marker in lowered for marker in markers):
                 return category
         return None
 

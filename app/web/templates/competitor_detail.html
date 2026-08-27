@@ -26,6 +26,57 @@
   <section class="panel"><div class="panel-head"><div><h2>Структура спроса</h2><p>Какие намерения и товары встречаются чаще.</p></div></div><div class="split-ranks"><div><h3>Намерения</h3>{% for intent, count in intent_counts %}<div class="rank-row"><span>{{ intent_label(intent) }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Пока нет данных.</div>{% endfor %}</div><div><h3>Товары</h3>{% for product, count in product_counts %}<div class="rank-row"><span>{{ product_label(product) }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Пока нет данных.</div>{% endfor %}</div></div></section>
 </div>
 
+{# Phase 7 & 8 · Demand Gap and Demand Heatmap #}
+{% if demand_gap or heatmap %}
+<div class="grid two competitor-intel-grid">
+  {% if demand_gap %}
+  <section class="panel demand-gap-panel">
+    <div class="panel-head"><div><span class="eyebrow">DEMAND GAP (НЕОТВЕЧЕННЫЙ СПРОС)</span><h2>Анализ нереализованного спроса</h2><p>Коммерческие запросы, по которым нет продвижения в воронке.</p></div></div>
+    <div class="dna-profile-row">
+      <div class="dna-role-card">
+        <span class="eyebrow">ДОЛЯ НЕОТВЕЧЕННЫХ</span>
+        <div class="dna-evidence-count"><b>{{ demand_gap.unanswered_rate }}%</b><span>({{ demand_gap.unanswered_count }} из {{ demand_gap.total_commercial }})</span></div>
+      </div>
+      <div class="dna-evidence-card">
+        <span class="eyebrow">КРИТИЧЕСКИЕ GAP-СИГНАЛЫ</span>
+        <div><span>B2B / HoReCa gap:</span> <b>{{ demand_gap.b2b_gap }} лидов</b></div>
+        <div><span>Cross-competitor gap:</span> <b>{{ demand_gap.multi_source_gap }} лидов</b></div>
+      </div>
+    </div>
+    <div class="truth-note"><b>Граница данных</b><span>{{ demand_gap.boundary_note }}</span></div>
+  </section>
+  {% endif %}
+
+  {% if heatmap %}
+  <section class="panel demand-heatmap-panel">
+    <div class="panel-head"><div><span class="eyebrow">DEMAND HEATMAP (30 ДНЕЙ)</span><h2>Динамика и популярность товаров</h2><p>Распределение спроса за 30 дней.</p></div></div>
+    <div class="split-ranks">
+      <div>
+        <h3>Топ категорий</h3>
+        {% for prod, cnt in heatmap.by_product %}
+        <div class="interest-meter">
+          <div><span>{{ product_label(prod) }}</span><b>{{ cnt }}</b></div>
+          <i style="width:{{ (cnt / (heatmap.total_signals or 1) * 100)|round }}%"></i>
+        </div>
+        {% else %}
+        <div class="empty compact">Нет данных за 30 дней.</div>
+        {% endfor %}
+      </div>
+      <div>
+        <h3>Топ намерений</h3>
+        {% for intnt, cnt in heatmap.by_intent %}
+        <div class="rank-row"><span>{{ intent_label(intnt) }}</span><b>{{ cnt }}</b></div>
+        {% else %}
+        <div class="empty compact">Нет данных.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endif %}
+
+
 <section class="panel"><div class="panel-head"><div><h2>Самые коммерчески эффективные публикации</h2><p>Ранжирование по сохранённым вопросам покупателей, а не только по просмотрам.</p></div></div><div class="table-wrap"><table><thead><tr><th>Публикация</th><th>Наблюдалось</th><th>Коммерческих</th><th>На 100</th><th>Покупателей</th><th>Цена</th><th>Наличие</th><th>Доставка</th><th>Количество</th></tr></thead><tbody>{% for item in post_performance %}<tr><td class="context"><a href="{{ item.post.url }}" target="_blank" rel="noopener">{{ item.post.caption[:100] or item.post.platform_post_id }}{% if item.post.caption|length > 100 %}…{% endif %} ↗</a><small>{{ coverage_label(item.post.coverage_status) }}</small></td><td>{{ item.observed_comments }}</td><td><b>{{ item.commercial_comments }}</b></td><td>{{ item.commercial_per_100 }}</td><td>{{ item.unique_buyers }}</td><td>{{ item.price }}</td><td>{{ item.availability }}</td><td>{{ item.delivery }}</td><td>{{ item.quantity }}</td></tr>{% else %}<tr><td colspan="9" class="empty">Публикаций пока нет.</td></tr>{% endfor %}</tbody></table></div></section>
 
 <div class="grid two competitor-bottom-grid">

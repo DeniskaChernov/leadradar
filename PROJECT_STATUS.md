@@ -2,12 +2,33 @@
 
 ## Текущая версия
 
-**V4.4 Audience DNA · Master Phase 4 complete · Profile DNA, Similarity Scoring & Export Eligibility**
+**V4.5 Rattan Intelligence & Demand Analytics · Master Phases 6–8 complete**
 
-Текущая цель: сохранить стабильность Phases 1–4 и после подтверждения перейти к Phase 5 —
-Vertical UI (вертикальный контекст во всех основных view, responsive/a11y matrix).
+Текущая цель: выпустить Phases 6–8 в одном проходе и перейти к Phase 9 (Identity Resolution & Cross-Platform Signals).
+
+## Master TZ Phases 6–8 — завершены
+
+### Phase 6 — Rattan Intelligence Taxonomy
+- Расширен классификатор `_product()`: 12 категорий товара (`RATTAN_SOFA`, `RATTAN_ARMCHAIR`, `RATTAN_GARDEN_SET`, `RATTAN_BAR_STOOL`, `SWING`, `PERGOLA` и т.д.);
+- Уточнены B2B пороги: 10+ стульев/предметов переводит роль в `B2B_HORECA`, 9 и менее — `B2C_CONSUMER`;
+- Создан калибровочный датасет `fixtures/rattan_calibration.json` (20 золотых примеров RU/UZ);
+- Написана группа тестов `tests/test_rattan_intelligence.py` (100% pass).
+
+### Phase 7 — Competitor Demand Gap Analytics
+- В `WebQueryService` добавлены `demand_gap_score()` и `demand_gap_overview()`;
+- Считается доля неотвеченных коммерческих лидов (`unanswered_rate`), B2B gap (`b2b_gap`) и cross-competitor gap (`multi_source_gap`);
+- Панель **Demand Gap** добавлена на страницу конкурента с чётким предупреждением о границе данных (Direct не просматривается);
+- Написана группа тестов `tests/test_demand_gap.py` (100% pass).
+
+### Phase 8 — Demand Heatmap (30 Дней)
+- Добавлен `demand_heatmap()`: 30-дневная динамика, популярные категории товара и намерения;
+- Ограничение безопасности: не более 500 сканируемых строк на запрос;
+- Добавлена визуальная панель **Demand Heatmap** в интерфейс карточки конкурента;
+- Написана группа тестов `tests/test_demand_heatmap.py` (100% pass);
+- 123 теста, Ruff lint и 17 integrity checks проходят на 100%.
 
 ## Master TZ Phase 4 — завершён
+
 
 - `ContactIntelligence` расширена полями профиля DNA: `primary_buyer_role`, `buyer_roles_json`, `evidence_count`, `similarity_vector_json`;
 - `primary_buyer_role` агрегируется из всей коммерческой истории лида с приоритетом `B2B_HORECA` > `DESIGNER_CONTRACTOR` > `B2C_CONSUMER`;
