@@ -1384,3 +1384,23 @@ tr:hover td { background: rgba(230,240,253,.52); }
   box-shadow: 0 2px 8px rgba(36, 136, 255, 0.15);
 }
 
+/* V6 · Openings & Opportunity Radar Rules */
+.panel-header { padding: 18px 22px; border-bottom: 1px solid rgba(0, 0, 0, 0.06); display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.panel-title { font-size: 18px; color: #0f172a; margin: 0 0 2px; font-weight: 700; }
+.panel-desc { margin: 0; color: var(--muted); font-size: 13px; }
+.confidence-bar { display: inline-flex; align-items: center; gap: 8px; width: 120px; }
+.confidence-bar .confidence-fill { height: 6px; border-radius: 10px; background: linear-gradient(90deg, #d97706, #10b981); display: inline-block; min-width: 4px; }
+.confidence-bar small { font-size: 11px; font-weight: 700; color: #0f172a; }
+.badge { display: inline-flex; align-items: center; border-radius: 12px; padding: 4px 10px; font-size: 11px; font-weight: 700; border: 1px solid rgba(0, 0, 0, 0.08); }
+.badge.label { background: rgba(255, 255, 255, 0.80); color: #0f172a; border-color: rgba(255, 255, 255, 0.90); }
+.badge.success { background: rgba(209, 250, 229, 0.80); color: #047857; border-color: rgba(5, 150, 105, 0.30); }
+.badge.danger { background: rgba(255, 228, 230, 0.80); color: #be123c; border-color: rgba(225, 29, 72, 0.30); }
+.badge.warning { background: rgba(254, 243, 199, 0.80); color: #b45309; border-color: rgba(217, 119, 6, 0.30); }
+.pill.primary { font-size: 12px; padding: 6px 12px; border-radius: 20px; background: rgba(254, 243, 199, 0.85); color: #b45309; font-weight: 700; border: 1px solid rgba(217, 119, 6, 0.25); }
+.btn-group { display: inline-flex; gap: 6px; }
+.btn-sm { min-height: 32px; padding: 5px 12px; font-size: 12px; border-radius: 10px; font-weight: 600; cursor: pointer; border: 1px solid transparent; }
+.btn-sm.success { background: rgba(209, 250, 229, 0.90); color: #047857; border-color: rgba(5, 150, 105, 0.35); }
+.btn-sm.danger { background: rgba(255, 228, 230, 0.90); color: #be123c; border-color: rgba(225, 29, 72, 0.35); }
+.btn-sm:hover { filter: brightness(1.05); transform: translateY(-1px); }
+
+
