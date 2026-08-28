@@ -110,6 +110,35 @@ async def test_plain_table_stays_furniture_and_never_enters_rattan_segment(sessi
     assert membership is not None and membership.active is False
 
 
+async def test_generic_rattan_context_does_not_fake_raw_material_interest(
+    session_factory,
+):
+    signal = await ContactService(session_factory).persist_signal(
+        make_post().model_copy(update={"caption": "Rattan inspiration"}),
+        make_comment("generic-rattan-v2").model_copy(
+            update={
+                "platform_comment_id": "generic-rattan-v2",
+                "text": "Красиво",
+            }
+        ),
+    )
+
+    stats = await RattanVerticalService(session_factory).rebuild()
+    async with session_factory() as session:
+        evidence = await session.scalar(
+            select(Evidence).where(Evidence.public_signal_id == signal.public_signal_id)
+        )
+
+    assert signal.vertical == Vertical.ARTIFICIAL_RATTAN
+    assert evidence is not None
+    assert evidence.topic is None
+    assert evidence.intent is None
+    assert evidence.raw_data["rattan_taxonomy"]["layer"] == "NONE"
+    assert stats.rattan_signals == 1
+    assert stats.raw_material_signals == 0
+    assert stats.unclassified_rattan_signals == 1
+
+
 async def test_rattan_rebuild_and_workspace_are_idempotent(session_factory):
     contact_service = ContactService(session_factory)
     await contact_service.persist_signal(

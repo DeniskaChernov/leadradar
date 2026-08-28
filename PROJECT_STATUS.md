@@ -16,12 +16,12 @@
 | Cost ledger & pricing | OFFLINE · durable ledger/config implemented | 190 offline tests + migration | No | No |
 | Lead Scoring V3 | OFFLINE · evidence-first rule pipeline | 200 semantic golden + component tests | No | No |
 | Audience Engine V3 | OFFLINE · evidence-first core hardened | 193 offline tests; audience golden expansion pending | UI offline | No |
-| Rattan Vertical V2 | Evidence-first core implemented | 24 golden + integration/idempotency | UI offline | No |
+| Rattan Vertical V2 | OFFLINE · taxonomy safety hardened | 30 golden + 194 repository tests | UI offline | No |
 | Unit Economics ledger | Not implemented | Calculator tests only | No | No |
 | Premium UI / Telegram Bot | Read-only readiness + durable outbox implemented | Unit/concurrency/browser dry-run | Delivery not run | No |
 | Real Agent / MCP | Prototype/mock | Fixture tests only | No | No |
 | Meta / Google | Not connected | Offline prototype only | No | No |
-| Offline 500–1000 signal pilot | 540-case robustness replay passed | 54 curated roots × 10 variants; unseen corpus pending | No | No |
+| Offline 500–1000 signal pilot | 600-case robustness replay passed | 60 curated roots × 10 variants; unseen corpus pending | No | No |
 | Controlled live pilot | Blocked | Missing gate evidence | No | No |
 
 ## Phase C — Lead Scoring V3
@@ -77,12 +77,15 @@
 - audience golden/eval пока недостаточен, поэтому production/pilot ready остаётся `No`;
   paid/live recalculation не запускался.
 
-## Phase E — Artificial Rattan Vertical V2
+## Master Phase D — Artificial Rattan Vertical V2 hardening
 
 - добавлен строгий `RattanTaxonomyService`: без явного rattan-контекста обычные столы,
   кресла и мебель остаются в вертикали `FURNITURE`;
 - сырьё (`RAW_RATTAN`, бухта, кг, плоский/круглый/полукруглый профиль) отделено от
   готовой ротанговой мебели и ролей рынка;
+- одно слово `ротанг/rattan` без признаков товара, сырья или роли больше не создаёт
+  выдуманный `RAW_MATERIAL`: сохраняется честный слой `NONE` до появления Evidence;
+- натуральный ротанг явно исключён из вертикали искусственного ротанга;
 - `vertical` проходит через Competitor, PublicSignal, Evidence, Lead и AudienceSegment;
 - сохранённые записи перестраиваются идемпотентно, Evidence остаётся источником
   доказательств, а BusinessEntity получает объединение наблюдавшихся вертикалей;
@@ -90,26 +93,26 @@
   что источник поиска выключен; demo-компании не создаются;
 - добавлены отдельные rattan-аудитории для сырья, готовой мебели, опта и высокой ценности;
 - migration `a6d4e2c91f30` проверена на рабочей и новой пустой SQLite БД;
-- golden fixture: 24 RU/UZ/EN сценария, включая отрицательные примеры и ложные
-  совпадения по «кг», кабелю и обычной мебели;
+- golden fixture: 30 RU/UZ/EN сценариев, включая неопределённый и натуральный ротанг,
+  отрицательные примеры и ложные совпадения по «кг», кабелю и обычной мебели;
 - рабочая БД: 22 доказательных rattan-сигнала и 1 подтверждённая компания;
 - integrity gate: 0 дублей и 0 вертикальных рассогласований Lead/Evidence/PublicSignal;
-- полный offline gate после Phase G: 180 tests passed, Ruff, compileall и Alembic check чистые;
+- полный offline gate: **194 tests passed**, Ruff и compileall чистые;
 - live discovery и внешний pilot не запускались, поэтому production ready остаётся `No`.
 
 ## Phase F — Deterministic Offline Pilot
 
 - добавлен network-free runner `python -m scripts.run_offline_pilot`;
-- 54 вручную размеченных корневых сценария разворачиваются в 540 вариантов регистра,
+- 60 вручную размеченных корневых сценариев разворачиваются в 600 вариантов регистра,
   пробелов, пунктуации и emoji;
 - текущий robustness replay: lead precision/recall/intent accuracy 100%, rattan
   precision/recall/layer accuracy 100%;
-- первый ingestion создаёт ровно 540 Comment/PublicSignal/Evidence, идентичный повтор —
+- первый ingestion создаёт ровно 600 Comment/PublicSignal/Evidence, идентичный повтор —
   0 новых записей и 0 дублей;
 - pilot выявил и помог исправить ложные пропуски коммерческого CTA `+?`, `+!`,
   `+ 🙏`, `+...`, не ослабляя правило для плюса без явного CTA в подписи;
 - результат и ограничения задокументированы в `docs/OFFLINE_PILOT_REPORT.md`;
-- это robustness-набор из 54 независимых корней, а не 540 независимо собранных
+- это robustness-набор из 60 независимых корней, а не 600 независимо собранных
   реальных примеров; unseen public-data pilot и live pilot всё ещё не пройдены.
 
 ## Phase G — Telegram Notification Readiness

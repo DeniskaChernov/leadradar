@@ -3,31 +3,32 @@
 ## Scope
 
 Phase F runs entirely offline. It does not initialize an Instagram live provider,
-Telegram delivery, or OpenAI client. The runner expands 54 manually curated root
-examples into 540 deterministic robustness cases:
+Telegram delivery, or OpenAI client. The runner expands 60 manually curated root
+examples into 600 deterministic robustness cases:
 
 - 300 lead-intent cases from 30 multilingual golden roots;
-- 240 artificial-rattan cases from 24 RU/UZ/EN golden and negative roots;
+- 300 artificial-rattan cases from 30 RU/UZ/EN golden and negative roots;
 - 10 case, whitespace, punctuation and emoji variants per root.
 
-This is a robustness replay, not 540 independently collected real-world examples.
+This is a robustness replay, not 600 independently collected real-world examples.
 It proves deterministic behavior around the current golden boundaries but does not
 yet prove production precision on unseen traffic.
 
 ## Verified result
 
-- corpus size: 540;
+- corpus size: 600;
 - lead precision: 100%;
 - lead recall: 100%;
 - lead intent accuracy: 100%;
 - rattan precision: 100%;
 - rattan recall: 100%;
 - rattan layer accuracy: 100%;
-- deterministic digest: `428b11d0d1cfd3608434b4003ba3f194f941a0c7a55d007f78898eb7f1b38ba2`;
-- first ingestion: 540 Comment, 540 PublicSignal and 540 Evidence records;
+- deterministic digest: `fdc07b981a00d50b9a29df529b329dc8bf803ce9e98b778f990631e16fad6206`;
+- first ingestion: 600 Comment, 600 PublicSignal and 600 Evidence records;
 - identical second ingestion: 0 new records;
 - duplicate records after replay: 0.
-- complete repository suite after Phase G: 180 tests passed; Ruff and compileall clean.
+- complete repository suite after Master Phase D hardening: 194 tests passed; Ruff and
+  compileall clean.
 
 The first pilot run exposed four false negatives for punctuation/emoji variants of
 the explicit commercial CTA response `+`. The local rule was narrowed and repaired:

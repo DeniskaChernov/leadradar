@@ -24,6 +24,7 @@ class RattanRebuildStats:
     rattan_signals: int
     raw_material_signals: int
     ready_furniture_signals: int
+    unclassified_rattan_signals: int
     competitors: int
 
 
@@ -46,7 +47,7 @@ class RattanVerticalService:
                 )
             ).all()
             rattan_competitor_ids: set[int] = set()
-            layers = {"RAW_MATERIAL": 0, "READY_FURNITURE": 0}
+            layers = {"RAW_MATERIAL": 0, "READY_FURNITURE": 0, "NONE": 0}
             seen_signals: set[int] = set()
             for signal, comment, post, evidence, lead in rows:
                 taxonomy = RattanTaxonomyService.classify(
@@ -64,7 +65,11 @@ class RattanVerticalService:
                 signal.vertical = taxonomy.vertical
                 evidence.vertical = taxonomy.vertical
                 evidence.topic = taxonomy.products[0] if taxonomy.products else None
-                evidence.intent = taxonomy.layer.value if taxonomy.is_rattan else None
+                evidence.intent = (
+                    taxonomy.layer.value
+                    if taxonomy.is_rattan and taxonomy.layer.value != "NONE"
+                    else None
+                )
                 evidence.strength = taxonomy.confidence if taxonomy.is_rattan else 0
                 evidence.raw_data = {**(evidence.raw_data or {}), "rattan_taxonomy": payload}
                 if lead is not None:
@@ -99,5 +104,6 @@ class RattanVerticalService:
                 rattan_signals=sum(layers.values()),
                 raw_material_signals=layers["RAW_MATERIAL"],
                 ready_furniture_signals=layers["READY_FURNITURE"],
+                unclassified_rattan_signals=layers["NONE"],
                 competitors=len(rattan_competitor_ids),
             )

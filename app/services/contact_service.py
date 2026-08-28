@@ -158,7 +158,11 @@ class ContactService:
                         confidence=100,
                         observed_at=comment.created_at_platform or comment.discovered_at,
                         topic=taxonomy.products[0] if taxonomy.products else None,
-                        intent=taxonomy.layer.value if taxonomy.is_rattan else None,
+                        intent=(
+                            taxonomy.layer.value
+                            if taxonomy.is_rattan and taxonomy.layer.value != "NONE"
+                            else None
+                        ),
                         strength=taxonomy.confidence if taxonomy.is_rattan else 0,
                         raw_data={
                             **(comment.raw_data or {}),

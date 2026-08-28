@@ -56,6 +56,21 @@ class RattanTaxonomyService:
         "rattan",
         "polirotang",
     )
+    ARTIFICIAL_CONTEXT = (
+        "искусственн",
+        "полиротанг",
+        "техноротанг",
+        "экоротанг",
+        "polirotang",
+        "synthetic rattan",
+        "artificial rattan",
+    )
+    NATURAL_CONTEXT = (
+        "натуральный ротанг",
+        "натурального ротанга",
+        "natural rattan",
+        "natural rotang",
+    )
     RAW_MARKERS: ClassVar[dict[str, tuple[str, ...]]] = {
         "RAW_RATTAN": ("сырье", "сырьё", "для плетения", "пруток", "лента ротанг"),
         "COIL": ("бухта", "бухтах", "рулон", "coil"),
@@ -97,7 +112,10 @@ class RattanTaxonomyService:
     def classify(cls, text: str) -> RattanTaxonomyResult:
         lowered = " ".join((text or "").lower().split())
         context = tuple(marker for marker in cls.RATTAN_CONTEXT if marker in lowered)
-        if not context:
+        natural_only = any(marker in lowered for marker in cls.NATURAL_CONTEXT) and not any(
+            marker in lowered for marker in cls.ARTIFICIAL_CONTEXT
+        )
+        if not context or natural_only:
             generic = tuple(
                 marker
                 for markers in cls.FURNITURE_MARKERS.values()
@@ -113,8 +131,16 @@ class RattanTaxonomyService:
                 products=(),
                 material_profiles=(),
                 evidence=(),
-                negative_evidence=("no_explicit_rattan_context",),
-                explanation="Нет явного контекста искусственного ротанга.",
+                negative_evidence=(
+                    "natural_rattan_out_of_scope"
+                    if natural_only
+                    else "no_explicit_rattan_context",
+                ),
+                explanation=(
+                    "Натуральный ротанг не относится к вертикали искусственного ротанга."
+                    if natural_only
+                    else "Нет явного контекста искусственного ротанга."
+                ),
             )
 
         products = tuple(
@@ -134,6 +160,18 @@ class RattanTaxonomyService:
         )
         raw = bool(raw_topics or profiles)
         ready = bool(products)
+        raw_market_role_context = any(
+            marker in lowered
+            for marker in (
+                *cls.WHOLESALE,
+                *cls.IMPORT,
+                *cls.DISTRIBUTION,
+                *cls.MANUFACTURING,
+                *cls.WEAVING,
+                *cls.CRAFT,
+                *cls.BUYING,
+            )
+        )
         negative: list[str] = []
         if raw:
             layer = RattanLayer.RAW_MATERIAL
@@ -144,10 +182,14 @@ class RattanTaxonomyService:
             layer = RattanLayer.READY_FURNITURE
             evidence = ["explicit_rattan_context", "ready_furniture_context"]
             negative.append("no_raw_material_evidence")
-        else:
+        elif raw_market_role_context:
             layer = RattanLayer.RAW_MATERIAL
             raw_topics = ("RAW_RATTAN",)
+            evidence = ["explicit_rattan_context", "raw_market_role_context"]
+        else:
+            layer = RattanLayer.NONE
             evidence = ["explicit_rattan_context"]
+            negative.append("insufficient_layer_evidence")
 
         role = cls._role(lowered, layer)
         if any(marker in lowered for marker in cls.WHOLESALE):
@@ -169,6 +211,8 @@ class RattanTaxonomyService:
                 "Сырьевой рынок искусственного ротанга."
                 if layer == RattanLayer.RAW_MATERIAL
                 else "Готовая мебель с явным контекстом ротанга."
+                if layer == RattanLayer.READY_FURNITURE
+                else "Контекст ротанга подтверждён, но тип рынка пока не доказан."
             ),
         )
 

@@ -23,6 +23,9 @@
 3. Raw extrusion profiles and price/unit markers have dedicated taxonomy values.
 4. Furniture and rattan audience definitions are isolated by structured vertical criteria.
 5. Integrity checks detect Lead/PublicSignal and Evidence/PublicSignal vertical drift.
+6. Generic rattan context without material, product or market-role evidence stays at layer
+   `NONE` instead of fabricating `RAW_MATERIAL` interest.
+7. Explicit natural-rattan phrases are excluded from the artificial-rattan vertical.
 
 ## DATA RISKS
 - Cross-contamination between furniture leads and raw material inquiries in CRM views.
@@ -31,7 +34,8 @@
 - Low.
 
 ## FALSE POSITIVE RISKS
-- High: Normal furniture buyer classified as industrial raw rattan wholesaler.
+- Reduced but not eliminated: account names containing `rattan/rotang` can establish the
+  vertical, but can no longer establish a raw-material layer on their own.
 
 ## FALSE NEGATIVE RISKS
 - Moderate: Industrial B2B inquiries using technical terms ("гранулы", "полиротанг в бухтах", "пруток") missed without dedicated vocabulary.
@@ -42,8 +46,10 @@
 3. Only after those gates, authorize a controlled live provider pilot and notification delivery.
 
 ## VERIFIED EVIDENCE
-- 24 RU/UZ/EN golden and negative cases.
+- 30 RU/UZ/EN golden and negative cases.
 - Idempotent rebuild and workspace isolation integration tests.
 - Empty-database and existing-database Alembic upgrade checks.
-- Full offline suite: 175 passed; Ruff, compileall and Alembic schema check clean.
+- 600-case deterministic robustness replay: 100% internal rattan precision, recall and
+  layer accuracy, with zero duplicate ingestion rows.
+- Full offline suite: 194 passed; Ruff and compileall clean.
 - Working database integrity: zero duplicate keys and zero vertical mismatches.

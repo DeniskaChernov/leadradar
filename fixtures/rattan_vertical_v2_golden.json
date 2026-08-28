@@ -22,5 +22,11 @@
   {"text":"красивый стол ❤️","is_rattan":false,"layer":"NONE"},
   {"text":"50 кг сахара оптом","is_rattan":false,"layer":"NONE"},
   {"text":"бухта кабеля 100 метров","is_rattan":false,"layer":"NONE"},
-  {"text":"round table for restaurant","is_rattan":false,"layer":"NONE"}
+  {"text":"round table for restaurant","is_rattan":false,"layer":"NONE"},
+  {"text":"люблю ротанг","is_rattan":true,"layer":"NONE"},
+  {"text":"искусственный ротанг","is_rattan":true,"layer":"NONE"},
+  {"text":"натуральный ротанг для декора","is_rattan":false,"layer":"NONE"},
+  {"text":"natural rattan basket wholesale","is_rattan":false,"layer":"NONE"},
+  {"text":"ротанг 8 мм","is_rattan":true,"layer":"RAW_MATERIAL","profile":"PROFILE"},
+  {"text":"ротанг цена за кг","is_rattan":true,"layer":"RAW_MATERIAL","product":"KG_PRICE"}
 ]
