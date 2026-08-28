@@ -27,7 +27,7 @@ yet prove production precision on unseen traffic.
 - first ingestion: 540 Comment, 540 PublicSignal and 540 Evidence records;
 - identical second ingestion: 0 new records;
 - duplicate records after replay: 0.
-- complete repository suite after the pilot: 178 tests passed; Ruff and compileall clean.
+- complete repository suite after Phase G: 180 tests passed; Ruff and compileall clean.
 
 The first pilot run exposed four false negatives for punctuation/emoji variants of
 the explicit commercial CTA response `+`. The local rule was narrowed and repaired:

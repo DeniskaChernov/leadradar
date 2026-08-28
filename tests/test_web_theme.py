@@ -42,6 +42,8 @@ def test_v41_signal_first_states_and_notification_modes_are_manager_readable():
     radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
 
     assert "УВЕДОМЛЕНИЯ МЕНЕДЖЕРУ" in system
+    assert "Готовность Telegram-уведомлений" in system
+    assert "DRY-RUN · БЕЗ ОТПРАВКИ" in system
     assert "Каждый новый комментарий" in competitors
     assert "Только покупательский интерес" in competitors
     assert "Только горячие лиды" in competitors

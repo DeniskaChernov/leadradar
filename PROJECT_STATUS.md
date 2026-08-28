@@ -17,7 +17,7 @@
 | Audience Engine V3 | Evidence-first core implemented | Unit/integration; golden expansion pending | UI offline | No |
 | Rattan Vertical V2 | Evidence-first core implemented | 24 golden + integration/idempotency | UI offline | No |
 | Unit Economics ledger | Not implemented | Calculator tests only | No | No |
-| Premium UI / Telegram Bot | Partial | Smoke/unit only | No | No |
+| Premium UI / Telegram Bot | Read-only readiness + durable outbox implemented | Unit/concurrency/browser dry-run | Delivery not run | No |
 | Real Agent / MCP | Prototype/mock | Fixture tests only | No | No |
 | Meta / Google | Not connected | Offline prototype only | No | No |
 | Offline 500–1000 signal pilot | 540-case robustness replay passed | 54 curated roots × 10 variants; unseen corpus pending | No | No |
@@ -34,7 +34,7 @@
 - AI fingerprint учитывает только коммерческую историю, stable contact identity, vertical и catalog context version;
 - OpenAI output не может сохранить выдуманные Evidence IDs; без Evidence confidence снижается;
 - текущая golden calibration содержит только 30 сценариев — pilot gate 150–300 ещё не выполнен;
-- полный offline suite после Phase F: 178 тестов, внешних вызовов нет.
+- полный offline suite после Phase G: 180 тестов, внешних вызовов нет.
 
 ## Phase D — Audience Engine V3
 
@@ -66,7 +66,7 @@
   совпадения по «кг», кабелю и обычной мебели;
 - рабочая БД: 22 доказательных rattan-сигнала и 1 подтверждённая компания;
 - integrity gate: 0 дублей и 0 вертикальных рассогласований Lead/Evidence/PublicSignal;
-- полный offline gate после Phase F: 178 tests passed, Ruff, compileall и Alembic check чистые;
+- полный offline gate после Phase G: 180 tests passed, Ruff, compileall и Alembic check чистые;
 - live discovery и внешний pilot не запускались, поэтому production ready остаётся `No`.
 
 ## Phase F — Deterministic Offline Pilot
@@ -83,6 +83,21 @@
 - результат и ограничения задокументированы в `docs/OFFLINE_PILOT_REPORT.md`;
 - это robustness-набор из 54 независимых корней, а не 540 независимо собранных
   реальных примеров; unseen public-data pilot и live pilot всё ещё не пройдены.
+
+## Phase G — Telegram Notification Readiness
+
+- добавлен полностью read-only dry-run preview: он применяет фактическую global/per-
+  competitor policy, baseline guard, HOT threshold, manager routing и состояние outbox;
+- preview не создаёт NotificationLog и не вызывает Telegram API;
+- интерфейс `/system` показывает ELIGIBLE/QUEUED/SENT/SUPPRESSED/BLOCKED/FAILED/
+  UNCERTAIN, число получателей и стабильный шаблон idempotency key без раскрытия chat ID;
+- web-only режим теперь честно показывает, что token может быть настроен, но delivery
+  worker не запущен; это исключает ложный статус «уведомления работают»;
+- текущий безопасный runtime: token настроен, один admin target найден, delivery config
+  заблокирован, worker выключен, все 10 просмотренных лидов подавлены baseline guard;
+- повторный preview детерминирован и оставляет таблицу notification_logs неизменной;
+- реальная отправка менеджеру всё ещё не выполнялась и требует отдельного явного
+  controlled pilot.
 
 ## Post-audit hardening — AI cost ledger
 

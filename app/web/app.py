@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import Settings
-from app.db.models import LeadStatus
+from app.db.models import LeadStatus, NotificationPolicy
 from app.services.ai_service import HybridLeadAnalyzer, RuleBasedLeadAnalyzer
 from app.services.audience_service import AudienceEngine
 from app.services.crm_service import CRMService
@@ -19,6 +19,7 @@ from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowService
 from app.services.market_intelligence_service import MarketIntelligenceService
 from app.services.monitor_controller import MonitorController
+from app.services.notification_readiness_service import NotificationReadinessService
 from app.services.significant_change_service import SignificantChangeDetector
 from app.services.usage_service import ExternalUsageService
 from app.web.auth import TelegramAuthError, TelegramWebAuth
@@ -56,6 +57,7 @@ def build_web_app(
     usage_service: ExternalUsageService | None = None,
     lead_service: LeadService | None = None,
     crm: CRMService | None = None,
+    notification_worker_active: bool = False,
 ) -> FastAPI:
     app = FastAPI(title="Lead Radar", docs_url="/api/docs", redoc_url=None)
     root = Path(__file__).resolve().parent
@@ -79,6 +81,19 @@ def build_web_app(
         change_detector=SignificantChangeDetector(
             workflow.session_factory, hot_threshold=settings.hot_lead_threshold
         ),
+    )
+    delivery_allowed_by_config = bool(settings.telegram_bot_token) and (
+        settings.instagram_provider not in {"mock", "replay"}
+    )
+    notification_readiness_service = NotificationReadinessService(
+        workflow.session_factory,
+        workflow,
+        admin_chat_ids=settings.telegram_admin_chat_ids,
+        default_policy=NotificationPolicy(settings.notification_policy),
+        hot_threshold=settings.hot_lead_threshold,
+        token_configured=bool(settings.telegram_bot_token),
+        delivery_allowed_by_config=delivery_allowed_by_config,
+        worker_active=notification_worker_active,
     )
 
     templates.env.globals.update(
@@ -410,6 +425,7 @@ def build_web_app(
         )
         replay_scenario = getattr(getattr(controller.monitor, "provider", None), "scenario", None)
         replay_status = replay_scenario.status() if replay_scenario is not None else None
+        notification_readiness = await notification_readiness_service.preview(limit=10)
         notification_modes = {
             "ALL_NEW_COMMENTS": (
                 "Каждый новый комментарий",
@@ -425,10 +441,7 @@ def build_web_app(
             ),
         }
         notification_policy_info = notification_modes[settings.notification_policy]
-        production_notifications = bool(settings.telegram_bot_token) and settings.instagram_provider not in {
-            "mock",
-            "replay",
-        }
+        production_notifications = notification_readiness.controlled_pilot_ready
         integrations = {
             "Telegram": {
                 "configured": bool(settings.telegram_bot_token),
@@ -468,6 +481,7 @@ def build_web_app(
                 scan_plan=scan_plan,
                 replay_status=replay_status,
                 notification_policy_info=notification_policy_info,
+                notification_readiness=notification_readiness,
             ),
         )
 

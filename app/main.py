@@ -243,6 +243,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             controller,
             usage_service,
             lead_service,
+            notification_worker_active=True,
         )
         web_config = uvicorn.Config(
             web_app,

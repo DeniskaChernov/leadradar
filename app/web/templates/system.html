@@ -24,6 +24,23 @@
   <small class="muted">Для отдельной компании режим можно изменить на странице «Конкуренты». Повтор события не создаёт второе сообщение; неоднозначный сетевой результат останавливается для сверки, а не отправляется повторно автоматически.</small>
 </section>
 
+<section class="panel notification-readiness">
+  <div class="panel-head"><div><span class="eyebrow">DRY-RUN · БЕЗ ОТПРАВКИ</span><h2>Готовность Telegram-уведомлений</h2><p>Read-only preview применяет реальные политики и проверяет outbox, но ничего не записывает и не отправляет.</p></div><span class="tag {% if notification_readiness.controlled_pilot_ready %}status-contacted{% else %}neutral{% endif %}">{% if notification_readiness.controlled_pilot_ready %}worker активен{% else %}pilot заблокирован{% endif %}</span></div>
+  <div class="mini-metrics">
+    <span><b>{{ notification_readiness.total_reviewed }}</b> проверено</span>
+    <span><b>{{ notification_readiness.eligible }}</b> готовы</span>
+    <span><b>{{ notification_readiness.sent }}</b> доставлены</span>
+    <span><b>{{ notification_readiness.queued }}</b> в outbox</span>
+    <span><b>{{ notification_readiness.suppressed }}</b> подавлены правилами</span>
+    <span><b>{{ notification_readiness.blocked }}</b> без получателя</span>
+    <span><b>{{ notification_readiness.uncertain }}</b> требуют сверки</span>
+  </div>
+  <div class="alert {% if notification_readiness.controlled_pilot_ready %}good{% else %}warn{% endif %}"><b>{% if notification_readiness.controlled_pilot_ready %}Конфигурация готова к контролируемому pilot{% else %}Реальная отправка сейчас не выполняется{% endif %}</b><span>Token: {% if notification_readiness.token_configured %}настроен{% else %}не настроен{% endif %} · admin targets: {{ notification_readiness.admin_target_count }} · delivery config: {% if notification_readiness.delivery_allowed_by_config %}разрешён{% else %}заблокирован{% endif %} · worker: {% if notification_readiness.worker_active %}активен{% else %}не запущен (web-only){% endif %}</span></div>
+  <div class="table-wrap embedded"><table><thead><tr><th>Лид</th><th>Сигнал</th><th>Policy</th><th>Решение</th><th>Почему</th><th>Получатели</th></tr></thead><tbody>
+    {% for item in notification_readiness.previews %}<tr><td><a href="/leads/{{ item.lead_id }}">@{{ item.username }}</a><br><small>{{ item.score }}/100 · {{ item.intent }}</small></td><td>{{ item.comment }}</td><td><code>{{ item.policy }}</code></td><td><span class="tag notification-{{ item.decision|lower }}">{{ item.decision }}</span></td><td>{{ item.reason }}<br><small>{{ item.idempotency_pattern }}</small></td><td>{{ item.target_count }}</td></tr>{% else %}<tr><td colspan="6" class="empty">Сохранённых лидов для preview пока нет.</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+
 
 {% if replay_status %}
 <section class="panel replay-panel">

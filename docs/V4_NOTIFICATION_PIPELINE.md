@@ -43,6 +43,21 @@ outcome suppresses further automatic sends.
 Baseline, replay and tests keep production delivery disabled. Telegram handlers do not call the
 Instagram provider.
 
+## Phase G read-only readiness preview
+
+`NotificationReadinessService` evaluates recent persisted leads without creating outbox rows or
+calling Telegram. It uses the same observable inputs as production delivery: global or competitor
+policy, baseline flag, local analysis status, HOT threshold, assigned manager/admin target routing,
+and existing `NotificationLog` state.
+
+The `/system` panel distinguishes configuration from an active delivery worker. A configured bot
+token is not presented as active delivery when the application runs with `--web-only`. Decisions
+are shown as `ELIGIBLE`, `QUEUED`, `SENT`, `SUPPRESSED`, `BLOCKED`, `FAILED`, or `UNCERTAIN` and use
+masked idempotency patterns (`lead:<id>:chat:*`) rather than exposing manager chat identifiers.
+
+This preview is readiness evidence only. It does not replace a separately authorized controlled
+Telegram delivery pilot.
+
 ## Recovery procedure
 
 1. Inspect rows in `UNCERTAIN`; do not reset them directly to `PENDING`.

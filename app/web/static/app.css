@@ -1449,6 +1449,14 @@ tr:hover td { background: rgba(230,240,253,.52); }
 .btn-sm.danger { background: rgba(255, 228, 230, 0.90); color: #be123c; border-color: rgba(225, 29, 72, 0.35); }
 .btn-sm:hover { filter: brightness(1.05); transform: translateY(-1px); }
 
+/* Phase G · read-only Telegram readiness */
+.notification-readiness .table-wrap { max-height: 520px; overflow: auto; }
+.notification-readiness thead { position: sticky; top: 0; z-index: 2; }
+.notification-eligible, .notification-sent { color: #047857; background: rgba(209, 250, 229, .88); }
+.notification-queued { color: #1d4ed8; background: rgba(219, 234, 254, .9); }
+.notification-suppressed { color: #64748b; background: rgba(241, 245, 249, .9); }
+.notification-blocked, .notification-failed, .notification-uncertain { color: #be123c; background: rgba(255, 228, 230, .9); }
+
 /* V6 · System Scan Plan & Replay Panel */
 .plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; padding: 20px; }
 .plan-grid > div { padding: 16px 18px; border-radius: 16px; background: rgba(255, 255, 255, 0.65); border: 1px solid rgba(255, 255, 255, 0.85); box-shadow: 0 4px 14px rgba(90, 70, 50, 0.04); }
