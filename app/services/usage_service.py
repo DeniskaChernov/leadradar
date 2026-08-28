@@ -7,11 +7,18 @@ from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import and_, func, or_, select, text, update
+from sqlalchemy import and_, desc, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import ExternalBudgetReservation, ExternalUsage, ReservationStatus
+from app.db.models import (
+    CostEvent,
+    ExternalBudgetReservation,
+    ExternalUsage,
+    PricingConfig,
+    ReservationStatus,
+    Vertical,
+)
 
 
 class ExternalBudgetExceeded(RuntimeError):
@@ -88,6 +95,7 @@ class ExternalUsageService:
         lease_seconds: int = 60,
         reservation_key: str | None = None,
         worker_id: str | None = None,
+        provider: str | None = None,
     ) -> int:
         if daily_limit <= 0:
             raise ExternalBudgetExceeded(f"Лимит внешних запросов {service} установлен в 0")
@@ -145,6 +153,7 @@ class ExternalUsageService:
                     reservation_key=reservation_key or f"reservation:{uuid4().hex}",
                     worker_id=worker_id,
                     service=service,
+                    provider=(provider or service).strip().lower(),
                     operation=operation,
                     units_reserved=units,
                     estimated_cost_usd=Decimal(str(estimated_cost)),
@@ -191,6 +200,13 @@ class ExternalUsageService:
         success: bool = True,
         details: dict[str, Any] | None = None,
         actual_cost: Decimal | float | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        vertical: Vertical | None = None,
+        competitor_id: int | None = None,
+        lead_id: int | None = None,
+        audience_id: int | None = None,
+        campaign_id: int | None = None,
     ) -> None:
         if units <= 0:
             raise ValueError("units must be positive")
@@ -219,10 +235,29 @@ class ExternalUsageService:
                         ExternalBudgetReservation.service,
                         ExternalBudgetReservation.operation,
                         ExternalBudgetReservation.reservation_key,
+                        ExternalBudgetReservation.provider,
                     )
                 )
             ).one_or_none()
             if reservation is not None:
+                resolved_cost = (
+                    Decimal(str(actual_cost))
+                    if actual_cost is not None
+                    else await self._price_for(
+                        session,
+                        provider=reservation[3],
+                        operation=reservation[1],
+                        units=units,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        model_name=str((details or {}).get("model") or "") or None,
+                    )
+                )
+                await session.execute(
+                    update(ExternalBudgetReservation)
+                    .where(ExternalBudgetReservation.id == reservation_id)
+                    .values(actual_cost_usd=resolved_cost)
+                )
                 session.add(
                     ExternalUsage(
                         service=reservation[0],
@@ -230,6 +265,25 @@ class ExternalUsageService:
                         idempotency_key=f"reservation:{reservation[2]}",
                         units=units,
                         success=success,
+                        details_json=details or {},
+                    )
+                )
+                session.add(
+                    CostEvent(
+                        idempotency_key=f"cost:{reservation[2]}",
+                        reservation_id=reservation_id,
+                        service=reservation[0],
+                        provider=reservation[3],
+                        operation=reservation[1],
+                        vertical=vertical,
+                        competitor_id=competitor_id,
+                        lead_id=lead_id,
+                        audience_id=audience_id,
+                        campaign_id=campaign_id,
+                        units=units,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        cost_usd=resolved_cost,
                         details_json=details or {},
                     )
                 )
@@ -269,6 +323,8 @@ class ExternalUsageService:
         units: int = 1,
         success: bool = True,
         details: dict | None = None,
+        provider: str | None = None,
+        cost_usd: Decimal | float | None = None,
     ) -> None:
         async with self.session_factory() as session:
             session.add(
@@ -280,7 +336,54 @@ class ExternalUsageService:
                     details_json=details or {},
                 )
             )
+            event_key = f"legacy:{uuid4().hex}"
+            session.add(
+                CostEvent(
+                    idempotency_key=event_key,
+                    service=service,
+                    provider=(provider or str((details or {}).get("provider") or service)).lower(),
+                    operation=operation,
+                    units=units,
+                    cost_usd=(Decimal(str(cost_usd)) if cost_usd is not None else None),
+                    details_json=details or {},
+                )
+            )
             await session.commit()
+
+    @staticmethod
+    async def _price_for(
+        session: AsyncSession,
+        *,
+        provider: str,
+        operation: str,
+        units: int,
+        input_tokens: int | None,
+        output_tokens: int | None,
+        model_name: str | None,
+    ) -> Decimal | None:
+        now = datetime.now(UTC)
+        config = await session.scalar(
+            select(PricingConfig)
+            .where(
+                PricingConfig.provider == provider.lower(),
+                PricingConfig.operation == operation.lower(),
+                PricingConfig.model_name == (model_name.lower() if model_name else ""),
+                PricingConfig.active.is_(True),
+                PricingConfig.effective_from <= now,
+            )
+            .order_by(desc(PricingConfig.effective_from))
+            .limit(1)
+        )
+        if config is None:
+            return None
+        if config.pricing_basis in {"REQUEST", "UNIT"}:
+            return (config.unit_price or Decimal("0")) * units
+        if config.pricing_basis == "TOKENS":
+            return (
+                (config.input_price or Decimal("0")) * int(input_tokens or 0)
+                + (config.output_price or Decimal("0")) * int(output_tokens or 0)
+            )
+        return None
 
     async def breakdown_today(self, service: str) -> dict[str, int]:
         now = datetime.now(UTC)

@@ -13,6 +13,7 @@
 |---|---|---|---|---|
 | Audit + network freeze | Implemented | Offline automated | No | No |
 | AI request/budget ledger | Phase B hardened | 186 offline tests + concurrency + migration | No | No |
+| Cost ledger & pricing | OFFLINE · durable ledger/config implemented | 190 offline tests + migration | No | No |
 | Lead Scoring V3 | Implemented in rule pipeline | 30 golden + component tests | No | No |
 | Audience Engine V3 | Evidence-first core implemented | Unit/integration; golden expansion pending | UI offline | No |
 | Rattan Vertical V2 | Evidence-first core implemented | 24 golden + integration/idempotency | UI offline | No |
@@ -132,6 +133,24 @@
 - CI выполняет Ruff, compileall, fresh/existing/repeated Alembic и полный pytest;
 - текущий offline gate: **186 passed**, Ruff и compileall чистые; live API не вызывались,
   production ready остаётся `No`.
+
+## Master Phase A — Core money-safety completion
+
+- прежний Instagram wrapper с паттерном `assert → API → record` упрощён до того же
+  двухфазного контура `RESERVE → mark started → API → FINALIZE`, который использует OpenAI;
+- `CostEvent` теперь создаётся exactly-once из завершённой budget reservation и хранит
+  provider, operation, units, tokens, известную стоимость и доступную attribution;
+- `PricingConfig` хранит версионированные активные тарифы; предыдущая цена деактивируется,
+  но сохраняется для аудита;
+- если тариф или actual cost неизвестны, стоимость хранится как `NULL`, а не как ложный `$0`;
+- минимальная форма управления тарифами добавлена в `/system`, отдельная вкладка ради одной
+  настройки не создавалась;
+- reservation status поддерживает `UNCERTAIN`, provider теперь является явным полем ledger;
+- миграция `d8e2b7c41a90` проверена на fresh/repeated upgrade; рабочая БД обновляется только
+  после backup;
+- полный offline gate после Master Phase A: **190 tests passed**, Ruff и compileall чистые;
+- maturity: core ledger **OFFLINE**, live provider billing reconciliation **NOT LIVE TESTED**;
+  controlled live pilot остаётся `BLOCKED`.
 
 ## Архив прежних заявлений V6 — требует повторной проверки по новому Master Task
 

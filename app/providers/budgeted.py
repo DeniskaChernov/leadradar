@@ -57,6 +57,9 @@ class ScanBudget:
         self.assert_available(units)
         self.used += units
 
+    def refund(self, units: int) -> None:
+        self.used = max(0, self.used - max(0, units))
+
 
 class BudgetedInstagramProvider(InstagramProvider):
     """Fail-closed wrapper for one live provider.
@@ -109,21 +112,36 @@ class BudgetedInstagramProvider(InstagramProvider):
         except ExternalBudgetExceeded as exc:
             raise LiveCallsDisabledError(str(exc)) from exc
 
-    async def _reserve(self, units: int = 1) -> None:
+    async def _reserve(self, operation: str, units: int = 1) -> int:
         await self._ensure_enabled(units=units)
+        try:
+            reservation_id = await self.usage.reserve_budget(
+                "instagram",
+                operation,
+                self.daily_limit,
+                units=units,
+                provider=self.inner.name,
+            )
+        except ExternalBudgetExceeded as exc:
+            raise LiveCallsDisabledError(str(exc)) from exc
         if self.scan_budget is not None:
             self.scan_budget.consume(units)
+        return reservation_id
 
     async def _call(self, operation: str, call: Callable[[], Awaitable[T]]) -> T:
-        # Reserve before the network call: failed requests still cost quota in many providers.
-        await self._reserve(1)
+        reservation_id = await self._reserve(operation, 1)
+        await self.usage.mark_call_started(reservation_id)
         details = {"provider": self.inner.name}
         try:
             result = await call()
         except Exception:
-            await self.usage.record("instagram", operation, success=False, details=details)
+            await self.usage.finalize_reservation(
+                reservation_id, units=1, success=False, details=details
+            )
             raise
-        await self.usage.record("instagram", operation, success=True, details=details)
+        await self.usage.finalize_reservation(
+            reservation_id, units=1, success=True, details=details
+        )
         return result
 
     async def get_profile(self, handle: str) -> InstagramProfile:
@@ -149,8 +167,9 @@ class BudgetedInstagramProvider(InstagramProvider):
         # provider to the smaller of its requested page limit, the daily remainder and the scan
         # remainder. This guarantees one Reel can never silently consume the whole quota.
         await self._ensure_enabled()
-        used_today = await self.usage.used_today("instagram")
-        daily_remaining = max(0, self.daily_limit - used_today)
+        daily_remaining = (
+            await self.usage.snapshot("instagram", self.daily_limit)
+        ).remaining
         scan_remaining = self.scan_budget.remaining if self.scan_budget is not None else daily_remaining
         remaining = min(daily_remaining, scan_remaining)
         if remaining <= 0:
@@ -160,6 +179,9 @@ class BudgetedInstagramProvider(InstagramProvider):
         if max_pages is not None:
             effective_pages = min(effective_pages, max(1, int(max_pages)))
 
+        reservation_id = await self._reserve("get_comment_batch", effective_pages)
+        await self.usage.mark_call_started(reservation_id)
+
         try:
             result = await self.inner.get_comment_batch(
                 post,
@@ -167,12 +189,9 @@ class BudgetedInstagramProvider(InstagramProvider):
                 max_pages=effective_pages,
             )
         except Exception:
-            # Conservatively count at least one provider operation on failure.
-            if self.scan_budget is not None:
-                self.scan_budget.consume(1)
-            await self.usage.record(
-                "instagram",
-                "get_comment_batch",
+            await self.usage.finalize_reservation(
+                reservation_id,
+                units=effective_pages,
                 success=False,
                 details={"provider": self.inner.name, "pages": 1},
             )
@@ -181,11 +200,8 @@ class BudgetedInstagramProvider(InstagramProvider):
         units = max(1, int(result.pages_fetched or 1))
         if units > remaining:
             # A provider adapter that ignored max_pages is unsafe. Block further work and surface it.
-            if self.scan_budget is not None:
-                self.scan_budget.consume(remaining)
-            await self.usage.record(
-                "instagram",
-                "get_comment_batch",
+            await self.usage.finalize_reservation(
+                reservation_id,
                 units=units,
                 success=True,
                 details={"provider": self.inner.name, "pages": units, "over_budget_adapter": True},
@@ -195,11 +211,10 @@ class BudgetedInstagramProvider(InstagramProvider):
                 "Проверка остановлена для защиты квоты."
             )
 
-        if self.scan_budget is not None:
-            self.scan_budget.consume(units)
-        await self.usage.record(
-            "instagram",
-            "get_comment_batch",
+        if self.scan_budget is not None and units < effective_pages:
+            self.scan_budget.refund(effective_pages - units)
+        await self.usage.finalize_reservation(
+            reservation_id,
             units=units,
             success=True,
             details={"provider": self.inner.name, "pages": units},

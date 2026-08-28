@@ -135,6 +135,7 @@ class ReservationStatus(StrEnum):
     FINALIZED = "FINALIZED"
     RELEASED = "RELEASED"
     EXPIRED = "EXPIRED"
+    UNCERTAIN = "UNCERTAIN"
 
 
 class Vertical(StrEnum):
@@ -1037,6 +1038,7 @@ class ExternalBudgetReservation(Base):
     reservation_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     worker_id: Mapped[str | None] = mapped_column(String(128), index=True)
     service: Mapped[str] = mapped_column(String(64), index=True)
+    provider: Mapped[str] = mapped_column(String(128), index=True)
     operation: Mapped[str] = mapped_column(String(128), index=True)
     units_reserved: Mapped[int] = mapped_column(Integer, default=1)
     estimated_cost_usd: Mapped[Decimal] = mapped_column(Numeric(10, 6), default=Decimal("0.000000"))
@@ -1057,3 +1059,60 @@ class ExternalBudgetReservation(Base):
         DateTime(timezone=True), default=utcnow, index=True
     )
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CostEvent(Base):
+    __tablename__ = "cost_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    reservation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("external_budget_reservations.id"), unique=True, index=True
+    )
+    service: Mapped[str] = mapped_column(String(64), index=True)
+    provider: Mapped[str] = mapped_column(String(128), index=True)
+    operation: Mapped[str] = mapped_column(String(128), index=True)
+    vertical: Mapped[Vertical | None] = mapped_column(
+        Enum(Vertical, native_enum=False), index=True
+    )
+    competitor_id: Mapped[int | None] = mapped_column(ForeignKey("competitors.id"), index=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"), index=True)
+    audience_id: Mapped[int | None] = mapped_column(
+        ForeignKey("audience_segments.id"), index=True
+    )
+    campaign_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    units: Mapped[int] = mapped_column(Integer, default=1)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    details_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+
+
+class PricingConfig(Base):
+    __tablename__ = "pricing_configs"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "operation",
+            "model_name",
+            "effective_from",
+            name="uq_pricing_configs_provider_operation_model_effective",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(128), index=True)
+    operation: Mapped[str] = mapped_column(String(128), index=True)
+    model_name: Mapped[str] = mapped_column(String(128), default="", index=True)
+    pricing_basis: Mapped[str] = mapped_column(String(32))
+    input_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 8))
+    output_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 8))
+    unit_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 8))
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )

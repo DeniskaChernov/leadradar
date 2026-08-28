@@ -20,6 +20,7 @@ from app.db.models import (
     ContactEventType,
     ContactIntelligence,
     ContactTask,
+    CostEvent,
     Deal,
     DealStatus,
     Evidence,
@@ -90,7 +91,14 @@ class WebQueryService:
             "active_reservations": int(active_reservations or 0),
             "stale_ai_leases": int(stale_ai_leases or 0),
             "uncertain_reservations": int(uncertain_reservations or 0),
+            "cost_events": int(
+                await self._scalar_count(CostEvent.id)
+            ),
         }
+
+    async def _scalar_count(self, column) -> int:
+        async with self.session_factory() as session:
+            return int(await session.scalar(select(func.count(column))) or 0)
 
     async def rattan_workspace(self) -> dict:
         """Return only persisted, explicitly classified rattan data."""

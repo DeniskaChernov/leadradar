@@ -20,6 +20,7 @@ from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowSe
 from app.services.market_intelligence_service import MarketIntelligenceService
 from app.services.monitor_controller import MonitorController
 from app.services.notification_readiness_service import NotificationReadinessService
+from app.services.pricing_config_service import PricingConfigService
 from app.services.significant_change_service import SignificantChangeDetector
 from app.services.usage_service import ExternalUsageService
 from app.web.auth import TelegramAuthError, TelegramWebAuth
@@ -95,6 +96,7 @@ def build_web_app(
         delivery_allowed_by_config=delivery_allowed_by_config,
         worker_active=notification_worker_active,
     )
+    pricing_service = PricingConfigService(workflow.session_factory)
 
     templates.env.globals.update(
         lead_status_label=lambda value: label(LEAD_STATUS_LABELS, value),
@@ -427,6 +429,7 @@ def build_web_app(
         replay_status = replay_scenario.status() if replay_scenario is not None else None
         notification_readiness = await notification_readiness_service.preview(limit=10)
         ai_safety = await queries.ai_safety_diagnostics()
+        pricing_configs = await pricing_service.list_active()
         notification_modes = {
             "ALL_NEW_COMMENTS": (
                 "Каждый новый комментарий",
@@ -484,8 +487,43 @@ def build_web_app(
                 notification_policy_info=notification_policy_info,
                 notification_readiness=notification_readiness,
                 ai_safety=ai_safety,
+                pricing_configs=pricing_configs,
             ),
         )
+
+    @app.post("/api/pricing")
+    async def set_pricing(request: Request):
+        data = await request.json()
+
+        def optional_decimal(name: str) -> Decimal | None:
+            value = str(data.get(name) or "").strip()
+            if not value:
+                return None
+            try:
+                parsed = Decimal(value)
+            except InvalidOperation as exc:
+                raise HTTPException(status_code=400, detail=f"Некорректная цена: {name}") from exc
+            if parsed < 0:
+                raise HTTPException(status_code=400, detail="Цена не может быть отрицательной")
+            return parsed
+
+        try:
+            config = await pricing_service.set_price(
+                provider=str(data.get("provider") or ""),
+                operation=str(data.get("operation") or ""),
+                model_name=str(data.get("model_name") or "") or None,
+                pricing_basis=str(data.get("pricing_basis") or "UNIT"),
+                unit_price=optional_decimal("unit_price"),
+                input_price=optional_decimal("input_price"),
+                output_price=optional_decimal("output_price"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "ok": True,
+            "pricing_config_id": config.id,
+            "message": "Новая версия цены сохранена; предыдущая осталась в истории.",
+        }
 
 
     @app.post("/api/replay/advance")

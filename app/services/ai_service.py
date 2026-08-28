@@ -14,7 +14,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import AIRequest, AIRequestStatus
+from app.db.models import AIRequest, AIRequestStatus, Vertical
 from app.schemas.leads import (
     BuyerRole,
     FunnelStage,
@@ -1012,6 +1012,7 @@ class BudgetedCachedOpenAIAnalyzer:
                 lease_seconds=self.lease_seconds,
                 reservation_key=f"ai:{request_id}:{claim_token}",
                 worker_id=self.worker_id,
+                provider="openai",
             )
         except Exception as exc:
             await self._release_request_claim(
@@ -1039,6 +1040,8 @@ class BudgetedCachedOpenAIAnalyzer:
                     "billing_state": "UNKNOWN",
                     "error_type": type(exc).__name__,
                 },
+                lead_id=context.lead_id,
+                vertical=Vertical(context.vertical),
             )
             failure_status, failure_type = self._classify_failure(exc)
             await self._release_request_claim(
@@ -1080,6 +1083,8 @@ class BudgetedCachedOpenAIAnalyzer:
                     "fingerprint": fingerprint,
                     "billing_state": "DELIVERED_RESULT_CLAIM_LOST",
                 },
+                lead_id=context.lead_id,
+                vertical=Vertical(context.vertical),
             )
             raise AIAnalysisError("AI result lost its durable claim before persistence")
 
@@ -1088,6 +1093,8 @@ class BudgetedCachedOpenAIAnalyzer:
             units=1,
             success=True,
             details={"model": self.inner.model, "fingerprint": fingerprint},
+            lead_id=context.lead_id,
+            vertical=Vertical(context.vertical),
         )
 
         return analysis

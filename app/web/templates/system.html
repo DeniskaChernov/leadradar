@@ -55,8 +55,27 @@
     <span><b>{{ ai_safety.active_reservations }}</b> активных резерваций</span>
     <span><b>{{ ai_safety.stale_ai_leases }}</b> просроченных AI lease</span>
     <span><b>{{ ai_safety.uncertain_reservations }}</b> неопределённых списаний</span>
+    <span><b>{{ ai_safety.cost_events }}</b> записей себестоимости</span>
   </div>
 </section>
+
+<details class="panel action-form-card">
+  <summary><div><b>Тарифы внешних сервисов</b><span>Версионированные цены для честного расчёта расходов</span></div></summary>
+  <p class="muted">Lead Radar не подставляет выдуманные цены. Если тарифа нет, стоимость операции хранится как «неизвестно», а не как $0.</p>
+  <form data-api-form action="/api/pricing" data-reload="1" class="form-grid">
+    <label>Provider<input name="provider" placeholder="openai или scrapecreators" required></label>
+    <label>Операция<input name="operation" placeholder="lead_analysis или get_profile" required></label>
+    <label>Модель, если применимо<input name="model_name" placeholder="gpt-5-mini"></label>
+    <label>Основа цены<select name="pricing_basis"><option value="UNIT">За единицу</option><option value="REQUEST">За запрос</option><option value="TOKENS">За токен</option></select></label>
+    <label>Цена единицы, USD<input name="unit_price" inputmode="decimal" placeholder="0.001"></label>
+    <label>Цена input token, USD<input name="input_price" inputmode="decimal" placeholder="0.000001"></label>
+    <label>Цена output token, USD<input name="output_price" inputmode="decimal" placeholder="0.000002"></label>
+    <div class="wide"><button class="btn primary" type="submit">Сохранить новую версию цены</button></div>
+  </form>
+  <div class="table-wrap embedded"><table><thead><tr><th>Provider</th><th>Операция / модель</th><th>Основа</th><th>Текущая цена</th><th>Действует с</th></tr></thead><tbody>
+    {% for price in pricing_configs %}<tr><td>{{ price.provider }}</td><td>{{ price.operation }}{% if price.model_name %}<br><small>{{ price.model_name }}</small>{% endif %}</td><td>{{ price.pricing_basis }}</td><td>{% if price.pricing_basis == 'TOKENS' %}input {{ price.input_price or '—' }} · output {{ price.output_price or '—' }}{% else %}{{ price.unit_price or '—' }} USD{% endif %}</td><td>{{ price.effective_from.strftime('%d.%m.%Y %H:%M') }}</td></tr>{% else %}<tr><td colspan="5" class="empty">Тарифы ещё не внесены. Расходы учитываются в единицах, стоимость USD остаётся неизвестной.</td></tr>{% endfor %}
+  </tbody></table></div>
+</details>
 
 
 {% if replay_status %}
