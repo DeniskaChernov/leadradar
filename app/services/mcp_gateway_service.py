@@ -127,11 +127,15 @@ class LeadRadarMCPGateway:
                 trace_id=trace_id,
             )
 
-        # Mock execution for read/write tools
+        # Definitions are retained for the future real registry, but execution is deliberately
+        # unavailable until each tool is wired to a real service/query implementation.
         return ToolExecutionResult(
             tool_name=tool_name,
-            success=True,
-            output={"ok": True, "result": f"Executed {tool_name} with arguments {arguments}"},
+            success=False,
+            output={
+                "error": "NOT_CONNECTED",
+                "message": f"Tool '{tool_name}' is not connected to a real service yet.",
+            },
             approval_granted=approval_granted,
             trace_id=trace_id,
         )

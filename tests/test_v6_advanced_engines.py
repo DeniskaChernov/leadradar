@@ -1,10 +1,7 @@
-"""
-test_v6_advanced_engines.py — Master Phase V6 tests for EvidenceBundle, Google Marketing, and Agent Session Assistant.
-"""
+"""Offline tests for evidence decomposition and imported Google datasets."""
 
 from __future__ import annotations
 
-from app.services.agent_session_service import AgentSessionAssistant
 from app.services.evidence_bundle_service import EvidenceBundleEngine
 from app.services.google_marketing_service import GoogleMarketingEngine
 
@@ -43,16 +40,3 @@ def test_google_marketing_search_console():
     assert len(insights) == 1
     assert insights[0].ctr_percent == 10.0
     assert insights[0].average_position == 2.1
-
-
-def test_agent_session_assistant_queries():
-    # Test "Why HOT?" query
-    res1 = AgentSessionAssistant.process_query("Почему HOT?", page_context={"lead_id": 42})
-    assert "HOT" in res1.reply
-    assert len(res1.evidence_citations) >= 1
-    assert len(res1.tool_results) >= 1
-
-    # Test "What offer?" query
-    res2 = AgentSessionAssistant.process_query("Что предложить клиенту?", page_context={"lead_id": 42})
-    assert "Обеденный комплект" in res2.reply
-    assert "catalog_sku_dining_set_6p" in res2.evidence_citations

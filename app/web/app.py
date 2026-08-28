@@ -22,6 +22,10 @@ from app.services.market_intelligence_service import MarketIntelligenceService
 from app.services.monitor_controller import MonitorController
 from app.services.notification_readiness_service import NotificationReadinessService
 from app.services.pricing_config_service import PricingConfigService
+from app.services.product_catalog_service import (
+    ALLOWED_PRODUCT_CATEGORIES,
+    ProductCatalogService,
+)
 from app.services.significant_change_service import SignificantChangeDetector
 from app.services.usage_service import ExternalUsageService
 from app.web.auth import TelegramAuthError, TelegramWebAuth
@@ -73,6 +77,7 @@ def build_web_app(
     # an ambiguous signal becomes AI_PENDING instead of silently spending tokens.
     market_service = MarketIntelligenceService(workflow.session_factory)
     discovery_service = DiscoveryService(workflow.session_factory)
+    product_catalog_service = ProductCatalogService(workflow.session_factory)
     local_audience_engine = AudienceEngine(
         workflow.session_factory, settings.hot_lead_threshold
     )
@@ -285,10 +290,35 @@ def build_web_app(
         data = await queries.lead_detail(lead_id)
         if data is None:
             raise HTTPException(status_code=404, detail="Лид не найден")
+        commercial_competitors = {
+            competitor.id
+            for _comment, competitor, _post, history_lead in data["history"]
+            if history_lead is not None
+            and (history_lead.analysis_details or {}).get("commercial_quality")
+            not in {None, "NON_COMMERCIAL"}
+        }
+        data["catalog_recommendation"] = await product_catalog_service.recommend_for_lead(
+            data["lead"],
+            commercial_competitor_count=len(commercial_competitors),
+        )
         return templates.TemplateResponse(
             request=request,
             name="lead_detail.html",
             context=base_context(request, **data),
+        )
+
+    @app.get("/catalog", response_class=HTMLResponse)
+    async def catalog(request: Request, vertical: str | None = None):
+        products = await product_catalog_service.products(vertical=vertical)
+        return templates.TemplateResponse(
+            request=request,
+            name="catalog.html",
+            context=base_context(
+                request,
+                products=products,
+                catalog_vertical=vertical or "ALL",
+                product_categories=sorted(ALLOWED_PRODUCT_CATEGORIES),
+            ),
         )
 
     @app.get("/contacts", response_class=HTMLResponse)
@@ -497,6 +527,16 @@ def build_web_app(
                 "configured": bool(settings.scrapecreators_api_key or settings.brightdata_api_key),
                 "enabled": settings.instagram_live_enabled,
                 "detail": f"{usage.get('instagram', 0)}/{settings.instagram_daily_request_limit} операций сегодня",
+            },
+            "AI Agent / MCP": {
+                "configured": False,
+                "enabled": False,
+                "detail": "NOT_CONNECTED · демонстрационные ответы отключены",
+            },
+            "Meta / Google": {
+                "configured": False,
+                "enabled": False,
+                "detail": "NOT_CONNECTED · статические прототипы не являются live API",
             },
             "База данных": {"configured": True, "enabled": True, "detail": "Источник истины"},
         }
@@ -820,33 +860,13 @@ def build_web_app(
 
     @app.post("/api/agent/query")
     async def agent_query_endpoint(request: Request):
-        from app.services.agent_session_service import AgentSessionAssistant
-
-        payload = await _json_or_form(request)
-        query = str(payload.get("query") or "").strip()
-        context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
-        approval = bool(payload.get("approval_granted", False))
-
-        response = AgentSessionAssistant.process_query(
-            query,
-            page_context=context,
-            approval_granted=approval,
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "AI Agent пока не подключён. Старый демонстрационный ответ отключён, "
+                "потому что он не был основан на данных Lead Radar."
+            ),
         )
-        return {
-            "ok": True,
-            "reply": response.reply,
-            "suggested_actions": response.suggested_actions,
-            "evidence_citations": response.evidence_citations,
-            "tool_results": [
-                {
-                    "tool_name": r.tool_name,
-                    "success": r.success,
-                    "output": r.output,
-                    "approval_granted": r.approval_granted,
-                }
-                for r in response.tool_results
-            ],
-        }
 
 
 
@@ -1013,6 +1033,28 @@ def build_web_app(
             return {"ok": True, "message": "Изменение просмотрено"}
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/catalog/{product_id}")
+    async def update_catalog_product(request: Request, product_id: int):
+        payload = await _json_or_form(request)
+        active = None
+        if "active" in payload:
+            active = str(payload.get("active")).lower() in {"1", "true", "yes", "on"}
+        try:
+            product = await product_catalog_service.update_verified_fields(
+                product_id,
+                category=str(payload["category"]) if "category" in payload else None,
+                stock=payload.get("stock") if "stock" in payload else None,
+                cogs=payload.get("cogs") if "cogs" in payload else None,
+                active=active,
+            )
+            return {
+                "ok": True,
+                "product_id": product.id,
+                "message": "Подтверждённые данные товара сохранены",
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/competitors/{competitor_id}/settings")
     async def update_competitor(request: Request, competitor_id: int):

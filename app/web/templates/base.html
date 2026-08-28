@@ -26,6 +26,7 @@
       <a class="nav" href="/rattan#signals"><span aria-hidden="true">⌁</span>Сигналы</a>
       <a class="nav" href="/rattan#companies"><span aria-hidden="true">◫</span>Компании</a>
       <a class="nav" href="/audiences?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true">◉</span>Аудитории</a>
+      <a class="nav {% if active_path.startswith('/catalog') %}active{% endif %}" href="/catalog?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true">▤</span>Каталог</a>
       <a class="nav" href="/system?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true">⚙</span>Источники</a>
       {% else %}
       <a class="nav {% if active_path == '/' %}active{% endif %}" href="/" {% if active_path == '/' %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="layout-dashboard">⌂</i></span>Обзор</a>
@@ -39,6 +40,7 @@
       <a class="nav {% if active_path.startswith('/discovery') %}active{% endif %}" href="/discovery" {% if active_path.startswith('/discovery') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="telescope">⌕</i></span>Разведка</a>
       <a class="nav {% if active_path.startswith('/competitors') %}active{% endif %}" href="/competitors" {% if active_path.startswith('/competitors') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="building-2">◫</i></span>Конкуренты</a>
       <a class="nav {% if active_path.startswith('/openings') %}active{% endif %}" href="/openings" {% if active_path.startswith('/openings') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="store">🏪</i></span>Открытия</a>
+      <a class="nav {% if active_path.startswith('/catalog') %}active{% endif %}" href="/catalog" {% if active_path.startswith('/catalog') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="notebook-tabs">▤</i></span>Каталог</a>
       <a class="nav {% if active_path.startswith('/roadmap') %}active{% endif %}" href="/roadmap" {% if active_path.startswith('/roadmap') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="route">↗</i></span>Развитие</a>
       <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system" {% if active_path.startswith('/system') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="settings-2">⚙</i></span>Система</a>
       {% endif %}

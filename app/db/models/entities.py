@@ -344,6 +344,35 @@ class MarketCandidateDiff(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
+class Product(Base):
+    __tablename__ = "products"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    canonical_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    sku: Mapped[str | None] = mapped_column(String(128), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    vertical: Mapped[Vertical] = mapped_column(
+        Enum(Vertical, native_enum=False), default=Vertical.FURNITURE, index=True
+    )
+    category: Mapped[str] = mapped_column(String(64), default="UNCONFIRMED", index=True)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    cogs: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    stock: Mapped[int | None] = mapped_column(Integer)
+    minimum_order_quantity: Mapped[int | None] = mapped_column(Integer)
+    dimensions_json: Mapped[dict[str, float] | None] = mapped_column(JSON)
+    colors_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    max_load_kg: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    b2b_suitability: Mapped[str] = mapped_column(String(32), default="UNCONFIRMED")
+    photo_url: Mapped[str | None] = mapped_column(Text)
+    source_reference: Mapped[str | None] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class Post(Base):
     __tablename__ = "posts"
     __table_args__ = (

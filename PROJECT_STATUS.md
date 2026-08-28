@@ -19,8 +19,9 @@
 | Rattan Vertical V2 | OFFLINE · taxonomy safety hardened | 30 golden + 194 repository tests | UI offline | No |
 | Unit Economics | OFFLINE · DB-backed ledger aggregation | 197 repository tests + UI render | No | No |
 | Discovery Center / Diff Engine | OFFLINE · CSV/XLSX review queue implemented | Repository tests + migration + UI render | No | No |
+| Product Catalog / Next Best Action | OFFLINE · confirmed DB catalog and grounded actions | Repository tests + migration + UI render | No | No |
 | Premium UI / Telegram Bot | Read-only readiness + durable outbox implemented | Unit/concurrency/browser dry-run | Delivery not run | No |
-| Real Agent / MCP | Prototype/mock | Fixture tests only | No | No |
+| Real Agent / MCP | NOT_CONNECTED · fake execution disabled | Honest 503/NOT_CONNECTED tests | No | No |
 | Meta / Google | Not connected | Offline prototype only | No | No |
 | Offline 500–1000 signal pilot | 600-case robustness replay passed | 60 curated roots × 10 variants; unseen corpus pending | No | No |
 | Controlled live pilot | Blocked | Missing gate evidence | No | No |
@@ -116,6 +117,26 @@
 - Gross Profit не рассчитывается до появления подтверждённого COGS проданной позиции;
 - полный offline gate: **197 tests passed**, Ruff и compileall чистые;
 - live billing reconciliation и платные вызовы не выполнялись, production ready остаётся `No`.
+
+## Master Phase 5 — Confirmed Catalog and grounded Next Best Action
+
+- создана таблица products и отдельная Alembic migration; каталог стал частью БД;
+- seed содержит ровно 10 подтверждённых позиций из master specification, без
+  дополнительных демонстрационных товаров;
+- SKU, stock, COGS, colors и category не угадываются: до ручной проверки они остаются
+  NULL/UNCONFIRMED;
+- startup sync идемпотентен и не перезаписывает подтверждения менеджера;
+- экран /catalog показывает происхождение данных, точные цены/размеры/нагрузку и честные
+  unknown states; менеджер может подтвердить category, stock и COGS;
+- Next Best Action получает только сохранённые Product records и не обещает скидку,
+  наличие, срок доставки, оптовую цену, 3D-файлы или агентское вознаграждение;
+- при отсутствии подтверждённого совпадения менеджер получает безопасное действие:
+  уточнить модель/параметры и проверить наличие перед предложением;
+- удалён hardcoded AgentSessionAssistant с fake HOT 91, fake evidence и fake SKU;
+  /api/agent/query и MCP execution честно возвращают NOT_CONNECTED;
+- контракт и ограничения описаны в docs/PRODUCT_CATALOG.md;
+- полный offline gate: **205 tests passed**, Ruff и compileall чистые;
+- live/paid вызовы не выполнялись, maturity остаётся OFFLINE.
 
 ## Master Phase F — Discovery Center and Diff Engine
 

@@ -44,14 +44,14 @@ def test_targeting_recipes_generation():
     assert "BROAD" in recipe_types
 
 
-def test_mcp_gateway_read_tool_execution():
+def test_mcp_gateway_read_tool_is_honestly_not_connected():
     result = LeadRadarMCPGateway.execute_tool(
         "lead.search",
         {"query": "dining set"},
         approval_granted=False,
     )
-    assert result.success is True
-    assert result.output["ok"] is True
+    assert result.success is False
+    assert result.output["error"] == "NOT_CONNECTED"
 
 
 def test_mcp_gateway_write_tool_requires_approval():
@@ -64,11 +64,12 @@ def test_mcp_gateway_write_tool_requires_approval():
     assert res_no.success is False
     assert "requires explicit human approval" in res_no.output["error"]
 
-    # With approval -> succeeds
+    # Approval does not turn a mock into a real integration.
     res_yes = LeadRadarMCPGateway.execute_tool(
         "meta.create_campaign_draft",
         {"recipe_type": "NARROW", "budget_usd": 100},
         approval_granted=True,
     )
-    assert res_yes.success is True
+    assert res_yes.success is False
+    assert res_yes.output["error"] == "NOT_CONNECTED"
     assert res_yes.approval_granted is True

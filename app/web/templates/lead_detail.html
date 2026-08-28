@@ -35,6 +35,11 @@
 </section>
 {% endif %}
 
+<section class="panel catalog-action-card">
+  <div><span class="eyebrow">GROUNDED NEXT BEST ACTION</span><h2>{{ catalog_recommendation.title }}</h2><p>{{ catalog_recommendation.description }}</p></div>
+  {% if catalog_recommendation.recommended_product_id %}<a class="btn primary" href="/catalog#product-{{ catalog_recommendation.recommended_product_id }}">Открыть товар</a>{% else %}<a class="btn ghost" href="/catalog">Проверить каталог</a>{% endif %}
+</section>
+
 <div class="lead-layout">
   <div class="lead-main">
     <section class="panel">
