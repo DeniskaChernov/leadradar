@@ -235,3 +235,21 @@ async def test_local_rules_raise_priority_for_cross_competitor_history():
     assert base is not None and comparison is not None
     assert comparison.lead_score > base.lead_score
     assert comparison.lead_score <= 99
+
+
+def test_commercial_plus_cta_tolerates_benign_punctuation_and_emoji():
+    analyzer = RuleBasedLeadAnalyzer()
+    for comment in ("+?", "+!", "+ 🙏", "+..."):
+        result = analyzer.classify(
+            LeadAnalysisContext(
+                competitor="aiko.uz",
+                post_caption="Оставьте плюс, чтобы получить каталог и цены",
+                comment=comment,
+                username="buyer",
+                previous_signals=[],
+                previous_interests=[],
+            )
+        )
+        assert result is not None
+        assert result.is_lead is True
+        assert result.intent == Intent.BUY

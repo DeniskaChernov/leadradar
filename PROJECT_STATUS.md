@@ -20,7 +20,7 @@
 | Premium UI / Telegram Bot | Partial | Smoke/unit only | No | No |
 | Real Agent / MCP | Prototype/mock | Fixture tests only | No | No |
 | Meta / Google | Not connected | Offline prototype only | No | No |
-| Offline 500–1000 signal pilot | Not run | Missing | No | No |
+| Offline 500–1000 signal pilot | 540-case robustness replay passed | 54 curated roots × 10 variants; unseen corpus pending | No | No |
 | Controlled live pilot | Blocked | Missing gate evidence | No | No |
 
 ## Phase C — Lead Scoring V3
@@ -34,7 +34,7 @@
 - AI fingerprint учитывает только коммерческую историю, stable contact identity, vertical и catalog context version;
 - OpenAI output не может сохранить выдуманные Evidence IDs; без Evidence confidence снижается;
 - текущая golden calibration содержит только 30 сценариев — pilot gate 150–300 ещё не выполнен;
-- полный offline suite после Phase E: 175 тестов, внешних вызовов нет.
+- полный offline suite после Phase F: 178 тестов, внешних вызовов нет.
 
 ## Phase D — Audience Engine V3
 
@@ -66,8 +66,23 @@
   совпадения по «кг», кабелю и обычной мебели;
 - рабочая БД: 22 доказательных rattan-сигнала и 1 подтверждённая компания;
 - integrity gate: 0 дублей и 0 вертикальных рассогласований Lead/Evidence/PublicSignal;
-- полный offline gate: 175 tests passed, Ruff, compileall и Alembic check чистые;
+- полный offline gate после Phase F: 178 tests passed, Ruff, compileall и Alembic check чистые;
 - live discovery и внешний pilot не запускались, поэтому production ready остаётся `No`.
+
+## Phase F — Deterministic Offline Pilot
+
+- добавлен network-free runner `python -m scripts.run_offline_pilot`;
+- 54 вручную размеченных корневых сценария разворачиваются в 540 вариантов регистра,
+  пробелов, пунктуации и emoji;
+- текущий robustness replay: lead precision/recall/intent accuracy 100%, rattan
+  precision/recall/layer accuracy 100%;
+- первый ingestion создаёт ровно 540 Comment/PublicSignal/Evidence, идентичный повтор —
+  0 новых записей и 0 дублей;
+- pilot выявил и помог исправить ложные пропуски коммерческого CTA `+?`, `+!`,
+  `+ 🙏`, `+...`, не ослабляя правило для плюса без явного CTA в подписи;
+- результат и ограничения задокументированы в `docs/OFFLINE_PILOT_REPORT.md`;
+- это robustness-набор из 54 независимых корней, а не 540 независимо собранных
+  реальных примеров; unseen public-data pilot и live pilot всё ещё не пройдены.
 
 ## Post-audit hardening — AI cost ledger
 

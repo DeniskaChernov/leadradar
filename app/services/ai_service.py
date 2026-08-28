@@ -163,7 +163,7 @@ class RuleBasedLeadAnalyzer:
                 risk_flags=["Явный отказ от покупки"],
             )
 
-        if re.fullmatch(r"\+{1,3}", raw.replace(" ", "")):
+        if re.fullmatch(r"\+{1,3}[?!.,…🙏]*", raw.replace(" ", "")):
             if self._caption_has_commercial_plus_cta(caption):
                 score = 92
                 return self._result(
