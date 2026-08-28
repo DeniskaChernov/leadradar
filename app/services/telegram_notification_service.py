@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from html import escape
 from typing import ClassVar
 from uuid import uuid4
+from weakref import WeakKeyDictionary
 
 from aiogram import Bot
 from aiogram.exceptions import (
@@ -41,7 +42,9 @@ logger = logging.getLogger(__name__)
 
 
 class TelegramLeadNotifier:
-    _claim_edit_lock: ClassVar[asyncio.Lock] = asyncio.Lock()
+    _message_edit_locks: ClassVar[
+        WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock]
+    ] = WeakKeyDictionary()
 
     def __init__(
         self,
@@ -177,74 +180,93 @@ class TelegramLeadNotifier:
                 )
             )
         for log_id in log_ids:
-            claim = await self._claim_message_edit(log_id)
-            if claim is None:
-                continue
-            chat_id, message_id, edit_token = claim
-            try:
-                await self.bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text=render_lead_card(card),
-                    reply_markup=lead_keyboard(card),
-                )
-                async with self.session_factory() as session:
-                    log = await session.get(NotificationLog, log_id)
-                    if (
-                        log is not None
-                        and log.content_version < 2
-                        and log.edit_claim_token == edit_token
-                    ):
-                        log.content_version = 2
-                        log.error = None
-                        log.edit_claim_token = None
-                        log.edit_lease_expires_at = None
-                        await session.commit()
-            except Exception as exc:
-                logger.warning(
-                    "telegram_message_refresh_failed lead_id=%s chat_id=%s error_type=%s",
-                    lead_id,
-                    chat_id,
-                    type(exc).__name__,
-                )
-                await self._send_enrichment_fallback(log_id, card, exc, edit_token)
+            # Keep the local lock through the network edit and persistence. The DB claim remains
+            # the cross-process guard; this lock prevents two notifier instances in one process
+            # from observing SQLite's delayed visibility and performing the same edit twice.
+            async with self._message_edit_lock():
+                claim = await self._claim_message_edit(log_id)
+                if claim is None:
+                    continue
+                chat_id, message_id, edit_token = claim
+                try:
+                    await self.bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=render_lead_card(card),
+                        reply_markup=lead_keyboard(card),
+                    )
+                    async with self.session_factory() as session:
+                        log = await session.get(NotificationLog, log_id)
+                        if (
+                            log is not None
+                            and log.content_version < 2
+                            and log.edit_claim_token == edit_token
+                        ):
+                            log.content_version = 2
+                            log.error = None
+                            log.edit_claim_token = None
+                            log.edit_lease_expires_at = None
+                            await session.commit()
+                except Exception as exc:
+                    logger.warning(
+                        "telegram_message_refresh_failed lead_id=%s chat_id=%s error_type=%s",
+                        lead_id,
+                        chat_id,
+                        type(exc).__name__,
+                    )
+                    await self._send_enrichment_fallback(log_id, card, exc, edit_token)
+
+    @classmethod
+    def _message_edit_lock(cls) -> asyncio.Lock:
+        loop = asyncio.get_running_loop()
+        lock = cls._message_edit_locks.get(loop)
+        if lock is None:
+            lock = asyncio.Lock()
+            cls._message_edit_locks[loop] = lock
+        return lock
 
     async def _claim_message_edit(
         self, log_id: int
     ) -> tuple[int, int, str] | None:
-        async with self._claim_edit_lock:
-            now = datetime.now(UTC)
-            token = uuid4().hex
-            async with self.session_factory() as session:
-                claimed = (
-                    await session.execute(
-                        update(NotificationLog)
-                        .where(
-                            NotificationLog.id == log_id,
-                            NotificationLog.status == NotificationStatus.SENT,
-                            NotificationLog.message_id.is_not(None),
-                            NotificationLog.content_version < 2,
-                            or_(
+        now = datetime.now(UTC)
+        token = uuid4().hex
+        async with self.session_factory() as session:
+            claimed = (
+                await session.execute(
+                    update(NotificationLog)
+                    .where(
+                        NotificationLog.id == log_id,
+                        NotificationLog.status == NotificationStatus.SENT,
+                        NotificationLog.message_id.is_not(None),
+                        or_(
+                            and_(
+                                NotificationLog.content_version == 1,
                                 NotificationLog.edit_claim_token.is_(None),
-                                and_(
-                                    NotificationLog.edit_lease_expires_at.is_not(None),
-                                    NotificationLog.edit_lease_expires_at <= now,
-                                ),
                             ),
-                        )
-                        .values(
-                            edit_claim_token=token,
-                            edit_lease_expires_at=now
-                            + timedelta(seconds=self.lease_seconds),
-                            edit_attempt_count=NotificationLog.edit_attempt_count + 1,
-                        )
-                        .returning(NotificationLog.chat_id, NotificationLog.message_id)
+                            and_(
+                                NotificationLog.content_version == 0,
+                                NotificationLog.edit_claim_token.is_not(None),
+                                NotificationLog.edit_lease_expires_at.is_not(None),
+                                NotificationLog.edit_lease_expires_at <= now,
+                            ),
+                        ),
                     )
-                ).one_or_none()
-                await session.commit()
-            if claimed is None:
-                return None
-            return int(claimed[0]), int(claimed[1]), token
+                    .values(
+                        # Version 0 is a durable in-progress marker. It closes a SQLite
+                        # visibility race that allowed two workers to claim version 1.
+                        content_version=0,
+                        edit_claim_token=token,
+                        edit_lease_expires_at=now
+                        + timedelta(seconds=self.lease_seconds),
+                        edit_attempt_count=NotificationLog.edit_attempt_count + 1,
+                    )
+                    .returning(NotificationLog.chat_id, NotificationLog.message_id)
+                )
+            ).one_or_none()
+            await session.commit()
+        if claimed is None:
+            return None
+        return int(claimed[0]), int(claimed[1]), token
 
 
     async def _send_enrichment_fallback(
@@ -296,6 +318,7 @@ class TelegramLeadNotifier:
                 if log is not None and log.edit_claim_token == edit_token:
                     if self._definitely_not_delivered(fallback_error):
                         log.enrichment_followup_started_at = None
+                        log.content_version = 1
                         log.edit_claim_token = None
                         log.edit_lease_expires_at = None
                     else:
