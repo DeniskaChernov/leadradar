@@ -17,7 +17,7 @@
 | Lead Scoring V3 | OFFLINE · evidence-first rule pipeline | 200 semantic golden + component tests | No | No |
 | Audience Engine V3 | OFFLINE · evidence-first core hardened | 193 offline tests; audience golden expansion pending | UI offline | No |
 | Rattan Vertical V2 | OFFLINE · taxonomy safety hardened | 30 golden + 194 repository tests | UI offline | No |
-| Unit Economics ledger | Not implemented | Calculator tests only | No | No |
+| Unit Economics | OFFLINE · DB-backed ledger aggregation | 197 repository tests + UI render | No | No |
 | Premium UI / Telegram Bot | Read-only readiness + durable outbox implemented | Unit/concurrency/browser dry-run | Delivery not run | No |
 | Real Agent / MCP | Prototype/mock | Fixture tests only | No | No |
 | Meta / Google | Not connected | Offline prototype only | No | No |
@@ -99,6 +99,22 @@
 - integrity gate: 0 дублей и 0 вертикальных рассогласований Lead/Evidence/PublicSignal;
 - полный offline gate: **194 tests passed**, Ruff и compileall чистые;
 - live discovery и внешний pilot не запускались, поэтому production ready остаётся `No`.
+
+## Master Phase E — Unit Economics
+
+- старый in-memory калькулятор удалён: экономика теперь строится из `CostEvent`,
+  `PublicSignal`, `Lead` и фактических WON-сделок;
+- доступны периоды 24 часа, 7 и 30 дней, разрезы по provider, vertical и competitor source;
+- рассчитываются Cost per Signal, Commercial Signal, Lead, HOT, B2B и WON;
+- если хотя бы один cost event не имеет тарифа, производные стоимости показываются как
+  неизвестные, а не как ложный `$0` или неполная точная цифра;
+- Instagram wrapper сохраняет нормализованный `source_account`, чтобы новые расходы можно
+  было связать с конкурентом без прямой зависимости provider-адаптера от БД;
+- `/analytics` стал рабочим экраном экономики и заменил N+1 расчёт эффективности источников;
+- ROI не рассчитывается: расходы сейчас в USD, выручка в UZS, versioned FX policy отсутствует;
+- Gross Profit не рассчитывается до появления подтверждённого COGS проданной позиции;
+- полный offline gate: **197 tests passed**, Ruff и compileall чистые;
+- live billing reconciliation и платные вызовы не выполнялись, production ready остаётся `No`.
 
 ## Phase F — Deterministic Offline Pilot
 

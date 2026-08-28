@@ -328,8 +328,10 @@ def build_web_app(
         )
 
     @app.get("/analytics", response_class=HTMLResponse)
-    async def analytics(request: Request):
-        data = await queries.analytics()
+    async def analytics(request: Request, days: int = 30):
+        if days not in {1, 7, 30}:
+            days = 30
+        data = await queries.analytics(days=days)
         return templates.TemplateResponse(
             request=request,
             name="analytics.html",

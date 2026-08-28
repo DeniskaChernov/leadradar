@@ -40,6 +40,7 @@ from app.db.models import (
     TaskStatus,
     Vertical,
 )
+from app.services.unit_economics_service import UnitEconomicsEngine
 
 OPEN_LEAD_STATUSES = [
     LeadStatus.ANALYZING,
@@ -1479,63 +1480,11 @@ class WebQueryService:
                 )
             return (await session.execute(stmt)).all()
 
-    async def analytics(self) -> dict:
+    async def analytics(self, days: int = 30) -> dict:
+        economics = await UnitEconomicsEngine(
+            self.session_factory, self.hot_threshold
+        ).snapshot(days)
         async with self.session_factory() as session:
-            competitors = (await session.scalars(select(Competitor))).all()
-            sources: list[dict] = []
-            for competitor in competitors:
-                signals = int(
-                    await session.scalar(
-                        select(func.count(Comment.id)).where(Comment.competitor_id == competitor.id)
-                    )
-                    or 0
-                )
-                leads = int(
-                    await session.scalar(
-                        select(func.count(Lead.id)).where(Lead.competitor_id == competitor.id)
-                    )
-                    or 0
-                )
-                hot = int(
-                    await session.scalar(
-                        select(func.count(Lead.id)).where(
-                            Lead.competitor_id == competitor.id,
-                            Lead.lead_score >= self.hot_threshold,
-                            Lead.status != LeadStatus.NOT_LEAD,
-                        )
-                    )
-                    or 0
-                )
-                won = int(
-                    await session.scalar(
-                        select(func.count(Deal.id))
-                        .join(Lead, Lead.id == Deal.lead_id)
-                        .where(Lead.competitor_id == competitor.id, Deal.status == DealStatus.WON)
-                    )
-                    or 0
-                )
-                revenue = (
-                    await session.scalar(
-                        select(func.coalesce(func.sum(Deal.final_amount), 0))
-                        .join(Lead, Lead.id == Deal.lead_id)
-                        .where(Lead.competitor_id == competitor.id, Deal.status == DealStatus.WON)
-                    )
-                    or 0
-                )
-                sources.append(
-                    {
-                        "competitor": competitor,
-                        "signals": signals,
-                        "leads": leads,
-                        "hot": hot,
-                        "won": won,
-                        "revenue": revenue,
-                        "signal_to_hot": round((hot / signals * 100), 1) if signals else 0,
-                        "hot_to_sale": round((won / hot * 100), 1) if hot else 0,
-                    }
-                )
-            sources.sort(key=lambda item: (item["revenue"], item["hot"]), reverse=True)
-
             funnel_rows = (
                 await session.execute(
                     select(Lead.status, func.count(Lead.id)).group_by(Lead.status)
@@ -1573,7 +1522,7 @@ class WebQueryService:
                 or 0
             )
         return {
-            "sources": sources,
+            "economics": economics,
             "funnel": {getattr(key, "value", str(key)): value for key, value in funnel_rows},
             "intents": intent_rows,
             "products": product_rows,

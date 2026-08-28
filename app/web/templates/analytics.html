@@ -3,11 +3,34 @@
 {% block heading %}Аналитика{% endblock %}
 {% block subheading %}Какие источники, сигналы и товары реально приводят к продажам{% endblock %}
 {% block content %}
+{% macro usd(value) -%}{% if value is not none %}${{ '%.6f'|format(value) }}{% else %}—{% endif %}{%- endmacro %}
 <div class="page-help"><b>Смотрим не на количество комментариев, а на деньги</b><span>Система должна со временем повышать приоритет тех конкурентов и типов запросов, откуда чаще приходят реальные продажи.</span></div>
 
+<form class="filters" method="get" aria-label="Период экономики">
+  <a class="btn {% if economics.days != 1 %}ghost{% endif %}" href="/analytics?days=1">24 часа</a>
+  <a class="btn {% if economics.days != 7 %}ghost{% endif %}" href="/analytics?days=7">7 дней</a>
+  <a class="btn {% if economics.days != 30 %}ghost{% endif %}" href="/analytics?days=30">30 дней</a>
+</form>
+
+<section class="metrics economics-metrics" aria-label="Экономика периода">
+  <div class="metric"><span>Известные расходы</span><strong>{% if economics.cost_events %}{{ usd(economics.known_spend_usd) }}{% else %}—{% endif %}</strong><small>{{ economics.cost_events }} cost events · покрытие {{ economics.cost_coverage_percent }}%</small></div>
+  <div class="metric"><span>Стоимость лида</span><strong>{{ usd(economics.cost_per_lead_usd) }}</strong><small>{{ economics.leads_count }} лидов</small></div>
+  <div class="metric"><span>Стоимость HOT</span><strong>{{ usd(economics.cost_per_hot_usd) }}</strong><small>{{ economics.hot_count }} горячих</small></div>
+  <div class="metric"><span>Стоимость B2B</span><strong>{{ usd(economics.cost_per_b2b_usd) }}</strong><small>{{ economics.b2b_count }} B2B</small></div>
+  <div class="metric"><span>Стоимость продажи</span><strong>{{ usd(economics.cost_per_won_usd) }}</strong><small>{{ economics.won_count }} WON</small></div>
+  <div class="metric success"><span>Выручка</span><strong>{{ money(economics.revenue_uzs) }}</strong><small>UZS · {{ economics.revenue_missing_deals }} сделок без суммы</small></div>
+</section>
+
+<div class="alert {% if economics.unpriced_events %}warning{% else %}info{% endif %}"><b>ROI не подменяется догадкой</b><span>{{ economics.roi_status }} Gross profit также недоступен, пока в каталоге нет подтверждённого COGS.</span></div>
+
+<div class="analytics-grid">
+  <section class="panel"><div class="panel-head"><div><h2>Расходы по провайдерам</h2><p>Только события из неизменяемого cost ledger</p></div></div><div class="table-wrap embedded"><table><thead><tr><th>Провайдер</th><th>Операции</th><th>Единицы</th><th>Известно USD</th><th>Без тарифа</th></tr></thead><tbody>{% for item in economics.providers %}<tr><td><b>{{ item.key }}</b></td><td>{{ item.events }}</td><td>{{ item.units }}</td><td>{{ usd(item.known_spend_usd) }}</td><td>{{ item.unpriced_events }}</td></tr>{% else %}<tr><td colspan="5" class="empty">За период cost events не записаны.</td></tr>{% endfor %}</tbody></table></div></section>
+  <section class="panel"><div class="panel-head"><div><h2>Атрибуция расходов</h2><p>Мебель, ротанг и неатрибутированные операции</p></div></div><div class="table-wrap embedded"><table><thead><tr><th>Вертикаль</th><th>Операции</th><th>Единицы</th><th>Известно USD</th><th>Без тарифа</th></tr></thead><tbody>{% for item in economics.verticals %}<tr><td><b>{{ item.label }}</b></td><td>{{ item.events }}</td><td>{{ item.units }}</td><td>{{ usd(item.known_spend_usd) }}</td><td>{{ item.unpriced_events }}</td></tr>{% else %}<tr><td colspan="5" class="empty">Нет данных для атрибуции.</td></tr>{% endfor %}</tbody></table></div></section>
+</div>
+
 <section class="panel analytics-section">
-  <div class="panel-head"><div><h2>Эффективность конкурентов</h2><p>От сигнала до продажи</p></div></div>
-  <div class="table-wrap embedded"><table><thead><tr><th>Источник</th><th>Сигналы</th><th>Лиды</th><th>Горячие</th><th>Продажи</th><th>Выручка</th><th>Сигнал → HOT</th><th>HOT → продажа</th></tr></thead><tbody>{% for item in sources %}<tr><td><b>@{{ item.competitor.normalized_handle }}</b><small>{{ competitor_category_label(item.competitor.category) }} · приоритет {{ item.competitor.tier }}</small></td><td>{{ item.signals }}</td><td>{{ item.leads }}</td><td>{{ item.hot }}</td><td>{{ item.won }}</td><td><strong>{{ money(item.revenue) }} сум</strong></td><td>{{ item.signal_to_hot }}%</td><td>{{ item.hot_to_sale }}%</td></tr>{% else %}<tr><td colspan="8" class="empty">Недостаточно данных.</td></tr>{% endfor %}</tbody></table></div>
+  <div class="panel-head"><div><h2>Экономика источников</h2><p>Расходы атрибутируются напрямую, через lead или сохранённый source account</p></div></div>
+  <div class="table-wrap embedded"><table><thead><tr><th>Источник</th><th>Сигналы</th><th>Коммерч.</th><th>Лиды</th><th>HOT</th><th>B2B</th><th>WON</th><th>Расход USD</th><th>CPL</th><th>Выручка UZS</th></tr></thead><tbody>{% for item in economics.sources %}<tr><td><b>{{ item.source_name }}</b></td><td>{{ item.signals_count }}</td><td>{{ item.commercial_signals_count }}</td><td>{{ item.leads_count }}</td><td>{{ item.hot_count }}</td><td>{{ item.b2b_count }}</td><td>{{ item.won_count }}</td><td>{% if item.cost_events %}{{ usd(item.known_spend_usd) }}{% else %}—{% endif %}{% if item.unpriced_events %}<small>{{ item.unpriced_events }} без тарифа</small>{% endif %}</td><td>{{ usd(item.cost_per_lead_usd) }}</td><td><strong>{{ money(item.revenue_uzs) }}</strong></td></tr>{% else %}<tr><td colspan="10" class="empty">Недостаточно данных.</td></tr>{% endfor %}</tbody></table></div>
 </section>
 
 <div class="analytics-grid">

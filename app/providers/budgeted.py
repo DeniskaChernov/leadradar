@@ -128,10 +128,18 @@ class BudgetedInstagramProvider(InstagramProvider):
             self.scan_budget.consume(units)
         return reservation_id
 
-    async def _call(self, operation: str, call: Callable[[], Awaitable[T]]) -> T:
+    async def _call(
+        self,
+        operation: str,
+        call: Callable[[], Awaitable[T]],
+        *,
+        source_account: str | None = None,
+    ) -> T:
         reservation_id = await self._reserve(operation, 1)
         await self.usage.mark_call_started(reservation_id)
         details = {"provider": self.inner.name}
+        if source_account:
+            details["source_account"] = source_account.strip().lower().lstrip("@")
         try:
             result = await call()
         except Exception:
@@ -145,13 +153,21 @@ class BudgetedInstagramProvider(InstagramProvider):
         return result
 
     async def get_profile(self, handle: str) -> InstagramProfile:
-        return await self._call("get_profile", lambda: self.inner.get_profile(handle))
+        return await self._call(
+            "get_profile", lambda: self.inner.get_profile(handle), source_account=handle
+        )
 
     async def get_reels(self, handle: str) -> list[InstagramPost]:
-        return await self._call("get_reels", lambda: self.inner.get_reels(handle))
+        return await self._call(
+            "get_reels", lambda: self.inner.get_reels(handle), source_account=handle
+        )
 
     async def get_post(self, url: str, competitor: str) -> InstagramPost:
-        return await self._call("get_post", lambda: self.inner.get_post(url, competitor))
+        return await self._call(
+            "get_post",
+            lambda: self.inner.get_post(url, competitor),
+            source_account=competitor,
+        )
 
     async def get_comments(self, post: InstagramPost) -> list[InstagramComment]:
         return (await self.get_comment_batch(post)).comments
@@ -193,7 +209,11 @@ class BudgetedInstagramProvider(InstagramProvider):
                 reservation_id,
                 units=effective_pages,
                 success=False,
-                details={"provider": self.inner.name, "pages": 1},
+                details={
+                    "provider": self.inner.name,
+                    "pages": 1,
+                    "source_account": post.competitor.strip().lower().lstrip("@"),
+                },
             )
             raise
 
@@ -204,7 +224,12 @@ class BudgetedInstagramProvider(InstagramProvider):
                 reservation_id,
                 units=units,
                 success=True,
-                details={"provider": self.inner.name, "pages": units, "over_budget_adapter": True},
+                details={
+                    "provider": self.inner.name,
+                    "pages": units,
+                    "over_budget_adapter": True,
+                    "source_account": post.competitor.strip().lower().lstrip("@"),
+                },
             )
             raise ScanBudgetExceededError(
                 f"Провайдер вернул {units} страниц при разрешённом лимите {remaining}. "
@@ -217,7 +242,11 @@ class BudgetedInstagramProvider(InstagramProvider):
             reservation_id,
             units=units,
             success=True,
-            details={"provider": self.inner.name, "pages": units},
+            details={
+                "provider": self.inner.name,
+                "pages": units,
+                "source_account": post.competitor.strip().lower().lstrip("@"),
+            },
         )
         return result
 
