@@ -82,6 +82,7 @@ class RuleBasedLeadAnalyzer:
         "класс",
         "красиво",
         "красивая",
+        "красота",
         "супер",
         "огонь",
         "вау",
@@ -90,6 +91,9 @@ class RuleBasedLeadAnalyzer:
         "zor",
         "chiroyli",
         "ajoyib",
+        "gap yo'q",
+        "зўр",
+        "чиройли",
         "cool",
         "nice",
         "муборак",
@@ -125,19 +129,46 @@ class RuleBasedLeadAnalyzer:
                 context,
             )
 
-        non_commercial = (
-            "сколько лет",
-            "сколько красоты",
-            "ish kerak",
-            "работа нужна",
-            "вакансия",
-            "резюме",
+        job_pattern = re.search(
+            r"\b(?:ish\s+(?:kerak|bormi)|работа\s+нужна|ищу\s+работу|ваканс\w*|резюме)\b",
+            text,
         )
-        if any(marker in text for marker in non_commercial):
+        if job_pattern:
             return self._result(
                 False,
                 5,
                 Intent.SPAM,
+                self._product(caption),
+                language,
+                "Комментарий относится к поиску работы, а не к покупке мебели.",
+                context,
+                buyer_role=BuyerRole.JOB_SEEKER,
+            )
+
+        spam_like = (
+            "сколько лет",
+            "сколько красоты",
+        )
+        if any(marker in text for marker in spam_like):
+            return self._result(
+                False,
+                5,
+                Intent.SPAM,
+                self._product(caption),
+                language,
+                "Комментарий не относится к покупке мебели.",
+                context,
+            )
+
+        unrelated = (
+            "где это снято",
+            "қаерда олинган",
+        )
+        if any(marker in text for marker in unrelated):
+            return self._result(
+                False,
+                10,
+                Intent.OTHER,
                 self._product(caption),
                 language,
                 "Комментарий не относится к покупке мебели.",
@@ -150,6 +181,7 @@ class RuleBasedLeadAnalyzer:
             "не буду покупать",
             "покупать не буду",
             "kerak emas",
+            "керак эмас",
             "olmayman",
             "сотиб олмайман",
         )
@@ -199,6 +231,7 @@ class RuleBasedLeadAnalyzer:
             "dizayn loyiha",
             "proyekt uchun",
             "для проекта",
+            "комплектуем объект",
         )
         if any(marker in text for marker in designer_markers):
             score = 88
@@ -220,12 +253,18 @@ class RuleBasedLeadAnalyzer:
             "для гостиницы",
             "для объекта",
             "для отеля",
+            "гостиниц",
+            "банкетн",
+            "террасы кафе",
+            "нового кафе",
             "оптом",
             "ulgurji",
             "kafe uchun",
             "restoran uchun",
             "mehmonxona uchun",
             "choyxona",
+            "кафе учун",
+            "ресторан учун",
         )
         if any(marker in text for marker in business_markers):
             score = 90
@@ -239,6 +278,32 @@ class RuleBasedLeadAnalyzer:
                 context,
                 buyer_role=BuyerRole.B2B_HORECA,
                 role_score=90,
+            )
+
+        explicit_purchase = (
+            "хочу купить",
+            "хочу заказать",
+            "оформить заказ",
+            "buyurtma",
+            "olmoqchiman",
+            "sotib olmoqchiman",
+            "сотиб олмоқчиман",
+            "сотиб олмокчиман",
+            "буюртма қил",
+        )
+        quantity_pattern = re.search(
+            r"\b(?:\d{1,3}|два|две)\s*(?:шт\w*|штук\w*|dona\w*|дона\w*|ta|та|стул\w*|стол\w*|кресл\w*|диван\w*)\b",
+            text,
+        )
+        if quantity_pattern and not any(marker in text for marker in explicit_purchase):
+            return self._result(
+                True,
+                90,
+                Intent.QUANTITY,
+                self._product(f"{caption} {text}"),
+                language,
+                "Пользователь указывает конкретное количество, что является сильным коммерческим сигналом.",
+                context,
             )
 
         checks: list[tuple[Intent, tuple[str, ...], int, str]] = [
@@ -255,6 +320,9 @@ class RuleBasedLeadAnalyzer:
                     "можно заказать",
                     "хотела бы заказать",
                     "хотел бы заказать",
+                    "берем ",
+                    "берём ",
+                    "оформить заказ",
                     "нужно ",
                     "buyurtma",
                     "buyurtma qil",
@@ -264,6 +332,8 @@ class RuleBasedLeadAnalyzer:
                     "olsa bo'ladimi",
                     "olsa boladimi",
                     "sotib ol",
+                    "сотиб олмоқчиман",
+                    "буюртма қил",
                     "kerak",
                     "керак",
                 ),
@@ -280,6 +350,8 @@ class RuleBasedLeadAnalyzer:
                     "почем",
                     "почём",
                     "стоимость",
+                    "цену",
+                    "во сколько обойд",
                     "narx",
                     "qancha",
                     "kancha",
@@ -294,6 +366,7 @@ class RuleBasedLeadAnalyzer:
                     "рассрочка",
                     "в рассрочку",
                     "nasiya",
+                    "насия",
                     "bo'lib to'lash",
                     "bolib tolash",
                 ),
@@ -305,6 +378,7 @@ class RuleBasedLeadAnalyzer:
                 (
                     "доставка",
                     "доставк",
+                    "достав",
                     "yetkaz",
                     "yetkazib berish",
                     "етказ",
@@ -323,7 +397,15 @@ class RuleBasedLeadAnalyzer:
             ),
             (
                 Intent.SIZE,
-                ("размер", "размеры", "o'lcham", "olcham", "ўлчам"),
+                (
+                    "размер",
+                    "размеры",
+                    "длиной",
+                    "ширина",
+                    "o'lcham",
+                    "olcham",
+                    "ўлчам",
+                ),
                 74,
                 "Пользователь уточняет размер товара.",
             ),
@@ -335,6 +417,7 @@ class RuleBasedLeadAnalyzer:
                     "есть?",
                     "есть ли",
                     "у вас есть",
+                    "есть этот",
                     "bormi",
                     "mavjud",
                     "qolganmi",
@@ -347,7 +430,15 @@ class RuleBasedLeadAnalyzer:
             ),
             (
                 Intent.CATALOG,
-                ("каталог", "catalog", "katalog", "варианты", "модели", "ассортимент"),
+                (
+                    "каталог",
+                    "catalog",
+                    "katalog",
+                    "варианты",
+                    "модели",
+                    "modellar",
+                    "ассортимент",
+                ),
                 78,
                 "Пользователь запрашивает каталог или варианты товара.",
             ),
@@ -363,6 +454,8 @@ class RuleBasedLeadAnalyzer:
                     "qayerda",
                     "каерда",
                     "қаерда",
+                    "шоурум",
+                    "приехать посмотреть",
                 ),
                 76,
                 "Пользователь спрашивает, где посмотреть или купить товар.",
@@ -372,11 +465,13 @@ class RuleBasedLeadAnalyzer:
                 (
                     "номер",
                     "телефон",
+                    "raqam",
                     "связаться",
                     "напишите",
                     "напишите мне",
                     "yozing",
                     "ёзинг",
+                    "езинг",
                     "aloqa",
                     "алока",
                 ),
@@ -390,10 +485,29 @@ class RuleBasedLeadAnalyzer:
             if matched_phrases:
                 matched_checks.append((intent, base_score, reason, matched_phrases[:2]))
         if matched_checks:
-            # The checks are ordered from the most decision-specific intent to more generic
-            # signals. Preserve that semantic priority: e.g. "delivery bormi" contains the
-            # generic availability word too, but the real question is about delivery.
-            intent, base_score, reason, _phrases = matched_checks[0]
+            semantic_priority = {
+                Intent.DELIVERY: 0,
+                Intent.SIZE: 1,
+                Intent.COLOR: 2,
+                Intent.CATALOG: 3,
+                Intent.PRICE: 4,
+                Intent.CONTACT: 5,
+                Intent.LOCATION: 6,
+                Intent.BUY: 7,
+                Intent.AVAILABILITY: 8,
+            }
+            explicit_buy = next(
+                (
+                    item
+                    for item in matched_checks
+                    if item[0] == Intent.BUY
+                    and any(marker in text for marker in explicit_purchase)
+                ),
+                None,
+            )
+            intent, base_score, reason, _phrases = explicit_buy or min(
+                matched_checks, key=lambda item: semantic_priority.get(item[0], 99)
+            )
             specificity_boost = min(6, (len(matched_checks) - 1) * 3)
             score = min(99, base_score + specificity_boost)
             evidence = [reason]
@@ -411,21 +525,6 @@ class RuleBasedLeadAnalyzer:
                 reason,
                 context,
                 evidence=evidence[:4],
-            )
-
-        if re.search(
-            r"\b\d{1,3}\s*(шт\w*|штук\w*|dona\w*|дона\w*|та|персон\w*|киши\w*|kishi\w*|комплект\w*|стул\w*|стол\w*|кресл\w*|диван\w*)\b",
-            text,
-        ):
-            score = 90
-            return self._result(
-                True,
-                score,
-                Intent.QUANTITY,
-                self._product(f"{caption} {text}"),
-                language,
-                "Пользователь указывает конкретное количество, что является сильным коммерческим сигналом.",
-                context,
             )
 
         objection_markers = ("дорого", "слишком дорого", "qimmat", "киммат", "қиммат")

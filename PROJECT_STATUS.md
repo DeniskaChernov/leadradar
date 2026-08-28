@@ -14,7 +14,7 @@
 | Audit + network freeze | Implemented | Offline automated | No | No |
 | AI request/budget ledger | Phase B hardened | 186 offline tests + concurrency + migration | No | No |
 | Cost ledger & pricing | OFFLINE · durable ledger/config implemented | 190 offline tests + migration | No | No |
-| Lead Scoring V3 | Implemented in rule pipeline | 30 golden + component tests | No | No |
+| Lead Scoring V3 | OFFLINE · evidence-first rule pipeline | 200 semantic golden + component tests | No | No |
 | Audience Engine V3 | Evidence-first core implemented | Unit/integration; golden expansion pending | UI offline | No |
 | Rattan Vertical V2 | Evidence-first core implemented | 24 golden + integration/idempotency | UI offline | No |
 | Unit Economics ledger | Not implemented | Calculator tests only | No | No |
@@ -34,8 +34,26 @@
 - `B2BPolicy 1.0` централизует contextual/30+/50+ thresholds;
 - AI fingerprint учитывает только коммерческую историю, stable contact identity, vertical и catalog context version;
 - OpenAI output не может сохранить выдуманные Evidence IDs; без Evidence confidence снижается;
-- текущая golden calibration содержит только 30 сценариев — pilot gate 150–300 ещё не выполнен;
-- полный offline suite после Phase G: 180 тестов, внешних вызовов нет.
+- отдельный semantic benchmark содержит 200 размеченных RU / UZ Latin / UZ Cyrillic
+  сценариев; внутренние precision/recall/intent/B2B gates проходят;
+- benchmark всё ещё внутренний и после исправлений не является unseen production sample.
+
+## Master Phase B — Lead Intelligence V3 calibration
+
+- сохранён один production scorer; второй параллельный алгоритм не создавался;
+- primary intent теперь выбирается по смысловой специфичности: DELIVERY/SIZE/COLOR/
+  CATALOG важнее общих `qancha`, `bormi`, `есть?`;
+- job-seeking и unrelated-media сигналы разделены: они больше не смешиваются в общий SPAM;
+- quantity извлекается до общих BUY-маркеров, но явное «хочу заказать/сотиб олмоқчиман»
+  остаётся BUY;
+- расширены RU/UZ business, designer, negation и reaction границы без изменения
+  evidence-first history/decay/multi-competitor логики;
+- новый статический benchmark: **200 смысловых фраз**, не варианты регистра и punctuation;
+- внутренний результат: lead precision **100%**, recall **100%**, intent accuracy **100%**,
+  buyer-role accuracy **100%**, B2B precision **100%**, HOT false-positive **0%**;
+- это calibration score на проверяемом fixture, не заявление о реальной production accuracy;
+  unseen offline sample и controlled live pilot остаются `BLOCKED`;
+- полный offline gate после Master Phase B: **191 tests passed**, Ruff и compileall чистые.
 
 ## Phase D — Audience Engine V3
 

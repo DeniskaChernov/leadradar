@@ -25,7 +25,8 @@ Evidence → features → component scores → confidence → priority, with eve
 ## DATA RISKS
 
 - Existing stored V2 scores are historical and are not silently rewritten. A controlled offline re-score/backfill is still required before comparing old and new score distributions.
-- The current golden set has 30 curated cases, below the 150–300 pilot target.
+- The original compatibility set still has 30 curated roots. A separate 200-phrase semantic
+  benchmark now covers RU, UZ Latin and UZ Cyrillic without case/punctuation multiplication.
 
 ## COST RISKS
 
@@ -51,4 +52,5 @@ Phase D should persist InterestEvidence and make every audience membership expla
 - repetition diminishing/cap — implemented;
 - centralized contextual B2B thresholds — implemented;
 - missing evidence lowers confidence — implemented;
-- 150–300 multilingual golden suite — not yet complete (30 current scenarios).
+- 200 multilingual semantic scenarios — implemented; internal calibration gate passes.
+- unseen production-like sample — not yet complete.

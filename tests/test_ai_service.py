@@ -103,7 +103,7 @@ async def test_rules_cover_common_uzbek_purchase_signals_without_openai():
     cases = [
         ("6 кишилик борми?", Intent.AVAILABILITY),
         ("Доставка борми?", Intent.DELIVERY),
-        ("20 дона керак", Intent.BUY),
+        ("20 дона керак", Intent.QUANTITY),
         ("Манзил қаерда?", Intent.LOCATION),
     ]
     for text, expected_intent in cases:
