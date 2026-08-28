@@ -149,7 +149,10 @@ async def test_replay_delivery_guard_never_sends_production_notification(session
     assert bot.sent == []
 
 
-async def test_two_notifier_instances_share_one_atomic_delivery_claim(session_factory):
+async def test_two_notifier_instances_share_one_atomic_delivery_claim(
+    file_session_factory,
+):
+    session_factory = file_session_factory
     lead_id = await create_lead(session_factory)
     bot = RecordingBot()
     first = TelegramLeadNotifier(
@@ -306,7 +309,10 @@ async def test_uncertain_delivery_requires_explicit_resolution_before_requeue(
         assert log.resolution == "CONFIRMED_NOT_SENT_REQUEUED"
 
 
-async def test_message_edit_has_one_claim_across_notifier_instances(session_factory):
+async def test_message_edit_has_one_claim_across_notifier_instances(
+    file_session_factory,
+):
+    session_factory = file_session_factory
     lead_id = await create_lead(session_factory)
     async with session_factory() as session:
         lead = await session.get(Lead, lead_id)
