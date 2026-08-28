@@ -53,7 +53,9 @@ class LeadIntelligenceEvaluation:
                 scenario_count += 1
                 case_id = f"{group['id']}:{index}"
                 expected_lead = bool(group["lead"])
-                expected_intent = Intent(group["intent"])
+                expected_intent = Intent(
+                    group.get("intent_overrides", {}).get(str(index), group["intent"])
+                )
                 expected_role = BuyerRole(group["role"])
                 analysis = self.analyzer.classify(
                     LeadAnalysisContext(

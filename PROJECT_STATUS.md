@@ -45,6 +45,12 @@
 - сохранён один production scorer; второй параллельный алгоритм не создавался;
 - primary intent теперь выбирается по смысловой специфичности: DELIVERY/SIZE/COLOR/
   CATALOG важнее общих `qancha`, `bormi`, `есть?`;
+- buyer role отделена от primary intent: B2B/HoReCa и designer-контекст больше не
+  перезаписывают PRICE, DELIVERY, CATALOG или AVAILABILITY общим значением BUY;
+- ценовое возражение теперь сохраняется в risk flags, реально уменьшает итоговый priority
+  и переключает рекомендацию на уточнение бюджета без выдуманной скидки;
+- benchmark поддерживает точные intent labels для отдельных фраз внутри role-группы,
+  поэтому качество больше не маскируется одним общим label для всей группы;
 - job-seeking и unrelated-media сигналы разделены: они больше не смешиваются в общий SPAM;
 - quantity извлекается до общих BUY-маркеров, но явное «хочу заказать/сотиб олмоқчиман»
   остаётся BUY;
@@ -55,7 +61,10 @@
   buyer-role accuracy **100%**, B2B precision **100%**, HOT false-positive **0%**;
 - это calibration score на проверяемом fixture, не заявление о реальной production accuracy;
   unseen offline sample и controlled live pilot остаются `BLOCKED`;
-- полный offline gate после Master Phase B: **191 tests passed**, Ruff и compileall чистые.
+- текущий offline gate после role/intent decoupling: **208 tests passed**, Ruff и
+  compileall чистые; Instagram/OpenAI live-вызовы не выполнялись;
+- первоначальный offline gate Master Phase B: **191 tests passed**; сохранён как
+  историческая контрольная точка.
 
 ## Master Phase C — Audience Engine V3 hardening
 

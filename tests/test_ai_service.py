@@ -167,7 +167,7 @@ async def test_rules_cover_installment_and_horeca_without_false_price_match():
     analyzer = RuleBasedLeadAnalyzer()
     contexts = [
         ("Можно в рассрочку?", Intent.PRICE, True),
-        ("Для ресторана нужно 20 штук", Intent.BUY, True),
+        ("Для ресторана нужно 20 штук", Intent.QUANTITY, True),
         ("Сколько красоты 😍", Intent.SPAM, False),
     ]
     for text, intent, is_lead in contexts:

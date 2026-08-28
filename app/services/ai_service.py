@@ -233,19 +233,7 @@ class RuleBasedLeadAnalyzer:
             "для проекта",
             "комплектуем объект",
         )
-        if any(marker in text for marker in designer_markers):
-            score = 88
-            return self._result(
-                True,
-                score,
-                Intent.BUY,
-                self._product(f"{caption} {text}") or "DESIGN_PROJECT",
-                language,
-                "Запрос от дизайнера или под дизайн-проект/комплектацию объекта.",
-                context,
-                buyer_role=BuyerRole.DESIGNER_CONTRACTOR,
-                role_score=85,
-            )
+        designer_context = any(marker in text for marker in designer_markers)
 
         business_markers = (
             "для кафе",
@@ -266,19 +254,21 @@ class RuleBasedLeadAnalyzer:
             "кафе учун",
             "ресторан учун",
         )
-        if any(marker in text for marker in business_markers):
-            score = 90
-            return self._result(
-                True,
-                score,
-                Intent.BUY,
-                self._product(f"{caption} {text}") or "HORECA",
-                language,
-                "Пользователь описывает коммерческое или оптовое применение мебели (HoReCa / B2B).",
-                context,
-                buyer_role=BuyerRole.B2B_HORECA,
-                role_score=90,
-            )
+        business_context = any(marker in text for marker in business_markers)
+        contextual_buyer_role = (
+            BuyerRole.DESIGNER_CONTRACTOR
+            if designer_context
+            else BuyerRole.B2B_HORECA
+            if business_context
+            else None
+        )
+        contextual_role_score = (
+            85
+            if designer_context
+            else 90
+            if business_context
+            else None
+        )
 
         explicit_purchase = (
             "хочу купить",
@@ -304,7 +294,12 @@ class RuleBasedLeadAnalyzer:
                 language,
                 "Пользователь указывает конкретное количество, что является сильным коммерческим сигналом.",
                 context,
+                buyer_role=contextual_buyer_role,
+                role_score=contextual_role_score,
             )
+
+        objection_markers = ("дорог", "qimmat", "киммат", "қиммат")
+        has_price_objection = any(marker in text for marker in objection_markers)
 
         checks: list[tuple[Intent, tuple[str, ...], int, str]] = [
             (
@@ -525,10 +520,13 @@ class RuleBasedLeadAnalyzer:
                 reason,
                 context,
                 evidence=evidence[:4],
+                risk_flags=["Ценовое возражение"] if has_price_objection else None,
+                buyer_role=contextual_buyer_role,
+                role_score=contextual_role_score,
+                objection_penalty=8 if has_price_objection else 0,
             )
 
-        objection_markers = ("дорого", "слишком дорого", "qimmat", "киммат", "қиммат")
-        if any(marker in text for marker in objection_markers):
+        if has_price_objection:
             score = 58
             return self._result(
                 score >= 65,
@@ -539,6 +537,35 @@ class RuleBasedLeadAnalyzer:
                 "Пользователь выражает ценовое возражение: интерес возможен, но требуется уточнение бюджета.",
                 context,
                 risk_flags=["Ценовое возражение"],
+                buyer_role=contextual_buyer_role,
+                role_score=contextual_role_score,
+                objection_penalty=8,
+            )
+
+        if designer_context:
+            return self._result(
+                True,
+                88,
+                Intent.BUY,
+                self._product(f"{caption} {text}") or "DESIGN_PROJECT",
+                language,
+                "Запрос от дизайнера или под дизайн-проект/комплектацию объекта.",
+                context,
+                buyer_role=BuyerRole.DESIGNER_CONTRACTOR,
+                role_score=85,
+            )
+
+        if business_context:
+            return self._result(
+                True,
+                90,
+                Intent.BUY,
+                self._product(f"{caption} {text}") or "HORECA",
+                language,
+                "Пользователь описывает коммерческое или оптовое применение мебели (HoReCa / B2B).",
+                context,
+                buyer_role=BuyerRole.B2B_HORECA,
+                role_score=90,
             )
 
         if any(word in text for word in self._reaction_words) and len(text.split()) <= 16:
@@ -825,6 +852,12 @@ class RuleBasedLeadAnalyzer:
                 reason=reason,
                 product=product,
             )
+        role_evidence = {
+            BuyerRole.B2B_HORECA: "Контекст покупателя: B2B / HoReCa.",
+            BuyerRole.DESIGNER_CONTRACTOR: "Контекст покупателя: дизайнер или комплектатор.",
+        }.get(buyer_role)
+        if role_evidence and role_evidence not in details:
+            details.append(role_evidence)
 
         # Determine role_score
         if role_score is None:
@@ -866,7 +899,15 @@ class RuleBasedLeadAnalyzer:
             urgency_score={Urgency.LOW: 30, Urgency.MEDIUM: 60, Urgency.HIGH: 95}[urgency],
         )
         confidence = scoring.confidence_score
-        score = scoring.priority_score
+        score = max(0, scoring.priority_score - max(0, objection_penalty))
+        if not is_lead:
+            stage = FunnelStage.NON_COMMERCIAL
+        elif intent in {Intent.BUY, Intent.QUANTITY} and score >= 88:
+            stage = FunnelStage.READY_TO_BUY
+        elif intent in {Intent.BUY, Intent.QUANTITY, Intent.CONTACT}:
+            stage = FunnelStage.PURCHASE_INTENT
+        else:
+            stage = FunnelStage.CONSIDERATION
         factors = {
             "intent_strength": scoring.intent_score,
             "intent_score": scoring.intent_score,
@@ -876,7 +917,7 @@ class RuleBasedLeadAnalyzer:
             "fit_score": scoring.fit_score,
             "source_quality_score": scoring.source_quality_score,
             "confidence_score": scoring.confidence_score,
-            "priority_score": scoring.priority_score,
+            "priority_score": score,
             "role_score": role_score,
             "history_boost": scoring.history_boost,
             "sequence_score": scoring.sequence_score,
@@ -903,6 +944,11 @@ class RuleBasedLeadAnalyzer:
             if not is_lead
             else "Менеджеру проверить контекст и задать один уточняющий вопрос.",
         )
+        if objection_penalty and is_lead:
+            recommended_action = (
+                "Уточнить бюджет и критерии выбора; предложить только подтверждённые "
+                "альтернативы без обещания скидки."
+            )
         return LeadAnalysis(
             is_lead=is_lead,
             lead_score=score,
@@ -931,7 +977,7 @@ class RuleBasedLeadAnalyzer:
             fit_score=scoring.fit_score,
             source_quality_score=scoring.source_quality_score,
             confidence_score=scoring.confidence_score,
-            priority_score=scoring.priority_score,
+            priority_score=score,
             quantity=scoring.b2b.quantity,
             next_best_action=recommended_action,
             short_reason=reason,

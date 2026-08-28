@@ -143,3 +143,63 @@ def test_rule_analysis_exposes_complete_v3_decision_contract():
     assert result.evidence_ids == [3]
     assert result.next_best_action
     assert result.short_reason
+
+
+def _classify(comment: str, *, caption: str = "Мебель для бизнеса"):
+    result = RuleBasedLeadAnalyzer().classify(
+        LeadAnalysisContext(
+            competitor="competitor",
+            post_caption=caption,
+            comment=comment,
+            username="buyer",
+            previous_signals=[],
+            previous_interests=[],
+            evidence_ids=[101],
+        )
+    )
+    assert result is not None
+    return result
+
+
+def test_buyer_role_does_not_overwrite_specific_commercial_intent():
+    b2b_price = _classify("Для ресторана сколько стоит этот комплект?")
+    b2b_delivery = _classify("Для кафе нужна доставка сегодня")
+    designer_catalog = _classify("Я дизайнер, пришлите каталог для проекта")
+
+    assert (b2b_price.intent, b2b_price.buyer_role) == (
+        Intent.PRICE,
+        BuyerRole.B2B_HORECA,
+    )
+    assert (b2b_delivery.intent, b2b_delivery.buyer_role) == (
+        Intent.DELIVERY,
+        BuyerRole.B2B_HORECA,
+    )
+    assert (designer_catalog.intent, designer_catalog.buyer_role) == (
+        Intent.CATALOG,
+        BuyerRole.DESIGNER_CONTRACTOR,
+    )
+    assert "цен" in b2b_price.recommended_action.casefold()
+    assert "достав" in b2b_delivery.recommended_action.casefold()
+    assert "подборк" in designer_catalog.recommended_action.casefold()
+
+
+def test_role_only_signal_keeps_safe_buy_fallback():
+    result = _classify("Мебель для летней террасы кафе")
+
+    assert result.is_lead is True
+    assert result.intent == Intent.BUY
+    assert result.buyer_role == BuyerRole.B2B_HORECA
+    assert any("B2B" in item for item in result.evidence)
+
+
+def test_price_objection_is_visible_and_reduces_priority():
+    neutral = _classify("Какая цена этого стола?", caption="Стол")
+    objection = _classify("Цена этого стола слишком дорогая", caption="Стол")
+
+    assert objection.intent == Intent.PRICE
+    assert objection.is_lead is True
+    assert objection.priority_score == objection.lead_score
+    assert objection.priority_score < neutral.priority_score
+    assert objection.factors["objection_penalty"] == 8
+    assert "Ценовое возражение" in objection.risk_flags
+    assert "скидк" in objection.recommended_action.casefold()
