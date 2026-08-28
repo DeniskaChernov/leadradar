@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Разведка · Lead Radar{% endblock %}
+{% block heading %}Разведка{% endblock %}
+{% block subheading %}Новые компании и изменения — сначала проверка, потом бесплатное добавление на паузу{% endblock %}
+{% block content %}
+<section class="discovery-hero panel">
+  <div>
+    <span class="eyebrow">DISCOVERY CENTER</span>
+    <h2>Один вход для рыночных находок</h2>
+    <p>Импортируйте результаты Parser Club, таблицы или ручную выгрузку. Файл обрабатывается локально: внешний поиск и AI не запускаются. Повторная загрузка не создаёт дубли — система сопоставляет Instagram, сайт и нормализованное название.</p>
+  </div>
+  <div class="market-kpis">
+    <div><strong>{{ counts.discovered }}</strong><span>не проверено</span></div>
+    <div><strong>{{ counts.reviewed }}</strong><span>проверено</span></div>
+    <div><strong>{{ counts.changes }}</strong><span>новых изменений</span></div>
+    <div><strong>{{ counts.rejected }}</strong><span>отклонено</span></div>
+  </div>
+</section>
+
+<section class="discovery-import panel">
+  <div class="panel-head"><div><span class="eyebrow">БЕЗ РАСХОДА API</span><h2>Импорт CSV или XLSX</h2><p>До 2 000 строк и 5 МБ. Поддерживаются поля: company/name, Instagram, website, category, city/location, price, stock, description/notes.</p></div></div>
+  <div class="import-drop">
+    <input id="discovery-file" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+    <label for="discovery-file"><b>Выберите CSV/XLSX</b><span>Данные останутся внутри Lead Radar</span></label>
+    <button class="btn primary" type="button" data-discovery-import>Проверить и импортировать</button>
+  </div>
+  <p class="muted">Минимально нужна колонка <b>name</b> или <b>company</b>. Для надёжного сопоставления добавьте Instagram либо website.</p>
+</section>
+
+<section class="discovery-layout">
+  <div>
+    <div class="section-title-row"><div><span class="eyebrow">ОЧЕРЕДЬ ПРОВЕРКИ</span><h2>Кандидаты</h2><p>Проверка статуса ничего не запускает. Мониторинг появляется только после подтверждения Instagram и всегда стартует на паузе.</p></div></div>
+    <div class="candidate-grid">
+    {% for candidate in candidates %}
+      <article class="candidate-card panel status-{{ candidate.status|lower }}">
+        <div class="candidate-head"><div><span class="tier tier-{{ candidate.tier|lower }}">{{ candidate.tier }}</span><span class="tag">{{ discovery_status_labels.get(candidate.status, candidate.status) }}</span></div><span class="confidence {% if candidate.confidence >= 85 %}high{% elif candidate.confidence >= 65 %}medium{% else %}low{% endif %}">{{ candidate.confidence }}%</span></div>
+        <h3>{{ candidate.display_name }}</h3>
+        <p>{{ candidate.rationale or 'Описание пока не добавлено.' }}</p>
+        <small>{{ candidate.source }}{% if candidate.location %} · {{ candidate.location }}{% endif %}{% if candidate.last_seen_at %} · замечен {{ candidate.last_seen_at.strftime('%d.%m %H:%M') }}{% endif %}</small>
+        <div class="candidate-links">{% if candidate.website_url %}<a href="{{ candidate.website_url }}" target="_blank" rel="noopener">Сайт ↗</a>{% endif %}{% if candidate.instagram_handle %}<a href="https://instagram.com/{{ candidate.instagram_handle }}" target="_blank" rel="noopener">@{{ candidate.instagram_handle }} ↗</a>{% endif %}{% if candidate.source_url %}<a href="{{ candidate.source_url }}" target="_blank" rel="noopener">Источник ↗</a>{% endif %}</div>
+        <div class="candidate-actions">
+          {% if candidate.status != 'REVIEWED' %}<button class="btn tiny ghost" data-api-action="/api/discovery/candidates/{{ candidate.id }}/status" data-payload='{"status":"REVIEWED"}' data-reload="1">Проверено</button>{% endif %}
+          {% if candidate.instagram_handle %}<form data-api-form action="/api/market-candidates/{{ candidate.id }}/promote" data-reload="1"><input type="hidden" name="handle" value="{{ candidate.instagram_handle }}"><input type="hidden" name="active" value="false"><button class="btn tiny primary" type="submit">В радар на паузу</button></form>{% else %}<span class="muted">Нужен Instagram для радара</span>{% endif %}
+          {% if candidate.status != 'REJECTED' %}<button class="btn tiny ghost" data-api-action="/api/discovery/candidates/{{ candidate.id }}/status" data-payload='{"status":"REJECTED"}' data-reload="1">Не подходит</button>{% endif %}
+        </div>
+      </article>
+    {% else %}<div class="empty panel">Очередь пуста. Импортируйте таблицу или обновите встроенную карту рынка.</div>{% endfor %}
+    </div>
+  </div>
+
+  <aside>
+    <div class="section-title-row"><div><span class="eyebrow">DIFF ENGINE</span><h2>Что изменилось</h2><p>Только новые версии. Повтор одинакового файла не создаёт событий.</p></div></div>
+    <div class="discovery-changes">
+    {% for diff, candidate in changes %}
+      <article class="panel discovery-change">
+        <div><span class="tag diff-{{ diff.diff_type|lower }}">{{ discovery_diff_labels.get(diff.diff_type, diff.diff_type) }}</span><time>{{ diff.created_at.strftime('%d.%m %H:%M') }}</time></div>
+        <h3>{{ candidate.display_name }}</h3>
+        <p>{{ diff.changed_fields|join(', ') }}</p>
+        <button class="btn tiny ghost" data-api-action="/api/discovery/diffs/{{ diff.id }}/acknowledge" data-payload="{}" data-reload="1">Просмотрено</button>
+      </article>
+    {% else %}<div class="empty panel">Непросмотренных изменений нет.</div>{% endfor %}
+    </div>
+  </aside>
+</section>
+{% endblock %}

@@ -120,6 +120,36 @@
   });
 
   document.addEventListener('click', async (event) => {
+    const discoveryImport = event.target.closest('[data-discovery-import]');
+    if (discoveryImport) {
+      const input = document.getElementById('discovery-file');
+      const file = input?.files?.[0];
+      if (!file) {
+        toast('Сначала выберите CSV или XLSX файл', true);
+        return;
+      }
+      const old = discoveryImport.textContent;
+      discoveryImport.disabled = true;
+      discoveryImport.textContent = 'Импортирую…';
+      try {
+        const response = await fetch(`/api/discovery/import?filename=${encodeURIComponent(file.name)}`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: file,
+        });
+        const data = await readResponse(response);
+        if (!response.ok) throw new Error(data.detail || 'Не удалось импортировать файл');
+        toast(data.message || 'Импорт завершён');
+        reloadSoon(900);
+      } catch (error) {
+        toast(error.message, true);
+        discoveryImport.disabled = false;
+        discoveryImport.textContent = old;
+      }
+      return;
+    }
+
     const retryAuth = event.target.closest('[data-auth-retry]');
     if (retryAuth) {
       authenticateTelegram();

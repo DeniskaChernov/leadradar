@@ -301,6 +301,7 @@ class MarketCandidate(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     display_name: Mapped[str] = mapped_column(String(255))
+    canonical_key: Mapped[str | None] = mapped_column(String(512), unique=True, index=True)
     vertical: Mapped[Vertical] = mapped_column(
         Enum(Vertical, native_enum=False), default=Vertical.FURNITURE, index=True
     )
@@ -311,11 +312,36 @@ class MarketCandidate(Base):
     tier: Mapped[str] = mapped_column(String(8), default="B", index=True)
     confidence: Mapped[int] = mapped_column(Integer, default=50)
     rationale: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(64), default="MANUAL", index=True)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    location: Mapped[str | None] = mapped_column(String(255))
+    snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    snapshot_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     status: Mapped[str] = mapped_column(String(32), default="DISCOVERED", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
+
+
+class MarketCandidateDiff(Base):
+    __tablename__ = "market_candidate_diffs"
+    __table_args__ = (
+        UniqueConstraint(
+            "candidate_id", "snapshot_fingerprint", name="uq_candidate_diff_snapshot"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("market_candidates.id"), index=True)
+    diff_type: Mapped[str] = mapped_column(String(32), default="UPDATED", index=True)
+    changed_fields: Mapped[list[str]] = mapped_column(JSON, default=list)
+    before_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    after_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
+    snapshot_fingerprint: Mapped[str] = mapped_column(String(64))
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
 class Post(Base):

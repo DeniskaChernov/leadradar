@@ -18,6 +18,7 @@
 | Audience Engine V3 | OFFLINE · evidence-first core hardened | 193 offline tests; audience golden expansion pending | UI offline | No |
 | Rattan Vertical V2 | OFFLINE · taxonomy safety hardened | 30 golden + 194 repository tests | UI offline | No |
 | Unit Economics | OFFLINE · DB-backed ledger aggregation | 197 repository tests + UI render | No | No |
+| Discovery Center / Diff Engine | OFFLINE · CSV/XLSX review queue implemented | Repository tests + migration + UI render | No | No |
 | Premium UI / Telegram Bot | Read-only readiness + durable outbox implemented | Unit/concurrency/browser dry-run | Delivery not run | No |
 | Real Agent / MCP | Prototype/mock | Fixture tests only | No | No |
 | Meta / Google | Not connected | Offline prototype only | No | No |
@@ -115,6 +116,26 @@
 - Gross Profit не рассчитывается до появления подтверждённого COGS проданной позиции;
 - полный offline gate: **197 tests passed**, Ruff и compileall чистые;
 - live billing reconciliation и платные вызовы не выполнялись, production ready остаётся `No`.
+
+## Master Phase F — Discovery Center and Diff Engine
+
+- кандидаты больше не смешаны с действующими конкурентами: единая очередь проверки
+  находится на `/discovery`, а `/competitors` показывает только компании в радаре;
+- CSV/XLSX импорт выполняется локально, ограничен 5 МБ и 2 000 строками и не вызывает
+  provider API, Telegram или OpenAI;
+- identity resolution использует нормализованный Instagram, hostname сайта и затем
+  Unicode-нормализованное название; canonical key защищён уникальным индексом;
+- повтор одинаковой строки обновляет только `last_seen_at`, не создаёт кандидата или diff;
+- snapshot fingerprint и неизменяемый `MarketCandidateDiff` фиксируют NEW, UPDATED,
+  PRICE_CHANGED, STOCK_CHANGED и ROLE_CHANGED;
+- REVIEWED/REJECTED — бесплатные состояния проверки; перевод в мониторинг требует
+  подтверждённого публичного Instagram и создаёт конкурента на паузе;
+- небезопасные URL схемы отбрасываются, импорт ограничен публичными бизнес-данными;
+- автоматические Google/2GIS/OSM/marketplace jobs, AI query expansion и paid enrichment
+  намеренно не запущены до отдельного budget/confirmation gate;
+- контракт и ограничения описаны в `docs/DISCOVERY_CENTER.md`;
+- полный offline gate: **202 tests passed**, Ruff, compileall и fresh/repeated Alembic чистые;
+- live/paid discovery не выполнялся, production ready остаётся `No`.
 
 ## Phase F — Deterministic Offline Pilot
 

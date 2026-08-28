@@ -108,6 +108,7 @@ def test_audit_fixes_navigation_alignment_and_accessible_filters():
     competitors = (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(
         encoding="utf-8"
     )
+    discovery = (PROJECT_ROOT / "app/web/templates/discovery.html").read_text(encoding="utf-8")
 
     assert "--primary: #3155ff" in css
     assert ".sidebar .nav { flex: 0 0 56px; }" in css
@@ -115,5 +116,6 @@ def test_audit_fixes_navigation_alignment_and_accessible_filters():
     assert 'class="metric warn" href="/tasks"' in dashboard
     assert 'aria-label="Поиск по радару"' in radar
     assert 'aria-label="Фильтр по конкуренту"' in radar
-    assert "market-candidates-disclosure" in competitors
+    assert 'href="/discovery"' in competitors
+    assert "candidate-grid" in discovery
     assert 'name="tier" aria-label=' in competitors

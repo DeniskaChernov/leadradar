@@ -14,6 +14,7 @@ from app.db.models import LeadStatus, NotificationPolicy
 from app.services.ai_service import HybridLeadAnalyzer, RuleBasedLeadAnalyzer
 from app.services.audience_service import AudienceEngine
 from app.services.crm_service import CRMService
+from app.services.discovery_service import DiscoveryService
 from app.services.export_recipe_service import ExportRecipeService
 from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowService
@@ -71,6 +72,7 @@ def build_web_app(
     # Even if production OpenAI is unlocked elsewhere, this service has no network analyzer, so
     # an ambiguous signal becomes AI_PENDING instead of silently spending tokens.
     market_service = MarketIntelligenceService(workflow.session_factory)
+    discovery_service = DiscoveryService(workflow.session_factory)
     local_audience_engine = AudienceEngine(
         workflow.session_factory, settings.hot_lead_threshold
     )
@@ -361,7 +363,6 @@ def build_web_app(
     @app.get("/competitors", response_class=HTMLResponse)
     async def competitors(request: Request):
         rows = await queries.competitors()
-        candidates = await queries.market_candidates()
         overview = await queries.market_overview()
         intelligence_overview = await queries.competitor_intelligence_overview()
         overlaps = await queries.competitor_overlap_network()
@@ -371,11 +372,35 @@ def build_web_app(
             context=base_context(
                 request,
                 rows=rows,
-                candidates=candidates,
                 market_overview=overview,
                 intelligence_overview=intelligence_overview,
                 overlaps=overlaps,
                 categories=COMPETITOR_CATEGORY_LABELS,
+            ),
+        )
+
+    @app.get("/discovery", response_class=HTMLResponse)
+    async def discovery(request: Request):
+        data = await discovery_service.dashboard()
+        return templates.TemplateResponse(
+            request=request,
+            name="discovery.html",
+            context=base_context(
+                request,
+                **data,
+                categories=COMPETITOR_CATEGORY_LABELS,
+                discovery_status_labels={
+                    "DISCOVERED": "Не проверено",
+                    "REVIEWED": "Проверено",
+                    "REJECTED": "Не подходит",
+                },
+                discovery_diff_labels={
+                    "NEW": "Новая компания",
+                    "UPDATED": "Данные изменились",
+                    "PRICE_CHANGED": "Изменилась цена",
+                    "STOCK_CHANGED": "Изменилось наличие",
+                    "ROLE_CHANGED": "Изменился сегмент",
+                },
             ),
         )
 
@@ -950,6 +975,44 @@ def build_web_app(
             }
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/discovery/import")
+    async def import_discovery_file(request: Request, filename: str = "import.csv"):
+        try:
+            result = await discovery_service.import_file(filename, await request.body())
+            return {
+                "ok": True,
+                **result.__dict__,
+                "message": (
+                    f"Импортировано: {result.created} новых, {result.updated} изменённых, "
+                    f"{result.unchanged} без изменений. Дубликаты не создавались."
+                ),
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/discovery/candidates/{candidate_id}/status")
+    async def update_discovery_candidate(request: Request, candidate_id: int):
+        payload = await _json_or_form(request)
+        try:
+            candidate = await discovery_service.set_status(
+                candidate_id, str(payload.get("status") or "")
+            )
+            return {
+                "ok": True,
+                "status": candidate.status,
+                "message": "Статус кандидата обновлён",
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/discovery/diffs/{diff_id}/acknowledge")
+    async def acknowledge_discovery_diff(diff_id: int):
+        try:
+            await discovery_service.acknowledge_diff(diff_id)
+            return {"ok": True, "message": "Изменение просмотрено"}
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/competitors/{competitor_id}/settings")
     async def update_competitor(request: Request, competitor_id: int):

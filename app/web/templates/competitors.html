@@ -7,7 +7,7 @@
   <div>
     <span class="eyebrow">КАРТА РЫНКА</span>
     <h2>Мы больше не ограничены AIKO</h2>
-    <p>В базе находятся подтверждённые Instagram-конкуренты и отдельный список компаний, которые ещё нужно проверить перед live-мониторингом. Новые компании добавляются <b>на паузе</b>, поэтому расширение карты рынка само по себе не расходует токены.</p>
+    <p>Здесь находятся только компании, уже добавленные в радар. Поиск, импорт и проверка новых компаний вынесены в <a href="/discovery"><b>Разведку</b></a>. Новые компании запускаются <b>на паузе</b>, поэтому расширение карты рынка само по себе не расходует токены.</p>
   </div>
   <div class="market-kpis">
     <div><strong>{{ market_overview.verified }}</strong><span>в радаре</span></div>
@@ -63,25 +63,4 @@
 </section>
 {% else %}<div class="empty panel">Конкуренты ещё не добавлены.</div>{% endfor %}
 
-<section class="market-candidates-section">
-  <div class="section-title-row"><div><span class="eyebrow">РАЗВЕДКА РЫНКА</span><h2>Кандидаты на мониторинг</h2><p>Эти компании уже найдены как релевантные рынку. Мы не включаем их вслепую: сначала подтверждаем актуальный Instagram username, потом добавляем на паузу.</p></div></div>
-  <details class="market-candidates-disclosure panel">
-    <summary><div><b>{{ candidates|length }} компаний ожидают проверки</b><span>Развернуть кандидатов и подтвердить Instagram username</span></div><span class="disclosure-arrow" aria-hidden="true">⌄</span></summary>
-    <div class="candidate-grid">
-    {% for candidate in candidates %}
-    <article class="candidate-card panel">
-      <div class="candidate-head"><div><span class="tier tier-{{ candidate.tier|lower }}">{{ candidate.tier }}</span><span class="confidence {% if candidate.confidence >= 85 %}high{% elif candidate.confidence >= 65 %}medium{% else %}low{% endif %}">{{ candidate.confidence }}% уверенности</span></div><span class="category-chip">{{ competitor_category_label(candidate.category) }}</span></div>
-      <h3>{{ candidate.display_name }}</h3>
-      <p>{{ candidate.rationale }}</p>
-      <div class="candidate-links">{% if candidate.website_url %}<a href="{{ candidate.website_url }}" target="_blank" rel="noopener">Сайт ↗</a>{% endif %}{% if candidate.instagram_handle %}<a href="https://instagram.com/{{ candidate.instagram_handle }}" target="_blank" rel="noopener">@{{ candidate.instagram_handle }} ↗</a>{% endif %}</div>
-      <form data-api-form action="/api/market-candidates/{{ candidate.id }}/promote" data-reload="1" class="candidate-form">
-        <label>Instagram username<input name="handle" value="{{ candidate.instagram_handle or '' }}" placeholder="Нужно подтвердить username" required></label>
-        <input type="hidden" name="active" value="false">
-        <button class="btn tiny primary" type="submit">Добавить в радар на паузу</button>
-      </form>
-    </article>
-    {% else %}<div class="empty panel">Все кандидаты уже разобраны.</div>{% endfor %}
-    </div>
-  </details>
-</section>
 {% endblock %}

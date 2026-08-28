@@ -99,6 +99,7 @@ async def test_market_pages_render_and_candidate_promotion_api(session_factory):
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         competitors = await client.get("/competitors")
+        discovery = await client.get("/discovery")
         roadmap = await client.get("/roadmap")
         async with session_factory() as session:
             candidate = await session.scalar(
@@ -113,7 +114,8 @@ async def test_market_pages_render_and_candidate_promotion_api(session_factory):
 
     assert competitors.status_code == 200
     assert "Мы больше не ограничены AIKO" in competitors.text
-    assert "Lazuno Ok" in competitors.text
+    assert discovery.status_code == 200
+    assert "Lazuno Ok" in discovery.text
     assert roadmap.status_code == 200
     assert "Стадия 3 из 7" in roadmap.text
     assert promoted.status_code == 200
