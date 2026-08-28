@@ -9,6 +9,7 @@ from app.db.models import (
     Contact,
     ContactIntelligence,
     ExportEligibility,
+    Vertical,
 )
 from app.services.audience_service import SEGMENTS, AudienceEngine
 from app.services.contact_service import ContactService
@@ -83,7 +84,7 @@ async def test_new_competitor_recalculates_overlap_without_duplicate_person(sess
 
     assert second.contact_id == first.contact_id
     active = await _active_slugs(session_factory, first.contact_id)
-    assert "multi-competitor-2" in active
+    assert "comparison-shoppers" in active
     async with session_factory() as session:
         intelligence = await session.scalar(
             select(ContactIntelligence).where(
@@ -93,6 +94,32 @@ async def test_new_competitor_recalculates_overlap_without_duplicate_person(sess
         assert intelligence is not None
         assert intelligence.source_count == 2
         assert await session.scalar(select(func.count(Contact.id))) == 1
+
+
+async def test_sync_segments_retires_duplicate_legacy_segment(session_factory):
+    async with session_factory() as session:
+        session.add(
+            AudienceSegment(
+                slug="multi-competitor-2",
+                vertical=Vertical.FURNITURE,
+                name="Legacy duplicate",
+                description="Retired in favor of comparison-shoppers",
+                criteria_json={"sources": 2},
+                active=True,
+            )
+        )
+        await session.commit()
+
+    changed = await AudienceEngine(session_factory, hot_threshold=70).sync_segments()
+
+    async with session_factory() as session:
+        legacy = await session.scalar(
+            select(AudienceSegment).where(
+                AudienceSegment.slug == "multi-competitor-2"
+            )
+        )
+    assert changed >= 1
+    assert legacy is not None and legacy.active is False
 
 
 async def test_username_alone_is_never_export_eligible_and_recency_expires(session_factory):

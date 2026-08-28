@@ -119,12 +119,6 @@ SEGMENTS = (
         {"intent": "QUANTITY"},
     ),
     SegmentDefinition(
-        "multi-competitor-2",
-        "Сравнивают 2+ конкурентов",
-        "Спрос обнаружен минимум у двух продавцов.",
-        {"sources": 2},
-    ),
-    SegmentDefinition(
         "multi-competitor-3",
         "Сравнивают 3+ конкурентов",
         "Спрос обнаружен минимум у трёх продавцов.",
@@ -189,8 +183,8 @@ SEGMENTS = (
     SegmentDefinition(
         "high-intent-b2c",
         "Горячие розничные покупатели",
-        "B2C-покупатели с HOT-статусом и максимальным intent.",
-        {"buyer_role": "B2C_CONSUMER", "hot": True},
+        "B2C-покупатели с HOT-сигналом за последние 30 дней.",
+        {"buyer_role": "B2C_CONSUMER", "hot": True, "days": 30},
     ),
     SegmentDefinition(
         "comparison-shoppers",
@@ -199,6 +193,8 @@ SEGMENTS = (
         {"sources": 2},
     ),
 )
+
+RETIRED_SEGMENT_SLUGS = {"multi-competitor-2"}
 
 
 # ---------------------------------------------------------------------------
@@ -242,21 +238,46 @@ def calculate_decayed_interest_score(
 # ---------------------------------------------------------------------------
 
 
-_PRODUCT_WEIGHT = 0.40
-_INTENT_WEIGHT = 0.25
-_BUYER_ROLE_WEIGHT = 0.20
+_PRODUCT_WEIGHT = 0.25
+_INTENT_WEIGHT = 0.15
+_INTENT_SEQUENCE_WEIGHT = 0.10
+_BUYER_ROLE_WEIGHT = 0.15
 _VERTICAL_WEIGHT = 0.10
 _QUANTITY_BAND_WEIGHT = 0.05
+_COMPETITOR_WEIGHT = 0.10
+_RECENCY_WEIGHT = 0.05
+_CUSTOMER_TYPE_WEIGHT = 0.05
 
 
 def _jaccard(set_a: set, set_b: set) -> float:
     """Deterministic Jaccard similarity for two sets."""
     if not set_a and not set_b:
-        return 1.0
+        return 0.0
     union = set_a | set_b
     if not union:
         return 0.0
     return len(set_a & set_b) / len(union)
+
+
+def _sequence_similarity(sequence_a: list[str], sequence_b: list[str]) -> float:
+    """Order-aware overlap without sending behavioral data to an external model."""
+    if not sequence_a or not sequence_b:
+        return 0.0
+    rows = len(sequence_a) + 1
+    columns = len(sequence_b) + 1
+    matrix = [[0] * columns for _ in range(rows)]
+    for left_index, left_value in enumerate(sequence_a, start=1):
+        for right_index, right_value in enumerate(sequence_b, start=1):
+            if left_value == right_value:
+                matrix[left_index][right_index] = (
+                    matrix[left_index - 1][right_index - 1] + 1
+                )
+            else:
+                matrix[left_index][right_index] = max(
+                    matrix[left_index - 1][right_index],
+                    matrix[left_index][right_index - 1],
+                )
+    return matrix[-1][-1] / max(len(sequence_a), len(sequence_b))
 
 
 def calculate_contact_similarity(
@@ -270,24 +291,120 @@ def calculate_contact_similarity(
     """
     products_a = {item["value"] for item in (intel_a.product_interests_json or [])}
     products_b = {item["value"] for item in (intel_b.product_interests_json or [])}
-    product_sim = _jaccard(products_a, products_b)
-
     intents_a = {item["value"] for item in (intel_a.top_intents_json or [])}
     intents_b = {item["value"] for item in (intel_b.top_intents_json or [])}
-    intent_sim = _jaccard(intents_a, intents_b)
+    if not (products_a or products_b or intents_a or intents_b):
+        return 0.0
+    weighted_parts = [
+        (_PRODUCT_WEIGHT, _jaccard(products_a, products_b)),
+        (_INTENT_WEIGHT, _jaccard(intents_a, intents_b)),
+        (_VERTICAL_WEIGHT, 1.0 if intel_a.vertical == intel_b.vertical else 0.0),
+    ]
+    vector_a = intel_a.similarity_vector_json or {}
+    vector_b = intel_b.similarity_vector_json or {}
+    sequence_a = [str(item) for item in vector_a.get("intent_sequence", [])]
+    sequence_b = [str(item) for item in vector_b.get("intent_sequence", [])]
+    if sequence_a and sequence_b:
+        weighted_parts.append(
+            (
+                _INTENT_SEQUENCE_WEIGHT,
+                _sequence_similarity(sequence_a, sequence_b),
+            )
+        )
+    competitors_a = set(vector_a.get("competitor_ids", []))
+    competitors_b = set(vector_b.get("competitor_ids", []))
+    if competitors_a or competitors_b:
+        weighted_parts.append(
+            (_COMPETITOR_WEIGHT, _jaccard(competitors_a, competitors_b))
+        )
+    if (
+        intel_a.primary_buyer_role not in (None, "UNKNOWN")
+        and intel_b.primary_buyer_role not in (None, "UNKNOWN")
+    ):
+        weighted_parts.append(
+            (
+                _BUYER_ROLE_WEIGHT,
+                1.0 if intel_a.primary_buyer_role == intel_b.primary_buyer_role else 0.0,
+            )
+        )
+    if intel_a.quantity_band is not None and intel_b.quantity_band is not None:
+        weighted_parts.append(
+            (
+                _QUANTITY_BAND_WEIGHT,
+                1.0 if intel_a.quantity_band == intel_b.quantity_band else 0.0,
+            )
+        )
+    if intel_a.customer_type and intel_b.customer_type:
+        weighted_parts.append(
+            (
+                _CUSTOMER_TYPE_WEIGHT,
+                1.0 if intel_a.customer_type == intel_b.customer_type else 0.0,
+            )
+        )
+    if intel_a.last_seen_at and intel_b.last_seen_at:
+        recency_gap = abs(
+            (
+                AudienceEngine._aware(intel_a.last_seen_at)
+                - AudienceEngine._aware(intel_b.last_seen_at)
+            ).total_seconds()
+        ) / 86_400
+        weighted_parts.append(
+            (_RECENCY_WEIGHT, max(0.0, 1.0 - min(recency_gap, 90) / 90))
+        )
 
-    role_sim = 1.0 if intel_a.primary_buyer_role == intel_b.primary_buyer_role else 0.0
-    vertical_sim = 1.0 if intel_a.vertical == intel_b.vertical else 0.0
-    quantity_sim = 1.0 if intel_a.quantity_band == intel_b.quantity_band else 0.0
-
-    score = (
-        _PRODUCT_WEIGHT * product_sim
-        + _INTENT_WEIGHT * intent_sim
-        + _BUYER_ROLE_WEIGHT * role_sim
-        + _VERTICAL_WEIGHT * vertical_sim
-        + _QUANTITY_BAND_WEIGHT * quantity_sim
-    )
+    total_weight = sum(weight for weight, _ in weighted_parts)
+    score = sum(weight * value for weight, value in weighted_parts) / total_weight
     return round(min(1.0, max(0.0, score)), 4)
+
+
+def explain_contact_similarity(
+    intel_a: ContactIntelligence, intel_b: ContactIntelligence
+) -> tuple[float, list[str]]:
+    score = calculate_contact_similarity(intel_a, intel_b)
+    if score <= 0:
+        return 0.0, []
+    products_a = {item["value"] for item in (intel_a.product_interests_json or [])}
+    products_b = {item["value"] for item in (intel_b.product_interests_json or [])}
+    intents_a = {item["value"] for item in (intel_a.top_intents_json or [])}
+    intents_b = {item["value"] for item in (intel_b.top_intents_json or [])}
+    reasons = [f"Общий товарный интерес: {item}" for item in sorted(products_a & products_b)]
+    reasons.extend(f"Общее намерение: {item}" for item in sorted(intents_a & intents_b))
+    if (
+        intel_a.primary_buyer_role not in (None, "UNKNOWN")
+        and intel_a.primary_buyer_role == intel_b.primary_buyer_role
+    ):
+        reasons.append(f"Одинаковая роль покупателя: {intel_a.primary_buyer_role}")
+    if intel_a.quantity_band and intel_a.quantity_band == intel_b.quantity_band:
+        reasons.append(f"Одинаковый диапазон количества: {intel_a.quantity_band}")
+    if intel_a.vertical == intel_b.vertical:
+        reasons.append(f"Одинаковая вертикаль: {intel_a.vertical}")
+    vector_a = intel_a.similarity_vector_json or {}
+    vector_b = intel_b.similarity_vector_json or {}
+    shared_competitors = set(vector_a.get("competitor_ids", [])) & set(
+        vector_b.get("competitor_ids", [])
+    )
+    if shared_competitors:
+        reasons.append(f"Общие конкуренты: {len(shared_competitors)}")
+    sequence_similarity = _sequence_similarity(
+        [str(item) for item in vector_a.get("intent_sequence", [])],
+        [str(item) for item in vector_b.get("intent_sequence", [])],
+    )
+    if sequence_similarity > 0:
+        reasons.append(
+            f"Похожая последовательность намерений: {round(sequence_similarity * 100)}%"
+        )
+    if intel_a.customer_type and intel_a.customer_type == intel_b.customer_type:
+        reasons.append(f"Одинаковый тип покупателя: {intel_a.customer_type}")
+    if intel_a.last_seen_at and intel_b.last_seen_at:
+        recency_gap = abs(
+            (
+                AudienceEngine._aware(intel_a.last_seen_at)
+                - AudienceEngine._aware(intel_b.last_seen_at)
+            ).total_seconds()
+        ) / 86_400
+        if recency_gap < 90:
+            reasons.append(f"Близкая давность активности: {round(recency_gap)} дн.")
+    return score, reasons
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +461,17 @@ class AudienceEngine:
                             segment.active,
                         )
                     )
+            retired = list(
+                await session.scalars(
+                    select(AudienceSegment).where(
+                        AudienceSegment.slug.in_(RETIRED_SEGMENT_SLUGS),
+                        AudienceSegment.active.is_(True),
+                    )
+                )
+            )
+            for segment in retired:
+                segment.active = False
+                changed += 1
             await session.commit()
         return changed
 
@@ -809,9 +937,21 @@ class AudienceEngine:
             similarity_vector: dict[str, Any] = {
                 "products": sorted(product_counts.keys()),
                 "intents": sorted(intent_counts.keys()),
+                "intent_sequence": [
+                    item.topic
+                    for item in sorted(
+                        interest_observations, key=lambda evidence: evidence.observed_at
+                    )
+                    if item.dimension == "INTENT"
+                ],
                 "buyer_role": primary_buyer_role,
                 "vertical": observed_vertical,
                 "quantity_band": self._quantity_band(explicit_quantity),
+                "competitor_ids": sorted(
+                    item for item in sources if item is not None
+                ),
+                "recency_days": recency_days,
+                "customer_type": "B2B" if is_b2b else "B2C",
             }
 
             intelligence.vertical = observed_vertical
@@ -856,7 +996,7 @@ class AudienceEngine:
                 len(dates) >= 2 and dates[-1] - dates[-2] >= timedelta(days=30)
             )
             facts = {
-                "hot": max_score >= self.hot_threshold,
+                "hot": max_score >= self.hot_threshold and recency_days <= 30,
                 "recency_days": recency_days,
                 "products": set(product_counts),
                 "intents": set(intent_counts),
@@ -928,10 +1068,13 @@ class AudienceEngine:
                 )
             )
 
-        scored = [
-            {"contact_id": intel.contact_id, "score": calculate_contact_similarity(source, intel)}
-            for intel in all_intel
-        ]
+        scored = []
+        for intel in all_intel:
+            score, reasons = explain_contact_similarity(source, intel)
+            if score > 0:
+                scored.append(
+                    {"contact_id": intel.contact_id, "score": score, "reasons": reasons}
+                )
         scored.sort(key=lambda x: x["score"], reverse=True)
         return scored[:limit]
 

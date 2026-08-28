@@ -135,7 +135,7 @@ async def test_reaction_does_not_create_interest_or_multi_competitor_activity(
             .join(AudienceSegment, AudienceSegment.id == AudienceMembership.segment_id)
             .where(
                 AudienceMembership.contact_id == first.contact_id,
-                AudienceSegment.slug == "multi-competitor-2",
+                AudienceSegment.slug == "comparison-shoppers",
             )
         )
         observations = list(

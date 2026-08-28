@@ -15,7 +15,7 @@
 | AI request/budget ledger | Phase B hardened | 186 offline tests + concurrency + migration | No | No |
 | Cost ledger & pricing | OFFLINE · durable ledger/config implemented | 190 offline tests + migration | No | No |
 | Lead Scoring V3 | OFFLINE · evidence-first rule pipeline | 200 semantic golden + component tests | No | No |
-| Audience Engine V3 | Evidence-first core implemented | Unit/integration; golden expansion pending | UI offline | No |
+| Audience Engine V3 | OFFLINE · evidence-first core hardened | 193 offline tests; audience golden expansion pending | UI offline | No |
 | Rattan Vertical V2 | Evidence-first core implemented | 24 golden + integration/idempotency | UI offline | No |
 | Unit Economics ledger | Not implemented | Calculator tests only | No | No |
 | Premium UI / Telegram Bot | Read-only readiness + durable outbox implemented | Unit/concurrency/browser dry-run | Delivery not run | No |
@@ -55,7 +55,7 @@
   unseen offline sample и controlled live pilot остаются `BLOCKED`;
 - полный offline gate после Master Phase B: **191 tests passed**, Ruff и compileall чистые.
 
-## Phase D — Audience Engine V3
+## Master Phase C — Audience Engine V3 hardening
 
 - добавлены идемпотентные `InterestEvidence`, связанные с реальными Evidence/PublicSignal;
 - `ContactInterestProfile` хранит decayed score, confidence, first/last seen, source count и Evidence IDs;
@@ -63,10 +63,19 @@
 - membership хранит структурированные причины, реальные Evidence IDs, expiry и engine version;
 - `OutcomeDNA` использует только признаки, наблюдавшиеся до `won_at`, без leakage статуса WON;
 - интерфейс сегмента показывает менеджеру «почему контакт здесь»;
+- удалён функциональный дубль `multi-competitor-2`: существующая запись деактивируется,
+  а рабочий `comparison-shoppers` сохраняет совместимость с export recipes;
+- `high-intent-b2c` теперь ограничен реальным HOT-сигналом за последние 30 дней;
+- пустые и `UNKNOWN` профили больше не считаются похожими; результат similarity не
+  возвращается без наблюдаемого коммерческого признака;
+- similarity учитывает товар, intent и его последовательность, recency, buyer role,
+  B2B/B2C, quantity band, vertical и пересечение конкурентов; менеджер получает причины;
 - миграция `f3b9d7a61c20` применена к рабочей БД, Alembic schema check чистый;
 - полная цепочка Alembic подтверждена отдельно на новой пустой SQLite БД;
 - текущая рабочая БД: 16 evidence-first interest profiles, 650 уникальных memberships, дубликатов нет;
-- audience golden/eval пока недостаточен, поэтому production/pilot ready остаётся `No`.
+- полный offline gate: **193 tests passed**, Ruff и compileall чистые;
+- audience golden/eval пока недостаточен, поэтому production/pilot ready остаётся `No`;
+  paid/live recalculation не запускался.
 
 ## Phase E — Artificial Rattan Vertical V2
 

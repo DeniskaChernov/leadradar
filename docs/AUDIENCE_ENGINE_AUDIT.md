@@ -26,6 +26,11 @@
 3. Reaction/noise rows no longer inflate activity or multi-competitor source counts.
 4. Recalculation no longer creates duplicate observations, profiles, memberships or OutcomeDNA.
 5. Product and intent confidence is no longer calculated from raw occurrence counters alone.
+6. Empty profiles and shared `UNKNOWN`/missing values no longer create fake 100% similarity.
+7. The duplicate `multi-competitor-2` definition is retired in favor of the existing
+   `comparison-shoppers` segment used by export recipes.
+8. `high-intent-b2c` now expires after 30 days instead of inheriting a historical HOT score
+   forever.
 
 ## DATA RISKS
 
@@ -62,6 +67,8 @@
 3. Profiles combine decayed observations with diminishing returns and confidence weighting.
 4. UI shows why each contact belongs to a segment and the supporting Evidence IDs.
 5. Data-integrity checks cover all new unique scopes.
+6. Similarity now combines products, intents and their order, buyer role, B2B/B2C, quantity,
+   vertical, recency and competitor overlap. Ranked results include human-readable reasons.
 
 ## TESTS
 
@@ -70,11 +77,13 @@
 - A reaction at another competitor creates no interest and no multi-source membership.
 - Decayed PRICE interest expires while its historical observation remains stored.
 - OutcomeDNA excludes signals observed after WON.
-- Full offline suite: 171 passed, zero paid/network calls.
+- Duplicate legacy segments are deactivated without deleting historical memberships.
+- Empty profiles produce zero similarity; evidence-bearing matches return explanation reasons.
+- Full offline suite: 193 passed, zero paid/network calls.
 
 ## REMAINING
 
 - Add 100+ audience golden scenarios and measure segment precision/recall.
-- Add similarity explanations and aggregate won-customer pattern reporting.
+- Add aggregate won-customer pattern reporting.
 - Run the 500–1000 signal offline replay and publish audience accuracy in the pilot report.
 - Validate decay thresholds on real, consented pilot outcomes before production use.

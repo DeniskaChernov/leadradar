@@ -32,6 +32,7 @@ from app.schemas.leads import Intent, LeadAnalysis
 from app.services.audience_service import (
     AudienceEngine,
     calculate_contact_similarity,
+    explain_contact_similarity,
 )
 from app.services.contact_service import ContactService
 from app.services.lead_service import LeadService
@@ -372,9 +373,24 @@ def test_calculate_similarity_partial_product_overlap():
 def test_calculate_similarity_empty_profiles():
     a = _make_intel(product_interests_json=[], top_intents_json=[])
     b = _make_intel(contact_id=2, product_interests_json=[], top_intents_json=[])
-    # Empty sets → Jaccard returns 1.0 for both dimensions
+    # Missing evidence is not evidence of similarity.
     score = calculate_contact_similarity(a, b)
+    assert score == 0.0
+
+
+def test_similarity_uses_sequence_and_competitor_overlap_with_reasons():
+    shared_vector = {
+        "intent_sequence": ["PRICE", "AVAILABILITY"],
+        "competitor_ids": [11, 22],
+    }
+    a = _make_intel(similarity_vector_json=shared_vector)
+    b = _make_intel(contact_id=2, similarity_vector_json=shared_vector)
+
+    score, reasons = explain_contact_similarity(a, b)
+
     assert score == 1.0
+    assert "Общие конкуренты: 2" in reasons
+    assert any("Общее намерение: PRICE" == reason for reason in reasons)
 
 
 def test_calculate_similarity_returns_float_in_range():
@@ -434,6 +450,7 @@ async def test_get_similar_contacts_returns_ranked_list(session_factory):
     for item in similar:
         assert "contact_id" in item
         assert "score" in item
+        assert item["reasons"]
         assert item["contact_id"] != sig1.contact_id
         assert 0.0 <= item["score"] <= 1.0
 
@@ -517,6 +534,10 @@ async def test_profile_dna_contains_no_synthetic_pii(session_factory):
     assert not pii_keys.intersection(vec.keys()), (
         f"Similarity vector must not contain PII keys, got: {set(vec.keys())}"
     )
+    assert "intent_sequence" in vec
+    assert "competitor_ids" in vec
+    assert "recency_days" in vec
+    assert "customer_type" in vec
 
 
 # ---------------------------------------------------------------------------
@@ -589,4 +610,3 @@ def test_interest_decay_half_life():
     # Zero elapsed days -> score unchanged
     decayed_0d = calculate_decayed_interest_score(90.0, "PRICE", 0.0)
     assert decayed_0d == 90.0
-
