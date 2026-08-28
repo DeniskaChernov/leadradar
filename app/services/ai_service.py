@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
+import os
 import re
+import socket
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar, Protocol
@@ -22,6 +23,7 @@ from app.schemas.leads import (
     PurchaseHorizon,
     Urgency,
 )
+from app.services.ai_context_fingerprint_service import AIContextFingerprintService
 from app.services.b2b_policy import B2BPolicy
 from app.services.lead_scoring_v3 import (
     HistoricalSignal,
@@ -933,7 +935,8 @@ class OpenAILeadAnalyzer:
 
 
 class BudgetedCachedOpenAIAnalyzer:
-    ANALYSIS_VERSION = 3
+    PROMPT_VERSION = "lead-v3"
+    SCHEMA_VERSION = "lead-analysis-v3"
 
     def __init__(
         self,
@@ -944,41 +947,32 @@ class BudgetedCachedOpenAIAnalyzer:
         enabled: bool,
         daily_limit: int,
         worker_id: str = "default-worker",
+        analysis_version: str = "3.0",
+        lease_seconds: int = 180,
+        max_attempts: int = 3,
     ) -> None:
         self.inner = inner
         self.session_factory = session_factory
         self.usage = usage
         self.enabled = enabled
         self.daily_limit = daily_limit
-        self.worker_id = worker_id if worker_id != "default-worker" else f"ai-{uuid4().hex[:12]}"
+        self.analysis_version = analysis_version
+        self.lease_seconds = lease_seconds
+        self.max_attempts = max_attempts
+        self.worker_id = (
+            worker_id
+            if worker_id != "default-worker"
+            else f"{socket.gethostname()}:{os.getpid()}:{uuid4().hex[:8]}"
+        )
+        self.fingerprint_service = AIContextFingerprintService(
+            analysis_version=analysis_version,
+            model=self.inner.model,
+            prompt_version=self.PROMPT_VERSION,
+            schema_version=self.SCHEMA_VERSION,
+        )
 
     def context_fingerprint(self, context: LeadAnalysisContext) -> str:
-        """Calculates canonical SHA-256 context fingerprint factoring all parameters."""
-        canonical_dict = {
-            "analysis_contract_version": self.ANALYSIS_VERSION,
-            "model": self.inner.model,
-            "competitor": (context.competitor or "").strip().lower(),
-            "post_caption": (context.post_caption or "").strip(),
-            "comment": (context.comment or "").strip(),
-            "username": (context.username or "").strip().lower(),
-            "stable_contact_id": context.stable_contact_id,
-            "vertical": context.vertical,
-            "catalog_context_version": context.catalog_context_version,
-            "previous_signals": [
-                {
-                    "competitor": (s.competitor or "").strip().lower(),
-                    "comment": (s.comment or "").strip(),
-                    "discovered_at": s.discovered_at,
-                }
-                for s in sorted(context.previous_signals, key=lambda x: x.discovered_at)
-                if infer_historical_intent(s.comment) is not None
-            ],
-            "previous_interests": sorted(context.previous_interests),
-            "known_customer_context": dict(sorted(context.known_customer_context.items())),
-            "evidence_ids": sorted(context.evidence_ids),
-        }
-        raw = json.dumps(canonical_dict, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        return self.fingerprint_service.fingerprint(context)
 
     async def analyze(self, context: LeadAnalysisContext) -> LeadAnalysis:
         fingerprint = self.context_fingerprint(context)
@@ -1002,6 +996,7 @@ class BudgetedCachedOpenAIAnalyzer:
                 claim_token,
                 AIRequestStatus.RETRYABLE,
                 "OpenAI disabled",
+                paid_attempt=False,
             )
             raise AIAnalysisError(
                 "OpenAI отключён для экономии токенов. Неоднозначный сигнал оставлен в очереди AI."
@@ -1014,20 +1009,40 @@ class BudgetedCachedOpenAIAnalyzer:
                 self.daily_limit,
                 units=1,
                 request_fingerprint=fingerprint,
-                lease_seconds=120,
+                lease_seconds=self.lease_seconds,
+                reservation_key=f"ai:{request_id}:{claim_token}",
+                worker_id=self.worker_id,
             )
         except Exception as exc:
             await self._release_request_claim(
-                request_id, claim_token, AIRequestStatus.RETRYABLE, str(exc)
+                request_id,
+                claim_token,
+                AIRequestStatus.RETRYABLE,
+                str(exc),
+                paid_attempt=False,
             )
             raise
 
+        await self.usage.mark_call_started(reservation_id)
         try:
             analysis = await self.inner.analyze(context)
         except Exception as exc:
-            await self.usage.release_reservation(reservation_id)
+            # Once delivery has started, provider billing is ambiguous. Count the reserved
+            # unit conservatively; retries can never make the daily ledger under-report.
+            await self.usage.finalize_reservation(
+                reservation_id,
+                units=1,
+                success=False,
+                details={
+                    "model": self.inner.model,
+                    "fingerprint": fingerprint,
+                    "billing_state": "UNKNOWN",
+                    "error_type": type(exc).__name__,
+                },
+            )
+            failure_status, failure_type = self._classify_failure(exc)
             await self._release_request_claim(
-                request_id, claim_token, AIRequestStatus.FAILED, str(exc)
+                request_id, claim_token, failure_status, str(exc), failure_type
             )
             raise
 
@@ -1044,6 +1059,9 @@ class BudgetedCachedOpenAIAnalyzer:
                         status=AIRequestStatus.SUCCEEDED,
                         result_json=analysis.model_dump(mode="json"),
                         error=None,
+                        error_type=None,
+                        error_message=None,
+                        completed_at=datetime.now(UTC),
                         claim_expires_at=None,
                         claim_token=None,
                         worker_id=None,
@@ -1053,7 +1071,16 @@ class BudgetedCachedOpenAIAnalyzer:
             ).scalar_one_or_none()
             await session.commit()
         if saved is None:
-            await self.usage.release_reservation(reservation_id)
+            await self.usage.finalize_reservation(
+                reservation_id,
+                units=1,
+                success=False,
+                details={
+                    "model": self.inner.model,
+                    "fingerprint": fingerprint,
+                    "billing_state": "DELIVERED_RESULT_CLAIM_LOST",
+                },
+            )
             raise AIAnalysisError("AI result lost its durable claim before persistence")
 
         await self.usage.finalize_reservation(
@@ -1065,6 +1092,46 @@ class BudgetedCachedOpenAIAnalyzer:
 
         return analysis
 
+    @staticmethod
+    def _classify_failure(exc: Exception) -> tuple[AIRequestStatus, str]:
+        root = exc
+        while root.__cause__ is not None and isinstance(root.__cause__, Exception):
+            root = root.__cause__
+        error_type = type(root).__name__
+        message = str(root).lower()
+        retryable_markers = (
+            "timeout",
+            "temporar",
+            "connection",
+            "rate limit",
+            "429",
+            "500",
+            "502",
+            "503",
+            "504",
+        )
+        permanent_markers = (
+            "invalid",
+            "schema",
+            "unsupported",
+            "authentication",
+            "permission",
+            "400",
+            "401",
+            "403",
+        )
+        if isinstance(root, (TimeoutError, ConnectionError)) or any(
+            marker in message for marker in retryable_markers
+        ):
+            return AIRequestStatus.RETRYABLE, error_type
+        if isinstance(root, (TypeError, ValueError)) or any(
+            marker in message for marker in permanent_markers
+        ):
+            return AIRequestStatus.PERMANENT_FAILURE, error_type
+        # Unknown post-delivery failures stop automatically: money safety is stronger than
+        # speculative retry. An operator may re-enable via a new analysis version.
+        return AIRequestStatus.PERMANENT_FAILURE, error_type
+
     async def _claim_request(
         self, lead_id: int, fingerprint: str, now: datetime
     ) -> tuple[LeadAnalysis | None, int | None, str | None]:
@@ -1072,12 +1139,14 @@ class BudgetedCachedOpenAIAnalyzer:
         async with self.session_factory() as session:
             request = AIRequest(
                 lead_id=lead_id,
-                analysis_version=self.ANALYSIS_VERSION,
+                analysis_version=self.analysis_version,
+                prompt_version=self.PROMPT_VERSION,
+                schema_version=self.SCHEMA_VERSION,
                 context_fingerprint=fingerprint,
                 model=self.inner.model,
                 status=AIRequestStatus.CLAIMED,
                 claimed_at=now,
-                claim_expires_at=now + timedelta(seconds=120),
+                claim_expires_at=now + timedelta(seconds=self.lease_seconds),
                 worker_id=self.worker_id,
                 claim_token=token,
                 attempt_count=1,
@@ -1093,7 +1162,7 @@ class BudgetedCachedOpenAIAnalyzer:
             existing = await session.scalar(
                 select(AIRequest).where(
                     AIRequest.lead_id == lead_id,
-                    AIRequest.analysis_version == self.ANALYSIS_VERSION,
+                    AIRequest.analysis_version == self.analysis_version,
                     AIRequest.context_fingerprint == fingerprint,
                 )
             )
@@ -1106,6 +1175,10 @@ class BudgetedCachedOpenAIAnalyzer:
                     update(AIRequest)
                     .where(
                         AIRequest.id == existing.id,
+                        AIRequest.status.not_in(
+                            [AIRequestStatus.SUCCEEDED, AIRequestStatus.PERMANENT_FAILURE]
+                        ),
+                        AIRequest.attempt_count < self.max_attempts,
                         or_(
                             AIRequest.status != AIRequestStatus.CLAIMED,
                             AIRequest.claim_expires_at.is_(None),
@@ -1115,11 +1188,13 @@ class BudgetedCachedOpenAIAnalyzer:
                     .values(
                         status=AIRequestStatus.CLAIMED,
                         claimed_at=now,
-                        claim_expires_at=now + timedelta(seconds=120),
+                        claim_expires_at=now + timedelta(seconds=self.lease_seconds),
                         worker_id=self.worker_id,
                         claim_token=token,
                         attempt_count=AIRequest.attempt_count + 1,
                         error=None,
+                        error_type=None,
+                        error_message=None,
                     )
                     .execution_options(synchronize_session=False)
                     .returning(AIRequest.id)
@@ -1134,8 +1209,24 @@ class BudgetedCachedOpenAIAnalyzer:
         claim_token: str,
         status: AIRequestStatus,
         error: str,
+        error_type: str = "AIAnalysisError",
+        paid_attempt: bool = True,
     ) -> None:
         async with self.session_factory() as session:
+            request = await session.scalar(
+                select(AIRequest).where(
+                    AIRequest.id == request_id,
+                    AIRequest.status == AIRequestStatus.CLAIMED,
+                    AIRequest.claim_token == claim_token,
+                )
+            )
+            if request is None:
+                return
+            final_status = (
+                AIRequestStatus.PERMANENT_FAILURE
+                if paid_attempt and request.attempt_count >= self.max_attempts
+                else status
+            )
             await session.execute(
                 update(AIRequest)
                 .where(
@@ -1144,8 +1235,20 @@ class BudgetedCachedOpenAIAnalyzer:
                     AIRequest.claim_token == claim_token,
                 )
                 .values(
-                    status=status,
+                    status=final_status,
                     error=error[:1000],
+                    error_type=error_type[:128],
+                    error_message=error[:4000],
+                    completed_at=(
+                        datetime.now(UTC)
+                        if final_status == AIRequestStatus.PERMANENT_FAILURE
+                        else None
+                    ),
+                    attempt_count=(
+                        request.attempt_count
+                        if paid_attempt
+                        else max(0, request.attempt_count - 1)
+                    ),
                     claim_expires_at=None,
                     claim_token=None,
                     worker_id=None,

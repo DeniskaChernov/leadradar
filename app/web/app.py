@@ -426,6 +426,7 @@ def build_web_app(
         replay_scenario = getattr(getattr(controller.monitor, "provider", None), "scenario", None)
         replay_status = replay_scenario.status() if replay_scenario is not None else None
         notification_readiness = await notification_readiness_service.preview(limit=10)
+        ai_safety = await queries.ai_safety_diagnostics()
         notification_modes = {
             "ALL_NEW_COMMENTS": (
                 "Каждый новый комментарий",
@@ -482,6 +483,7 @@ def build_web_app(
                 replay_status=replay_status,
                 notification_policy_info=notification_policy_info,
                 notification_readiness=notification_readiness,
+                ai_safety=ai_safety,
             ),
         )
 

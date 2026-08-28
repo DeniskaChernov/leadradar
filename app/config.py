@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     ai_pending_retry_enabled: bool = False
     ai_pending_retry_batch_size: int = Field(default=5, ge=0, le=100)
     ai_pending_retry_cooldown_seconds: int = Field(default=3600, ge=60)
+    ai_request_lease_seconds: int = Field(default=180, ge=30, le=3600)
+    ai_request_max_attempts: int = Field(default=3, ge=1, le=20)
+    lead_analysis_version: str = "3.0"
 
     scrapecreators_api_key: str = ""
     scrapecreators_api_url: str = "https://api.scrapecreators.com"
@@ -83,7 +86,7 @@ class Settings(BaseSettings):
     telegram_notification_flush_interval_seconds: int = Field(default=30, ge=10, le=3600)
     telegram_notification_lease_seconds: int = Field(default=120, ge=30, le=1800)
     notification_policy: str = "ALL_NEW_COMMENTS"
-    external_kill_switch: bool = False
+    external_kill_switch: bool = True
 
     @property
     def external_spend_unlocked(self) -> bool:

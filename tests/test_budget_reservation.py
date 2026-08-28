@@ -2,8 +2,9 @@ import asyncio
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import func, select
 
-from app.db.models import ExternalBudgetReservation, ReservationStatus
+from app.db.models import ExternalBudgetReservation, ExternalUsage, ReservationStatus
 from app.services.usage_service import ExternalBudgetExceeded, ExternalUsageService
 
 
@@ -40,9 +41,9 @@ async def test_budget_reservation_atomic_limits(session_factory):
 async def test_budget_reservation_concurrent_race(file_session_factory):
     first = ExternalUsageService(file_session_factory)
     second = ExternalUsageService(file_session_factory)
-    limit = 3
+    limit = 10
 
-    # 10 concurrent reservation attempts against limit=3
+    # 20 concurrent reservation attempts against limit=10
     async def try_reserve(usage_svc):
         try:
             return await usage_svc.reserve_budget("openai", "lead_analysis", limit, units=1)
@@ -50,10 +51,31 @@ async def test_budget_reservation_concurrent_race(file_session_factory):
             return None
 
     results = await asyncio.gather(
-        *[try_reserve(first if index % 2 else second) for index in range(10)]
+        *[try_reserve(first if index % 2 else second) for index in range(20)]
     )
     successful = [r for r in results if r is not None]
-    assert len(successful) <= 3
+    assert len(successful) <= 10
+
+
+@pytest.mark.asyncio
+async def test_finalize_reservation_is_exactly_once(session_factory):
+    usage = ExternalUsageService(session_factory)
+    reservation_id = await usage.reserve_budget(
+        "openai",
+        "lead_analysis",
+        10,
+        reservation_key="test:exactly-once",
+    )
+    await usage.mark_call_started(reservation_id)
+    await usage.finalize_reservation(reservation_id, details={"result": "ok"})
+    await usage.finalize_reservation(reservation_id, details={"result": "duplicate"})
+
+    async with session_factory() as session:
+        count = await session.scalar(select(func.count(ExternalUsage.id)))
+        reservation = await session.get(ExternalBudgetReservation, reservation_id)
+    assert count == 1
+    assert reservation is not None
+    assert reservation.status == ReservationStatus.FINALIZED
 
 
 @pytest.mark.asyncio

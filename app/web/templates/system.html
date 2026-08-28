@@ -27,6 +27,9 @@
 <section class="panel notification-readiness">
   <div class="panel-head"><div><span class="eyebrow">DRY-RUN · БЕЗ ОТПРАВКИ</span><h2>Готовность Telegram-уведомлений</h2><p>Read-only preview применяет реальные политики и проверяет outbox, но ничего не записывает и не отправляет.</p></div><span class="tag {% if notification_readiness.controlled_pilot_ready %}status-contacted{% else %}neutral{% endif %}">{% if notification_readiness.controlled_pilot_ready %}worker активен{% else %}pilot заблокирован{% endif %}</span></div>
   <div class="mini-metrics">
+    <span><b>{% if settings.external_kill_switch %}ВКЛ{% else %}ВЫКЛ{% endif %}</b> global kill switch</span>
+    <span><b>{{ usage.get('openai', 0) }}</b> AI-запросов сегодня</span>
+    <span><b>{{ [0, settings.openai_daily_request_limit - usage.get('openai', 0)]|max }}</b> остаток AI-лимита</span>
     <span><b>{{ notification_readiness.total_reviewed }}</b> проверено</span>
     <span><b>{{ notification_readiness.eligible }}</b> готовы</span>
     <span><b>{{ notification_readiness.sent }}</b> доставлены</span>
@@ -39,6 +42,20 @@
   <div class="table-wrap embedded"><table><thead><tr><th>Лид</th><th>Сигнал</th><th>Policy</th><th>Решение</th><th>Почему</th><th>Получатели</th></tr></thead><tbody>
     {% for item in notification_readiness.previews %}<tr><td><a href="/leads/{{ item.lead_id }}">@{{ item.username }}</a><br><small>{{ item.score }}/100 · {{ item.intent }}</small></td><td>{{ item.comment }}</td><td><code>{{ item.policy }}</code></td><td><span class="tag notification-{{ item.decision|lower }}">{{ item.decision }}</span></td><td>{{ item.reason }}<br><small>{{ item.idempotency_pattern }}</small></td><td>{{ item.target_count }}</td></tr>{% else %}<tr><td colspan="6" class="empty">Сохранённых лидов для preview пока нет.</td></tr>{% endfor %}
   </tbody></table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><span class="eyebrow">PHASE B · БЕЗОПАСНОСТЬ AI</span><h2>AI-запросы и бюджетные lease</h2><p>Диагностика читает только локальную БД и не вызывает внешние сервисы.</p></div><span class="tag {% if ai_safety.stale_ai_leases or ai_safety.uncertain_reservations %}neutral{% else %}status-contacted{% endif %}">{% if ai_safety.stale_ai_leases or ai_safety.uncertain_reservations %}нужна сверка{% else %}контур чист{% endif %}</span></div>
+  <div class="mini-metrics">
+    <span><b>{{ ai_safety.statuses.get('CLAIMED', 0) }}</b> AI выполняются</span>
+    <span><b>{{ ai_safety.statuses.get('SUCCEEDED', 0) }}</b> из кэша/успешно</span>
+    <span><b>{{ ai_safety.statuses.get('RETRYABLE', 0) }}</b> можно повторить</span>
+    <span><b>{{ ai_safety.statuses.get('FAILED', 0) }}</b> завершились ошибкой</span>
+    <span><b>{{ ai_safety.statuses.get('PERMANENT_FAILURE', 0) }}</b> ручная проверка</span>
+    <span><b>{{ ai_safety.active_reservations }}</b> активных резерваций</span>
+    <span><b>{{ ai_safety.stale_ai_leases }}</b> просроченных AI lease</span>
+    <span><b>{{ ai_safety.uncertain_reservations }}</b> неопределённых списаний</span>
+  </div>
 </section>
 
 

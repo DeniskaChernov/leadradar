@@ -32,6 +32,7 @@ from app.services.ai_service import (
 )
 from app.services.audience_service import AudienceEngine
 from app.services.contact_service import ContactService
+from app.services.external_safety_recovery_service import ExternalSafetyRecoveryService
 from app.services.instagram_monitor import InstagramMonitor
 from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowService
@@ -64,6 +65,12 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
     rattan_result = await RattanVerticalService(session_factory).rebuild()
     logger.info("rattan_vertical_synced stats=%s", rattan_result)
     usage_service = ExternalUsageService(session_factory)
+    recovery_stats = await ExternalSafetyRecoveryService(
+        session_factory,
+        usage_service,
+        max_ai_attempts=settings.ai_request_max_attempts,
+    ).recover()
+    logger.info("external_safety_recovery_completed stats=%s", recovery_stats)
     provider = create_instagram_provider(settings, usage_service)
     rules = RuleBasedLeadAnalyzer()
     openai_analyzer = None
@@ -74,6 +81,9 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             usage_service,
             enabled=settings.openai_live_enabled,
             daily_limit=settings.openai_daily_request_limit,
+            analysis_version=settings.lead_analysis_version,
+            lease_seconds=settings.ai_request_lease_seconds,
+            max_attempts=settings.ai_request_max_attempts,
         )
     analyzer = (
         HybridLeadAnalyzer(rules, openai_analyzer, mode=settings.ai_mode)

@@ -12,7 +12,7 @@
 | Feature | Implementation status | Test status | Live tested | Production ready |
 |---|---|---|---|---|
 | Audit + network freeze | Implemented | Offline automated | No | No |
-| AI request/budget ledger | Implemented | Concurrency + migration | No | No |
+| AI request/budget ledger | Phase B hardened | 186 offline tests + concurrency + migration | No | No |
 | Lead Scoring V3 | Implemented in rule pipeline | 30 golden + component tests | No | No |
 | Audience Engine V3 | Evidence-first core implemented | Unit/integration; golden expansion pending | UI offline | No |
 | Rattan Vertical V2 | Evidence-first core implemented | 24 golden + integration/idempotency | UI offline | No |
@@ -110,6 +110,28 @@
 - expired reservations становятся `EXPIRED`, finalize/release выполняются compare-and-set;
 - `.env.example` документирует глобальный `EXTERNAL_KILL_SWITCH`;
 - migration matrix, schema check, Ruff и 159 offline-тестов проходят без внешних вызовов.
+
+## Phase B — AI idempotency and atomic budget reservations
+
+- AI context fingerprint вынесен в отдельный сервис и версионирует contract `3.0`,
+  prompt, schema и model; реакции не меняют fingerprint;
+- уникальный `(lead_id, analysis_version, context_fingerprint)` и DB claim обеспечивают
+  один ledger row и максимум один внешний вызов для пяти конкурентных воркеров;
+- lease теперь конфигурируется (`180s`), worker ID включает host/PID, а после трёх
+  оплачиваемых неудач запрос переходит в `PERMANENT_FAILURE`;
+- отключённый OpenAI и отказ резервирования не расходуют счётчик оплачиваемых попыток;
+- бюджет резервируется до вызова под SQLite `BEGIN IMMEDIATE`; 20 конкурентных запросов
+  при лимите 10 создают не более 10 резерваций;
+- каждая резервация имеет стабильный key, worker, timestamps, actuals и details, а
+  `ExternalUsage.idempotency_key` защищает историю расходов от повторного finalize;
+- начало внешнего вызова фиксируется отдельно: неизвестный billing после сетевого сбоя
+  учитывается консервативно, а точно неотправленная stale reservation освобождается;
+- startup recovery идемпотентно разбирает stale AI/budget leases; `/system` показывает
+  статусы AI, активные резервации и неопределённые списания без внешних запросов;
+- миграция `c7f1a8d42e90` проверена на новой БД, рабочей БД с backup и повторном upgrade;
+- CI выполняет Ruff, compileall, fresh/existing/repeated Alembic и полный pytest;
+- текущий offline gate: **186 passed**, Ruff и compileall чистые; live API не вызывались,
+  production ready остаётся `No`.
 
 ## Архив прежних заявлений V6 — требует повторной проверки по новому Master Task
 

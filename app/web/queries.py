@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import (
     AIFeedback,
+    AIRequest,
+    AIRequestStatus,
     AudienceMembership,
     AudienceSegment,
     Comment,
@@ -21,6 +23,7 @@ from app.db.models import (
     Deal,
     DealStatus,
     Evidence,
+    ExternalBudgetReservation,
     ExternalUsage,
     Lead,
     LeadStatus,
@@ -30,6 +33,7 @@ from app.db.models import (
     NotificationStatus,
     Post,
     PublicSignal,
+    ReservationStatus,
     SignificantChange,
     SignificantChangeNotification,
     TaskStatus,
@@ -54,6 +58,39 @@ class WebQueryService:
     ) -> None:
         self.session_factory = session_factory
         self.hot_threshold = hot_threshold
+
+    async def ai_safety_diagnostics(self) -> dict:
+        now = datetime.now(UTC)
+        async with self.session_factory() as session:
+            status_rows = (
+                await session.execute(
+                    select(AIRequest.status, func.count(AIRequest.id)).group_by(AIRequest.status)
+                )
+            ).all()
+            active_reservations = await session.scalar(
+                select(func.count(ExternalBudgetReservation.id)).where(
+                    ExternalBudgetReservation.status == ReservationStatus.RESERVED,
+                    ExternalBudgetReservation.expires_at > now,
+                )
+            )
+            stale_ai_leases = await session.scalar(
+                select(func.count(AIRequest.id)).where(
+                    AIRequest.status == AIRequestStatus.CLAIMED,
+                    AIRequest.claim_expires_at <= now,
+                )
+            )
+            uncertain_reservations = await session.scalar(
+                select(func.count(ExternalBudgetReservation.id)).where(
+                    ExternalBudgetReservation.status == ReservationStatus.EXPIRED,
+                    ExternalBudgetReservation.call_started_at.is_not(None),
+                )
+            )
+        return {
+            "statuses": {status.value: count for status, count in status_rows},
+            "active_reservations": int(active_reservations or 0),
+            "stale_ai_leases": int(stale_ai_leases or 0),
+            "uncertain_reservations": int(uncertain_reservations or 0),
+        }
 
     async def rattan_workspace(self) -> dict:
         """Return only persisted, explicitly classified rattan data."""

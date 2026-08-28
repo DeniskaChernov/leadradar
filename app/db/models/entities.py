@@ -955,6 +955,7 @@ class ExternalUsage(Base):
     __tablename__ = "external_usage"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, index=True)
     service: Mapped[str] = mapped_column(String(64), index=True)
     operation: Mapped[str] = mapped_column(String(128), index=True)
     units: Mapped[int] = mapped_column(Integer, default=1)
@@ -998,7 +999,9 @@ class AIRequest(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
-    analysis_version: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    analysis_version: Mapped[str] = mapped_column(String(32), default="3.0", index=True)
+    prompt_version: Mapped[str] = mapped_column(String(32), default="lead-v3")
+    schema_version: Mapped[str] = mapped_column(String(32), default="lead-analysis-v3")
     context_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
     model: Mapped[str] = mapped_column(String(128))
     status: Mapped[AIRequestStatus] = mapped_column(
@@ -1016,6 +1019,9 @@ class AIRequest(Base):
     response_cache_key: Mapped[str | None] = mapped_column(String(64), index=True)
     result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     error: Mapped[str | None] = mapped_column(Text)
+    error_type: Mapped[str | None] = mapped_column(String(128))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )
@@ -1028,6 +1034,8 @@ class ExternalBudgetReservation(Base):
     __tablename__ = "external_budget_reservations"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    reservation_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    worker_id: Mapped[str | None] = mapped_column(String(128), index=True)
     service: Mapped[str] = mapped_column(String(64), index=True)
     operation: Mapped[str] = mapped_column(String(128), index=True)
     units_reserved: Mapped[int] = mapped_column(Integer, default=1)
@@ -1037,6 +1045,14 @@ class ExternalBudgetReservation(Base):
         Enum(ReservationStatus, native_enum=False), default=ReservationStatus.RESERVED, index=True
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    reserved_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+    call_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    actual_units: Mapped[int | None] = mapped_column(Integer)
+    actual_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
+    details_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )

@@ -26,6 +26,7 @@ async def test_live_scan_requires_server_side_confirmation(session_factory):
         instagram_provider="scrapecreators",
         instagram_live_calls_enabled=True,
         external_live_unlock="ALLOW_EXTERNAL_CALLS",
+        external_kill_switch=False,
         instagram_max_units_per_scan=2,
         instagram_daily_request_limit=10,
     )
