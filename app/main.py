@@ -39,6 +39,7 @@ from app.services.market_intelligence_service import MarketIntelligenceService
 from app.services.monitor_controller import MonitorController
 from app.services.monitor_run_service import MonitorRunService
 from app.services.notification_service import NullLeadNotifier
+from app.services.rattan_vertical_service import RattanVerticalService
 from app.services.significant_change_service import SignificantChangeDetector
 from app.services.telegram_notification_service import TelegramLeadNotifier
 from app.services.usage_service import ExternalUsageService
@@ -60,6 +61,8 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
     market_service = MarketIntelligenceService(session_factory)
     catalog_result = await market_service.sync_catalog()
     logger.info("market_catalog_synced result=%s", catalog_result)
+    rattan_result = await RattanVerticalService(session_factory).rebuild()
+    logger.info("rattan_vertical_synced stats=%s", rattan_result)
     usage_service = ExternalUsageService(session_factory)
     provider = create_instagram_provider(settings, usage_service)
     rules = RuleBasedLeadAnalyzer()

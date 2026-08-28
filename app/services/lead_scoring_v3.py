@@ -121,7 +121,11 @@ class LeadScorerV3:
             for item in history
             if item.quality != CommercialSignalQuality.NON_COMMERCIAL
         ]
-        history_boost, sequence_score = cls._history_scores(commercial, intent)
+        history_boost, sequence_score = cls._history_scores(
+            commercial,
+            intent,
+            current_competitor=current_competitor,
+        )
         competitor_count = len(
             {item.competitor for item in commercial if item.competitor}
             | ({current_competitor} if quality != CommercialSignalQuality.NON_COMMERCIAL else set())
@@ -191,7 +195,10 @@ class LeadScorerV3:
 
     @staticmethod
     def _history_scores(
-        history: list[HistoricalSignal], current_intent: Intent
+        history: list[HistoricalSignal],
+        current_intent: Intent,
+        *,
+        current_competitor: str = "",
     ) -> tuple[int, int]:
         now = datetime.now(UTC)
         counts: dict[Intent, int] = {}
@@ -205,6 +212,8 @@ class LeadScorerV3:
             diminishing = 1 / math.sqrt(counts[item.intent])
             history_score += 4.0 * decay * diminishing
         competitors = {item.competitor for item in ordered if item.competitor}
+        if current_competitor:
+            competitors.add(current_competitor)
         history_score += min(6, max(0, len(competitors) - 1) * 3)
 
         intents = [item.intent for item in ordered] + [current_intent]

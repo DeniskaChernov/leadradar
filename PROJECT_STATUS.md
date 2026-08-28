@@ -15,7 +15,7 @@
 | AI request/budget ledger | Implemented | Concurrency + migration | No | No |
 | Lead Scoring V3 | Implemented in rule pipeline | 30 golden + component tests | No | No |
 | Audience Engine V3 | Evidence-first core implemented | Unit/integration; golden expansion pending | UI offline | No |
-| Rattan Vertical V2 | Prototype/legacy | Small fixture only | No | No |
+| Rattan Vertical V2 | Evidence-first core implemented | 24 golden + integration/idempotency | UI offline | No |
 | Unit Economics ledger | Not implemented | Calculator tests only | No | No |
 | Premium UI / Telegram Bot | Partial | Smoke/unit only | No | No |
 | Real Agent / MCP | Prototype/mock | Fixture tests only | No | No |
@@ -34,7 +34,7 @@
 - AI fingerprint учитывает только коммерческую историю, stable contact identity, vertical и catalog context version;
 - OpenAI output не может сохранить выдуманные Evidence IDs; без Evidence confidence снижается;
 - текущая golden calibration содержит только 30 сценариев — pilot gate 150–300 ещё не выполнен;
-- полный offline suite после Phase D: 171 тест, внешних вызовов нет.
+- полный offline suite после Phase E: 175 тестов, внешних вызовов нет.
 
 ## Phase D — Audience Engine V3
 
@@ -46,8 +46,28 @@
 - интерфейс сегмента показывает менеджеру «почему контакт здесь»;
 - миграция `f3b9d7a61c20` применена к рабочей БД, Alembic schema check чистый;
 - полная цепочка Alembic подтверждена отдельно на новой пустой SQLite БД;
-- текущая рабочая БД: 16 evidence-first interest profiles, 600 уникальных memberships, дубликатов нет;
+- текущая рабочая БД: 16 evidence-first interest profiles, 650 уникальных memberships, дубликатов нет;
 - audience golden/eval пока недостаточен, поэтому production/pilot ready остаётся `No`.
+
+## Phase E — Artificial Rattan Vertical V2
+
+- добавлен строгий `RattanTaxonomyService`: без явного rattan-контекста обычные столы,
+  кресла и мебель остаются в вертикали `FURNITURE`;
+- сырьё (`RAW_RATTAN`, бухта, кг, плоский/круглый/полукруглый профиль) отделено от
+  готовой ротанговой мебели и ролей рынка;
+- `vertical` проходит через Competitor, PublicSignal, Evidence, Lead и AudienceSegment;
+- сохранённые записи перестраиваются идемпотентно, Evidence остаётся источником
+  доказательств, а BusinessEntity получает объединение наблюдавшихся вертикалей;
+- отдельный `/rattan` workspace показывает только реальные записи БД и честно сообщает,
+  что источник поиска выключен; demo-компании не создаются;
+- добавлены отдельные rattan-аудитории для сырья, готовой мебели, опта и высокой ценности;
+- migration `a6d4e2c91f30` проверена на рабочей и новой пустой SQLite БД;
+- golden fixture: 24 RU/UZ/EN сценария, включая отрицательные примеры и ложные
+  совпадения по «кг», кабелю и обычной мебели;
+- рабочая БД: 22 доказательных rattan-сигнала и 1 подтверждённая компания;
+- integrity gate: 0 дублей и 0 вертикальных рассогласований Lead/Evidence/PublicSignal;
+- полный offline gate: 175 tests passed, Ruff, compileall и Alembic check чистые;
+- live discovery и внешний pilot не запускались, поэтому production ready остаётся `No`.
 
 ## Post-audit hardening — AI cost ledger
 

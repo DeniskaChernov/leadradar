@@ -203,6 +203,12 @@ async def inspect_integrity() -> IntegrityResult:
                 .where(AIRequest.claim_token.is_not(None))
                 .group_by(AIRequest.claim_token)
                 .having(func.count() > 1),
+                "lead/public-signal vertical mismatches": select(Lead.id)
+                .join(PublicSignal, PublicSignal.comment_id == Lead.comment_id)
+                .where(Lead.vertical != PublicSignal.vertical),
+                "evidence/public-signal vertical mismatches": select(Evidence.id)
+                .join(PublicSignal, PublicSignal.id == Evidence.public_signal_id)
+                .where(Evidence.vertical != PublicSignal.vertical),
             }
             duplicates = {
                 name: len((await session.execute(query)).all()) for name, query in checks.items()

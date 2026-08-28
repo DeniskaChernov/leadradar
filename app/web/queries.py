@@ -20,6 +20,7 @@ from app.db.models import (
     ContactTask,
     Deal,
     DealStatus,
+    Evidence,
     ExternalUsage,
     Lead,
     LeadStatus,
@@ -28,9 +29,11 @@ from app.db.models import (
     NotificationLog,
     NotificationStatus,
     Post,
+    PublicSignal,
     SignificantChange,
     SignificantChangeNotification,
     TaskStatus,
+    Vertical,
 )
 
 OPEN_LEAD_STATUSES = [
@@ -51,6 +54,53 @@ class WebQueryService:
     ) -> None:
         self.session_factory = session_factory
         self.hot_threshold = hot_threshold
+
+    async def rattan_workspace(self) -> dict:
+        """Return only persisted, explicitly classified rattan data."""
+        async with self.session_factory() as session:
+            rows = (
+                await session.execute(
+                    select(Lead, Comment, Contact, Competitor, PublicSignal, Evidence)
+                    .join(Comment, Comment.id == Lead.comment_id)
+                    .join(Contact, Contact.id == Lead.contact_id)
+                    .join(Competitor, Competitor.id == Lead.competitor_id)
+                    .join(PublicSignal, PublicSignal.comment_id == Comment.id)
+                    .join(Evidence, Evidence.public_signal_id == PublicSignal.id)
+                    .where(Lead.vertical == Vertical.ARTIFICIAL_RATTAN)
+                    .order_by(desc(Comment.discovered_at))
+                    .limit(100)
+                )
+            ).all()
+            companies = list(
+                await session.scalars(
+                    select(Competitor)
+                    .where(Competitor.vertical == Vertical.ARTIFICIAL_RATTAN)
+                    .order_by(Competitor.normalized_handle)
+                )
+            )
+        layers: Counter[str] = Counter()
+        roles: Counter[str] = Counter()
+        products: Counter[str] = Counter()
+        for _lead, _comment, _contact, _competitor, _signal, evidence in rows:
+            taxonomy = (evidence.raw_data or {}).get("rattan_taxonomy") or {}
+            if taxonomy.get("layer"):
+                layers[str(taxonomy["layer"])] += 1
+            if taxonomy.get("role") and taxonomy.get("role") != "UNKNOWN":
+                roles[str(taxonomy["role"])] += 1
+            products.update(str(item) for item in taxonomy.get("products") or [])
+        return {
+            "rattan_rows": rows,
+            "rattan_companies": companies,
+            "rattan_layers": layers,
+            "rattan_roles": roles.most_common(),
+            "rattan_products": products.most_common(),
+            "rattan_counts": {
+                "signals": len(rows),
+                "companies": len(companies),
+                "raw": layers.get("RAW_MATERIAL", 0),
+                "ready": layers.get("READY_FURNITURE", 0),
+            },
+        }
 
     async def dashboard(self) -> dict:
         now = datetime.now(UTC)
@@ -608,12 +658,19 @@ class WebQueryService:
                 "significant_changes": significant_changes,
             }
 
-    async def audiences(self) -> list[dict]:
+    async def audiences(self, vertical: str = "FURNITURE") -> list[dict]:
         async with self.session_factory() as session:
+            try:
+                selected_vertical = Vertical(vertical)
+            except ValueError:
+                selected_vertical = Vertical.FURNITURE
             segments = list(
                 await session.scalars(
                     select(AudienceSegment)
-                    .where(AudienceSegment.active.is_(True))
+                    .where(
+                        AudienceSegment.active.is_(True),
+                        AudienceSegment.vertical == selected_vertical,
+                    )
                     .order_by(AudienceSegment.name)
                 )
             )

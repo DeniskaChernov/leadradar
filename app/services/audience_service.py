@@ -26,6 +26,7 @@ from app.db.models import (
     LeadStatus,
     OutcomeDNA,
     PublicSignal,
+    Vertical,
 )
 from app.services.b2b_policy import B2BPolicy
 
@@ -48,6 +49,7 @@ class SegmentDefinition:
     name: str
     description: str
     criteria: dict[str, object]
+    vertical: str = "FURNITURE"
 
 
 SEGMENTS = (
@@ -90,9 +92,10 @@ SEGMENTS = (
     ),
     SegmentDefinition(
         "rattan",
-        "Плетёная мебель",
-        "Наблюдаемый интерес к плетёной мебели и ротангу.",
-        {"product": "RATTAN_FURNITURE"},
+        "Рынок искусственного ротанга",
+        "Любой подтверждённый коммерческий сигнал отдельной rattan-вертикали.",
+        {"vertical": "ARTIFICIAL_RATTAN"},
+        "ARTIFICIAL_RATTAN",
     ),
     SegmentDefinition(
         "asked-price", "Спрашивали цену", "Контакты с явным вопросом о цене.", {"intent": "PRICE"}
@@ -146,13 +149,29 @@ SEGMENTS = (
         "rattan-wholesale",
         "Ротанг · оптовый спрос",
         "Ротанг вместе с явным B2B или оптовым интересом.",
-        {"product": "RATTAN_FURNITURE", "customer_type": "B2B"},
+        {"vertical": "ARTIFICIAL_RATTAN", "customer_type": "B2B"},
+        "ARTIFICIAL_RATTAN",
     ),
     SegmentDefinition(
         "rattan-high-value",
         "Ротанг · высокий потенциал",
         "Ротанг с высокой наблюдаемой коммерческой ценностью.",
-        {"product": "RATTAN_FURNITURE", "min_value": 75},
+        {"vertical": "ARTIFICIAL_RATTAN", "min_value": 75},
+        "ARTIFICIAL_RATTAN",
+    ),
+    SegmentDefinition(
+        "rattan-raw-material",
+        "Ротанг · сырьё и профиль",
+        "Запросы на бухты, килограммы, профиль и материал для плетения.",
+        {"vertical": "ARTIFICIAL_RATTAN", "rattan_layer": "RAW_MATERIAL"},
+        "ARTIFICIAL_RATTAN",
+    ),
+    SegmentDefinition(
+        "rattan-ready-furniture",
+        "Ротанг · готовая мебель",
+        "Столы, кресла, диваны и комплекты только с явным rattan-контекстом.",
+        {"vertical": "ARTIFICIAL_RATTAN", "rattan_layer": "READY_FURNITURE"},
+        "ARTIFICIAL_RATTAN",
     ),
     # Phase 4 — buyer-role-based segments
     SegmentDefinition(
@@ -287,6 +306,7 @@ class AudienceEngine:
         changed = 0
         async with self.session_factory() as session:
             for definition in SEGMENTS:
+                criteria = {**definition.criteria, "vertical": definition.vertical}
                 segment = await session.scalar(
                     select(AudienceSegment).where(AudienceSegment.slug == definition.slug)
                 )
@@ -294,27 +314,31 @@ class AudienceEngine:
                     session.add(
                         AudienceSegment(
                             slug=definition.slug,
+                            vertical=Vertical(definition.vertical),
                             name=definition.name,
                             description=definition.description,
-                            criteria_json=definition.criteria,
+                            criteria_json=criteria,
                         )
                     )
                     changed += 1
                 else:
                     before = (
                         segment.name,
+                        segment.vertical,
                         segment.description,
                         segment.criteria_json,
                         segment.active,
                     )
                     segment.name = definition.name
+                    segment.vertical = Vertical(definition.vertical)
                     segment.description = definition.description
-                    segment.criteria_json = definition.criteria
+                    segment.criteria_json = criteria
                     segment.active = True
                     changed += int(
                         before
                         != (
                             segment.name,
+                            segment.vertical,
                             segment.description,
                             segment.criteria_json,
                             segment.active,
@@ -772,19 +796,25 @@ class AudienceEngine:
             # ------------------------------------------------------------------
             # Phase 4 — Similarity vector (pre-computed, used for get_similar_contacts)
             # ------------------------------------------------------------------
+            observed_vertical = (
+                Counter(item.vertical for item in interest_observations).most_common(1)[0][0]
+                if interest_observations
+                else "FURNITURE"
+            )
+            rattan_layers = {
+                str((lead.analysis_details or {}).get("rattan_taxonomy", {}).get("layer"))
+                for lead, _comment in commercial
+                if (lead.analysis_details or {}).get("rattan_taxonomy", {}).get("layer")
+            }
             similarity_vector: dict[str, Any] = {
                 "products": sorted(product_counts.keys()),
                 "intents": sorted(intent_counts.keys()),
                 "buyer_role": primary_buyer_role,
-                "vertical": (
-                    "ARTIFICIAL_RATTAN" if "RATTAN_FURNITURE" in product_counts else "FURNITURE"
-                ),
+                "vertical": observed_vertical,
                 "quantity_band": self._quantity_band(explicit_quantity),
             }
 
-            intelligence.vertical = (
-                "ARTIFICIAL_RATTAN" if "RATTAN_FURNITURE" in product_counts else "FURNITURE"
-            )
+            intelligence.vertical = observed_vertical
             intelligence.commercial_stage = commercial_stage
             intelligence.intent_strength = max_score
             intelligence.signal_count = len(comments)
@@ -843,6 +873,8 @@ class AudienceEngine:
                 "evidence_ids": sorted(
                     {item.evidence_id for item in interest_observations}
                 ),
+                "vertical": observed_vertical,
+                "rattan_layers": rattan_layers,
             }
             for segment in segments:
                 active, reasons, evidence_ids, expires_at = self._evaluate(
@@ -981,6 +1013,12 @@ class AudienceEngine:
         if criteria.get("hot"):
             active &= bool(facts["hot"])
             add_reason("HOT", "HOT-порог достигнут", facts["evidence_ids"], facts["value"])
+        if vertical := criteria.get("vertical"):
+            active &= facts.get("vertical") == vertical
+            add_reason("VERTICAL", f"вертикаль: {vertical}", facts["evidence_ids"])
+        if layer := criteria.get("rattan_layer"):
+            active &= layer in facts.get("rattan_layers", set())
+            add_reason("RATTAN_LAYER", f"рынок: {layer}", facts["evidence_ids"])
         if days := criteria.get("days"):
             active &= int(facts["recency_days"]) < int(days)
             expires_at = last_seen + timedelta(days=int(days))

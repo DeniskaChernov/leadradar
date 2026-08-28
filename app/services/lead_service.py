@@ -100,10 +100,14 @@ class LeadService:
             contact = await session.get(Contact, signal.contact_id)
             if comment is None or contact is None:
                 raise RuntimeError("Persisted signal references missing database rows")
+            public_signal = await session.scalar(
+                select(PublicSignal).where(PublicSignal.comment_id == signal.comment_id)
+            )
             lead = Lead(
                 contact_id=signal.contact_id,
                 comment_id=signal.comment_id,
                 competitor_id=signal.competitor_id,
+                vertical=(public_signal.vertical if public_signal else signal.vertical),
                 intent="OTHER",
                 lead_score=0,
                 ai_reason="Анализируем публичный коммерческий сигнал",
@@ -121,9 +125,6 @@ class LeadService:
                         "status": LeadStatus.ANALYZING.value,
                         "public_signal_id": signal.public_signal_id,
                     },
-                )
-                public_signal = await session.scalar(
-                    select(PublicSignal).where(PublicSignal.comment_id == signal.comment_id)
                 )
                 if public_signal is not None:
                     public_signal.pipeline_stage = "LEAD_COMMITTED"
@@ -204,12 +205,34 @@ class LeadService:
             contact = await session.get(Contact, lead.contact_id)
             if comment is None or post is None or contact is None:
                 raise RuntimeError("Analyzing lead references missing database rows")
+            public_signal = await session.scalar(
+                select(PublicSignal).where(PublicSignal.comment_id == lead.comment_id)
+            )
+            source_evidence = None
+            if public_signal is not None:
+                source_evidence = await session.scalar(
+                    select(Evidence)
+                    .where(Evidence.public_signal_id == public_signal.id)
+                    .order_by(Evidence.id)
+                )
+            taxonomy = (
+                ((source_evidence.raw_data or {}).get("rattan_taxonomy") or {})
+                if source_evidence is not None
+                else {}
+            )
+            taxonomy_products = list(taxonomy.get("products") or [])
+            product_category = analysis.product_category
+            if taxonomy.get("layer") == "RAW_MATERIAL" and taxonomy_products:
+                product_category = str(taxonomy_products[0])
             previous_score = lead.lead_score
             lead.intent = analysis.intent.value
-            lead.product_category = analysis.product_category
+            lead.product_category = product_category
             lead.lead_score = analysis.lead_score
             lead.ai_reason = analysis.reason
             lead.analysis_details = analysis.model_dump(mode="json")
+            lead.analysis_details["vertical"] = lead.vertical.value
+            if taxonomy:
+                lead.analysis_details["rattan_taxonomy"] = taxonomy
             lead.language = analysis.language
             lead.ai_source = analysis_source
             if lead.status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING}:
@@ -224,7 +247,7 @@ class LeadService:
                         comment_text=comment.text,
                         post_context=post.caption,
                         predicted_intent=analysis.intent.value,
-                        predicted_product=analysis.product_category,
+                        predicted_product=product_category,
                         predicted_score=analysis.lead_score,
                     )
                 )
@@ -236,7 +259,7 @@ class LeadService:
                     "from": previous_score,
                     "to": analysis.lead_score,
                     "intent": analysis.intent.value,
-                    "product_category": analysis.product_category,
+                    "product_category": product_category,
                     "confidence": analysis.confidence,
                     "funnel_stage": analysis.funnel_stage.value,
                     "urgency": analysis.urgency.value,
@@ -245,9 +268,6 @@ class LeadService:
                     "factors": analysis.factors,
                     "evidence_ids": analysis.evidence_ids,
                 },
-            )
-            public_signal = await session.scalar(
-                select(PublicSignal).where(PublicSignal.comment_id == lead.comment_id)
             )
             if public_signal is not None:
                 public_signal.status = PublicSignalStatus.ANALYZED

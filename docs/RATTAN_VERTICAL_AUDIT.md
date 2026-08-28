@@ -1,10 +1,11 @@
 # Artificial Rattan Vertical Audit
 
-## CURRENT BEHAVIOR
-- Rattan classification existed primarily as product labels (`RATTAN_SOFA`, `RATTAN_ARMCHAIR`, etc.) and a keyword heuristic in `_product()`.
-- Vertical switching in UI was partially a query-parameter filter rather than a deeply separated entity vertical.
-- Raw rattan materials (coils, profiles, price per kg, flat/round extrusion) were not clearly distinguished from ready-made furniture.
-- Generic terms (e.g. "стол", "кресло") lacked strict context validation, risking false classification as rattan business.
+## CURRENT BEHAVIOR (Phase E verified)
+- Rattan is a persisted vertical on PublicSignal, Evidence, Lead, AudienceSegment and Competitor.
+- `RattanTaxonomyService` requires explicit rattan context before assigning the vertical.
+- Raw materials, finished furniture and observable market roles are classified separately.
+- `/rattan` is a separate DB-backed workspace; it does not inject demo companies.
+- The offline rebuild is idempotent and propagates taxonomy through existing evidence.
 
 ## EXPECTED BEHAVIOR
 - Two completely separate workspaces: Furniture (`FURNITURE`) vs Artificial Rattan (`ARTIFICIAL_RATTAN`).
@@ -16,10 +17,12 @@
 - Disambiguation: "стол" -> normal furniture; "ротанговый стол" -> rattan furniture; "цена за кг" / "бухта" -> raw rattan material.
 - If live discovery is off, UI displays "Источник поиска выключен" instead of mock companies.
 
-## BUGS
-1. Missing `vertical` column in core signal and lead database schemas.
-2. Keyword overlap causing standard furniture inquiries on general posts to map to rattan categories.
-3. Lack of raw extrusion profile classification (flat, half-round, round).
+## FIXED IN PHASE E
+1. Migration `a6d4e2c91f30` adds the missing vertical columns and indexes.
+2. Generic furniture without explicit rattan context stays in `FURNITURE`.
+3. Raw extrusion profiles and price/unit markers have dedicated taxonomy values.
+4. Furniture and rattan audience definitions are isolated by structured vertical criteria.
+5. Integrity checks detect Lead/PublicSignal and Evidence/PublicSignal vertical drift.
 
 ## DATA RISKS
 - Cross-contamination between furniture leads and raw material inquiries in CRM views.
@@ -33,13 +36,14 @@
 ## FALSE NEGATIVE RISKS
 - Moderate: Industrial B2B inquiries using technical terms ("гранулы", "полиротанг в бухтах", "пруток") missed without dedicated vocabulary.
 
-## PROPOSED FIX
-1. Add `vertical` column to `public_signals`, `leads`, `evidence`, and `audience_segments`.
-2. Build dedicated `RattanTaxonomyService` with separate sub-classifiers for raw materials vs finished goods vs business roles.
-3. Provide distinct workspace navigation in UI (`[ 🪑 Мебель ]` vs `[ 🌾 Искусственный ротанг ]`).
+## REMAINING GATES
+1. Expand the current 24-case golden set to the pilot-size evaluation corpus.
+2. Run the offline 500–1000 signal replay and measure precision/recall by layer and role.
+3. Only after those gates, authorize a controlled live provider pilot and notification delivery.
 
-## TESTS REQUIRED
-- `test_rattan_raw_material_vs_furniture_disambiguation`
-- `test_general_furniture_never_classified_as_rattan_without_context`
-- `test_rattan_business_role_classification_accuracy`
-- `test_workspace_vertical_isolation`
+## VERIFIED EVIDENCE
+- 24 RU/UZ/EN golden and negative cases.
+- Idempotent rebuild and workspace isolation integration tests.
+- Empty-database and existing-database Alembic upgrade checks.
+- Full offline suite: 175 passed; Ruff, compileall and Alembic schema check clean.
+- Working database integrity: zero duplicate keys and zero vertical mismatches.

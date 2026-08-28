@@ -140,6 +140,13 @@ def build_web_app(
 
     def base_context(request: Request, **kwargs):
         snapshot = controller.snapshot()
+        requested_vertical = request.query_params.get("vertical", "").upper()
+        selected_vertical = (
+            "ARTIFICIAL_RATTAN"
+            if request.url.path.startswith("/rattan")
+            or requested_vertical == "ARTIFICIAL_RATTAN"
+            else "FURNITURE"
+        )
         return {
             "request": request,
             "now": datetime.now().astimezone(),
@@ -150,6 +157,7 @@ def build_web_app(
             "safe_mode": (settings.instagram_provider in {"mock", "replay"} or not settings.instagram_live_enabled),
             "search_paused": not settings.lead_search_enabled,
             "telegram_manager_count": len(settings.telegram_admin_chat_ids),
+            "selected_vertical": selected_vertical,
             **kwargs,
         }
 
@@ -194,6 +202,15 @@ def build_web_app(
         return templates.TemplateResponse(
             request=request,
             name="dashboard.html",
+            context=base_context(request, **data),
+        )
+
+    @app.get("/rattan", response_class=HTMLResponse)
+    async def rattan_workspace(request: Request):
+        data = await queries.rattan_workspace()
+        return templates.TemplateResponse(
+            request=request,
+            name="rattan.html",
             context=base_context(request, **data),
         )
 
@@ -303,8 +320,8 @@ def build_web_app(
         )
 
     @app.get("/audiences", response_class=HTMLResponse)
-    async def audiences(request: Request):
-        rows = await queries.audiences()
+    async def audiences(request: Request, vertical: str = "FURNITURE"):
+        rows = await queries.audiences(vertical=vertical)
         return templates.TemplateResponse(
             request=request,
             name="audiences.html",

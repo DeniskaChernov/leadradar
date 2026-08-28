@@ -268,6 +268,9 @@ class Competitor(Base):
     platform: Mapped[str] = mapped_column(String(32), default="instagram")
     handle: Mapped[str] = mapped_column(String(255))
     normalized_handle: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    vertical: Mapped[Vertical] = mapped_column(
+        Enum(Vertical, native_enum=False), default=Vertical.FURNITURE, index=True
+    )
     display_name: Mapped[str | None] = mapped_column(String(255))
     category: Mapped[str] = mapped_column(String(64), default="DIRECT")
     tier: Mapped[str] = mapped_column(String(8), default="A", index=True)
@@ -498,6 +501,9 @@ class Evidence(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     evidence_key: Mapped[str] = mapped_column(String(512), index=True)
     public_signal_id: Mapped[int] = mapped_column(ForeignKey("public_signals.id"), index=True)
+    vertical: Mapped[Vertical] = mapped_column(
+        Enum(Vertical, native_enum=False), default=Vertical.FURNITURE, index=True
+    )
     source_type: Mapped[str] = mapped_column(String(64), index=True)
     source_url: Mapped[str | None] = mapped_column(Text)
     text: Mapped[str | None] = mapped_column(Text)
@@ -662,6 +668,9 @@ class AudienceSegment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     slug: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    vertical: Mapped[Vertical] = mapped_column(
+        Enum(Vertical, native_enum=False), default=Vertical.FURNITURE, index=True
+    )
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text)
     criteria_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -755,6 +764,9 @@ class Lead(Base):
     contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
     comment_id: Mapped[int] = mapped_column(ForeignKey("comments.id"), unique=True)
     competitor_id: Mapped[int] = mapped_column(ForeignKey("competitors.id"), index=True)
+    vertical: Mapped[Vertical] = mapped_column(
+        Enum(Vertical, native_enum=False), default=Vertical.FURNITURE, index=True
+    )
     intent: Mapped[str] = mapped_column(String(64), default="OTHER")
     product_category: Mapped[str | None] = mapped_column(String(128))
     lead_score: Mapped[int] = mapped_column(Integer, default=0)

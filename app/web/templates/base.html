@@ -21,6 +21,13 @@
       <div><strong>Lead Radar</strong><span>Радар спроса и CRM</span></div>
     </a>
     <nav aria-label="Основная навигация">
+      {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}
+      <a class="nav {% if active_path == '/rattan' %}active{% endif %}" href="/rattan" {% if active_path == '/rattan' %}aria-current="page"{% endif %}><span aria-hidden="true">🌾</span>Обзор ротанга</a>
+      <a class="nav" href="/rattan#signals"><span aria-hidden="true">⌁</span>Сигналы</a>
+      <a class="nav" href="/rattan#companies"><span aria-hidden="true">◫</span>Компании</a>
+      <a class="nav" href="/audiences?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true">◉</span>Аудитории</a>
+      <a class="nav" href="/system?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true">⚙</span>Источники</a>
+      {% else %}
       <a class="nav {% if active_path == '/' %}active{% endif %}" href="/" {% if active_path == '/' %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="layout-dashboard">⌂</i></span>Обзор</a>
       <a class="nav {% if active_path.startswith('/radar') %}active{% endif %}" href="/radar" {% if active_path.startswith('/radar') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="radar">⌁</i></span>Радар</a>
       <a class="nav {% if active_path.startswith('/leads') %}active{% endif %}" href="/leads" {% if active_path.startswith('/leads') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="zap">⚡</i></span>Лиды</a>
@@ -33,6 +40,7 @@
       <a class="nav {% if active_path.startswith('/openings') %}active{% endif %}" href="/openings" {% if active_path.startswith('/openings') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="store">🏪</i></span>Открытия</a>
       <a class="nav {% if active_path.startswith('/roadmap') %}active{% endif %}" href="/roadmap" {% if active_path.startswith('/roadmap') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="route">↗</i></span>Развитие</a>
       <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system" {% if active_path.startswith('/system') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="settings-2">⚙</i></span>Система</a>
+      {% endif %}
     </nav>
     <div class="side-info">
       {% if search_paused %}
@@ -61,10 +69,10 @@
 
       <!-- Vertical Navigation Context Switcher (V6 Section 6) -->
       <div class="vertical-switcher" role="radiogroup" aria-label="Выбор вертикали бизнеса">
-        <a href="?vertical=FURNITURE" class="switcher-tab {% if selected_vertical != 'ARTIFICIAL_RATTAN' %}active{% endif %}">
+        <a href="/" class="switcher-tab {% if selected_vertical != 'ARTIFICIAL_RATTAN' %}active{% endif %}">
           🪑 Мебель
         </a>
-        <a href="?vertical=ARTIFICIAL_RATTAN" class="switcher-tab {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}active{% endif %}">
+        <a href="/rattan" class="switcher-tab {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}active{% endif %}">
           🌾 Искусственный ротанг
         </a>
       </div>

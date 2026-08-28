@@ -29,6 +29,7 @@ from app.db.repositories import (
     PostRepository,
 )
 from app.schemas.instagram import InstagramComment, InstagramPost
+from app.services.rattan_taxonomy_service import RattanTaxonomyService
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class PersistedSignal:
     created: bool
     is_baseline: bool
     public_signal_id: int | None = None
+    vertical: Vertical = Vertical.FURNITURE
 
 
 class ContactService:
@@ -90,10 +92,16 @@ class ContactService:
                     created=False,
                     is_baseline=existing.is_baseline,
                     public_signal_id=public_signal.id if public_signal else None,
+                    vertical=public_signal.vertical if public_signal else Vertical.FURNITURE,
                 )
 
             try:
+                taxonomy = RattanTaxonomyService.classify(
+                    f"{post_data.caption}\n{comment_data.text}"
+                )
                 competitor = await CompetitorRepository(session).get_or_create(post_data.competitor)
+                if taxonomy.is_rattan:
+                    competitor.vertical = Vertical.ARTIFICIAL_RATTAN
                 post, _, _ = await PostRepository(session).upsert(competitor, post_data)
                 contact, contact_created = await ContactRepository(session).upsert_from_comment(
                     comment_data
@@ -117,7 +125,7 @@ class ContactService:
                     contact_id=contact.id,
                     business_id=business.id,
                     competitor_id=competitor.id,
-                    vertical=Vertical.FURNITURE,
+                    vertical=taxonomy.vertical,
                     subject_type=SignalSubjectType.CONTACT,
                     platform=comment.platform,
                     signal_type=SignalType.COMMENT,
@@ -143,13 +151,27 @@ class ContactService:
                     Evidence(
                         evidence_key=f"{public_signal.dedupe_key}:source",
                         public_signal_id=public_signal.id,
+                        vertical=taxonomy.vertical,
                         source_type="INSTAGRAM_COMMENT",
                         source_url=post.url,
                         text=comment.text,
-                        strength=0,
                         confidence=100,
                         observed_at=comment.created_at_platform or comment.discovered_at,
-                        raw_data=comment.raw_data,
+                        topic=taxonomy.products[0] if taxonomy.products else None,
+                        intent=taxonomy.layer.value if taxonomy.is_rattan else None,
+                        strength=taxonomy.confidence if taxonomy.is_rattan else 0,
+                        raw_data={
+                            **(comment.raw_data or {}),
+                            "rattan_taxonomy": {
+                                "version": RattanTaxonomyService.VERSION,
+                                "layer": taxonomy.layer.value,
+                                "role": taxonomy.role.value,
+                                "products": list(taxonomy.products),
+                                "material_profiles": list(taxonomy.material_profiles),
+                                "evidence": list(taxonomy.evidence),
+                                "negative_evidence": list(taxonomy.negative_evidence),
+                            },
+                        },
                     )
                 )
                 await ContactEventRepository(session).add(
@@ -160,6 +182,7 @@ class ContactService:
                         "post_id": post.id,
                         "public_signal_id": public_signal.id,
                         "is_baseline": is_baseline,
+                        "vertical": taxonomy.vertical.value,
                     },
                 )
                 await session.commit()
@@ -178,6 +201,7 @@ class ContactService:
                     created=True,
                     is_baseline=is_baseline,
                     public_signal_id=public_signal.id,
+                    vertical=taxonomy.vertical,
                 )
             except IntegrityError:
                 await session.rollback()
@@ -197,6 +221,7 @@ class ContactService:
                     created=False,
                     is_baseline=existing.is_baseline,
                     public_signal_id=public_signal.id if public_signal else None,
+                    vertical=public_signal.vertical if public_signal else Vertical.FURNITURE,
                 )
 
     @staticmethod
@@ -210,6 +235,9 @@ class ContactService:
         if competitor.business_id is not None:
             existing = await session.get(BusinessEntity, competitor.business_id)
             if existing is not None:
+                existing.verticals_json = sorted(
+                    set(existing.verticals_json or []).union({competitor.vertical.value})
+                )
                 return existing
         canonical_key = f"legacy-competitor:{competitor.id}"
         business = await session.scalar(
@@ -221,7 +249,7 @@ class ContactService:
                 canonical_key=canonical_key,
                 canonical_name=name,
                 normalized_name=name.strip().lower(),
-                verticals_json=[Vertical.FURNITURE.value],
+                verticals_json=[competitor.vertical.value],
                 website_url=competitor.website_url,
                 instagram_handle=competitor.normalized_handle,
                 primary_role=competitor.category,
@@ -244,5 +272,8 @@ class ContactService:
                 )
             )
         competitor.business_id = business.id
+        business.verticals_json = sorted(
+            set(business.verticals_json or []).union({competitor.vertical.value})
+        )
         await session.flush()
         return business

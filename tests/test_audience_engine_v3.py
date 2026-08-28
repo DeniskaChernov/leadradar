@@ -83,7 +83,10 @@ async def test_interest_evidence_and_membership_explanation_are_idempotent(
 
     assert membership is not None and membership.active is True
     assert membership.engine_version == "3.0"
-    assert membership.reasons_json[0]["criterion"] == "INTENT"
+    assert {reason["criterion"] for reason in membership.reasons_json} >= {
+        "VERTICAL",
+        "INTENT",
+    }
     assert set(membership.evidence_ids_json) <= real_evidence_ids
     assert membership.evidence_ids_json
 
