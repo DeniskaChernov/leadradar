@@ -14,7 +14,7 @@
 | Audit + network freeze | Implemented | Offline automated | No | No |
 | AI request/budget ledger | Phase B hardened | 186 offline tests + concurrency + migration | No | No |
 | Cost ledger & pricing | OFFLINE · durable ledger/config implemented | 190 offline tests + migration | No | No |
-| Lead Scoring V3 | OFFLINE · evidence-first rule pipeline | 200 semantic golden + component tests | No | No |
+| Lead Scoring V3 | OFFLINE · evidence-first rule pipeline | 200 calibration + 36 challenge scenarios + component tests | No | No |
 | Audience Engine V3 | OFFLINE · evidence-first core hardened | 193 offline tests; audience golden expansion pending | UI offline | No |
 | Rattan Vertical V2 | OFFLINE · taxonomy safety hardened | 30 golden + 194 repository tests | UI offline | No |
 | Unit Economics | OFFLINE · DB-backed ledger aggregation | 197 repository tests + UI render | No | No |
@@ -39,6 +39,14 @@
 - отдельный semantic benchmark содержит 200 размеченных RU / UZ Latin / UZ Cyrillic
   сценариев; внутренние precision/recall/intent/B2B gates проходят;
 - benchmark всё ещё внутренний и после исправлений не является unseen production sample.
+- добавлен отдельный `challenge:v1`: 36 сложных RU / UZ Latin / UZ Cyrillic фраз;
+  первый baseline честно показал 83,9% precision и 50% false HOT среди negative cases;
+- после точечных исправлений negation/job/word-boundary/`ta`/B2B morphology challenge даёт
+  100% precision/recall, 97,2% intent, 100% role и 0% false HOT;
+- оставшийся mismatch не скрыт и отображается в `/system`; challenge использовался
+  для исправлений и поэтому не называется unseen production sample;
+- текущий offline gate challenge-этапа: **210 tests passed**, Ruff и compileall чистые;
+  live Instagram/OpenAI и пересчёт сохранённых лидов не запускались;
 
 ## Master Phase B — Lead Intelligence V3 calibration
 
@@ -61,7 +69,7 @@
   buyer-role accuracy **100%**, B2B precision **100%**, HOT false-positive **0%**;
 - это calibration score на проверяемом fixture, не заявление о реальной production accuracy;
   unseen offline sample и controlled live pilot остаются `BLOCKED`;
-- текущий offline gate после role/intent decoupling: **208 tests passed**, Ruff и
+- offline gate после role/intent decoupling: **208 tests passed**, Ruff и
   compileall чистые; Instagram/OpenAI live-вызовы не выполнялись;
 - первоначальный offline gate Master Phase B: **191 tests passed**; сохранён как
   историческая контрольная точка.

@@ -59,6 +59,22 @@
   </div>
 </section>
 
+<section class="panel intelligence-quality">
+  <div class="panel-head"><div><span class="eyebrow">OFFLINE CHALLENGE · {{ intelligence_quality.dataset_version }}</span><h2>Качество локального интеллекта</h2><p>Фиксированный RU / UZ Latin / UZ Cyrillic набор работает без базы, сети и AI-токенов. Это проверка регрессий, а не заявление о production accuracy.</p></div><span class="tag {% if intelligence_quality.passed %}status-contacted{% else %}neutral{% endif %}">{% if intelligence_quality.passed %}внутренний gate пройден{% else %}gate заблокирован{% endif %}</span></div>
+  <div class="mini-metrics">
+    <span><b>{{ intelligence_quality.scenario_count }}</b> сложных сценариев</span>
+    <span><b>{{ '%.1f'|format(intelligence_quality.lead_precision * 100) }}%</b> precision</span>
+    <span><b>{{ '%.1f'|format(intelligence_quality.lead_recall * 100) }}%</b> recall</span>
+    <span><b>{{ '%.1f'|format(intelligence_quality.intent_accuracy * 100) }}%</b> intent accuracy</span>
+    <span><b>{{ '%.1f'|format(intelligence_quality.buyer_role_accuracy * 100) }}%</b> role accuracy</span>
+    <span><b>{{ '%.1f'|format(intelligence_quality.hot_false_positive_rate * 100) }}%</b> false HOT</span>
+  </div>
+  <div class="table-wrap embedded"><table><thead><tr><th>Язык</th><th>Сценариев</th><th>Lead accuracy</th><th>Intent accuracy</th><th>Role accuracy</th></tr></thead><tbody>
+    {% for item in intelligence_quality.language_scores %}<tr><td><code>{{ item.language }}</code></td><td>{{ item.cases }}</td><td>{{ '%.1f'|format(item.lead_accuracy * 100) }}%</td><td>{{ '%.1f'|format(item.intent_accuracy * 100) }}%</td><td>{{ '%.1f'|format(item.role_accuracy * 100) }}%</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if intelligence_quality.mismatches %}<details class="quality-errors"><summary>Открыть оставшиеся ошибки: {{ intelligence_quality.mismatches|length }}</summary><div class="table-wrap embedded"><table><thead><tr><th>Case</th><th>Фраза</th><th>Ожидалось</th><th>Получено</th></tr></thead><tbody>{% for item in intelligence_quality.mismatches %}<tr><td><code>{{ item.case_id }}</code><br><small>{{ item.language }}</small></td><td>{{ item.comment }}</td><td>{{ item.expected }}</td><td>{{ item.predicted }}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
+</section>
+
 <details class="panel action-form-card">
   <summary><div><b>Тарифы внешних сервисов</b><span>Версионированные цены для честного расчёта расходов</span></div></summary>
   <p class="muted">Lead Radar не подставляет выдуманные цены. Если тарифа нет, стоимость операции хранится как «неизвестно», а не как $0.</p>

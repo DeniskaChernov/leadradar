@@ -130,7 +130,9 @@ class RuleBasedLeadAnalyzer:
             )
 
         job_pattern = re.search(
-            r"\b(?:ish\s+(?:kerak|bormi)|работа\s+нужна|ищу\s+работу|ваканс\w*|резюме)\b",
+            r"\b(?:ish\s+(?:kerak|bormi)|иш\s+борми|работа\s+нужна|"
+            r"(?:есть(?:\s+ли)?(?:\s+у\s+вас)?)\s+работ\w*|ищу\s+работу|"
+            r"ваканс\w*|резюме)\b",
             text,
         )
         if job_pattern:
@@ -184,6 +186,11 @@ class RuleBasedLeadAnalyzer:
             "керак эмас",
             "olmayman",
             "сотиб олмайман",
+            "цена не интересует",
+            "уже купил",
+            "уже купила",
+            "buyurtma qilmoqchi emasman",
+            "буюртма қилмоқчи эмасман",
         )
         if any(marker in text for marker in negative_purchase):
             return self._result(
@@ -249,6 +256,7 @@ class RuleBasedLeadAnalyzer:
             "ulgurji",
             "kafe uchun",
             "restoran uchun",
+            "restoranga",
             "mehmonxona uchun",
             "choyxona",
             "кафе учун",
@@ -442,6 +450,7 @@ class RuleBasedLeadAnalyzer:
                 (
                     "адрес",
                     "где посмотреть",
+                    "где купить",
                     "где вы",
                     "manzil",
                     "манзил",
@@ -476,7 +485,9 @@ class RuleBasedLeadAnalyzer:
         ]
         matched_checks: list[tuple[Intent, int, str, list[str]]] = []
         for intent, phrases, base_score, reason in checks:
-            matched_phrases = [phrase for phrase in phrases if phrase in text]
+            matched_phrases = [
+                phrase for phrase in phrases if self._contains_marker(text, phrase)
+            ]
             if matched_phrases:
                 matched_checks.append((intent, base_score, reason, matched_phrases[:2]))
         if matched_checks:
@@ -601,6 +612,13 @@ class RuleBasedLeadAnalyzer:
     @staticmethod
     def _norm(value: str) -> str:
         return re.sub(r"\s+", " ", value.lower().replace("ё", "е")).strip()
+
+    @staticmethod
+    def _contains_marker(text: str, marker: str) -> bool:
+        """Avoid short-word collisions such as Uzbek `rang` inside `restoranga`."""
+        if " " not in marker and marker.isalpha() and len(marker) <= 5:
+            return re.search(rf"\b{re.escape(marker)}\w*\b", text) is not None
+        return marker in text
 
     @staticmethod
     def _language(value: str) -> str:

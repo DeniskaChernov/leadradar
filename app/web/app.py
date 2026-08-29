@@ -16,6 +16,7 @@ from app.services.audience_service import AudienceEngine
 from app.services.crm_service import CRMService
 from app.services.discovery_service import DiscoveryService
 from app.services.export_recipe_service import ExportRecipeService
+from app.services.lead_intelligence_challenge import LeadIntelligenceChallenge
 from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowService
 from app.services.market_intelligence_service import MarketIntelligenceService
@@ -104,6 +105,7 @@ def build_web_app(
         worker_active=notification_worker_active,
     )
     pricing_service = PricingConfigService(workflow.session_factory)
+    intelligence_challenge = LeadIntelligenceChallenge()
 
     templates.env.globals.update(
         lead_status_label=lambda value: label(LEAD_STATUS_LABELS, value),
@@ -486,6 +488,9 @@ def build_web_app(
         replay_status = replay_scenario.status() if replay_scenario is not None else None
         notification_readiness = await notification_readiness_service.preview(limit=10)
         ai_safety = await queries.ai_safety_diagnostics()
+        intelligence_quality = intelligence_challenge.evaluate(
+            hot_threshold=settings.hot_lead_threshold
+        )
         pricing_configs = await pricing_service.list_active()
         notification_modes = {
             "ALL_NEW_COMMENTS": (
@@ -554,6 +559,7 @@ def build_web_app(
                 notification_policy_info=notification_policy_info,
                 notification_readiness=notification_readiness,
                 ai_safety=ai_safety,
+                intelligence_quality=intelligence_quality,
                 pricing_configs=pricing_configs,
             ),
         )

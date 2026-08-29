@@ -35,6 +35,7 @@ class B2BPolicy:
         "ulgurji",
         "kafe uchun",
         "restoran uchun",
+        "restoranga",
         "mehmonxona uchun",
         "ofis uchun",
         "choyxona",
@@ -45,7 +46,7 @@ class B2BPolicy:
 
     _QUANTITY_RE = re.compile(
         r"\b(\d{1,4})\s*(?:шт\w*|штук\w*|dona\w*|дона\w*|та|персон\w*|"
-        r"киши\w*|kishi\w*|комплект\w*|стул\w*|стол\w*|кресл\w*|диван\w*|"
+        r"киши\w*|kishi\w*|ta|комплект\w*|стул\w*|стол\w*|кресл\w*|диван\w*|"
         r"chair\w*|table\w*)\b"
     )
 
