@@ -56,7 +56,10 @@ def make_post_for(competitor: str, post_id: str = "post-1") -> InstagramPost:
 def make_b2b_comment(comment_id: str = "b2b-1") -> InstagramComment:
     """Explicit wholesale / HoReCa signal."""
     return make_comment(comment_id).model_copy(
-        update={"text": "нам нужно 50 стульев для ресторана, оптом", "platform_comment_id": comment_id}
+        update={
+            "text": "нам нужно 50 стульев для ресторана, оптом",
+            "platform_comment_id": comment_id,
+        }
     )
 
 
@@ -128,9 +131,7 @@ class BasicLeadAnalyzer:
 async def _get_intel(session_factory, contact_id: int) -> ContactIntelligence:
     async with session_factory() as session:
         intel = await session.scalar(
-            select(ContactIntelligence).where(
-                ContactIntelligence.contact_id == contact_id
-            )
+            select(ContactIntelligence).where(ContactIntelligence.contact_id == contact_id)
         )
     assert intel is not None
     return intel
@@ -161,9 +162,7 @@ async def _active_slugs(session_factory, contact_id: int) -> set[str]:
 async def test_profile_dna_b2b_horeca_buyer_role(session_factory):
     """ContactIntelligence.primary_buyer_role is set to B2B_HORECA for wholesale signals."""
     engine = AudienceEngine(session_factory, hot_threshold=70)
-    signal = await ContactService(session_factory).persist_signal(
-        make_post(), make_b2b_comment()
-    )
+    signal = await ContactService(session_factory).persist_signal(make_post(), make_b2b_comment())
     await LeadService(
         session_factory,
         B2BLeadAnalyzer(),
@@ -217,9 +216,7 @@ async def test_profile_dna_buyer_role_priority_b2b_over_designer(session_factory
     ).process_signal(sig_a)
 
     # Second: B2B signal on same post for a different post id to ensure new comment
-    sig_b = await cs.persist_signal(
-        make_post_for("aiko.uz", "post-2"), make_b2b_comment("b2b-p2")
-    )
+    sig_b = await cs.persist_signal(make_post_for("aiko.uz", "post-2"), make_b2b_comment("b2b-p2"))
     await LeadService(
         session_factory, B2BLeadAnalyzer(), hot_threshold=70, audience_engine=engine
     ).process_signal(sig_b)
@@ -242,16 +239,14 @@ async def test_profile_dna_buyer_role_priority_b2b_over_designer(session_factory
 
 async def test_phase4_segment_horeca_b2b_activates(session_factory):
     engine = AudienceEngine(session_factory, hot_threshold=70)
-    signal = await ContactService(session_factory).persist_signal(
-        make_post(), make_b2b_comment()
-    )
+    signal = await ContactService(session_factory).persist_signal(make_post(), make_b2b_comment())
     await LeadService(
         session_factory, B2BLeadAnalyzer(), hot_threshold=70, audience_engine=engine
     ).process_signal(signal)
     await engine.recalculate_contact(signal.contact_id)
 
     active = await _active_slugs(session_factory, signal.contact_id)
-    assert "horeca-b2b" in active
+    assert "furniture-b2b" in active
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +265,7 @@ async def test_phase4_segment_designers_activates(session_factory):
     await engine.recalculate_contact(signal.contact_id)
 
     active = await _active_slugs(session_factory, signal.contact_id)
-    assert "designers" in active
+    assert "furniture-designers" in active
 
 
 # ---------------------------------------------------------------------------
@@ -280,9 +275,7 @@ async def test_phase4_segment_designers_activates(session_factory):
 
 async def test_phase4_segment_evidence_log_contains_role(session_factory):
     engine = AudienceEngine(session_factory, hot_threshold=70)
-    signal = await ContactService(session_factory).persist_signal(
-        make_post(), make_b2b_comment()
-    )
+    signal = await ContactService(session_factory).persist_signal(make_post(), make_b2b_comment())
     await LeadService(
         session_factory, B2BLeadAnalyzer(), hot_threshold=70, audience_engine=engine
     ).process_signal(signal)
@@ -293,13 +286,13 @@ async def test_phase4_segment_evidence_log_contains_role(session_factory):
             select(AudienceMembership)
             .join(AudienceSegment, AudienceSegment.id == AudienceMembership.segment_id)
             .where(
-                AudienceSegment.slug == "horeca-b2b",
+                AudienceSegment.slug == "furniture-b2b",
                 AudienceMembership.contact_id == signal.contact_id,
                 AudienceMembership.active.is_(True),
             )
         )
     assert membership is not None
-    assert any("B2B_HORECA" in e for e in membership.evidence_json)
+    assert any("B2B" in e for e in membership.evidence_json)
 
 
 # ---------------------------------------------------------------------------
@@ -395,19 +388,24 @@ def test_similarity_uses_sequence_and_competitor_overlap_with_reasons():
 
 def test_calculate_similarity_returns_float_in_range():
     import random
+
     roles = ["B2C_CONSUMER", "B2B_HORECA", "DESIGNER_CONTRACTOR", "UNKNOWN"]
     products = ["DINING_SET", "TABLE", "CHAIRS", "RATTAN_FURNITURE", "OUTDOOR_FURNITURE"]
     intents = ["PRICE", "DELIVERY", "AVAILABILITY", "BUY"]
     for _ in range(20):
         a = _make_intel(
             primary_buyer_role=random.choice(roles),
-            product_interests_json=[{"value": random.choice(products), "count": 1, "confidence": 100}],
+            product_interests_json=[
+                {"value": random.choice(products), "count": 1, "confidence": 100}
+            ],
             top_intents_json=[{"value": random.choice(intents), "count": 1, "confidence": 100}],
         )
         b = _make_intel(
             contact_id=2,
             primary_buyer_role=random.choice(roles),
-            product_interests_json=[{"value": random.choice(products), "count": 1, "confidence": 100}],
+            product_interests_json=[
+                {"value": random.choice(products), "count": 1, "confidence": 100}
+            ],
             top_intents_json=[{"value": random.choice(intents), "count": 1, "confidence": 100}],
         )
         score = calculate_contact_similarity(a, b)
@@ -433,11 +431,13 @@ async def test_get_similar_contacts_returns_ranked_list(session_factory):
     # Contact 2: different user, different comment
     sig2 = await cs.persist_signal(
         make_post_for("chinar.uz", "post-2"),
-        make_comment("c2").model_copy(update={
-            "platform_user_id": "user-2",
-            "username": "Bobur_Test",
-            "platform_comment_id": "c2",
-        }),
+        make_comment("c2").model_copy(
+            update={
+                "platform_user_id": "user-2",
+                "username": "Bobur_Test",
+                "platform_comment_id": "c2",
+            }
+        ),
     )
     await LeadService(
         session_factory, BasicLeadAnalyzer(), hot_threshold=70, audience_engine=engine
@@ -469,7 +469,7 @@ async def test_build_audience_export_eligibility_gate(session_factory):
     cs = ContactService(session_factory)
 
     # Create and qualify a contact
-    sig = await cs.persist_signal(make_post(), make_comment("export-1"))
+    sig = await cs.persist_signal(make_post(), make_b2b_comment("export-1"))
     await LeadService(
         session_factory, B2BLeadAnalyzer(), hot_threshold=70, audience_engine=engine
     ).process_signal(sig)
@@ -484,14 +484,16 @@ async def test_build_audience_export_eligibility_gate(session_factory):
     await engine.recalculate_contact(sig.contact_id)
 
     # With eligibility gate — should include qualified contact
-    eligible_rows = await engine.build_audience_export("horeca-b2b", require_export_eligible=True)
+    eligible_rows = await engine.build_audience_export(
+        "furniture-b2b", require_export_eligible=True
+    )
     assert len(eligible_rows) >= 1
     for row in eligible_rows:
         assert row["export_eligibility"] == ExportEligibility.FIRST_PARTY_ELIGIBLE.value
         assert row["phone"] is not None
 
     # Non-eligible — should find contact when gate is disabled
-    all_rows = await engine.build_audience_export("horeca-b2b", require_export_eligible=False)
+    all_rows = await engine.build_audience_export("furniture-b2b", require_export_eligible=False)
     assert len(all_rows) >= len(eligible_rows)
 
 
@@ -506,7 +508,7 @@ async def test_build_audience_export_excludes_unqualified(session_factory):
     await engine.recalculate_contact(sig.contact_id)
 
     # contact has no phone → NOT_EXPORTABLE
-    rows = await engine.build_audience_export("horeca-b2b", require_export_eligible=True)
+    rows = await engine.build_audience_export("furniture-b2b", require_export_eligible=True)
     contact_ids = [r["contact_id"] for r in rows]
     assert sig.contact_id not in contact_ids
 
@@ -518,9 +520,7 @@ async def test_build_audience_export_excludes_unqualified(session_factory):
 
 async def test_profile_dna_contains_no_synthetic_pii(session_factory):
     engine = AudienceEngine(session_factory, hot_threshold=70)
-    signal = await ContactService(session_factory).persist_signal(
-        make_post(), make_b2b_comment()
-    )
+    signal = await ContactService(session_factory).persist_signal(make_post(), make_b2b_comment())
     await LeadService(
         session_factory, B2BLeadAnalyzer(), hot_threshold=70, audience_engine=engine
     ).process_signal(signal)
@@ -547,9 +547,7 @@ async def test_profile_dna_contains_no_synthetic_pii(session_factory):
 
 async def test_recalculate_contact_idempotent(session_factory):
     engine = AudienceEngine(session_factory, hot_threshold=70)
-    signal = await ContactService(session_factory).persist_signal(
-        make_post(), make_b2b_comment()
-    )
+    signal = await ContactService(session_factory).persist_signal(make_post(), make_b2b_comment())
     await LeadService(
         session_factory, B2BLeadAnalyzer(), hot_threshold=70, audience_engine=engine
     ).process_signal(signal)
@@ -576,9 +574,7 @@ async def test_recalculate_contact_idempotent(session_factory):
 async def test_evidence_count_reflects_linked_signals(session_factory):
     """evidence_count tracks how many Evidence rows link to this contact's comments."""
     engine = AudienceEngine(session_factory, hot_threshold=70)
-    signal = await ContactService(session_factory).persist_signal(
-        make_post(), make_b2b_comment()
-    )
+    signal = await ContactService(session_factory).persist_signal(make_post(), make_b2b_comment())
     await LeadService(
         session_factory, B2BLeadAnalyzer(), hot_threshold=70, audience_engine=engine
     ).process_signal(signal)

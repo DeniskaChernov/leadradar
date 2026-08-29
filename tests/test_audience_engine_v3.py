@@ -71,7 +71,7 @@ async def test_interest_evidence_and_membership_explanation_are_idempotent(
         assert await session.scalar(select(func.count(InterestEvidence.id))) == 2
         assert await session.scalar(select(func.count(ContactInterestProfile.id))) == 2
         price_segment = await session.scalar(
-            select(AudienceSegment).where(AudienceSegment.slug == "asked-price")
+            select(AudienceSegment).where(AudienceSegment.slug == "price-sensitive-research")
         )
         membership = await session.scalar(
             select(AudienceMembership).where(
@@ -82,7 +82,7 @@ async def test_interest_evidence_and_membership_explanation_are_idempotent(
         real_evidence_ids = set(await session.scalars(select(Evidence.id)))
 
     assert membership is not None and membership.active is True
-    assert membership.engine_version == "3.0"
+    assert membership.engine_version == "4.0"
     assert {reason["criterion"] for reason in membership.reasons_json} >= {
         "VERTICAL",
         "INTENT",
@@ -126,23 +126,19 @@ async def test_reaction_does_not_create_interest_or_multi_competitor_activity(
 
     async with session_factory() as session:
         intelligence = await session.scalar(
-            select(ContactIntelligence).where(
-                ContactIntelligence.contact_id == first.contact_id
-            )
+            select(ContactIntelligence).where(ContactIntelligence.contact_id == first.contact_id)
         )
         multi = await session.scalar(
             select(AudienceMembership)
             .join(AudienceSegment, AudienceSegment.id == AudienceMembership.segment_id)
             .where(
                 AudienceMembership.contact_id == first.contact_id,
-                AudienceSegment.slug == "comparison-shoppers",
+                AudienceSegment.slug == "furniture-comparison",
             )
         )
         observations = list(
             await session.scalars(
-                select(InterestEvidence).where(
-                    InterestEvidence.contact_id == first.contact_id
-                )
+                select(InterestEvidence).where(InterestEvidence.contact_id == first.contact_id)
             )
         )
 
@@ -182,7 +178,7 @@ async def test_decayed_interest_expires_membership_without_deleting_history(
             .join(AudienceSegment, AudienceSegment.id == AudienceMembership.segment_id)
             .where(
                 AudienceMembership.contact_id == signal.contact_id,
-                AudienceSegment.slug == "asked-price",
+                AudienceSegment.slug == "price-sensitive-research",
             )
         )
         historical_count = await session.scalar(select(func.count(InterestEvidence.id)))
@@ -205,9 +201,7 @@ async def test_outcome_dna_uses_only_pre_won_evidence(session_factory):
 
     won_at = datetime.now(UTC)
     async with session_factory() as session:
-        first_lead = await session.scalar(
-            select(Lead).where(Lead.contact_id == first.contact_id)
-        )
+        first_lead = await session.scalar(select(Lead).where(Lead.contact_id == first.contact_id))
         session.add(
             Deal(
                 contact_id=first.contact_id,

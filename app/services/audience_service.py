@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from math import prod
 from typing import Any
@@ -28,11 +27,10 @@ from app.db.models import (
     PublicSignal,
     Vertical,
 )
+from app.services.audience_registry import (
+    AUDIENCE_DEFINITIONS,
+)
 from app.services.b2b_policy import B2BPolicy
-
-# ---------------------------------------------------------------------------
-# Segment registry
-# ---------------------------------------------------------------------------
 
 _BUYER_ROLE_PRIORITY = {
     "B2B_HORECA": 4,
@@ -43,158 +41,9 @@ _BUYER_ROLE_PRIORITY = {
 }
 
 
-@dataclass(frozen=True, slots=True)
-class SegmentDefinition:
-    slug: str
-    name: str
-    description: str
-    criteria: dict[str, object]
-    vertical: str = "FURNITURE"
-
-
-SEGMENTS = (
-    SegmentDefinition(
-        "hot-24h",
-        "Горячие покупатели · 24 часа",
-        "HOT-сигналы за последние сутки.",
-        {"hot": True, "days": 1},
-    ),
-    SegmentDefinition(
-        "hot-7d",
-        "Горячие покупатели · 7 дней",
-        "HOT-сигналы за последние 7 дней.",
-        {"hot": True, "days": 7},
-    ),
-    SegmentDefinition(
-        "hot-30d",
-        "Горячие покупатели · 30 дней",
-        "HOT-сигналы за последние 30 дней.",
-        {"hot": True, "days": 30},
-    ),
-    SegmentDefinition(
-        "dining-sets",
-        "Обеденные комплекты",
-        "Наблюдаемый интерес к обеденным комплектам.",
-        {"product": "DINING_SET"},
-    ),
-    SegmentDefinition("tables", "Столы", "Наблюдаемый интерес к столам.", {"product": "TABLE"}),
-    SegmentDefinition(
-        "chairs",
-        "Стулья и кресла",
-        "Наблюдаемый интерес к стульям и креслам.",
-        {"product": "CHAIRS"},
-    ),
-    SegmentDefinition(
-        "outdoor",
-        "Outdoor",
-        "Наблюдаемый спрос на садовую и террасную мебель.",
-        {"product": "OUTDOOR_FURNITURE"},
-    ),
-    SegmentDefinition(
-        "rattan",
-        "Рынок искусственного ротанга",
-        "Любой подтверждённый коммерческий сигнал отдельной rattan-вертикали.",
-        {"vertical": "ARTIFICIAL_RATTAN"},
-        "ARTIFICIAL_RATTAN",
-    ),
-    SegmentDefinition(
-        "asked-price", "Спрашивали цену", "Контакты с явным вопросом о цене.", {"intent": "PRICE"}
-    ),
-    SegmentDefinition(
-        "asked-availability",
-        "Спрашивали наличие",
-        "Контакты с вопросом о наличии.",
-        {"intent": "AVAILABILITY"},
-    ),
-    SegmentDefinition(
-        "asked-delivery",
-        "Спрашивали доставку",
-        "Контакты с вопросом о доставке.",
-        {"intent": "DELIVERY"},
-    ),
-    SegmentDefinition(
-        "asked-quantity",
-        "Спрашивали количество",
-        "Контакты с количеством или оптовым запросом.",
-        {"intent": "QUANTITY"},
-    ),
-    SegmentDefinition(
-        "multi-competitor-3",
-        "Сравнивают 3+ конкурентов",
-        "Спрос обнаружен минимум у трёх продавцов.",
-        {"sources": 3},
-    ),
-    SegmentDefinition(
-        "b2b", "B2B и HoReCa", "Явные оптовые или коммерческие признаки.", {"customer_type": "B2B"}
-    ),
-    SegmentDefinition(
-        "quantity-20", "Количество 20+", "Явно указано не менее 20 единиц.", {"quantity": 20}
-    ),
-    SegmentDefinition(
-        "quantity-50", "Количество 50+", "Явно указано не менее 50 единиц.", {"quantity": 50}
-    ),
-    SegmentDefinition(
-        "reactivated",
-        "Старые лиды снова активны",
-        "Новый сигнал после перерыва не менее 30 дней.",
-        {"reactivated": True, "days": 30},
-    ),
-    SegmentDefinition(
-        "rattan-wholesale",
-        "Ротанг · оптовый спрос",
-        "Ротанг вместе с явным B2B или оптовым интересом.",
-        {"vertical": "ARTIFICIAL_RATTAN", "customer_type": "B2B"},
-        "ARTIFICIAL_RATTAN",
-    ),
-    SegmentDefinition(
-        "rattan-high-value",
-        "Ротанг · высокий потенциал",
-        "Ротанг с высокой наблюдаемой коммерческой ценностью.",
-        {"vertical": "ARTIFICIAL_RATTAN", "min_value": 75},
-        "ARTIFICIAL_RATTAN",
-    ),
-    SegmentDefinition(
-        "rattan-raw-material",
-        "Ротанг · сырьё и профиль",
-        "Запросы на бухты, килограммы, профиль и материал для плетения.",
-        {"vertical": "ARTIFICIAL_RATTAN", "rattan_layer": "RAW_MATERIAL"},
-        "ARTIFICIAL_RATTAN",
-    ),
-    SegmentDefinition(
-        "rattan-ready-furniture",
-        "Ротанг · готовая мебель",
-        "Столы, кресла, диваны и комплекты только с явным rattan-контекстом.",
-        {"vertical": "ARTIFICIAL_RATTAN", "rattan_layer": "READY_FURNITURE"},
-        "ARTIFICIAL_RATTAN",
-    ),
-    # Phase 4 — buyer-role-based segments
-    SegmentDefinition(
-        "designers",
-        "Дизайнеры и комплектаторы",
-        "Контакты с ролью дизайнера или комплектатора проекта.",
-        {"buyer_role": "DESIGNER_CONTRACTOR"},
-    ),
-    SegmentDefinition(
-        "horeca-b2b",
-        "HoReCa и коммерческий сектор",
-        "Явный коммерческий спрос: рестораны, кафе, гостиницы, опт.",
-        {"buyer_role": "B2B_HORECA"},
-    ),
-    SegmentDefinition(
-        "high-intent-b2c",
-        "Горячие розничные покупатели",
-        "B2C-покупатели с HOT-сигналом за последние 30 дней.",
-        {"buyer_role": "B2C_CONSUMER", "hot": True, "days": 30},
-    ),
-    SegmentDefinition(
-        "comparison-shoppers",
-        "Сравнивают конкурентов (Multi-brand)",
-        "Покупатели, замеченные у 2+ разных продавцов.",
-        {"sources": 2},
-    ),
-)
-
-RETIRED_SEGMENT_SLUGS = {"multi-competitor-2"}
+# Backward-compatible import name for integrations; definitions are governed in
+# audience_registry.py and may not be appended dynamically at runtime.
+SEGMENTS = AUDIENCE_DEFINITIONS
 
 
 # ---------------------------------------------------------------------------
@@ -269,9 +118,7 @@ def _sequence_similarity(sequence_a: list[str], sequence_b: list[str]) -> float:
     for left_index, left_value in enumerate(sequence_a, start=1):
         for right_index, right_value in enumerate(sequence_b, start=1):
             if left_value == right_value:
-                matrix[left_index][right_index] = (
-                    matrix[left_index - 1][right_index - 1] + 1
-                )
+                matrix[left_index][right_index] = matrix[left_index - 1][right_index - 1] + 1
             else:
                 matrix[left_index][right_index] = max(
                     matrix[left_index - 1][right_index],
@@ -314,12 +161,10 @@ def calculate_contact_similarity(
     competitors_a = set(vector_a.get("competitor_ids", []))
     competitors_b = set(vector_b.get("competitor_ids", []))
     if competitors_a or competitors_b:
-        weighted_parts.append(
-            (_COMPETITOR_WEIGHT, _jaccard(competitors_a, competitors_b))
-        )
-    if (
-        intel_a.primary_buyer_role not in (None, "UNKNOWN")
-        and intel_b.primary_buyer_role not in (None, "UNKNOWN")
+        weighted_parts.append((_COMPETITOR_WEIGHT, _jaccard(competitors_a, competitors_b)))
+    if intel_a.primary_buyer_role not in (None, "UNKNOWN") and intel_b.primary_buyer_role not in (
+        None,
+        "UNKNOWN",
     ):
         weighted_parts.append(
             (
@@ -342,15 +187,16 @@ def calculate_contact_similarity(
             )
         )
     if intel_a.last_seen_at and intel_b.last_seen_at:
-        recency_gap = abs(
-            (
-                AudienceEngine._aware(intel_a.last_seen_at)
-                - AudienceEngine._aware(intel_b.last_seen_at)
-            ).total_seconds()
-        ) / 86_400
-        weighted_parts.append(
-            (_RECENCY_WEIGHT, max(0.0, 1.0 - min(recency_gap, 90) / 90))
+        recency_gap = (
+            abs(
+                (
+                    AudienceEngine._aware(intel_a.last_seen_at)
+                    - AudienceEngine._aware(intel_b.last_seen_at)
+                ).total_seconds()
+            )
+            / 86_400
         )
+        weighted_parts.append((_RECENCY_WEIGHT, max(0.0, 1.0 - min(recency_gap, 90) / 90)))
 
     total_weight = sum(weight for weight, _ in weighted_parts)
     score = sum(weight * value for weight, value in weighted_parts) / total_weight
@@ -390,18 +236,19 @@ def explain_contact_similarity(
         [str(item) for item in vector_b.get("intent_sequence", [])],
     )
     if sequence_similarity > 0:
-        reasons.append(
-            f"Похожая последовательность намерений: {round(sequence_similarity * 100)}%"
-        )
+        reasons.append(f"Похожая последовательность намерений: {round(sequence_similarity * 100)}%")
     if intel_a.customer_type and intel_a.customer_type == intel_b.customer_type:
         reasons.append(f"Одинаковый тип покупателя: {intel_a.customer_type}")
     if intel_a.last_seen_at and intel_b.last_seen_at:
-        recency_gap = abs(
-            (
-                AudienceEngine._aware(intel_a.last_seen_at)
-                - AudienceEngine._aware(intel_b.last_seen_at)
-            ).total_seconds()
-        ) / 86_400
+        recency_gap = (
+            abs(
+                (
+                    AudienceEngine._aware(intel_a.last_seen_at)
+                    - AudienceEngine._aware(intel_b.last_seen_at)
+                ).total_seconds()
+            )
+            / 86_400
+        )
         if recency_gap < 90:
             reasons.append(f"Близкая давность активности: {round(recency_gap)} дн.")
     return score, reasons
@@ -434,7 +281,20 @@ class AudienceEngine:
                             vertical=Vertical(definition.vertical),
                             name=definition.name,
                             description=definition.description,
+                            audience_family=definition.audience_family,
+                            audience_level=definition.audience_level,
+                            status=definition.status,
+                            membership_strategy=definition.membership_strategy,
+                            minimum_evidence_count=definition.minimum_evidence_count,
+                            minimum_confidence=definition.minimum_confidence,
+                            minimum_current_score=definition.minimum_current_score,
+                            recency_policy_json=definition.recency_policy or {},
+                            decay_policy_json=definition.decay_policy or {},
                             criteria_json=criteria,
+                            meta_use_case=definition.meta_use_case,
+                            created_by=definition.created_by,
+                            engine_version=definition.engine_version,
+                            active=definition.status == "ACTIVE",
                         )
                     )
                     changed += 1
@@ -443,34 +303,72 @@ class AudienceEngine:
                         segment.name,
                         segment.vertical,
                         segment.description,
+                        segment.audience_family,
+                        segment.audience_level,
+                        segment.status,
+                        segment.membership_strategy,
+                        segment.minimum_evidence_count,
+                        segment.minimum_confidence,
+                        segment.minimum_current_score,
+                        segment.recency_policy_json,
+                        segment.decay_policy_json,
                         segment.criteria_json,
+                        segment.meta_use_case,
+                        segment.created_by,
+                        segment.engine_version,
                         segment.active,
                     )
                     segment.name = definition.name
                     segment.vertical = Vertical(definition.vertical)
                     segment.description = definition.description
+                    segment.audience_family = definition.audience_family
+                    segment.audience_level = definition.audience_level
+                    segment.status = definition.status
+                    segment.membership_strategy = definition.membership_strategy
+                    segment.minimum_evidence_count = definition.minimum_evidence_count
+                    segment.minimum_confidence = definition.minimum_confidence
+                    segment.minimum_current_score = definition.minimum_current_score
+                    segment.recency_policy_json = definition.recency_policy or {}
+                    segment.decay_policy_json = definition.decay_policy or {}
                     segment.criteria_json = criteria
-                    segment.active = True
+                    segment.meta_use_case = definition.meta_use_case
+                    segment.created_by = definition.created_by
+                    segment.engine_version = definition.engine_version
+                    segment.active = definition.status == "ACTIVE"
                     changed += int(
                         before
                         != (
                             segment.name,
                             segment.vertical,
                             segment.description,
+                            segment.audience_family,
+                            segment.audience_level,
+                            segment.status,
+                            segment.membership_strategy,
+                            segment.minimum_evidence_count,
+                            segment.minimum_confidence,
+                            segment.minimum_current_score,
+                            segment.recency_policy_json,
+                            segment.decay_policy_json,
                             segment.criteria_json,
+                            segment.meta_use_case,
+                            segment.created_by,
+                            segment.engine_version,
                             segment.active,
                         )
                     )
+            governed_slugs = {definition.slug for definition in SEGMENTS}
             retired = list(
                 await session.scalars(
                     select(AudienceSegment).where(
-                        AudienceSegment.slug.in_(RETIRED_SEGMENT_SLUGS),
+                        AudienceSegment.slug.not_in(governed_slugs),
                         AudienceSegment.active.is_(True),
                     )
                 )
             )
             for segment in retired:
                 segment.active = False
+                segment.status = "RETIRED"
                 changed += 1
             await session.commit()
         return changed
@@ -619,9 +517,7 @@ class AudienceEngine:
                 )
             )
         )
-        profile_by_scope = {
-            (item.vertical, item.dimension, item.topic): item for item in profiles
-        }
+        profile_by_scope = {(item.vertical, item.dimension, item.topic): item for item in profiles}
         active_scopes: set[tuple[str, str, str]] = set()
         for scope, items in grouped.items():
             active_scopes.add(scope)
@@ -630,7 +526,9 @@ class AudienceEngine:
                 age_days = max(0.0, (now - self._aware(item.observed_at)).total_seconds() / 86400)
                 decayed = item.strength * (0.5 ** (age_days / item.half_life_days))
                 effective_scores.append((decayed / 100) * (item.confidence / 100))
-            current_score = round((1 - prod(1 - min(0.99, score) for score in effective_scores)) * 100)
+            current_score = round(
+                (1 - prod(1 - min(0.99, score) for score in effective_scores)) * 100
+            )
             combined_confidence = round(
                 (1 - prod(1 - min(0.99, item.confidence / 100) for item in items)) * 100
             )
@@ -728,9 +626,7 @@ class AudienceEngine:
             raw_text = " ".join(comment.text.lower() for _lead, comment in pre_won_rows)
             quantity = max(self._extract_explicit_quantities(raw_text), default=0)
             vertical = Counter(item.vertical for item in pre_won).most_common(1)[0][0]
-            snapshot = await session.scalar(
-                select(OutcomeDNA).where(OutcomeDNA.deal_id == deal.id)
-            )
+            snapshot = await session.scalar(select(OutcomeDNA).where(OutcomeDNA.deal_id == deal.id))
             if snapshot is None:
                 snapshot = OutcomeDNA(deal_id=deal.id, contact_id=contact_id)
                 session.add(snapshot)
@@ -745,9 +641,7 @@ class AudienceEngine:
             snapshot.buyer_role = buyer_role
             snapshot.quantity_band = self._quantity_band(quantity)
             snapshot.commercial_stage = commercial_stage
-            snapshot.commercial_signal_count = len(
-                {item.public_signal_id for item in pre_won}
-            )
+            snapshot.commercial_signal_count = len({item.public_signal_id for item in pre_won})
             snapshot.source_count = len({item.competitor_id for item in pre_won})
             snapshot.competitor_count = snapshot.source_count
             snapshot.evidence_ids_json = sorted({item.evidence_id for item in pre_won})
@@ -793,18 +687,17 @@ class AudienceEngine:
                 if (
                     (lead.analysis_details or {}).get("is_commercial") is True
                     or (
-                        (lead.analysis_details or {}).get("intelligence_version")
-                        != "3.0"
+                        (lead.analysis_details or {}).get("intelligence_version") != "3.0"
                         and lead.status != LeadStatus.NOT_LEAD
                         and lead.lead_score >= 50
                     )
                 )
             ]
-            profiles, interest_observations, evidenced_comment_ids = (
-                await self._sync_interest_evidence(
-                    session, contact_id, commercial, now
-                )
-            )
+            (
+                profiles,
+                interest_observations,
+                evidenced_comment_ids,
+            ) = await self._sync_interest_evidence(session, contact_id, commercial, now)
             commercial = [
                 (lead, comment)
                 for lead, comment in commercial
@@ -815,7 +708,15 @@ class AudienceEngine:
                 for profile in profiles
                 if profile.current_score >= INTEREST_PROFILE_ACTIVE_THRESHOLD
             ]
-            sources = {item.competitor_id for item in interest_observations}
+            active_evidence_ids = {
+                evidence_id
+                for profile in active_profiles
+                for evidence_id in profile.evidence_ids_json
+            }
+            effective_observations = [
+                item for item in interest_observations if item.evidence_id in active_evidence_ids
+            ]
+            sources = {item.competitor_id for item in effective_observations}
             product_counts = Counter(
                 {
                     profile.topic: profile.commercial_signal_count
@@ -841,12 +742,18 @@ class AudienceEngine:
                 quantity_override=explicit_quantity or None,
             )
             is_b2b = b2b_decision.role.value == "B2B_HORECA"
-            dates = sorted(self._aware(item.observed_at) for item in interest_observations)
+            dates = sorted({self._aware(item.observed_at) for item in effective_observations})
             first_seen = min(dates, default=self._aware(contact.first_seen_at))
             last_seen = max(dates, default=self._aware(contact.last_seen_at))
             recency_days = max(0, (now - last_seen).days)
-            score_values = [lead.lead_score for lead, _comment in commercial]
-            max_score = max(score_values, default=0)
+            current_intent_score = max(
+                (
+                    profile.current_score
+                    for profile in active_profiles
+                    if profile.dimension == "INTENT"
+                ),
+                default=0,
+            )
             source_bonus = min(18, max(0, len(sources) - 1) * 9)
             decayed_activity = sum(
                 profile.current_score * 0.35
@@ -867,15 +774,11 @@ class AudienceEngine:
             )
             value_score = min(
                 100,
-                max_score
+                current_intent_score
                 + (10 if is_b2b else 0)
-                + (
-                    8
-                    if explicit_quantity >= B2BPolicy.PROBABLE_QUANTITY
-                    else 0
-                ),
+                + (8 if explicit_quantity >= B2BPolicy.PROBABLE_QUANTITY else 0),
             )
-            fit_score = min(100, max_score + min(12, len(product_counts) * 4))
+            fit_score = min(100, current_intent_score + min(12, len(product_counts) * 4))
             stage_order = {
                 "NON_COMMERCIAL": 0,
                 "AWARENESS": 1,
@@ -947,16 +850,14 @@ class AudienceEngine:
                 "buyer_role": primary_buyer_role,
                 "vertical": observed_vertical,
                 "quantity_band": self._quantity_band(explicit_quantity),
-                "competitor_ids": sorted(
-                    item for item in sources if item is not None
-                ),
+                "competitor_ids": sorted(item for item in sources if item is not None),
                 "recency_days": recency_days,
                 "customer_type": "B2B" if is_b2b else "B2C",
             }
 
             intelligence.vertical = observed_vertical
             intelligence.commercial_stage = commercial_stage
-            intelligence.intent_strength = max_score
+            intelligence.intent_strength = current_intent_score
             intelligence.signal_count = len(comments)
             intelligence.commercial_signal_count = len(commercial)
             intelligence.source_count = len(sources)
@@ -967,12 +868,8 @@ class AudienceEngine:
             intelligence.customer_type = "B2B" if is_b2b else "B2C"
             intelligence.quantity_band = self._quantity_band(explicit_quantity)
             intelligence.purchase_horizon = horizons[0] if horizons else None
-            intelligence.product_interests_json = self._ranked_profiles(
-                active_profiles, "PRODUCT"
-            )
-            intelligence.top_intents_json = self._ranked_profiles(
-                active_profiles, "INTENT"
-            )
+            intelligence.product_interests_json = self._ranked_profiles(active_profiles, "PRODUCT")
+            intelligence.top_intents_json = self._ranked_profiles(active_profiles, "INTENT")
             intelligence.export_eligibility = (
                 ExportEligibility.FIRST_PARTY_ELIGIBLE
                 if contact.phone and contact.qualification_updated_at is not None
@@ -992,11 +889,13 @@ class AudienceEngine:
                     select(AudienceSegment).where(AudienceSegment.active.is_(True))
                 )
             )
-            reactivated = bool(
-                len(dates) >= 2 and dates[-1] - dates[-2] >= timedelta(days=30)
-            )
+            reactivated = bool(len(dates) >= 2 and dates[-1] - dates[-2] >= timedelta(days=30))
             facts = {
-                "hot": max_score >= self.hot_threshold and recency_days <= 30,
+                "hot": current_intent_score >= self.hot_threshold and recency_days <= 30,
+                "current_intent_score": current_intent_score,
+                "commercial_signals": len(
+                    {item.public_signal_id for item in effective_observations}
+                ),
                 "recency_days": recency_days,
                 "products": set(product_counts),
                 "intents": set(intent_counts),
@@ -1007,18 +906,30 @@ class AudienceEngine:
                 "reactivated": reactivated,
                 "buyer_role": primary_buyer_role,
                 "profiles": {
-                    (profile.dimension, profile.topic): profile
-                    for profile in active_profiles
+                    (profile.dimension, profile.topic): profile for profile in active_profiles
                 },
-                "evidence_ids": sorted(
-                    {item.evidence_id for item in interest_observations}
-                ),
+                "evidence_ids": sorted({item.evidence_id for item in effective_observations}),
                 "vertical": observed_vertical,
                 "rattan_layers": rattan_layers,
             }
             for segment in segments:
                 active, reasons, evidence_ids, expires_at = self._evaluate(
                     segment.criteria_json, facts, last_seen
+                )
+                evidence_confidences = [
+                    item.confidence
+                    for item in effective_observations
+                    if item.evidence_id in evidence_ids
+                ]
+                membership_confidence = (
+                    round(sum(evidence_confidences) / len(evidence_confidences))
+                    if evidence_confidences
+                    else 0
+                )
+                active = bool(
+                    active
+                    and len(evidence_ids) >= segment.minimum_evidence_count
+                    and membership_confidence >= segment.minimum_confidence
                 )
                 membership = await session.scalar(
                     select(AudienceMembership).where(
@@ -1033,20 +944,18 @@ class AudienceEngine:
                     )
                     session.add(membership)
                 membership.active = active
-                membership.confidence = min(98, max(50, value_score if active else 50))
-                membership.evidence_json = [reason["text"] for reason in reasons]
-                membership.reasons_json = reasons
-                membership.evidence_ids_json = evidence_ids
-                membership.engine_version = INTEREST_ENGINE_VERSION
+                membership.confidence = membership_confidence
+                membership.evidence_json = [reason["text"] for reason in reasons] if active else []
+                membership.reasons_json = reasons if active else []
+                membership.evidence_ids_json = evidence_ids if active else []
+                membership.engine_version = segment.engine_version
                 membership.expires_at = expires_at
                 membership.evaluated_at = now
             await self._sync_outcome_dna(session, contact_id, commercial, now)
             await session.commit()
             return intelligence
 
-    async def get_similar_contacts(
-        self, contact_id: int, limit: int = 5
-    ) -> list[dict[str, Any]]:
+    async def get_similar_contacts(self, contact_id: int, limit: int = 5) -> list[dict[str, Any]]:
         """
         Find similar contacts by deterministic similarity scoring.
         Compares pre-computed similarity vectors in ContactIntelligence.
@@ -1054,17 +963,13 @@ class AudienceEngine:
         """
         async with self.session_factory() as session:
             source = await session.scalar(
-                select(ContactIntelligence).where(
-                    ContactIntelligence.contact_id == contact_id
-                )
+                select(ContactIntelligence).where(ContactIntelligence.contact_id == contact_id)
             )
             if source is None:
                 return []
             all_intel = list(
                 await session.scalars(
-                    select(ContactIntelligence).where(
-                        ContactIntelligence.contact_id != contact_id
-                    )
+                    select(ContactIntelligence).where(ContactIntelligence.contact_id != contact_id)
                 )
             )
 
@@ -1072,9 +977,7 @@ class AudienceEngine:
         for intel in all_intel:
             score, reasons = explain_contact_similarity(source, intel)
             if score > 0:
-                scored.append(
-                    {"contact_id": intel.contact_id, "score": score, "reasons": reasons}
-                )
+                scored.append({"contact_id": intel.contact_id, "score": score, "reasons": reasons})
         scored.sort(key=lambda x: x["score"], reverse=True)
         return scored[:limit]
 
@@ -1108,8 +1011,7 @@ class AudienceEngine:
             )
             if require_export_eligible:
                 query = query.where(
-                    ContactIntelligence.export_eligibility
-                    == ExportEligibility.FIRST_PARTY_ELIGIBLE
+                    ContactIntelligence.export_eligibility == ExportEligibility.FIRST_PARTY_ELIGIBLE
                 )
 
             rows = (await session.execute(query)).all()
@@ -1156,6 +1058,22 @@ class AudienceEngine:
         if criteria.get("hot"):
             active &= bool(facts["hot"])
             add_reason("HOT", "HOT-порог достигнут", facts["evidence_ids"], facts["value"])
+        if minimum_signals := criteria.get("min_commercial_signals"):
+            active &= int(facts.get("commercial_signals", 0)) >= int(minimum_signals)
+            add_reason(
+                "COMMERCIAL_SIGNALS",
+                f"действующих коммерческих сигналов: {facts.get('commercial_signals', 0)}",
+                facts["evidence_ids"],
+            )
+        if minimum_intent := criteria.get("min_current_intent"):
+            current_intent = int(facts.get("current_intent_score", 0))
+            active &= current_intent >= int(minimum_intent)
+            add_reason(
+                "CURRENT_INTENT",
+                f"текущий intent score: {current_intent}",
+                facts["evidence_ids"],
+                current_intent,
+            )
         if vertical := criteria.get("vertical"):
             active &= facts.get("vertical") == vertical
             add_reason("VERTICAL", f"вертикаль: {vertical}", facts["evidence_ids"])
@@ -1179,6 +1097,29 @@ class AudienceEngine:
                     f"{profile.commercial_signal_count} подтвержд. сигнал(а): {product}",
                     profile.evidence_ids_json,
                     profile.current_score,
+                )
+        if products := criteria.get("products"):
+            matched_profiles = [facts["profiles"].get(("PRODUCT", product)) for product in products]
+            matched_profiles = [profile for profile in matched_profiles if profile is not None]
+            active &= bool(matched_profiles)
+            if matched_profiles:
+                product_expiry = max(
+                    profile.last_seen_at
+                    + timedelta(days=round(INTEREST_HALF_LIVES.get(profile.topic, 45.0) * 4))
+                    for profile in matched_profiles
+                )
+                expires_at = min(expires_at, product_expiry) if expires_at else product_expiry
+                matched_topics = ", ".join(sorted(profile.topic for profile in matched_profiles))
+                matched_ids = [
+                    evidence_id
+                    for profile in matched_profiles
+                    for evidence_id in profile.evidence_ids_json
+                ]
+                add_reason(
+                    "PRODUCT_FAMILY",
+                    f"подтверждённое семейство: {matched_topics}",
+                    matched_ids,
+                    max(profile.current_score for profile in matched_profiles),
                 )
         if intent := criteria.get("intent"):
             profile = facts["profiles"].get(("INTENT", intent))
@@ -1209,7 +1150,9 @@ class AudienceEngine:
             add_reason("QUANTITY", f"количество: {facts['quantity']}", facts["evidence_ids"])
         if min_value := criteria.get("min_value"):
             active &= int(facts["value"]) >= int(min_value)
-            add_reason("VALUE", f"value score: {facts['value']}", facts["evidence_ids"], facts["value"])
+            add_reason(
+                "VALUE", f"value score: {facts['value']}", facts["evidence_ids"], facts["value"]
+            )
         if criteria.get("reactivated"):
             active &= bool(facts["reactivated"])
             add_reason("REACTIVATED", "возвращение после паузы 30+ дней", facts["evidence_ids"])

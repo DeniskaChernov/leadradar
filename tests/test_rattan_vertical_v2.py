@@ -26,9 +26,7 @@ from tests.test_contact_service import make_comment, make_post
 
 
 def test_rattan_vertical_v2_golden_taxonomy():
-    rows = json.loads(
-        Path("fixtures/rattan_vertical_v2_golden.json").read_text(encoding="utf-8")
-    )
+    rows = json.loads(Path("fixtures/rattan_vertical_v2_golden.json").read_text(encoding="utf-8"))
     for row in rows:
         result = RattanTaxonomyService.classify(row["text"])
         assert result.is_rattan is row["is_rattan"], row["text"]
@@ -103,7 +101,7 @@ async def test_plain_table_stays_furniture_and_never_enters_rattan_segment(sessi
             .join(AudienceSegment, AudienceSegment.id == AudienceMembership.segment_id)
             .where(
                 AudienceMembership.contact_id == signal.contact_id,
-                AudienceSegment.slug == "rattan",
+                AudienceSegment.slug == "rattan-commercial",
             )
         )
     assert lead.vertical == Vertical.FURNITURE

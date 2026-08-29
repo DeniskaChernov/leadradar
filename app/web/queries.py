@@ -103,9 +103,7 @@ class WebQueryService:
             "active_reservations": int(active_reservations or 0),
             "stale_ai_leases": int(stale_ai_leases or 0),
             "uncertain_reservations": int(uncertain_reservations or 0),
-            "cost_events": int(
-                await self._scalar_count(CostEvent.id)
-            ),
+            "cost_events": int(await self._scalar_count(CostEvent.id)),
         }
 
     async def _scalar_count(self, column) -> int:
@@ -117,9 +115,7 @@ class WebQueryService:
         async with self.session_factory() as session:
             context_signal_count = int(
                 await session.scalar(
-                    select(func.count(Lead.id)).where(
-                        Lead.vertical == Vertical.ARTIFICIAL_RATTAN
-                    )
+                    select(func.count(Lead.id)).where(Lead.vertical == Vertical.ARTIFICIAL_RATTAN)
                 )
                 or 0
             )
@@ -269,8 +265,7 @@ class WebQueryService:
             counts["notifications_uncertain"] += int(
                 await session.scalar(
                     select(func.count(SignificantChangeNotification.id)).where(
-                        SignificantChangeNotification.status
-                        == NotificationStatus.UNCERTAIN
+                        SignificantChangeNotification.status == NotificationStatus.UNCERTAIN
                     )
                 )
                 or 0
@@ -747,6 +742,7 @@ class WebQueryService:
                     select(AudienceSegment)
                     .where(
                         AudienceSegment.active.is_(True),
+                        AudienceSegment.status == "ACTIVE",
                         AudienceSegment.vertical == selected_vertical,
                     )
                     .order_by(AudienceSegment.name)
@@ -809,6 +805,7 @@ class WebQueryService:
                 select(AudienceSegment).where(
                     AudienceSegment.slug == slug,
                     AudienceSegment.active.is_(True),
+                    AudienceSegment.status == "ACTIVE",
                 )
             )
             if segment is None:
@@ -1037,10 +1034,7 @@ class WebQueryService:
                         .order_by(desc(func.count(func.distinct(Comment.contact_id))))
                     )
                 ).all()
-                overlaps = [
-                    {"competitor": item, "contacts": count}
-                    for item, count in overlap_rows
-                ]
+                overlaps = [{"competitor": item, "contacts": count} for item, count in overlap_rows]
             gap = await self.demand_gap_score(competitor_id)
             heatmap = await self.demand_heatmap(competitor_id=competitor_id, days=30)
             return {
@@ -1056,7 +1050,6 @@ class WebQueryService:
                 "heatmap": heatmap,
                 "public_response_observable": False,
             }
-
 
     async def competitor_overlap_network(self) -> list[dict]:
         async with self.session_factory() as session:
@@ -1107,7 +1100,9 @@ class WebQueryService:
                 or 0
             )
             source_counts = (
-                select(Comment.contact_id, func.count(func.distinct(Comment.competitor_id)).label("n"))
+                select(
+                    Comment.contact_id, func.count(func.distinct(Comment.competitor_id)).label("n")
+                )
                 .group_by(Comment.contact_id)
                 .subquery()
             )
@@ -1175,13 +1170,17 @@ class WebQueryService:
             multi_source_gap = 0
             if unanswered_contact_ids:
                 source_counts = (
-                    await session.execute(
-                        select(Comment.contact_id)
-                        .where(Comment.contact_id.in_(unanswered_contact_ids))
-                        .group_by(Comment.contact_id)
-                        .having(func.count(func.distinct(Comment.competitor_id)) >= 2)
+                    (
+                        await session.execute(
+                            select(Comment.contact_id)
+                            .where(Comment.contact_id.in_(unanswered_contact_ids))
+                            .group_by(Comment.contact_id)
+                            .having(func.count(func.distinct(Comment.competitor_id)) >= 2)
+                        )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 multi_source_gap = len(source_counts)
 
             return {
@@ -1198,9 +1197,7 @@ class WebQueryService:
         """Summary demand gap table across all competitors."""
         async with self.session_factory() as session:
             competitors = (
-                await session.scalars(
-                    select(Competitor).order_by(Competitor.normalized_handle)
-                )
+                await session.scalars(select(Competitor).order_by(Competitor.normalized_handle))
             ).all()
             results = []
             for comp in competitors:
@@ -1211,14 +1208,10 @@ class WebQueryService:
                         **gap,
                     }
                 )
-            results.sort(
-                key=lambda x: (x["unanswered_rate"], x["b2b_gap"]), reverse=True
-            )
+            results.sort(key=lambda x: (x["unanswered_rate"], x["b2b_gap"]), reverse=True)
             return results
 
-    async def demand_heatmap(
-        self, competitor_id: int | None = None, days: int = 30
-    ) -> dict:
+    async def demand_heatmap(self, competitor_id: int | None = None, days: int = 30) -> dict:
         """Temporal and product demand heatmap over the last N days."""
         now = datetime.now(UTC)
         cutoff = now - timedelta(days=days)
@@ -1273,11 +1266,7 @@ class WebQueryService:
                 "days_count": days,
             }
 
-
-    async def _competitor_stats(
-
-        self, session: AsyncSession, competitor: Competitor
-    ) -> dict:
+    async def _competitor_stats(self, session: AsyncSession, competitor: Competitor) -> dict:
         posts = list(
             await session.scalars(
                 select(Post)
@@ -1372,23 +1361,25 @@ class WebQueryService:
             "availability_rate": (
                 round(intents["AVAILABILITY"] / comments * 100, 1) if comments else 0.0
             ),
-            "delivery_rate": (
-                round(intents["DELIVERY"] / comments * 100, 1) if comments else 0.0
-            ),
-            "quantity_rate": (
-                round(intents["QUANTITY"] / comments * 100, 1) if comments else 0.0
-            ),
+            "delivery_rate": (round(intents["DELIVERY"] / comments * 100, 1) if comments else 0.0),
+            "quantity_rate": (round(intents["QUANTITY"] / comments * 100, 1) if comments else 0.0),
         }
 
     @staticmethod
-    def _competitor_opportunities(
-        intents: Counter, products: Counter
-    ) -> list[dict[str, object]]:
+    def _competitor_opportunities(intents: Counter, products: Counter) -> list[dict[str, object]]:
         definitions = (
-            ("PRICE", "Цена", "Показать стартовую цену или понятный диапазон в рекламе и карточке товара."),
+            (
+                "PRICE",
+                "Цена",
+                "Показать стартовую цену или понятный диапазон в рекламе и карточке товара.",
+            ),
             ("AVAILABILITY", "Наличие", "Продвигать позиции в наличии и добавить быстрый резерв."),
             ("DELIVERY", "Доставка", "Сделать сроки и стоимость доставки частью оффера."),
-            ("QUANTITY", "Количество / B2B", "Подготовить расчёт под количество и оптовые условия."),
+            (
+                "QUANTITY",
+                "Количество / B2B",
+                "Подготовить расчёт под количество и оптовые условия.",
+            ),
         )
         result = [
             {"intent": intent, "title": title, "signals": intents[intent], "action": action}
@@ -1513,9 +1504,9 @@ class WebQueryService:
             return (await session.execute(stmt)).all()
 
     async def analytics(self, days: int = 30) -> dict:
-        economics = await UnitEconomicsEngine(
-            self.session_factory, self.hot_threshold
-        ).snapshot(days)
+        economics = await UnitEconomicsEngine(self.session_factory, self.hot_threshold).snapshot(
+            days
+        )
         async with self.session_factory() as session:
             funnel_rows = (
                 await session.execute(

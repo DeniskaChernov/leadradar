@@ -68,7 +68,7 @@ RECIPES: dict[str, ExportRecipe] = {
         name="B2B & HoReCa Опт",
         description="Закупки для ресторанов, отелей и оптовые заказчики",
         buyer_roles=("B2B_HORECA",),
-        segment_slug="horeca-b2b",
+        segment_slug="furniture-b2b",
         product_category="HORECA",
         min_value_score=50,
     ),
@@ -77,7 +77,7 @@ RECIPES: dict[str, ExportRecipe] = {
         name="Дизайнеры и комплектаторы",
         description="Спецификации под дизайн-проекты и 3D-модели",
         buyer_roles=("DESIGNER_CONTRACTOR",),
-        segment_slug="designers",
+        segment_slug="furniture-designers",
         product_category=None,
         min_value_score=40,
     ),
@@ -86,7 +86,7 @@ RECIPES: dict[str, ExportRecipe] = {
         name="Горячие обеденные группы",
         description="Розница с выверенным запросом на обеденные комплекты",
         buyer_roles=("B2C_CONSUMER", "B2B_HORECA"),
-        segment_slug="dining-sets",
+        segment_slug="furniture-dining",
         product_category="DINING_SET",
         min_value_score=60,
     ),
@@ -95,7 +95,7 @@ RECIPES: dict[str, ExportRecipe] = {
         name="Сравнивают конкурентов",
         description="Контакты, замеченные в комментариях 2+ компаний",
         buyer_roles=(),
-        segment_slug="comparison-shoppers",
+        segment_slug="furniture-comparison",
         product_category=None,
         min_value_score=30,
     ),
@@ -103,9 +103,7 @@ RECIPES: dict[str, ExportRecipe] = {
 
 
 class ExportRecipeService:
-    def __init__(
-        self, session_factory: async_sessionmaker[AsyncSession]
-    ) -> None:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self.session_factory = session_factory
 
     @staticmethod
@@ -133,9 +131,7 @@ class ExportRecipeService:
 
             if recipe.segment_slug:
                 segment = await session.scalar(
-                    select(AudienceSegment).where(
-                        AudienceSegment.slug == recipe.segment_slug
-                    )
+                    select(AudienceSegment).where(AudienceSegment.slug == recipe.segment_slug)
                 )
                 if segment is not None:
                     stmt = stmt.join(
@@ -146,14 +142,10 @@ class ExportRecipeService:
                     )
 
             if recipe.buyer_roles:
-                stmt = stmt.where(
-                    ContactIntelligence.primary_buyer_role.in_(recipe.buyer_roles)
-                )
+                stmt = stmt.where(ContactIntelligence.primary_buyer_role.in_(recipe.buyer_roles))
 
             if recipe.min_value_score > 0:
-                stmt = stmt.where(
-                    ContactIntelligence.value_score >= recipe.min_value_score
-                )
+                stmt = stmt.where(ContactIntelligence.value_score >= recipe.min_value_score)
 
             rows = (await session.execute(stmt)).all()
 

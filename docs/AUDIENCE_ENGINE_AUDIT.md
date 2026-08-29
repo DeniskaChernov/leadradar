@@ -1,4 +1,8 @@
-# Audience Engine V3 Audit
+# Audience Engine V3 Audit (historical checkpoint)
+
+This document records the V3 hardening checkpoint. The active ontology and registry are
+documented in `AUDIENCE_ONTOLOGY.md` and `AUDIENCE_CREATION_POLICY.md`; canonical V4 slugs
+supersede the legacy segment names below.
 
 ## CURRENT BEHAVIOR
 

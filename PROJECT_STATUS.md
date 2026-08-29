@@ -15,7 +15,7 @@
 | AI request/budget ledger | Phase B hardened | 186 offline tests + concurrency + migration | No | No |
 | Cost ledger & pricing | OFFLINE · durable ledger/config implemented | 190 offline tests + migration | No | No |
 | Lead Scoring V3 | OFFLINE · evidence-first rule pipeline | 200 calibration + 36 challenge scenarios + component tests | No | No |
-| Audience Engine V3 | OFFLINE · evidence-first core hardened | 193 offline tests; audience golden expansion pending | UI offline | No |
+| Audience Intelligence V4 | OFFLINE · governed registry foundation implemented | 217 offline tests; audience golden expansion pending | UI offline | No |
 | Rattan Vertical V2 | OFFLINE · taxonomy safety hardened | 30 golden + 194 repository tests | UI offline | No |
 | Unit Economics | OFFLINE · DB-backed ledger aggregation | 197 repository tests + UI render | No | No |
 | Discovery Center / Diff Engine | OFFLINE · CSV/XLSX review queue implemented | Repository tests + migration + UI render | No | No |
@@ -25,6 +25,30 @@
 | Meta / Google | Not connected | Offline prototype only | No | No |
 | Offline 500–1000 signal pilot | 600-case robustness replay passed | 60 curated roots × 10 variants; unseen corpus pending | No | No |
 | Controlled live pilot | Blocked | Missing gate evidence | No | No |
+
+## Audience Intelligence V4 — governed registry foundation
+
+- добавлен конечный реестр из 28 канонических `AudienceDefinition`; произвольное
+  создание сегментов в runtime не разрешено;
+- определения разделены по family/level/status/strategy и содержат минимумы Evidence,
+  confidence/current score, recency/decay metadata и честный Meta use case;
+- 20 доказуемых сейчас аудиторий имеют статус `ACTIVE`; 8 неподдержанных role/outcome
+  определений остаются `DRAFT` и не получают memberships;
+- прежние time/quantity/competitor микросегменты выводятся из активного реестра без
+  удаления исторических записей;
+- город, район, возраст, пол, язык, точная дата/оценка/quantity, менеджер, конкурент,
+  Reel/post/SKU/цвет/размер закреплены как facets, а не новые аудитории;
+- intent/value/fit и high-intent membership используют текущий decayed intent score
+  вместо исторического максимума;
+- competitor comparison учитывает только действующие коммерческие Evidence: реакция и
+  истёкший второй источник не создают аудиторию;
+- membership confidence вычисляется из confidence связанных Evidence и больше не
+  копируется из value score;
+- новая Alembic-миграция `c5a9f2e81d40` проверена повторным upgrade на рабочей БД и
+  полной цепочкой на пустой SQLite БД;
+- UI показывает family, level, strategy, Meta use case и минимальный Evidence floor;
+- полный offline gate: **217 tests passed**, Ruff/compileall проверяются перед commit;
+  Instagram/OpenAI/Telegram/Meta live-вызовы не выполнялись.
 
 ## Phase C — Lead Scoring V3
 
@@ -76,15 +100,19 @@
 
 ## Master Phase C — Audience Engine V3 hardening
 
+> Историческая контрольная точка. Активная модель и имена аудиторий заменены
+> управляемым реестром Audience Intelligence V4 выше.
+
 - добавлены идемпотентные `InterestEvidence`, связанные с реальными Evidence/PublicSignal;
 - `ContactInterestProfile` хранит decayed score, confidence, first/last seen, source count и Evidence IDs;
 - реакции и некоммерческий шум не создают interest evidence и не усиливают multi-competitor;
 - membership хранит структурированные причины, реальные Evidence IDs, expiry и engine version;
 - `OutcomeDNA` использует только признаки, наблюдавшиеся до `won_at`, без leakage статуса WON;
 - интерфейс сегмента показывает менеджеру «почему контакт здесь»;
-- удалён функциональный дубль `multi-competitor-2`: существующая запись деактивируется,
-  а рабочий `comparison-shoppers` сохраняет совместимость с export recipes;
-- `high-intent-b2c` теперь ограничен реальным HOT-сигналом за последние 30 дней;
+- на этом этапе был удалён дубль `multi-competitor-2`; последующий V4 также вывел из
+  эксплуатации `comparison-shoppers` в пользу `furniture-comparison`;
+- исторический `high-intent-b2c` был ограничен 30 днями; в V4 его заменил
+  `furniture-high-intent` на текущем decayed intent score;
 - пустые и `UNKNOWN` профили больше не считаются похожими; результат similarity не
   возвращается без наблюдаемого коммерческого признака;
 - similarity учитывает товар, intent и его последовательность, recency, buyer role,

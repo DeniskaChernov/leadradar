@@ -36,8 +36,15 @@ class QualifiedB2CAnalyzer:
             product_category="DINING_SET",
             language="uz",
             reason="CTA asks for plus to receive a price",
+            confidence=90,
             buyer_role=BuyerRole.B2C_CONSUMER,
-            factors={"intent_strength": 90, "specificity_score": 10, "role_score": 70, "history_boost": 0, "objection_penalty": 0},
+            factors={
+                "intent_strength": 90,
+                "specificity_score": 10,
+                "role_score": 70,
+                "history_boost": 0,
+                "objection_penalty": 0,
+            },
         )
 
 
@@ -54,7 +61,9 @@ async def test_export_recipe_dry_run(session_factory):
     cs = ContactService(session_factory)
     engine = AudienceEngine(session_factory, hot_threshold=70)
     sig = await cs.persist_signal(make_post(), make_comment("exp-dry-1"))
-    await LeadService(session_factory, QualifiedB2CAnalyzer(), hot_threshold=70, audience_engine=engine).process_signal(sig)
+    await LeadService(
+        session_factory, QualifiedB2CAnalyzer(), hot_threshold=70, audience_engine=engine
+    ).process_signal(sig)
 
     # Qualify contact to make FIRST_PARTY_ELIGIBLE
     async with session_factory() as session:
@@ -88,7 +97,9 @@ async def test_export_recipe_confirmed_export(session_factory):
     cs = ContactService(session_factory)
     engine = AudienceEngine(session_factory, hot_threshold=70)
     sig = await cs.persist_signal(make_post(), make_comment("exp-conf-1"))
-    await LeadService(session_factory, QualifiedB2CAnalyzer(), hot_threshold=70, audience_engine=engine).process_signal(sig)
+    await LeadService(
+        session_factory, QualifiedB2CAnalyzer(), hot_threshold=70, audience_engine=engine
+    ).process_signal(sig)
 
     async with session_factory() as session:
         contact = await session.get(Contact, sig.contact_id)
@@ -119,7 +130,11 @@ async def test_export_recipe_confirmed_export(session_factory):
                 select(ContactEvent).where(ContactEvent.contact_id == sig.contact_id)
             )
         ).all()
-        export_events = [e for e in events if e.payload_json and e.payload_json.get("action") == "AUDIENCE_EXPORT"]
+        export_events = [
+            e
+            for e in events
+            if e.payload_json and e.payload_json.get("action") == "AUDIENCE_EXPORT"
+        ]
         assert len(export_events) == 1
         assert export_events[0].payload_json["exported_by"] == 42
 
@@ -140,7 +155,6 @@ async def test_export_recipes_api_endpoints(session_factory):
     from app.web.app import build_web_app
     from app.web.queries import WebQueryService
 
-
     settings = Settings(web_auth_enabled=False)
     queries = WebQueryService(session_factory, hot_threshold=70)
     crm = CRMService(session_factory)
@@ -154,12 +168,7 @@ async def test_export_recipes_api_endpoints(session_factory):
         crm=crm,
     )
 
-
-
-
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # GET recipes list
         r1 = await client.get("/api/audiences/export-recipes")
         assert r1.status_code == 200
@@ -168,7 +177,9 @@ async def test_export_recipes_api_endpoints(session_factory):
         assert len(data1["recipes"]) >= 4
 
         # POST dry run
-        r2 = await client.post("/api/audiences/export-recipes/b2b_horeca_wholesale", json={"dry_run": True})
+        r2 = await client.post(
+            "/api/audiences/export-recipes/b2b_horeca_wholesale", json={"dry_run": True}
+        )
         assert r2.status_code == 200
         data2 = r2.json()
         assert data2["ok"] is True

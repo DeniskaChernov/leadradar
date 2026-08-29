@@ -328,9 +328,7 @@ class MarketCandidate(Base):
 class MarketCandidateDiff(Base):
     __tablename__ = "market_candidate_diffs"
     __table_args__ = (
-        UniqueConstraint(
-            "candidate_id", "snapshot_fingerprint", name="uq_candidate_diff_snapshot"
-        ),
+        UniqueConstraint("candidate_id", "snapshot_fingerprint", name="uq_candidate_diff_snapshot"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -341,7 +339,9 @@ class MarketCandidateDiff(Base):
     after_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
     snapshot_fingerprint: Mapped[str] = mapped_column(String(64))
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
 
 
 class Product(Base):
@@ -729,7 +729,19 @@ class AudienceSegment(Base):
     )
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text)
+    audience_family: Mapped[str] = mapped_column(String(32), default="INTENT", index=True)
+    audience_level: Mapped[str] = mapped_column(String(32), default="CORE", index=True)
+    status: Mapped[str] = mapped_column(String(16), default="ACTIVE", index=True)
+    membership_strategy: Mapped[str] = mapped_column(String(32), default="RULE")
+    minimum_evidence_count: Mapped[int] = mapped_column(Integer, default=1)
+    minimum_confidence: Mapped[int] = mapped_column(Integer, default=50)
+    minimum_current_score: Mapped[int] = mapped_column(Integer, default=20)
+    recency_policy_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    decay_policy_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     criteria_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    meta_use_case: Mapped[str] = mapped_column(String(32), default="ANALYSIS_ONLY", index=True)
+    created_by: Mapped[str] = mapped_column(String(64), default="SYSTEM_REGISTRY")
+    engine_version: Mapped[str] = mapped_column(String(32), default="4.0")
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -1127,14 +1139,10 @@ class CostEvent(Base):
     service: Mapped[str] = mapped_column(String(64), index=True)
     provider: Mapped[str] = mapped_column(String(128), index=True)
     operation: Mapped[str] = mapped_column(String(128), index=True)
-    vertical: Mapped[Vertical | None] = mapped_column(
-        Enum(Vertical, native_enum=False), index=True
-    )
+    vertical: Mapped[Vertical | None] = mapped_column(Enum(Vertical, native_enum=False), index=True)
     competitor_id: Mapped[int | None] = mapped_column(ForeignKey("competitors.id"), index=True)
     lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"), index=True)
-    audience_id: Mapped[int | None] = mapped_column(
-        ForeignKey("audience_segments.id"), index=True
-    )
+    audience_id: Mapped[int | None] = mapped_column(ForeignKey("audience_segments.id"), index=True)
     campaign_id: Mapped[int | None] = mapped_column(Integer, index=True)
     units: Mapped[int] = mapped_column(Integer, default=1)
     input_tokens: Mapped[int | None] = mapped_column(Integer)

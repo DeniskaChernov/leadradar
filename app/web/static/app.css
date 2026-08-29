@@ -1261,6 +1261,8 @@ tr:hover td { background: rgba(230,240,253,.52); }
 .audience-stats b { margin-left: 4px; color: #0f172a; }
 .audience-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
 .audience-card small { display: block; font-size: 12px; font-weight: 700; color: #d97706; }
+.audience-definition-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.audience-definition-meta span { padding: 5px 8px; border: 1px solid rgba(148, 163, 184, .28); border-radius: 999px; background: rgba(255, 255, 255, .58); color: #64748b; font-size: 10px; font-weight: 750; letter-spacing: .03em; }
 
 .audience-total { min-width: 170px; text-align: center; padding: 20px; border-radius: 20px; background: rgba(255, 255, 255, 0.75); border: 1px solid rgba(255, 255, 255, 0.90); box-shadow: 0 8px 24px rgba(90, 70, 50, 0.05); }
 .audience-total strong { font-size: 38px; font-weight: 900; color: #d97706; display: block; line-height: 1; }

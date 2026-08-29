@@ -207,7 +207,7 @@ class SignificantChangeDetector:
             <= after.value_score
         ):
             changes.append("ENTERED_HIGH_VALUE")
-        if "reactivated" in entered_audiences:
+        if "furniture-reactivated" in entered_audiences:
             changes.append("REACTIVATED")
         if (
             after.priority >= self.hot_threshold

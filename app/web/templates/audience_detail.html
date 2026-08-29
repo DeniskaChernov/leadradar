@@ -5,7 +5,7 @@
 {% block content %}
 <div class="detail-back-bar">
   <a class="btn ghost btn-sm" href="/audiences">← Назад ко всем аудиториям</a>
-  <span class="pill primary">Динамический сегмент спроса</span>
+  <span class="pill primary">{{ segment.audience_family }} · {{ segment.audience_level }}</span>
 </div>
 
 <section class="panel audience-hero">
@@ -13,6 +13,7 @@
     <span class="eyebrow">AUDIENCE INTELLIGENCE</span>
     <h2>{{ segment.name }}</h2>
     <p>{{ segment.description }}</p>
+    <div class="audience-definition-meta"><span>{{ segment.membership_strategy }}</span><span>confidence ≥ {{ segment.minimum_confidence }}</span><span>Evidence ≥ {{ segment.minimum_evidence_count }}</span><span>{{ segment.meta_use_case }}</span></div>
   </div>
   <div class="audience-total">
     <strong>{{ members|length }}</strong>
