@@ -37,6 +37,7 @@ from app.services.instagram_monitor import InstagramMonitor
 from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowService
 from app.services.market_intelligence_service import MarketIntelligenceService
+from app.services.meta_audience_service import MetaAudiencePlanningService
 from app.services.monitor_controller import MonitorController
 from app.services.monitor_run_service import MonitorRunService
 from app.services.notification_service import NullLeadNotifier
@@ -96,6 +97,8 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
     audience_engine = AudienceEngine(session_factory, settings.hot_lead_threshold)
     audience_contacts = await audience_engine.recalculate_all()
     logger.info("audience_engine_synced contacts=%s", audience_contacts)
+    meta_plans = await MetaAudiencePlanningService(session_factory).sync_blueprints()
+    logger.info("meta_audience_plans_synced changes=%s status=NOT_CONNECTED", meta_plans)
     change_detector = SignificantChangeDetector(
         session_factory, hot_threshold=settings.hot_lead_threshold
     )
@@ -317,9 +320,7 @@ async def _notification_loop(notifier: TelegramLeadNotifier, settings: Settings)
             if sent:
                 logger.info("telegram_notifications_flushed sent=%s", sent)
         except Exception as exc:
-            logger.exception(
-                "telegram_notification_flush_failed error_type=%s", type(exc).__name__
-            )
+            logger.exception("telegram_notification_flush_failed error_type=%s", type(exc).__name__)
         await asyncio.sleep(settings.telegram_notification_flush_interval_seconds)
 
 

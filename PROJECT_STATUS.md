@@ -26,6 +26,24 @@
 | Offline 500–1000 signal pilot | 600-case robustness replay passed | 60 curated roots × 10 variants; unseen corpus pending | No | No |
 | Controlled live pilot | Blocked | Missing gate evidence | No | No |
 
+## Audience Intelligence V4.1 — facets and Meta activation boundary
+
+- добавлен composable `AudienceFacetQuery`: фильтры уточняют membership и не создают
+  новые audience definitions;
+- в карточке аудитории доступны product/intent/role/recency/confidence/value/city/source/
+  manager/outcome facets; backend также поддерживает stage, quantity, horizon и rattan facets;
+- добавлены отдельные `MetaAudienceBlueprint`, `MetaTargetingRecipe`, `MetaInterest`,
+  `MetaInterestMapping`, `MetaExportCandidate` и `MetaAudienceSync`;
+- локальный sync идемпотентно создаёт планы со статусом `NOT_CONNECTED`, пустыми interest
+  IDs и без внешних audience IDs;
+- удалены вымышленные названия Meta interests, неподтверждённые скидки и ложные campaign
+  promises из старого recipe engine;
+- недоступный confirmed export теперь честно возвращает `NOT_CONNECTED` и не переводит
+  контакт в `EXPORTED`; privacy-safe dry-run остаётся доступным;
+- миграция `d6b1e4f92a50` проверена повторно на рабочей и чистой SQLite БД;
+- полный offline gate: **223 tests passed**, Ruff и compileall чистые;
+- платные/live Meta, Instagram, OpenAI и Telegram вызовы не выполнялись.
+
 ## Audience Intelligence V4 — governed registry foundation
 
 - добавлен конечный реестр из 28 канонических `AudienceDefinition`; произвольное

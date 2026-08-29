@@ -92,8 +92,9 @@ async def test_export_recipe_dry_run(session_factory):
         assert intel.export_eligibility == ExportEligibility.FIRST_PARTY_ELIGIBLE
 
 
-async def test_export_recipe_confirmed_export(session_factory):
-    """Confirmed export updates status to EXPORTED and emits ContactEvent audit record."""
+async def test_export_recipe_confirmed_export_is_blocked_while_meta_not_connected(
+    session_factory,
+):
     cs = ContactService(session_factory)
     engine = AudienceEngine(session_factory, hot_threshold=70)
     sig = await cs.persist_signal(make_post(), make_comment("exp-conf-1"))
@@ -110,11 +111,8 @@ async def test_export_recipe_confirmed_export(session_factory):
     await engine.recalculate_contact(sig.contact_id)
 
     service = ExportRecipeService(session_factory)
-    res = await service.run_export_recipe("high_intent_dining", dry_run=False, manager_id=42)
-
-    assert res["dry_run"] is False
-    assert res["exported_count"] >= 1
-    assert "EXP-high_intent_dining" in res["batch_id"]
+    with pytest.raises(RuntimeError, match="NOT_CONNECTED"):
+        await service.run_export_recipe("high_intent_dining", dry_run=False, manager_id=42)
 
     # Verify DB state is mutated
     async with session_factory() as session:
@@ -122,21 +120,15 @@ async def test_export_recipe_confirmed_export(session_factory):
             select(ContactIntelligence).where(ContactIntelligence.contact_id == sig.contact_id)
         )
         assert intel is not None
-        assert intel.export_eligibility == ExportEligibility.EXPORTED
-
-        # Verify audit event created
+        assert intel.export_eligibility == ExportEligibility.FIRST_PARTY_ELIGIBLE
         events = (
             await session.scalars(
                 select(ContactEvent).where(ContactEvent.contact_id == sig.contact_id)
             )
         ).all()
-        export_events = [
-            e
-            for e in events
-            if e.payload_json and e.payload_json.get("action") == "AUDIENCE_EXPORT"
-        ]
-        assert len(export_events) == 1
-        assert export_events[0].payload_json["exported_by"] == 42
+        assert not any(
+            e.payload_json and e.payload_json.get("action") == "AUDIENCE_EXPORT" for e in events
+        )
 
 
 async def test_export_recipe_unknown_slug_raises(session_factory):

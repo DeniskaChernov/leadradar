@@ -42,6 +42,8 @@ def test_targeting_recipes_generation():
     assert "NARROW" in recipe_types
     assert "BALANCED" in recipe_types
     assert "BROAD" in recipe_types
+    assert all(recipe.status == "NOT_CONNECTED" for recipe in recipes)
+    assert all(not recipe.interest_ids for recipe in recipes)
 
 
 def test_mcp_gateway_read_tool_is_honestly_not_connected():

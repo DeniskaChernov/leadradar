@@ -40,6 +40,7 @@ from app.db.models import (
     TaskStatus,
     Vertical,
 )
+from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.unit_economics_service import UnitEconomicsEngine
 
 OPEN_LEAD_STATUSES = [
@@ -799,7 +800,9 @@ class WebQueryService:
                 )
             return result
 
-    async def audience_detail(self, slug: str) -> dict | None:
+    async def audience_detail(
+        self, slug: str, facets: AudienceFacetQuery | None = None
+    ) -> dict | None:
         async with self.session_factory() as session:
             segment = await session.scalar(
                 select(AudienceSegment).where(
@@ -836,6 +839,48 @@ class WebQueryService:
                         .where(Lead.contact_id.in_(contact_ids))
                     )
                 ).all()
+            facet_query = facets or AudienceFacetQuery()
+            won_rows = (
+                (
+                    await session.execute(
+                        select(Deal.contact_id, Deal.status).where(Deal.contact_id.in_(contact_ids))
+                    )
+                ).all()
+                if contact_ids
+                else []
+            )
+            won_by_contact: dict[int, set[str]] = {}
+            for contact_id, status in won_rows:
+                won_by_contact.setdefault(contact_id, set()).add(str(status))
+            leads_by_contact: dict[int, list[tuple[Lead, Comment, Competitor]]] = {}
+            for row in leads:
+                leads_by_contact.setdefault(row[0].contact_id, []).append(row)
+            member_rows = [
+                (membership, contact, intelligence)
+                for membership, contact, intelligence in member_rows
+                if facet_query.matches(
+                    membership,
+                    contact,
+                    intelligence,
+                    source_competitors={
+                        competitor.normalized_handle
+                        for _lead, _comment, competitor in leads_by_contact.get(contact.id, [])
+                    },
+                    rattan_layers={
+                        str((lead.analysis_details or {}).get("rattan_taxonomy", {}).get("layer"))
+                        for lead, _comment, _competitor in leads_by_contact.get(contact.id, [])
+                        if (lead.analysis_details or {}).get("rattan_taxonomy", {}).get("layer")
+                    },
+                    rattan_roles={
+                        str((lead.analysis_details or {}).get("rattan_taxonomy", {}).get("role"))
+                        for lead, _comment, _competitor in leads_by_contact.get(contact.id, [])
+                        if (lead.analysis_details or {}).get("rattan_taxonomy", {}).get("role")
+                    },
+                    won_statuses=won_by_contact.get(contact.id, set()),
+                )
+            ]
+            filtered_contact_ids = {contact.id for _membership, contact, _intel in member_rows}
+            leads = [row for row in leads if row[0].contact_id in filtered_contact_ids]
             intents = Counter(lead.intent for lead, _comment, _competitor in leads)
             products = Counter(
                 lead.product_category
@@ -863,6 +908,7 @@ class WebQueryService:
                 "campaign_offer": offer,
                 "campaign_message": message,
                 "landing_recommendation": landing,
+                "facets": facet_query,
             }
 
     @staticmethod

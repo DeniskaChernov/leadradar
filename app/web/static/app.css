@@ -1263,6 +1263,8 @@ tr:hover td { background: rgba(230,240,253,.52); }
 .audience-card small { display: block; font-size: 12px; font-weight: 700; color: #d97706; }
 .audience-definition-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
 .audience-definition-meta span { padding: 5px 8px; border: 1px solid rgba(148, 163, 184, .28); border-radius: 999px; background: rgba(255, 255, 255, .58); color: #64748b; font-size: 10px; font-weight: 750; letter-spacing: .03em; }
+.facet-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 9px; align-items: center; }
+.facet-form select, .facet-form input { min-width: 0; width: 100%; min-height: 40px; border: 1px solid rgba(148, 163, 184, .32); border-radius: 12px; background: rgba(255,255,255,.72); padding: 8px 10px; color: var(--ink); }
 
 .audience-total { min-width: 170px; text-align: center; padding: 20px; border-radius: 20px; background: rgba(255, 255, 255, 0.75); border: 1px solid rgba(255, 255, 255, 0.90); box-shadow: 0 8px 24px rgba(90, 70, 50, 0.05); }
 .audience-total strong { font-size: 38px; font-weight: 900; color: #d97706; display: block; line-height: 1; }

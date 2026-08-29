@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from app.config import Settings
 from app.db.models import LeadStatus, NotificationPolicy
 from app.services.ai_service import HybridLeadAnalyzer, RuleBasedLeadAnalyzer
+from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.audience_service import AudienceEngine
 from app.services.crm_service import CRMService
 from app.services.discovery_service import DiscoveryService
@@ -20,6 +21,7 @@ from app.services.lead_intelligence_challenge import LeadIntelligenceChallenge
 from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowService
 from app.services.market_intelligence_service import MarketIntelligenceService
+from app.services.meta_audience_service import MetaAudiencePlanningService
 from app.services.monitor_controller import MonitorController
 from app.services.notification_readiness_service import NotificationReadinessService
 from app.services.pricing_config_service import PricingConfigService
@@ -77,11 +79,10 @@ def build_web_app(
     # Even if production OpenAI is unlocked elsewhere, this service has no network analyzer, so
     # an ambiguous signal becomes AI_PENDING instead of silently spending tokens.
     market_service = MarketIntelligenceService(workflow.session_factory)
+    meta_audience_service = MetaAudiencePlanningService(workflow.session_factory)
     discovery_service = DiscoveryService(workflow.session_factory)
     product_catalog_service = ProductCatalogService(workflow.session_factory)
-    local_audience_engine = AudienceEngine(
-        workflow.session_factory, settings.hot_lead_threshold
-    )
+    local_audience_engine = AudienceEngine(workflow.session_factory, settings.hot_lead_threshold)
     local_lead_service = LeadService(
         workflow.session_factory,
         HybridLeadAnalyzer(RuleBasedLeadAnalyzer(), None, mode="hybrid"),
@@ -129,7 +130,9 @@ def build_web_app(
             QUALIFICATION_FIELD_LABELS, value, str(value)
         ),
         buyer_role_label=lambda value: label(BUYER_ROLE_LABELS, value, "Не определено"),
-        buyer_role_icon=lambda value: BUYER_ROLE_ICONS.get(str(value) if value else "UNKNOWN", "❓"),
+        buyer_role_icon=lambda value: BUYER_ROLE_ICONS.get(
+            str(value) if value else "UNKNOWN", "❓"
+        ),
         money=lambda value: f"{float(value or 0):,.0f}".replace(",", " "),
     )
 
@@ -169,8 +172,7 @@ def build_web_app(
         requested_vertical = request.query_params.get("vertical", "").upper()
         selected_vertical = (
             "ARTIFICIAL_RATTAN"
-            if request.url.path.startswith("/rattan")
-            or requested_vertical == "ARTIFICIAL_RATTAN"
+            if request.url.path.startswith("/rattan") or requested_vertical == "ARTIFICIAL_RATTAN"
             else "FURNITURE"
         )
         return {
@@ -180,7 +182,10 @@ def build_web_app(
             "settings": settings,
             "active_path": request.url.path,
             "manager_id": getattr(request.state, "manager_id", local_manager_id()),
-            "safe_mode": (settings.instagram_provider in {"mock", "replay"} or not settings.instagram_live_enabled),
+            "safe_mode": (
+                settings.instagram_provider in {"mock", "replay"}
+                or not settings.instagram_live_enabled
+            ),
             "search_paused": not settings.lead_search_enabled,
             "telegram_manager_count": len(settings.telegram_admin_chat_ids),
             "selected_vertical": selected_vertical,
@@ -383,13 +388,15 @@ def build_web_app(
 
     @app.get("/audiences/{slug}", response_class=HTMLResponse)
     async def audience_detail(request: Request, slug: str):
-        data = await queries.audience_detail(slug)
+        facets = AudienceFacetQuery.from_mapping(request.query_params)
+        data = await queries.audience_detail(slug, facets=facets)
         if data is None:
             raise HTTPException(status_code=404, detail="Аудитория не найдена")
+        meta_readiness = await meta_audience_service.readiness(slug)
         return templates.TemplateResponse(
             request=request,
             name="audience_detail.html",
-            context=base_context(request, **data),
+            context=base_context(request, meta_readiness=meta_readiness, **data),
         )
 
     @app.get("/competitors", response_class=HTMLResponse)
@@ -463,7 +470,6 @@ def build_web_app(
         )
 
     @app.get("/roadmap", response_class=HTMLResponse)
-
     async def roadmap(request: Request):
         return templates.TemplateResponse(
             request=request,
@@ -592,12 +598,13 @@ def build_web_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return {
             "ok": True,
             "pricing_config_id": config.id,
             "message": "Новая версия цены сохранена; предыдущая осталась в истории.",
         }
-
 
     @app.post("/api/replay/advance")
     async def replay_advance(request: Request):
@@ -775,7 +782,9 @@ def build_web_app(
         try:
             due_at = datetime.fromisoformat(str(payload.get("due_at") or ""))
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Укажите дату и время следующего контакта") from exc
+            raise HTTPException(
+                status_code=400, detail="Укажите дату и время следующего контакта"
+            ) from exc
         lead_id_raw = payload.get("lead_id")
         lead_id = int(lead_id_raw) if lead_id_raw not in (None, "") else None
         try:
@@ -801,9 +810,7 @@ def build_web_app(
                     "slug": r.slug,
                     "name": r.name,
                     "description": r.description,
-                    "meta_category": CatalogMapper.get_meta_category(
-                        r.product_category
-                    ),
+                    "meta_category": CatalogMapper.get_meta_category(r.product_category),
                 }
                 for r in RECIPES.values()
             ],
@@ -853,9 +860,7 @@ def build_web_app(
         decision = str(payload.get("decision") or "").strip()
         service = PlaceOpeningService(workflow.session_factory)
         try:
-            signal = await service.review_opening_signal(
-                opening_id, manager_id(request), decision
-            )
+            signal = await service.review_opening_signal(opening_id, manager_id(request), decision)
             return {
                 "ok": True,
                 "opening_id": signal.id,
@@ -873,9 +878,6 @@ def build_web_app(
                 "потому что он не был основан на данных Lead Radar."
             ),
         )
-
-
-
 
     @app.post("/api/tasks/{task_id}/complete")
     async def complete_task(request: Request, task_id: int):
@@ -946,10 +948,16 @@ def build_web_app(
         payload = await _json_or_form(request)
         reason = str(payload.get("reason") or "").strip()
         if not reason:
-            raise HTTPException(status_code=400, detail="Укажите причину, почему сделка не состоялась")
+            raise HTTPException(
+                status_code=400, detail="Укажите причину, почему сделка не состоялась"
+            )
         try:
             deal = await workflow.lose_deal(deal_id, manager_id(request), reason=reason)
-            return {"ok": True, "status": deal.status.value, "message": "Причина проигрыша сохранена"}
+            return {
+                "ok": True,
+                "status": deal.status.value,
+                "message": "Причина проигрыша сохранена",
+            }
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
 
@@ -1102,7 +1110,10 @@ def build_web_app(
             "cycle_running": snapshot.cycle_running,
             "cycles_completed": snapshot.cycles_completed,
             "last_error": snapshot.last_error,
-            "safe_mode": (settings.instagram_provider in {"mock", "replay"} or not settings.instagram_live_enabled),
+            "safe_mode": (
+                settings.instagram_provider in {"mock", "replay"}
+                or not settings.instagram_live_enabled
+            ),
         }
 
     return app

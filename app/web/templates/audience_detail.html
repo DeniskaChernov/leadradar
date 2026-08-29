@@ -21,6 +21,37 @@
   </div>
 </section>
 
+<section class="panel audience-facets">
+  <div class="panel-head"><div><span class="eyebrow">FACETS · НЕ НОВЫЕ АУДИТОРИИ</span><h2>Уточнить состав</h2><p>Фильтры комбинируются поверх устойчивой аудитории и ничего не записывают в registry.</p></div>{% if facets.active %}<a class="btn ghost btn-sm" href="/audiences/{{ segment.slug }}">Сбросить</a>{% endif %}</div>
+  <form method="get" class="facet-form">
+    <select name="product_family"><option value="">Все товары</option>{% for value in ['CHAIRS','TABLE','DINING_SET','OUTDOOR_FURNITURE','RATTAN_FURNITURE'] %}<option value="{{ value }}" {% if facets.product_family==value %}selected{% endif %}>{{ product_label(value) }}</option>{% endfor %}</select>
+    <select name="intent"><option value="">Все намерения</option>{% for value in ['PRICE','AVAILABILITY','DELIVERY','QUANTITY','CATALOG','BUY'] %}<option value="{{ value }}" {% if facets.intent==value %}selected{% endif %}>{{ intent_label(value) }}</option>{% endfor %}</select>
+    <select name="buyer_role"><option value="">Все роли</option>{% for value in ['B2C_CONSUMER','B2B_HORECA','DESIGNER_CONTRACTOR'] %}<option value="{{ value }}" {% if facets.buyer_role==value %}selected{% endif %}>{{ buyer_role_label(value) }}</option>{% endfor %}</select>
+    <select name="recency_bucket"><option value="">Любая давность</option><option value="0_7" {% if facets.recency_bucket=='0_7' %}selected{% endif %}>0–7 дней</option><option value="8_30" {% if facets.recency_bucket=='8_30' %}selected{% endif %}>8–30 дней</option><option value="31_PLUS" {% if facets.recency_bucket=='31_PLUS' %}selected{% endif %}>31+ дней</option></select>
+    <select name="confidence_band"><option value="">Любой confidence</option>{% for value in ['LOW','MEDIUM','HIGH'] %}<option value="{{ value }}" {% if facets.confidence_band==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
+    <select name="value_band"><option value="">Любая ценность</option>{% for value in ['LOW','MEDIUM','HIGH'] %}<option value="{{ value }}" {% if facets.value_band==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
+    <input name="city" value="{{ facets.city or '' }}" placeholder="Город">
+    <input name="source_competitor" value="{{ facets.source_competitor or '' }}" placeholder="Источник @handle">
+    <select name="manager_status"><option value="">Любой менеджер</option><option value="ASSIGNED" {% if facets.manager_status=='ASSIGNED' %}selected{% endif %}>Назначен</option><option value="UNASSIGNED" {% if facets.manager_status=='UNASSIGNED' %}selected{% endif %}>Не назначен</option></select>
+    <select name="won_status"><option value="">Любой outcome</option><option value="WON" {% if facets.won_status=='WON' %}selected{% endif %}>WON</option><option value="LOST" {% if facets.won_status=='LOST' %}selected{% endif %}>LOST</option></select>
+    <button class="btn primary btn-sm" type="submit">Применить</button>
+  </form>
+  {% if facets.active %}<div class="audience-definition-meta">{% for name, value in facets.active.items() %}<span>{{ name }}={{ value }}</span>{% endfor %}</div>{% endif %}
+</section>
+
+<section class="panel meta-readiness">
+  <div class="panel-head"><div><span class="eyebrow">META ACTIVATION BOUNDARY</span><h2>Готовность к активации</h2></div><span class="pill warn">NOT_CONNECTED</span></div>
+  {% if meta_readiness %}
+  <p>{{ meta_readiness.blueprint.reason }}</p>
+  <div class="audience-definition-meta"><span>{{ meta_readiness.blueprint.mode }}</span><span>{% if meta_readiness.blueprint.first_party_required %}Нужны first-party identifiers{% else %}First-party seed не требуется для планирования{% endif %}</span><span>Meta IDs: отсутствуют</span></div>
+  <div class="brief-grid">
+    {% for recipe in meta_readiness.recipes %}
+    <div class="brief-card"><span class="brief-badge">{{ recipe.strategy }}</span><p class="brief-text">{{ recipe.notes }}</p><small>Interest IDs: {{ recipe.interest_ids_json|length }} · {{ recipe.status }}</small></div>
+    {% endfor %}
+  </div>
+  {% else %}<p>Blueprint будет создан при следующем локальном sync.</p>{% endif %}
+</section>
+
 <section class="panel campaign-brief">
   <div class="panel-head">
     <div>

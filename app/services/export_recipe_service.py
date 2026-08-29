@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any, ClassVar
 
 from sqlalchemy import select
@@ -19,8 +18,6 @@ from app.db.models import (
     AudienceMembership,
     AudienceSegment,
     Contact,
-    ContactEvent,
-    ContactEventType,
     ContactIntelligence,
     ExportEligibility,
 )
@@ -121,6 +118,11 @@ class ExportRecipeService:
         recipe = RECIPES.get(recipe_slug)
         if recipe is None:
             raise ValueError(f"Unknown export recipe: {recipe_slug}")
+        del manager_id
+        if not dry_run:
+            raise RuntimeError(
+                "NOT_CONNECTED · подтверждённый Meta export недоступен; используйте dry-run"
+            )
 
         meta_category = CatalogMapper.get_meta_category(recipe.product_category)
 
@@ -157,66 +159,17 @@ class ExportRecipeService:
             ]
             eligible_count = len(eligible_rows)
 
-            if dry_run:
-                sample_hashes = [
-                    self._hash(contact.phone or contact.username)
-                    for contact, _intel in eligible_rows[:5]
-                ]
-                return {
-                    "recipe_slug": recipe.slug,
-                    "recipe_name": recipe.name,
-                    "dry_run": True,
-                    "total_matched": total_matched,
-                    "eligible_count": eligible_count,
-                    "meta_catalog_category": meta_category,
-                    "sample_privacy_hashes": sample_hashes,
-                    "message": f"Dry-run: Найдено {total_matched} контактов, из них {eligible_count} допустимы к экспорту (FIRST_PARTY_ELIGIBLE).",
-                }
-
-            # Confirmed export: format records and record audit events
-            records = []
-            now = datetime.now(UTC)
-            batch_id = f"EXP-{recipe.slug}-{int(now.timestamp())}"
-
-            for contact, intel in eligible_rows:
-                phone_hash = self._hash(contact.phone) if contact.phone else None
-                user_hash = self._hash(contact.username)
-                records.append(
-                    {
-                        "contact_id": contact.id,
-                        "phone_hash": phone_hash,
-                        "username_hash": user_hash,
-                        "buyer_role": intel.primary_buyer_role,
-                        "meta_catalog_category": meta_category,
-                        "exported_at": now.isoformat(),
-                    }
-                )
-                # Update status
-                intel.export_eligibility = ExportEligibility.EXPORTED
-
-                # Audit event
-                event = ContactEvent(
-                    contact_id=contact.id,
-                    event_type=ContactEventType.QUALIFICATION_UPDATED,
-                    payload_json={
-                        "action": "AUDIENCE_EXPORT",
-                        "recipe_slug": recipe.slug,
-                        "batch_id": batch_id,
-                        "exported_by": manager_id,
-                    },
-                    created_at=now,
-                )
-                session.add(event)
-
-            await session.commit()
-
+            sample_hashes = [
+                self._hash(contact.phone or contact.username)
+                for contact, _intel in eligible_rows[:5]
+            ]
             return {
                 "recipe_slug": recipe.slug,
                 "recipe_name": recipe.name,
-                "dry_run": False,
-                "batch_id": batch_id,
-                "exported_count": len(records),
+                "dry_run": True,
+                "total_matched": total_matched,
+                "eligible_count": eligible_count,
                 "meta_catalog_category": meta_category,
-                "records": records,
-                "message": f"Успешно экспортировано {len(records)} записей под батчем {batch_id}.",
+                "sample_privacy_hashes": sample_hashes,
+                "message": f"Dry-run: найдено {total_matched}; first-party eligible: {eligible_count}. Meta NOT_CONNECTED.",
             }
