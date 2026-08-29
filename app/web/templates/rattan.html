@@ -13,7 +13,7 @@
 </section>
 
 <div class="metrics dashboard-metrics">
-  <div class="metric"><span>Сигналы</span><strong>{{ rattan_counts.signals }}</strong><small>только явный rattan-контекст</small></div>
+  <div class="metric"><span>Покупательский спрос</span><strong>{{ rattan_counts.signals }}</strong><small>{{ rattan_counts.filtered_noise }} реакций и незавершённых разборов исключено</small></div>
   <div class="metric"><span>Компании</span><strong>{{ rattan_counts.companies }}</strong><small>реальные записи в БД</small></div>
   <div class="metric accent"><span>Сырьё</span><strong>{{ rattan_counts.raw }}</strong><small>бухты, кг, профиль</small></div>
   <div class="metric success"><span>Готовая мебель</span><strong>{{ rattan_counts.ready }}</strong><small>с явным rattan-контекстом</small></div>
@@ -21,7 +21,7 @@
 
 <div class="grid two">
   <section class="panel">
-    <div class="panel-head"><div><h2>Таксономия спроса</h2><p>Категории подтверждены сохранённым Evidence.</p></div></div>
+    <div class="panel-head"><div><h2>Таксономия спроса</h2><p>Категории рассчитаны только по подтверждённым покупательским сигналам.</p></div></div>
     <div class="audience-chip-list">
       {% for product, count in rattan_products %}<span class="tag neutral">{{ product }} · {{ count }}</span>{% else %}<span class="muted">Подтверждённых rattan-категорий пока нет.</span>{% endfor %}
     </div>
@@ -35,10 +35,10 @@
 </div>
 
 <section class="panel" id="signals">
-  <div class="panel-head"><div><h2>Rattan-сигналы</h2><p>Только сохранённые публичные сигналы; никаких demo-компаний.</p></div></div>
+  <div class="panel-head"><div><h2>Коммерческие rattan-сигналы</h2><p>Только сохранённый покупательский интерес; реакции и незавершённый анализ исключены.</p></div></div>
   {% if rattan_rows %}
-  <div class="table-wrap embedded"><table><thead><tr><th>Контакт</th><th>Текст</th><th>Категория</th><th>Источник</th></tr></thead><tbody>
-  {% for lead, comment, contact, competitor, signal, evidence in rattan_rows %}<tr><td><a href="/contacts/{{ lead.contact_id }}">{% if contact.username %}@{{ contact.username }}{% else %}Контакт #{{ contact.id }}{% endif %}</a></td><td>{{ comment.text }}</td><td>{{ evidence.topic or lead.product_category or 'Не определено' }}</td><td>@{{ competitor.normalized_handle }}</td></tr>{% endfor %}
+  <div class="table-wrap embedded"><table class="rattan-table"><thead><tr><th>Контакт</th><th>Текст</th><th>Категория</th><th>Источник</th></tr></thead><tbody>
+  {% for lead, comment, contact, competitor, signal, evidence in rattan_rows %}<tr><td data-label="Контакт"><a href="/contacts/{{ lead.contact_id }}">{% if contact.username %}@{{ contact.username }}{% else %}Контакт #{{ contact.id }}{% endif %}</a></td><td data-label="Сигнал">{{ comment.text }}</td><td data-label="Категория"><span class="tag neutral">{{ evidence.topic or lead.product_category or 'Не определено' }}</span></td><td data-label="Источник">@{{ competitor.normalized_handle }}</td></tr>{% endfor %}
   </tbody></table></div>
   {% else %}<div class="empty-state"><span class="empty-icon">🌾</span><h3>Источник поиска пока выключен</h3><p>Когда появятся реальные сигналы с явным контекстом искусственного ротанга, они отобразятся здесь. Demo-данные не показываются как настоящие.</p></div>{% endif %}
 </section>

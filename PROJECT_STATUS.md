@@ -20,7 +20,7 @@
 | Unit Economics | OFFLINE · DB-backed ledger aggregation | 197 repository tests + UI render | No | No |
 | Discovery Center / Diff Engine | OFFLINE · CSV/XLSX review queue implemented | Repository tests + migration + UI render | No | No |
 | Product Catalog / Next Best Action | OFFLINE · confirmed DB catalog and grounded actions | Repository tests + migration + UI render | No | No |
-| Premium UI / Telegram Bot | UI hardening + read-only readiness + durable outbox implemented | 211 offline tests + responsive browser QA | Delivery not run | No |
+| Premium UI / Telegram Bot | UI hardening + read-only readiness + durable outbox implemented | 213 offline tests + responsive browser QA | Delivery not run | No |
 | Real Agent / MCP | NOT_CONNECTED · fake execution disabled | Honest 503/NOT_CONNECTED tests | No | No |
 | Meta / Google | Not connected | Offline prototype only | No | No |
 | Offline 500–1000 signal pilot | 600-case robustness replay passed | 60 curated roots × 10 variants; unseen corpus pending | No | No |
@@ -624,6 +624,13 @@ API-токены.
   подтверждения возвращает фокус и закрывается по Escape.
 - Полосы аналитической воронки теперь нормализуются относительно максимального этапа, поэтому
   не показывают одинаковые 100% для любых значений выше восьми.
+- Все 15 основных маршрутов проверены при мобильной ширине: горизонтального переполнения и
+  ошибок консоли нет; rattan-сигналы читаются карточками без горизонтальной прокрутки.
+- Модерация B2B-открытий больше не использует отдельный inline JavaScript и `alert`: действия
+  идут через общий JSON-клиент, требуют подтверждения и показывают единый toast результата.
+- Ротанговая вертикаль больше не считает реакции и незавершённый анализ покупательским спросом:
+  продуктовая таксономия и список сигналов строятся только по подтверждённым lead-статусам,
+  а число исключённых записей показано отдельно.
 
 - Python compileall: passed.
 - `ruff check app scripts`: passed.
@@ -635,7 +642,7 @@ API-токены.
 - Результат синхронизации: **16 competitors / 1 active / 24 открытых market candidates**.
 - Повторная синхронизация каталога дважды создала `0` конкурентов и `0` кандидатов.
 - Локальный web smoke: `/health` и `/` успешны; `/api/scan` возвращает блокировку `409`.
-- актуальный полный `pytest`: **211 passed**; тесты блокируют внешнюю сеть и не обращаются
+- актуальный полный `pytest`: **213 passed**; тесты блокируют внешнюю сеть и не обращаются
   к Instagram/OpenAI, поэтому API-токены не расходуются.
 - `ruff check .`, compileall и data-integrity check: passed.
 - новые `/competitors` и `/competitors/{id}` проверены на рабочей БД: browser console чиста,

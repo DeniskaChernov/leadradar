@@ -122,6 +122,14 @@ async def test_place_openings_api_endpoints(session_factory):
         assert d1["ok"] is True
         assert any(item["id"] == sig.id for item in d1["queue"])
 
+        # The manager page uses the shared confirmed-action client instead of
+        # a second inline fetch implementation.
+        page = await client.get("/openings")
+        assert page.status_code == 200
+        assert f'data-api-action="/api/openings/{sig.id}/review"' in page.text
+        assert 'data-payload=\'{"decision":"VERIFIED"}\'' in page.text
+        assert "reviewOpening(" not in page.text
+
         # POST review -> VERIFIED
         r2 = await client.post(f"/api/openings/{sig.id}/review", json={"decision": "VERIFIED"})
         assert r2.status_code == 200

@@ -139,6 +139,38 @@ async def test_generic_rattan_context_does_not_fake_raw_material_interest(
     assert stats.unclassified_rattan_signals == 1
 
 
+async def test_rattan_workspace_excludes_reactions_from_demand(session_factory):
+    contact_service = ContactService(session_factory)
+    post = make_post().model_copy(update={"caption": "Rattan outdoor table"})
+    commercial = await contact_service.persist_signal(
+        post,
+        make_comment("rattan-demand-v2").model_copy(
+            update={"platform_comment_id": "rattan-demand-v2", "text": "Narxi qancha?"}
+        ),
+    )
+    reaction = await contact_service.persist_signal(
+        post,
+        make_comment("rattan-reaction-v2").model_copy(
+            update={"platform_comment_id": "rattan-reaction-v2", "text": "😍😍"}
+        ),
+    )
+    lead_service = LeadService(
+        session_factory,
+        RuleBasedLeadAnalyzer(),
+        hot_threshold=70,
+        audience_engine=AudienceEngine(session_factory, 70),
+    )
+    await lead_service.process_signal(commercial)
+    await lead_service.process_signal(reaction)
+
+    workspace = await WebQueryService(session_factory, hot_threshold=70).rattan_workspace()
+
+    assert workspace["rattan_counts"]["signals"] == 1
+    assert workspace["rattan_counts"]["filtered_noise"] == 1
+    assert len(workspace["rattan_rows"]) == 1
+    assert workspace["rattan_rows"][0][1].text == "Narxi qancha?"
+
+
 async def test_rattan_rebuild_and_workspace_are_idempotent(session_factory):
     contact_service = ContactService(session_factory)
     await contact_service.persist_signal(

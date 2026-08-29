@@ -53,6 +53,17 @@ OPEN_LEAD_STATUSES = [
     LeadStatus.NEGOTIATION,
 ]
 
+CONFIRMED_LEAD_STATUSES = [
+    LeadStatus.NEW,
+    LeadStatus.TAKEN,
+    LeadStatus.CONTACTED,
+    LeadStatus.QUALIFIED,
+    LeadStatus.OFFER_SENT,
+    LeadStatus.NEGOTIATION,
+    LeadStatus.WON,
+    LeadStatus.LOST,
+]
+
 
 class WebQueryService:
     def __init__(
@@ -102,8 +113,25 @@ class WebQueryService:
             return int(await session.scalar(select(func.count(column))) or 0)
 
     async def rattan_workspace(self) -> dict:
-        """Return only persisted, explicitly classified rattan data."""
+        """Return persisted rattan demand without reactions or unfinished analysis."""
         async with self.session_factory() as session:
+            context_signal_count = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(
+                        Lead.vertical == Vertical.ARTIFICIAL_RATTAN
+                    )
+                )
+                or 0
+            )
+            commercial_signal_count = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(
+                        Lead.vertical == Vertical.ARTIFICIAL_RATTAN,
+                        Lead.status.in_(CONFIRMED_LEAD_STATUSES),
+                    )
+                )
+                or 0
+            )
             rows = (
                 await session.execute(
                     select(Lead, Comment, Contact, Competitor, PublicSignal, Evidence)
@@ -112,7 +140,10 @@ class WebQueryService:
                     .join(Competitor, Competitor.id == Lead.competitor_id)
                     .join(PublicSignal, PublicSignal.comment_id == Comment.id)
                     .join(Evidence, Evidence.public_signal_id == PublicSignal.id)
-                    .where(Lead.vertical == Vertical.ARTIFICIAL_RATTAN)
+                    .where(
+                        Lead.vertical == Vertical.ARTIFICIAL_RATTAN,
+                        Lead.status.in_(CONFIRMED_LEAD_STATUSES),
+                    )
                     .order_by(desc(Comment.discovered_at))
                     .limit(100)
                 )
@@ -141,7 +172,8 @@ class WebQueryService:
             "rattan_roles": roles.most_common(),
             "rattan_products": products.most_common(),
             "rattan_counts": {
-                "signals": len(rows),
+                "signals": commercial_signal_count,
+                "filtered_noise": context_signal_count - commercial_signal_count,
                 "companies": len(companies),
                 "raw": layers.get("RAW_MATERIAL", 0),
                 "ready": layers.get("READY_FURNITURE", 0),

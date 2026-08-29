@@ -1522,6 +1522,39 @@ tr.clickable[role="link"]:focus-visible td {
   .sidebar nav { scroll-padding-inline: calc(50vw - 36px); }
   .sidebar .nav.active { transform: none; }
   .page-help b { white-space: normal; }
+
+  .rattan-table { min-width: 0; }
+  .rattan-table thead { display: none; }
+  .rattan-table tbody { display: grid; gap: 10px; padding: 10px; }
+  .rattan-table tr {
+    display: grid;
+    gap: 0;
+    padding: 12px 13px;
+    border: 1px solid rgba(255, 255, 255, .88);
+    border-radius: 15px;
+    background: rgba(255, 255, 255, .64);
+    box-shadow: 0 8px 22px rgba(43, 68, 107, .06), inset 0 1px 0 #fff;
+  }
+  .rattan-table td {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 10px;
+    min-width: 0;
+    padding: 7px 2px;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+  .rattan-table td::before {
+    content: attr(data-label);
+    color: #8795aa;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .rattan-table tr:hover td { background: transparent; }
+  .rattan-table .tag { width: fit-content; margin: 0; }
+  .rattan-table + * { min-width: 0; }
 }
 
 @media (max-width: 560px) {

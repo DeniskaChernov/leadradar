@@ -141,3 +141,22 @@ def test_interface_hardening_keeps_dense_views_accessible():
     assert "enhanceClickableRows" in javascript
     assert "event.key === 'Escape'" in javascript
     assert ".page-help b { white-space: normal; }" in css
+
+
+def test_mobile_rattan_cards_and_opening_review_use_shared_safe_actions():
+    rattan = (PROJECT_ROOT / "app/web/templates/rattan.html").read_text(encoding="utf-8")
+    openings = (PROJECT_ROOT / "app/web/templates/openings.html").read_text(
+        encoding="utf-8"
+    )
+    css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
+
+    assert 'class="rattan-table"' in rattan
+    assert 'data-label="Сигнал"' in rattan
+    assert "реакций и незавершённых разборов исключено" in rattan
+    assert "Коммерческие rattan-сигналы" in rattan
+    assert ".rattan-table thead { display: none; }" in css
+    assert 'data-api-action="/api/openings/' in openings
+    assert 'data-payload=\'{"decision":"VERIFIED"}\'' in openings
+    assert 'data-confirm="Подтвердить этот публичный сигнал' in openings
+    assert "reviewOpening(" not in openings
+    assert "<script>" not in openings
