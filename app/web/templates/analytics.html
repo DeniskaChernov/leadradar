@@ -7,9 +7,9 @@
 <div class="page-help"><b>Смотрим не на количество комментариев, а на деньги</b><span>Система должна со временем повышать приоритет тех конкурентов и типов запросов, откуда чаще приходят реальные продажи.</span></div>
 
 <form class="filters" method="get" aria-label="Период экономики">
-  <a class="btn {% if economics.days != 1 %}ghost{% endif %}" href="/analytics?days=1">24 часа</a>
-  <a class="btn {% if economics.days != 7 %}ghost{% endif %}" href="/analytics?days=7">7 дней</a>
-  <a class="btn {% if economics.days != 30 %}ghost{% endif %}" href="/analytics?days=30">30 дней</a>
+  <a class="btn {% if economics.days != 1 %}ghost{% endif %}" href="/analytics?days=1" {% if economics.days == 1 %}aria-current="page"{% endif %}>24 часа</a>
+  <a class="btn {% if economics.days != 7 %}ghost{% endif %}" href="/analytics?days=7" {% if economics.days == 7 %}aria-current="page"{% endif %}>7 дней</a>
+  <a class="btn {% if economics.days != 30 %}ghost{% endif %}" href="/analytics?days=30" {% if economics.days == 30 %}aria-current="page"{% endif %}>30 дней</a>
 </form>
 
 <section class="metrics economics-metrics" aria-label="Экономика периода">
@@ -34,7 +34,8 @@
 </section>
 
 <div class="analytics-grid">
-  <section class="panel"><div class="panel-head"><div><h2>Воронка лидов</h2><p>Где теряются люди</p></div></div><div class="funnel analytics-funnel">{% for status in ['NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}<div class="funnel-step"><div><span>{{ lead_status_label(status) }}</span><strong>{{ funnel.get(status,0) }}</strong></div><div class="funnel-bar"><i style="width: {{ [100, funnel.get(status,0)*12]|min }}%"></i></div></div>{% endfor %}</div></section>
+  {% set funnel_peak = [1, funnel.get('NEW',0), funnel.get('TAKEN',0), funnel.get('CONTACTED',0), funnel.get('QUALIFIED',0), funnel.get('OFFER_SENT',0), funnel.get('NEGOTIATION',0), funnel.get('WON',0), funnel.get('LOST',0)]|max %}
+  <section class="panel"><div class="panel-head"><div><h2>Воронка лидов</h2><p>Где теряются люди</p></div></div><div class="funnel analytics-funnel">{% for status in ['NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}{% set stage_count = funnel.get(status,0) %}<div class="funnel-step"><div><span>{{ lead_status_label(status) }}</span><strong>{{ stage_count }}</strong></div><div class="funnel-bar" role="img" aria-label="{{ lead_status_label(status) }}: {{ stage_count }} из {{ funnel_peak }}"><i style="width: {{ (stage_count * 100 / funnel_peak)|round(1) }}%"></i></div></div>{% endfor %}</div></section>
   <section class="panel"><div class="panel-head"><div><h2>Что спрашивают</h2><p>Тип покупательского намерения</p></div></div><div class="rank-list">{% for intent, count in intents %}<div><span>{{ intent_label(intent) }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Пока данных мало.</div>{% endfor %}</div></section>
   <section class="panel"><div class="panel-head"><div><h2>Какие товары интересуют</h2><p>По распознанным лидам</p></div></div><div class="rank-list">{% for product, count in products %}<div><span>{{ product_label(product) }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Пока данных мало.</div>{% endfor %}</div></section>
   <section class="panel"><div class="panel-head"><div><h2>Почему не покупают</h2><p>Причины проигранных сделок</p></div></div><div class="rank-list">{% for reason, count in lost_reasons %}<div><span>{{ reason }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Причины ещё не накоплены.</div>{% endfor %}</div></section>

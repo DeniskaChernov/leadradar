@@ -45,20 +45,84 @@
   const confirmAction = (title, text) => new Promise((resolve) => {
     const root = document.getElementById('confirm');
     if (!root) return resolve(window.confirm(text));
+    const previouslyFocused = document.activeElement;
     root.hidden = false;
     document.getElementById('confirm-title').textContent = title;
     document.getElementById('confirm-text').textContent = text;
     const ok = root.querySelector('[data-confirm-ok]');
     const cancel = root.querySelector('[data-confirm-cancel]');
+    const onKeydown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        done(false);
+      }
+    };
     const done = (value) => {
       root.hidden = true;
       ok.onclick = null;
       cancel.onclick = null;
+      document.removeEventListener('keydown', onKeydown);
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
       resolve(value);
     };
     ok.onclick = () => done(true);
     cancel.onclick = () => done(false);
+    document.addEventListener('keydown', onKeydown);
+    requestAnimationFrame(() => cancel.focus());
   });
+
+  const enhanceNavigation = () => {
+    if (!window.matchMedia('(max-width: 720px)').matches) return;
+    const navigation = document.querySelector('.sidebar nav');
+    const active = document.querySelector('.sidebar nav .nav.active');
+    if (!navigation || !active) return;
+    requestAnimationFrame(() => {
+      navigation.scrollTo({
+        left: active.offsetLeft - (navigation.clientWidth - active.offsetWidth) / 2,
+        behavior: 'instant',
+      });
+    });
+  };
+
+  const enhanceTables = () => {
+    document.querySelectorAll('.table-wrap').forEach((wrapper, index) => {
+      const table = wrapper.querySelector('table');
+      if (!table || wrapper.dataset.tableEnhanced === '1') return;
+      wrapper.dataset.tableEnhanced = '1';
+      wrapper.tabIndex = 0;
+      wrapper.setAttribute('role', 'region');
+      const title = wrapper.closest('.panel')?.querySelector('h2')?.textContent?.trim() || 'Данные';
+      const hint = document.createElement('p');
+      hint.className = 'table-scroll-hint';
+      hint.id = `table-scroll-hint-${index}`;
+      hint.textContent = 'Прокрутите таблицу по горизонтали, чтобы увидеть все столбцы';
+      wrapper.setAttribute('aria-label', `Таблица «${title}»`);
+      wrapper.setAttribute('aria-describedby', hint.id);
+      wrapper.insertAdjacentElement('beforebegin', hint);
+      const refresh = () => {
+        const scrollable = wrapper.scrollWidth > wrapper.clientWidth + 1;
+        wrapper.classList.toggle('is-scrollable', scrollable);
+        hint.hidden = !scrollable;
+      };
+      refresh();
+      if (window.ResizeObserver) new ResizeObserver(refresh).observe(wrapper);
+    });
+  };
+
+  const enhanceClickableRows = () => {
+    document.querySelectorAll('tr.clickable[data-href]').forEach((row) => {
+      row.tabIndex = 0;
+      row.setAttribute('role', 'link');
+      if (!row.hasAttribute('aria-label')) {
+        const label = row.querySelector('a')?.textContent?.trim() || row.textContent.trim();
+        row.setAttribute('aria-label', `Открыть: ${label}`);
+      }
+    });
+  };
+
+  enhanceNavigation();
+  enhanceTables();
+  enhanceClickableRows();
 
   const reloadSoon = (delay = 450) => setTimeout(() => location.reload(), delay);
 
@@ -284,5 +348,12 @@
     if (row && !event.target.closest('a,button,input,select,textarea,label')) {
       location.href = row.dataset.href;
     }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    const row = event.target.closest?.('tr.clickable[data-href]');
+    if (!row || !['Enter', ' '].includes(event.key)) return;
+    event.preventDefault();
+    location.href = row.dataset.href;
   });
 })();

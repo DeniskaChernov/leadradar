@@ -122,3 +122,22 @@ def test_audit_fixes_navigation_alignment_and_accessible_filters():
     assert 'href="/discovery"' in competitors
     assert "candidate-grid" in discovery
     assert 'name="tier" aria-label=' in competitors
+
+
+def test_interface_hardening_keeps_dense_views_accessible():
+    base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    analytics = (PROJECT_ROOT / "app/web/templates/analytics.html").read_text(
+        encoding="utf-8"
+    )
+    css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
+    javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
+
+    assert 'role="dialog" aria-modal="true"' in base
+    assert 'aria-describedby="confirm-text"' in base
+    assert 'aria-current="page"' in analytics
+    assert "stage_count * 100 / funnel_peak" in analytics
+    assert "table-scroll-hint" in css
+    assert "navigation.scrollTo" in javascript
+    assert "enhanceClickableRows" in javascript
+    assert "event.key === 'Escape'" in javascript
+    assert ".page-help b { white-space: normal; }" in css
