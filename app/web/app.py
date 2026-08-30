@@ -19,6 +19,7 @@ from app.services.audience_service import AudienceEngine
 from app.services.crm_service import CRMService
 from app.services.discovery_service import DiscoveryService
 from app.services.export_recipe_service import ExportRecipeService
+from app.services.fx_policy_service import FxPolicyService
 from app.services.lead_intelligence_challenge import LeadIntelligenceChallenge
 from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowService
@@ -116,6 +117,7 @@ def build_web_app(
         worker_active=notification_worker_active,
     )
     pricing_service = PricingConfigService(workflow.session_factory)
+    fx_policy_service = FxPolicyService(workflow.session_factory)
     intelligence_challenge = LeadIntelligenceChallenge()
 
     templates.env.globals.update(
@@ -565,6 +567,7 @@ def build_web_app(
             hot_threshold=settings.hot_lead_threshold
         )
         pricing_configs = await pricing_service.list_active()
+        fx_policies = await fx_policy_service.list_active()
         notification_modes = {
             "ALL_NEW_COMMENTS": (
                 "Каждый новый комментарий",
@@ -634,6 +637,7 @@ def build_web_app(
                 ai_safety=ai_safety,
                 intelligence_quality=intelligence_quality,
                 pricing_configs=pricing_configs,
+                fx_policies=fx_policies,
             ),
         )
 
@@ -671,6 +675,25 @@ def build_web_app(
             "ok": True,
             "pricing_config_id": config.id,
             "message": "Новая версия цены сохранена; предыдущая осталась в истории.",
+        }
+
+    @app.post("/api/pricing/fx")
+    async def set_fx_rate(request: Request):
+        data = await request.json()
+        try:
+            rate = Decimal(str(data.get("rate") or ""))
+            policy = await fx_policy_service.set_rate(
+                base_currency=str(data.get("base_currency") or ""),
+                quote_currency=str(data.get("quote_currency") or ""),
+                rate=rate,
+                manager_id=manager_id(request),
+            )
+        except (InvalidOperation, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "ok": True,
+            "fx_policy_id": policy.id,
+            "message": "Новая версия FX-курса сохранена; история не изменена.",
         }
 
     @app.post("/api/replay/advance")

@@ -78,14 +78,14 @@ Lead Radar строится не как «парсер комментариев�
 - наблюдаемый спрос против подтверждённого покрытия каталога;
 - без домыслов о Direct или скрытых ответах конкурента.
 
-### Stage 5. Unit Economics — В РАБОТЕ
+### Stage 5. Unit Economics — ГОТОВО
 
 - подтверждённый COGS проданного товара;
 - cohort attribution;
 - versioned FX policy;
 - margin/ROI только при полном наборе фактов.
 
-### Stage 6. Independent quality gates
+### Stage 6. Independent quality gates — В РАБОТЕ
 
 - 100+ независимо размеченных audience membership cases;
 - отдельные calibration/challenge/robustness/unseen наборы;

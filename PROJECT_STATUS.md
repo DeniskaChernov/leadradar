@@ -8,9 +8,23 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-30: 235 тестов, Ruff, compileall, data-integrity и `alembic check`
-проходят. Рабочая БД после backup обновлена до `f2a5b8d13c70`; fresh, downgrade/re-upgrade
+Контрольная точка 2026-08-30: 238 тестов, Ruff, compileall, data-integrity и `alembic check`
+проходят. Рабочая БД после backup обновлена до `a3c8f7d24e10`; fresh, downgrade/re-upgrade
 и повторный schema check также проходят.
+
+## Stage 5 — Unit Economics завершён
+
+- rolling revenue из `Deal.final_amount` заменена acquisition-cohort расчётом из immutable
+  `DealSaleSnapshot`;
+- versioned `FxRatePolicy` хранит только manager-confirmed исторические курсы без внешнего API;
+- gross profit и margin доступны только при полном sale snapshot, COGS и FX;
+- ROI учитывает только direct lead-attributed cost events и блокируется при unknown price,
+  отсутствующем FX, COGS, snapshot или нулевых расходах;
+- dashboard и competitor revenue больше не суммируют редактируемые deal amounts;
+- повреждённый pricing config с отсутствующей unit/token price не превращает расход в ложный `$0`;
+- UI показывает точную причину неполноты и позволяет admin версионировать FX;
+- migration `a3c8f7d24e10` проверена fresh/repeated/downgrade и на рабочей БД после backup;
+- полный offline gate: **238 tests passed**, Ruff, compileall, Alembic и integrity чистые.
 
 ## Stage 4 — Catalog → Offer → Demand Gap завершён
 
@@ -72,7 +86,7 @@
 | Lead Scoring V3 | OFFLINE · evidence-first rule pipeline | 200 calibration + 36 challenge scenarios + component tests | No | No |
 | Audience Intelligence V4 | OFFLINE · governed registry foundation implemented | 217 offline tests; audience golden expansion pending | UI offline | No |
 | Rattan Vertical V2 | OFFLINE · taxonomy safety hardened | 30 golden + 194 repository tests | UI offline | No |
-| Unit Economics | OFFLINE · DB-backed ledger aggregation | 197 repository tests + UI render | No | No |
+| Unit Economics | OFFLINE · snapshot/COGS/cohort/historical FX, fail-closed margin and ROI | 238 repository tests + fresh/repeated migration + UI render | No | No |
 | Discovery Center / Diff Engine | OFFLINE · CSV/XLSX review queue implemented | Repository tests + migration + UI render | No | No |
 | Product Catalog / Next Best Action | OFFLINE · versioned confirmation, protected CSV diff/apply, grounded ranking and sale snapshots | 235 repository tests + fresh/repeated migration + UI render | No | No |
 | Premium UI / Telegram Bot | Web auth/RBAC/CSRF + UI hardening + durable outbox implemented | 229 offline tests; delivery dry-run only | Delivery not run | No |

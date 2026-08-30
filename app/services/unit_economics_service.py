@@ -11,7 +11,17 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import Competitor, CostEvent, Deal, DealStatus, Lead, LeadStatus, PublicSignal
+from app.db.models import (
+    Competitor,
+    CostEvent,
+    Deal,
+    DealSaleSnapshot,
+    DealStatus,
+    FxRatePolicy,
+    Lead,
+    LeadStatus,
+    PublicSignal,
+)
 
 _MONEY_QUANT = Decimal("0.000001")
 _RATIO_QUANT = Decimal("0.01")
@@ -36,12 +46,12 @@ class SourceEconomics:
     known_spend_usd: Decimal
     unpriced_events: int
     signals_count: int
-    commercial_signals_count: int
+    commercial_leads_count: int
     leads_count: int
     hot_count: int
     b2b_count: int
     won_count: int
-    revenue_uzs: Decimal
+    revenue_uzs: Decimal | None
     cost_per_lead_usd: Decimal | None
     cost_per_hot_usd: Decimal | None
 
@@ -58,13 +68,16 @@ class UnitEconomicsSnapshot:
     known_spend_usd: Decimal
     cost_coverage_percent: Decimal
     signals_count: int
-    commercial_signals_count: int
+    commercial_leads_count: int
     leads_count: int
     hot_count: int
     b2b_count: int
     won_count: int
-    revenue_uzs: Decimal
-    revenue_missing_deals: int
+    revenue_uzs: Decimal | None
+    sale_snapshot_missing_deals: int
+    cogs_missing_deals: int
+    fx_missing_facts: int
+    cohort_attributed_spend_usd: Decimal
     cost_per_signal_usd: Decimal | None
     cost_per_commercial_signal_usd: Decimal | None
     cost_per_lead_usd: Decimal | None
@@ -72,6 +85,7 @@ class UnitEconomicsSnapshot:
     cost_per_b2b_usd: Decimal | None
     cost_per_won_usd: Decimal | None
     gross_profit_uzs: Decimal | None
+    gross_margin_ratio: Decimal | None
     roi_ratio: Decimal | None
     roi_status: str
     providers: tuple[EconomicsBreakdown, ...]
@@ -111,13 +125,35 @@ class UnitEconomicsEngine:
             period_leads = list(
                 await session.scalars(select(Lead).where(Lead.created_at >= started_at))
             )
+            cohort_lead_ids = [lead.id for lead in period_leads]
             won_deals = list(
                 await session.scalars(
                     select(Deal).where(
                         Deal.status == DealStatus.WON,
                         Deal.won_at.is_not(None),
-                        Deal.won_at >= started_at,
+                        Deal.lead_id.in_(cohort_lead_ids),
                     )
+                )
+            )
+            snapshots = {
+                item.deal_id: item
+                for item in await session.scalars(
+                    select(DealSaleSnapshot).where(
+                        DealSaleSnapshot.deal_id.in_([deal.id for deal in won_deals])
+                    )
+                )
+            }
+            fx_policies = list(
+                await session.scalars(
+                    select(FxRatePolicy).order_by(
+                        FxRatePolicy.effective_from,
+                        FxRatePolicy.id,
+                    )
+                )
+            )
+            cohort_cost_events = list(
+                await session.scalars(
+                    select(CostEvent).where(CostEvent.lead_id.in_(cohort_lead_ids))
                 )
             )
             all_leads = {lead.id: lead for lead in await session.scalars(select(Lead))}
@@ -158,11 +194,13 @@ class UnitEconomicsEngine:
             lead for lead in qualified_leads if lead.lead_score >= self.hot_threshold
         ]
         b2b_leads = [lead for lead in commercial_leads if self._is_b2b(lead)]
-        revenue = sum(
-            (Decimal(deal.final_amount) for deal in won_deals if deal.final_amount is not None),
-            Decimal("0"),
+        financials = self._financials(
+            won_deals=won_deals,
+            snapshots=snapshots,
+            cost_events=cohort_cost_events,
+            fx_policies=fx_policies,
+            generated_at=now,
         )
-        revenue_missing = sum(deal.final_amount is None for deal in won_deals)
         costs_complete = bool(cost_events) and unpriced == 0
         source_rows = self._source_rows(
             competitors=competitors,
@@ -172,6 +210,8 @@ class UnitEconomicsEngine:
             hot_leads=hot_leads,
             b2b_leads=b2b_leads,
             won_deals=won_deals,
+            snapshots=snapshots,
+            fx_policies=fx_policies,
             lead_by_id=all_leads,
             cost_rows=source_cost_rows,
         )
@@ -186,13 +226,18 @@ class UnitEconomicsEngine:
             known_spend_usd=self._money(known_spend),
             cost_coverage_percent=self._coverage(len(cost_events), unpriced),
             signals_count=len(period_signals),
-            commercial_signals_count=len(commercial_leads),
+            commercial_leads_count=len(commercial_leads),
             leads_count=len(qualified_leads),
             hot_count=len(hot_leads),
             b2b_count=len(b2b_leads),
             won_count=len(won_deals),
-            revenue_uzs=self._money(revenue),
-            revenue_missing_deals=revenue_missing,
+            revenue_uzs=financials["revenue"],
+            sale_snapshot_missing_deals=int(financials["snapshot_missing"]),
+            cogs_missing_deals=int(financials["cogs_missing"]),
+            fx_missing_facts=int(financials["fx_missing"]),
+            cohort_attributed_spend_usd=self._money(
+                Decimal(financials["attributed_spend_usd"])
+            ),
             cost_per_signal_usd=self._cost_per(known_spend, len(period_signals), costs_complete),
             cost_per_commercial_signal_usd=self._cost_per(
                 known_spend, len(commercial_leads), costs_complete
@@ -202,14 +247,25 @@ class UnitEconomicsEngine:
             ),
             cost_per_hot_usd=self._cost_per(known_spend, len(hot_leads), costs_complete),
             cost_per_b2b_usd=self._cost_per(known_spend, len(b2b_leads), costs_complete),
-            cost_per_won_usd=self._cost_per(known_spend, len(won_deals), costs_complete),
-            gross_profit_uzs=None,
-            roi_ratio=None,
+            cost_per_won_usd=self._cost_per(
+                Decimal(financials["attributed_spend_usd"]),
+                len(won_deals),
+                costs_complete
+                and bool(cohort_cost_events)
+                and int(financials["unpriced_costs"]) == 0,
+            ),
+            gross_profit_uzs=financials["gross_profit"],
+            gross_margin_ratio=financials["gross_margin"],
+            roi_ratio=financials["roi"],
             roi_status=self._roi_status(
                 cost_events=len(cost_events),
-                costs_complete=costs_complete,
+                cohort_cost_events=len(cohort_cost_events),
+                unpriced_costs=max(int(financials["unpriced_costs"]), unpriced),
                 won_count=len(won_deals),
-                revenue_missing=revenue_missing,
+                snapshot_missing=int(financials["snapshot_missing"]),
+                cogs_missing=int(financials["cogs_missing"]),
+                fx_missing=int(financials["fx_missing"]),
+                roi=financials["roi"],
             ),
             providers=self._breakdowns(provider_rows),
             verticals=self._breakdowns(vertical_rows),
@@ -226,6 +282,8 @@ class UnitEconomicsEngine:
         hot_leads: list[Lead],
         b2b_leads: list[Lead],
         won_deals: list[Deal],
+        snapshots: dict[int, DealSaleSnapshot],
+        fx_policies: list[FxRatePolicy],
         lead_by_id: dict[int, Lead],
         cost_rows: dict[int | None, dict[str, Any]],
     ) -> tuple[SourceEconomics, ...]:
@@ -238,6 +296,7 @@ class UnitEconomicsEngine:
                 "b2b": 0,
                 "won": 0,
                 "revenue": Decimal("0"),
+                "revenue_complete": True,
             }
         )
         for signal in signals:
@@ -254,8 +313,21 @@ class UnitEconomicsEngine:
             lead = lead_by_id.get(deal.lead_id) if deal.lead_id else None
             source_id = lead.competitor_id if lead else None
             buckets[source_id]["won"] += 1
-            if deal.final_amount is not None:
-                buckets[source_id]["revenue"] += Decimal(deal.final_amount)
+            snapshot = snapshots.get(deal.id)
+            rate = (
+                self._rate_at(
+                    fx_policies,
+                    snapshot.sale_currency,
+                    "UZS",
+                    deal.won_at or snapshot.created_at,
+                )
+                if snapshot is not None
+                else None
+            )
+            if snapshot is None or rate is None:
+                buckets[source_id]["revenue_complete"] = False
+            else:
+                buckets[source_id]["revenue"] += Decimal(snapshot.sale_amount) * rate
         for source_id in cost_rows:
             buckets[source_id]
 
@@ -277,12 +349,16 @@ class UnitEconomicsEngine:
                     known_spend_usd=self._money(spend),
                     unpriced_events=int(costs["unpriced"]),
                     signals_count=int(activity["signals"]),
-                    commercial_signals_count=int(activity["commercial"]),
+                    commercial_leads_count=int(activity["commercial"]),
                     leads_count=int(activity["leads"]),
                     hot_count=int(activity["hot"]),
                     b2b_count=int(activity["b2b"]),
                     won_count=int(activity["won"]),
-                    revenue_uzs=self._money(Decimal(activity["revenue"])),
+                    revenue_uzs=(
+                        self._money(Decimal(activity["revenue"]))
+                        if activity["revenue_complete"]
+                        else None
+                    ),
                     cost_per_lead_usd=self._cost_per(
                         spend, int(activity["leads"]), costs_complete
                     ),
@@ -294,7 +370,11 @@ class UnitEconomicsEngine:
         return tuple(
             sorted(
                 rows,
-                key=lambda row: (row.revenue_uzs, row.hot_count, row.signals_count),
+                key=lambda row: (
+                    row.revenue_uzs or Decimal("-1"),
+                    row.hot_count,
+                    row.signals_count,
+                ),
                 reverse=True,
             )
         )
@@ -369,16 +449,169 @@ class UnitEconomicsEngine:
             return None
         return cls._money(spend / Decimal(denominator))
 
+    @classmethod
+    def _financials(
+        cls,
+        *,
+        won_deals: list[Deal],
+        snapshots: dict[int, DealSaleSnapshot],
+        cost_events: list[CostEvent],
+        fx_policies: list[FxRatePolicy],
+        generated_at: datetime,
+    ) -> dict[str, Decimal | int | None]:
+        revenue = Decimal("0")
+        gross_profit = Decimal("0")
+        snapshot_missing = 0
+        cogs_missing = 0
+        sale_fx_missing = 0
+        cogs_fx_missing = 0
+        for deal in won_deals:
+            snapshot = snapshots.get(deal.id)
+            if snapshot is None:
+                snapshot_missing += 1
+                continue
+            at = deal.won_at or snapshot.created_at
+            sale_rate = cls._rate_at(
+                fx_policies,
+                snapshot.sale_currency,
+                "UZS",
+                at,
+            )
+            if sale_rate is None:
+                sale_fx_missing += 1
+                continue
+            sale_uzs = Decimal(snapshot.sale_amount) * sale_rate
+            revenue += sale_uzs
+            if snapshot.cogs is None or not snapshot.catalog_currency:
+                cogs_missing += 1
+                continue
+            cogs_rate = cls._rate_at(
+                fx_policies,
+                snapshot.catalog_currency,
+                "UZS",
+                at,
+            )
+            if cogs_rate is None:
+                cogs_fx_missing += 1
+                continue
+            gross_profit += sale_uzs - (
+                Decimal(snapshot.cogs) * Decimal(snapshot.quantity) * cogs_rate
+            )
+
+        attributed_spend_usd = Decimal("0")
+        attributed_spend_uzs = Decimal("0")
+        unpriced_costs = 0
+        cost_fx_missing = 0
+        for event in cost_events:
+            if event.cost_usd is None:
+                unpriced_costs += 1
+                continue
+            cost = Decimal(event.cost_usd)
+            attributed_spend_usd += cost
+            rate = cls._rate_at(fx_policies, "USD", "UZS", event.created_at or generated_at)
+            if rate is None:
+                cost_fx_missing += 1
+                continue
+            attributed_spend_uzs += cost * rate
+
+        revenue_complete = snapshot_missing == 0 and sale_fx_missing == 0
+        gross_complete = (
+            revenue_complete and cogs_missing == 0 and cogs_fx_missing == 0
+        )
+        costs_complete = (
+            bool(cost_events) and unpriced_costs == 0 and cost_fx_missing == 0
+        )
+        revenue_value = cls._money(revenue) if revenue_complete else None
+        gross_value = cls._money(gross_profit) if gross_complete else None
+        gross_margin = (
+            (gross_profit / revenue).quantize(Decimal("0.0001"))
+            if gross_complete and revenue > 0
+            else None
+        )
+        roi = (
+            ((gross_profit - attributed_spend_uzs) / attributed_spend_uzs).quantize(
+                Decimal("0.0001")
+            )
+            if gross_complete and costs_complete and attributed_spend_uzs > 0
+            else None
+        )
+        return {
+            "revenue": revenue_value,
+            "gross_profit": gross_value,
+            "gross_margin": gross_margin,
+            "roi": roi,
+            "snapshot_missing": snapshot_missing,
+            "cogs_missing": cogs_missing,
+            "fx_missing": sale_fx_missing + cogs_fx_missing + cost_fx_missing,
+            "unpriced_costs": unpriced_costs,
+            "attributed_spend_usd": attributed_spend_usd,
+        }
+
+    @staticmethod
+    def _rate_at(
+        policies: list[FxRatePolicy],
+        base_currency: str,
+        quote_currency: str,
+        at: datetime,
+    ) -> Decimal | None:
+        base = base_currency.strip().upper()
+        quote = quote_currency.strip().upper()
+        if base == quote:
+            return Decimal("1")
+        target = at if at.tzinfo is not None else at.replace(tzinfo=UTC)
+        matches = [
+            policy
+            for policy in policies
+            if policy.base_currency == base
+            and policy.quote_currency == quote
+            and (
+                policy.effective_from
+                if policy.effective_from.tzinfo is not None
+                else policy.effective_from.replace(tzinfo=UTC)
+            )
+            <= target
+        ]
+        if not matches:
+            return None
+        selected = max(
+            matches,
+            key=lambda policy: (
+                policy.effective_from
+                if policy.effective_from.tzinfo is not None
+                else policy.effective_from.replace(tzinfo=UTC),
+                policy.id,
+            ),
+        )
+        return Decimal(selected.rate)
+
     @staticmethod
     def _roi_status(
-        *, cost_events: int, costs_complete: bool, won_count: int, revenue_missing: int
+        *,
+        cost_events: int,
+        cohort_cost_events: int,
+        unpriced_costs: int,
+        won_count: int,
+        snapshot_missing: int,
+        cogs_missing: int,
+        fx_missing: int,
+        roi: Decimal | None,
     ) -> str:
-        if cost_events == 0:
-            return "ROI недоступен: за период нет записанных cost events."
-        if not costs_complete:
-            return "ROI недоступен: не все расходы имеют подтверждённую цену."
         if won_count == 0:
-            return "ROI недоступен: за период нет WON-сделок."
-        if revenue_missing:
-            return "ROI недоступен: у части WON-сделок не заполнена выручка."
-        return "ROI недоступен: расходы хранятся в USD, выручка — в UZS; курс не задан."
+            if cost_events == 0 and cohort_cost_events == 0:
+                return "ROI недоступен: за период нет записанных cost events."
+            return "ROI недоступен: у лидов когорты пока нет WON-сделок."
+        if snapshot_missing:
+            return "ROI недоступен: у части WON-сделок нет immutable sale snapshot."
+        if cost_events == 0 and cohort_cost_events == 0:
+            return "ROI недоступен: за период нет записанных cost events."
+        if unpriced_costs:
+            return "ROI недоступен: не все расходы когорты имеют подтверждённую цену."
+        if cogs_missing:
+            return "ROI недоступен: у части продаж нет подтверждённого COGS snapshot."
+        if not cohort_cost_events:
+            return "ROI недоступен: у когорты нет расходов, напрямую связанных с lead."
+        if fx_missing:
+            return "ROI недоступен: не хватает подтверждённого исторического FX-курса."
+        if roi is not None:
+            return "ROI рассчитан по complete snapshot, direct lead costs и историческому FX."
+        return "ROI недоступен: подтверждённые расходы когорты равны нулю."

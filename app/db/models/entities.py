@@ -1393,3 +1393,26 @@ class PricingConfig(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )
+
+
+class FxRatePolicy(Base):
+    __tablename__ = "fx_rate_policies"
+    __table_args__ = (
+        UniqueConstraint(
+            "base_currency",
+            "quote_currency",
+            "effective_from",
+            name="uq_fx_rate_policies_pair_effective",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    base_currency: Mapped[str] = mapped_column(String(8), index=True)
+    quote_currency: Mapped[str] = mapped_column(String(8), index=True)
+    rate: Mapped[Decimal] = mapped_column(Numeric(18, 8))
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    manager_telegram_id: Mapped[int] = mapped_column(Integer, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )

@@ -93,6 +93,19 @@
   </tbody></table></div>
 </details>
 
+<details class="panel action-form-card">
+  <summary><div><b>Подтверждённые FX-курсы</b><span>Версии курсов для Unit Economics без внешнего API</span></div></summary>
+  <p class="muted">Курс применяется по времени продажи или расхода. Исторические версии не переписываются.</p>
+  <form data-api-form action="/api/pricing/fx" data-reload="1" class="form-grid">
+    <div class="form-row"><label>Из валюты<input name="base_currency" value="USD" maxlength="8" required></label><label>В валюту<input name="quote_currency" value="UZS" maxlength="8" required></label></div>
+    <label>Курс<input name="rate" inputmode="decimal" placeholder="12650" required></label>
+    <div><button class="btn primary" type="submit">Сохранить новую версию курса</button></div>
+  </form>
+  <div class="table-wrap embedded"><table><thead><tr><th>Пара</th><th>Курс</th><th>Действует с</th><th>Кто подтвердил</th></tr></thead><tbody>
+    {% for fx in fx_policies %}<tr><td>{{ fx.base_currency }} → {{ fx.quote_currency }}</td><td>{{ fx.rate }}</td><td>{{ fx.effective_from.strftime('%d.%m.%Y %H:%M') }}</td><td>{{ fx.manager_telegram_id }}</td></tr>{% else %}<tr><td colspan="4" class="empty">FX-курс не задан. Margin и ROI остаются недоступны.</td></tr>{% endfor %}
+  </tbody></table></div>
+</details>
+
 
 {% if replay_status %}
 <section class="panel replay-panel">

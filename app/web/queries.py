@@ -22,6 +22,7 @@ from app.db.models import (
     ContactTask,
     CostEvent,
     Deal,
+    DealSaleSnapshot,
     DealStatus,
     Evidence,
     ExternalBudgetReservation,
@@ -302,13 +303,22 @@ class WebQueryService:
                 )
                 or 0
             )
-            counts["revenue"] = (
+            snapshot_count = int(
                 await session.scalar(
-                    select(func.coalesce(func.sum(Deal.final_amount), 0)).where(
-                        Deal.status == DealStatus.WON
+                    select(func.count(DealSaleSnapshot.id)).where(
+                        DealSaleSnapshot.sale_currency == "UZS"
                     )
                 )
                 or 0
+            )
+            counts["revenue"] = (
+                await session.scalar(
+                    select(func.sum(DealSaleSnapshot.sale_amount)).where(
+                        DealSaleSnapshot.sale_currency == "UZS"
+                    )
+                )
+                if snapshot_count == counts["won"]
+                else None
             )
             counts["tasks_due"] = int(
                 await session.scalar(
@@ -960,16 +970,32 @@ class WebQueryService:
                     )
                     or 0
                 )
-                revenue = (
+                snapshot_count = int(
                     await session.scalar(
-                        select(func.coalesce(func.sum(Deal.final_amount), 0))
+                        select(func.count(DealSaleSnapshot.id))
+                        .join(Deal, Deal.id == DealSaleSnapshot.deal_id)
                         .join(Lead, Lead.id == Deal.lead_id)
                         .where(
                             Lead.competitor_id == competitor.id,
                             Deal.status == DealStatus.WON,
+                            DealSaleSnapshot.sale_currency == "UZS",
                         )
                     )
                     or 0
+                )
+                revenue = (
+                    await session.scalar(
+                        select(func.sum(DealSaleSnapshot.sale_amount))
+                        .join(Deal, Deal.id == DealSaleSnapshot.deal_id)
+                        .join(Lead, Lead.id == Deal.lead_id)
+                        .where(
+                            Lead.competitor_id == competitor.id,
+                            Deal.status == DealStatus.WON,
+                            DealSaleSnapshot.sale_currency == "UZS",
+                        )
+                    )
+                    if snapshot_count == won
+                    else None
                 )
                 if stats["comments"] < 10:
                     recommendation = "Набираем данные"

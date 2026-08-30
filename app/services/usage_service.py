@@ -377,8 +377,12 @@ class ExternalUsageService:
         if config is None:
             return None
         if config.pricing_basis in {"REQUEST", "UNIT"}:
-            return (config.unit_price or Decimal("0")) * units
+            return config.unit_price * units if config.unit_price is not None else None
         if config.pricing_basis == "TOKENS":
+            if input_tokens and config.input_price is None:
+                return None
+            if output_tokens and config.output_price is None:
+                return None
             return (
                 (config.input_price or Decimal("0")) * int(input_tokens or 0)
                 + (config.output_price or Decimal("0")) * int(output_tokens or 0)
