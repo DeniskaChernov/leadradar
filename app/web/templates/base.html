@@ -9,11 +9,11 @@
   <title>{% block title %}Lead Radar{% endblock %}</title>
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
-  <link rel="stylesheet" href="/static/app.css?v=10.3.0-mobile-workflows">
+  <link rel="stylesheet" href="/static/app.css?v=11.0.0-premium-glass">
   <script defer src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
-  <script defer src="/static/app.js?v=4.2"></script>
+  <script defer src="/static/app.js?v=5.0.0-premium-glass"></script>
 </head>
-<body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}">
+<body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}" data-page="{{ active_path }}">
 <a class="skip-link" href="#main-content">Перейти к содержимому</a>
 <div class="shell">
   <aside class="sidebar">
@@ -21,19 +21,28 @@
       <div class="brand-mark" aria-hidden="true"><i data-lucide="radar">LR</i></div>
       <div><strong>Lead Radar</strong><span>Радар спроса и CRM</span></div>
     </a>
-    <nav aria-label="Основная навигация">
+    <nav id="main-navigation" aria-label="Основная навигация">
       {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}
-      <a class="nav {% if active_path == '/rattan' %}active{% endif %}" href="/rattan" {% if active_path == '/rattan' %}aria-current="page"{% endif %}><span aria-hidden="true">🌾</span>Обзор ротанга</a>
-      <a class="nav" href="/rattan#signals"><span aria-hidden="true">⌁</span>Сигналы</a>
-      <a class="nav" href="/rattan#companies"><span aria-hidden="true">◫</span>Компании</a>
-      <a class="nav" href="/audiences?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true">◉</span>Аудитории</a>
-      <a class="nav {% if active_path.startswith('/catalog') %}active{% endif %}" href="/catalog?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true">▤</span>Каталог</a>
-      <a class="nav" href="/system?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true">⚙</span>Источники</a>
+      <div class="nav-primary">
+        <a class="nav {% if active_path == '/rattan' %}active{% endif %}" href="/rattan" {% if active_path == '/rattan' %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="sprout"></i></span><b>Обзор</b></a>
+        <a class="nav" href="/rattan#signals"><span aria-hidden="true"><i data-lucide="radio-tower"></i></span><b>Сигналы</b></a>
+        <a class="nav" href="/rattan#companies"><span aria-hidden="true"><i data-lucide="building-2"></i></span><b>Компании</b></a>
+        <a class="nav" href="/audiences?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true"><i data-lucide="target"></i></span><b>Аудитории</b></a>
+      </div>
+      <button class="nav nav-more" type="button" data-more-toggle aria-expanded="false" aria-controls="more-navigation"><span aria-hidden="true"><i data-lucide="grid-2x2"></i></span><b>Ещё</b></button>
+      <div class="nav-secondary" id="more-navigation" aria-label="Дополнительная навигация">
+        <a class="nav {% if active_path.startswith('/catalog') %}active{% endif %}" href="/catalog?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true"><i data-lucide="notebook-tabs"></i></span><b>Каталог</b></a>
+        <a class="nav" href="/system?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true"><i data-lucide="settings-2"></i></span><b>Источники</b></a>
+      </div>
       {% else %}
-      <a class="nav {% if active_path == '/' %}active{% endif %}" href="/" {% if active_path == '/' %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="layout-dashboard">⌂</i></span>Обзор</a>
-      <a class="nav {% if active_path.startswith('/radar') %}active{% endif %}" href="/radar" {% if active_path.startswith('/radar') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="radar">⌁</i></span>Радар</a>
-      <a class="nav {% if active_path.startswith('/leads') %}active{% endif %}" href="/leads" {% if active_path.startswith('/leads') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="zap">⚡</i></span>Лиды</a>
-      <a class="nav {% if active_path.startswith('/contacts') %}active{% endif %}" href="/contacts" {% if active_path.startswith('/contacts') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="users">◎</i></span>Клиенты</a>
+      <div class="nav-primary">
+      <a class="nav {% if active_path == '/' %}active{% endif %}" href="/" {% if active_path == '/' %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="layout-dashboard"></i></span><b>Обзор</b></a>
+      <a class="nav {% if active_path.startswith('/radar') %}active{% endif %}" href="/radar" {% if active_path.startswith('/radar') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="radar"></i></span><b>Радар</b></a>
+      <a class="nav {% if active_path.startswith('/leads') %}active{% endif %}" href="/leads" {% if active_path.startswith('/leads') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="zap"></i></span><b>Лиды</b></a>
+      <a class="nav {% if active_path.startswith('/contacts') %}active{% endif %}" href="/contacts" {% if active_path.startswith('/contacts') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="users"></i></span><b>Клиенты</b></a>
+      </div>
+      <button class="nav nav-more" type="button" data-more-toggle aria-expanded="false" aria-controls="more-navigation"><span aria-hidden="true"><i data-lucide="grid-2x2"></i></span><b>Ещё</b></button>
+      <div class="nav-secondary" id="more-navigation" aria-label="Дополнительная навигация">
       <a class="nav {% if active_path.startswith('/audiences') %}active{% endif %}" href="/audiences" {% if active_path.startswith('/audiences') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="target">◉</i></span>Аудитории</a>
       <a class="nav {% if active_path.startswith('/tasks') %}active{% endif %}" href="/tasks" {% if active_path.startswith('/tasks') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="circle-check-big">✓</i></span>Задачи</a>
       <a class="nav {% if active_path.startswith('/deals') %}active{% endif %}" href="/deals" {% if active_path.startswith('/deals') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="handshake">₽</i></span>Сделки</a>
@@ -44,6 +53,7 @@
       <a class="nav {% if active_path.startswith('/catalog') %}active{% endif %}" href="/catalog" {% if active_path.startswith('/catalog') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="notebook-tabs">▤</i></span>Каталог</a>
       <a class="nav {% if active_path.startswith('/roadmap') %}active{% endif %}" href="/roadmap" {% if active_path.startswith('/roadmap') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="route">↗</i></span>Развитие</a>
       <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system" {% if active_path.startswith('/system') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="settings-2">⚙</i></span>Система</a>
+      </div>
       {% endif %}
     </nav>
     <div class="side-info">
@@ -71,15 +81,14 @@
         <p>{% block subheading %}Публичный спрос конкурентов в одной базе{% endblock %}</p>
       </div>
 
-      <!-- Vertical Navigation Context Switcher (V6 Section 6) -->
-      <div class="vertical-switcher" role="radiogroup" aria-label="Выбор вертикали бизнеса">
-        <a href="/" class="switcher-tab {% if selected_vertical != 'ARTIFICIAL_RATTAN' %}active{% endif %}">
-          🪑 Мебель
+      <nav class="vertical-switcher" aria-label="Вертикаль бизнеса">
+        <a href="/" class="switcher-tab {% if selected_vertical != 'ARTIFICIAL_RATTAN' %}active{% endif %}" {% if selected_vertical != 'ARTIFICIAL_RATTAN' %}aria-current="page"{% endif %}>
+          <i data-lucide="armchair" aria-hidden="true"></i><span>Мебель</span>
         </a>
-        <a href="/rattan" class="switcher-tab {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}active{% endif %}">
-          🌾 Искусственный ротанг
+        <a href="/rattan" class="switcher-tab {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}active{% endif %}" {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}aria-current="page"{% endif %}>
+          <i data-lucide="sprout" aria-hidden="true"></i><span>Ротанг</span>
         </a>
-      </div>
+      </nav>
 
       <div class="top-actions">
         {% if settings.web_auth_enabled %}
@@ -101,7 +110,7 @@
       </div>
     </header>
 
-    <section class="content">
+    <section class="content" data-motion-root>
       {% if snapshot.last_error %}
       <div class="alert error"><b>Последняя проблема мониторинга</b><span>{{ snapshot.last_error }}</span><a href="/system">Открыть диагностику →</a></div>
       {% endif %}
@@ -109,7 +118,8 @@
     </section>
   </main>
 </div>
-<div id="toast" class="toast" role="status"></div>
+<button class="mobile-nav-backdrop" type="button" data-more-close aria-label="Закрыть дополнительную навигацию" tabindex="-1"></button>
+<div id="toast" class="toast" role="status" aria-live="polite"><span data-toast-message></span><i aria-hidden="true"></i></div>
 <div id="confirm" class="modal-backdrop" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-text"><h3 id="confirm-title">Подтвердите действие</h3><p id="confirm-text"></p><div class="modal-actions"><button class="btn ghost" type="button" data-confirm-cancel>Отмена</button><button class="btn primary" type="button" data-confirm-ok>Продолжить</button></div></div>
 </div>

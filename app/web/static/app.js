@@ -19,8 +19,11 @@
   const toast = (message, bad = false) => {
     const el = document.getElementById('toast');
     if (!el) return;
-    el.textContent = message;
+    const text = el.querySelector('[data-toast-message]');
+    if (text) text.textContent = message;
+    else el.textContent = message;
     el.className = `toast show ${bad ? 'bad' : ''}`;
+    el.querySelector('i')?.getAnimations().forEach((animation) => animation.cancel());
     clearTimeout(window.__lrToastTimer);
     window.__lrToastTimer = setTimeout(() => (el.className = 'toast'), 3200);
   };
@@ -52,6 +55,7 @@
     if (!root) return resolve(window.confirm(text));
     const previouslyFocused = document.activeElement;
     root.hidden = false;
+    requestAnimationFrame(() => root.classList.add('is-open'));
     document.getElementById('confirm-title').textContent = title;
     document.getElementById('confirm-text').textContent = text;
     const ok = root.querySelector('[data-confirm-ok]');
@@ -61,14 +65,30 @@
         event.preventDefault();
         done(false);
       }
+      if (event.key === 'Tab') {
+        const focusable = [...root.querySelectorAll('button:not(:disabled),a[href]')];
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
     };
     const done = (value) => {
-      root.hidden = true;
+      root.classList.remove('is-open');
       ok.onclick = null;
       cancel.onclick = null;
       document.removeEventListener('keydown', onKeydown);
-      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
-      resolve(value);
+      setTimeout(() => {
+        root.hidden = true;
+        if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+        resolve(value);
+      }, 180);
     };
     ok.onclick = () => done(true);
     cancel.onclick = () => done(false);
@@ -77,16 +97,57 @@
   });
 
   const enhanceNavigation = () => {
-    if (!window.matchMedia('(max-width: 720px)').matches) return;
-    const navigation = document.querySelector('.sidebar nav');
-    const active = document.querySelector('.sidebar nav .nav.active');
-    if (!navigation || !active) return;
-    requestAnimationFrame(() => {
-      navigation.scrollTo({
-        left: active.offsetLeft - (navigation.clientWidth - active.offsetWidth) / 2,
-        behavior: 'instant',
-      });
+    const toggle = document.querySelector('[data-more-toggle]');
+    const menu = document.getElementById('more-navigation');
+    const close = () => {
+      menu?.classList.remove('is-open');
+      toggle?.setAttribute('aria-expanded', 'false');
+      document.body.classList.remove('more-navigation-open');
+    };
+    toggle?.addEventListener('click', () => {
+      const opening = toggle.getAttribute('aria-expanded') !== 'true';
+      menu?.classList.toggle('is-open', opening);
+      toggle.setAttribute('aria-expanded', String(opening));
+      document.body.classList.toggle('more-navigation-open', opening);
+      if (opening) requestAnimationFrame(() => menu?.querySelector('a')?.focus());
     });
+    document.querySelector('[data-more-close]')?.addEventListener('click', close);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && document.body.classList.contains('more-navigation-open')) {
+        close();
+        toggle?.focus();
+      }
+    });
+  };
+
+  const enhanceMotion = () => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const elements = document.querySelectorAll(
+      '[data-motion-root] > *, .cards > *, .kanban-stack > *, .task-list-page > *, .catalog-grid > *'
+    );
+    if (!elements.length) return;
+    document.documentElement.classList.add('motion-ready');
+    elements.forEach((element, index) => {
+      element.dataset.reveal = '';
+      element.style.setProperty('--reveal-delay', `${Math.min(index % 8, 7) * 45}ms`);
+    });
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('is-visible');
+        observer.unobserve(entry.target);
+      });
+    }, { threshold: 0.06, rootMargin: '0px 0px -24px' });
+    elements.forEach((element) => observer.observe(element));
+  };
+
+  const restoreViewState = () => {
+    const key = sessionStorage.getItem('lr:focus');
+    const y = Number(sessionStorage.getItem('lr:scroll-y') || 0);
+    sessionStorage.removeItem('lr:focus');
+    sessionStorage.removeItem('lr:scroll-y');
+    if (y) requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'instant' }));
+    if (key) requestAnimationFrame(() => document.querySelector(key)?.focus());
   };
 
   const enhanceTables = () => {
@@ -128,8 +189,21 @@
   enhanceNavigation();
   enhanceTables();
   enhanceClickableRows();
+  enhanceMotion();
+  restoreViewState();
 
-  const reloadSoon = (delay = 450) => setTimeout(() => location.reload(), delay);
+  const reloadSoon = (delay = 450, focusSelector = '') => {
+    sessionStorage.setItem('lr:scroll-y', String(window.scrollY));
+    if (focusSelector) sessionStorage.setItem('lr:focus', focusSelector);
+    setTimeout(() => location.reload(), delay);
+  };
+
+  const setLoading = (element, loading) => {
+    if (!element) return;
+    element.disabled = loading;
+    element.classList.toggle('is-loading', loading);
+    element.setAttribute('aria-busy', String(loading));
+  };
 
   const formPayload = (form, submitter) => {
     const result = {};
@@ -173,11 +247,7 @@
       if (!proceed) return;
     }
     const submit = event.submitter || form.querySelector('[type="submit"]');
-    const oldText = submit?.textContent;
-    if (submit) {
-      submit.disabled = true;
-      submit.textContent = 'Сохраняю…';
-    }
+    setLoading(submit, true);
     try {
       const multipart = form.enctype === 'multipart/form-data';
       const body = multipart ? new FormData(form) : formPayload(form, event.submitter);
@@ -211,14 +281,20 @@
     } catch (error) {
       toast(error.message, true);
     } finally {
-      if (submit) {
-        submit.disabled = false;
-        submit.textContent = oldText;
-      }
+      setLoading(submit, false);
     }
   });
 
   document.addEventListener('click', async (event) => {
+    const button = event.target.closest('.btn');
+    if (button && !button.disabled) {
+      const bounds = button.getBoundingClientRect();
+      button.style.setProperty('--ripple-x', `${event.clientX - bounds.left}px`);
+      button.style.setProperty('--ripple-y', `${event.clientY - bounds.top}px`);
+      button.classList.remove('is-rippling');
+      requestAnimationFrame(() => button.classList.add('is-rippling'));
+      setTimeout(() => button.classList.remove('is-rippling'), 550);
+    }
     const logout = event.target.closest('[data-logout]');
     if (logout) {
       try {
@@ -319,7 +395,7 @@
         const proceed = await confirmAction('Подтвердите действие', action.dataset.confirm);
         if (!proceed) return;
       }
-      action.disabled = true;
+      setLoading(action, true);
       try {
         const payload = action.dataset.payload ? JSON.parse(action.dataset.payload) : {};
         const data = await api(action.dataset.apiAction, {
@@ -328,9 +404,10 @@
         });
         toast(data.message || 'Готово');
         if (action.dataset.reload === '1') reloadSoon();
+        else setLoading(action, false);
       } catch (error) {
         toast(error.message, true);
-        action.disabled = false;
+        setLoading(action, false);
       }
       return;
     }
@@ -346,21 +423,21 @@
         );
         if (!proceed) return;
       }
-      leadAction.disabled = true;
+      setLoading(leadAction, true);
       try {
         const data = await api(`/api/leads/${id}/${type}`, { method: 'POST', body: '{}' });
         toast(data.message || 'Лид обновлён');
         reloadSoon();
       } catch (error) {
         toast(error.message, true);
-        leadAction.disabled = false;
+        setLoading(leadAction, false);
       }
       return;
     }
 
     const stage = event.target.closest('[data-stage]');
     if (stage) {
-      stage.disabled = true;
+      setLoading(stage, true);
       try {
         const data = await api(`/api/leads/${stage.dataset.leadId}/stage`, {
           method: 'POST',
@@ -370,14 +447,14 @@
         reloadSoon();
       } catch (error) {
         toast(error.message, true);
-        stage.disabled = false;
+        setLoading(stage, false);
       }
       return;
     }
 
     const task = event.target.closest('[data-task-complete]');
     if (task) {
-      task.disabled = true;
+      setLoading(task, true);
       try {
         const data = await api(`/api/tasks/${task.dataset.taskComplete}/complete`, {
           method: 'POST',
@@ -387,7 +464,7 @@
         reloadSoon();
       } catch (error) {
         toast(error.message, true);
-        task.disabled = false;
+        setLoading(task, false);
       }
       return;
     }

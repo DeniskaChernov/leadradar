@@ -23,7 +23,7 @@
   <div class="metric"><span>ROI</span><strong>{% if economics.roi_ratio is not none %}{{ '%.2f'|format(economics.roi_ratio * 100) }}%{% else %}—{% endif %}</strong><small>direct lead costs · historical FX</small></div>
 </section>
 
-<div class="alert {% if economics.roi_ratio is none %}warning{% else %}info{% endif %}"><b>ROI не подменяется догадкой</b><span>{{ economics.roi_status }} Missing: snapshot {{ economics.sale_snapshot_missing_deals }}, COGS {{ economics.cogs_missing_deals }}, FX {{ economics.fx_missing_facts }}.</span></div>
+<div class="alert {% if economics.roi_ratio is none %}warning{% else %}info{% endif %}"><b>ROI не подменяется догадкой</b><span>{{ economics.roi_status }} Не хватает фактов: снимки продаж — {{ economics.sale_snapshot_missing_deals }}, себестоимость — {{ economics.cogs_missing_deals }}, FX-курсы — {{ economics.fx_missing_facts }}.</span></div>
 
 <div class="analytics-grid">
   <section class="panel"><div class="panel-head"><div><h2>Расходы по провайдерам</h2><p>Только события из неизменяемого cost ledger</p></div></div><div class="table-wrap embedded"><table><thead><tr><th>Провайдер</th><th>Операции</th><th>Единицы</th><th>Известно USD</th><th>Без тарифа</th></tr></thead><tbody>{% for item in economics.providers %}<tr><td><b>{{ item.key }}</b></td><td>{{ item.events }}</td><td>{{ item.units }}</td><td>{{ usd(item.known_spend_usd) }}</td><td>{{ item.unpriced_events }}</td></tr>{% else %}<tr><td colspan="5" class="empty">За период cost events не записаны.</td></tr>{% endfor %}</tbody></table></div></section>

@@ -4,7 +4,7 @@
 {% block subheading %}Рабочая воронка от первого интереса до продажи{% endblock %}
 {% block content %}
 <div class="page-help"><b>Главный принцип</b><span>Комментарий становится лидом только после оценки. Здесь уже не весь шум Instagram, а коммерческие возможности, которые можно вести к сделке.</span></div>
-<form class="filters" method="get"><input name="q" value="{{ q }}" aria-label="Поиск лидов" placeholder="Клиент, комментарий, товар или конкурент"><select name="status" aria-label="Стадия лида"><option value="">Все рабочие стадии</option>{% for s in ['ANALYZING','AI_PENDING','NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}<option value="{{ s }}" {% if status_filter==s %}selected{% endif %}>{{ lead_status_label(s) }}</option>{% endfor %}</select><button class="btn">Найти</button><a class="btn ghost" href="/leads">Сбросить</a></form>
+<form class="filters" method="get" aria-label="Фильтр лидов"><input name="q" value="{{ q }}" aria-label="Поиск лидов" placeholder="Клиент, комментарий, товар или конкурент"><select name="status" aria-label="Стадия лида"><option value="">Все рабочие стадии</option>{% for s in ['ANALYZING','AI_PENDING','NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}<option value="{{ s }}" {% if status_filter==s %}selected{% endif %}>{{ lead_status_label(s) }}</option>{% endfor %}</select><button class="btn">Найти</button><a class="btn ghost" href="/leads">Сбросить</a></form>
 
 {% if status_filter %}
 <div class="cards">

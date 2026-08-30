@@ -138,7 +138,7 @@ def test_interface_hardening_keeps_dense_views_accessible():
     assert 'aria-current="page"' in analytics
     assert "stage_count * 100 / funnel_peak" in analytics
     assert "table-scroll-hint" in css
-    assert "navigation.scrollTo" in javascript
+    assert "more-navigation-open" in javascript
     assert "enhanceClickableRows" in javascript
     assert "event.key === 'Escape'" in javascript
     assert ".page-help b { white-space: normal; }" in css
@@ -161,3 +161,36 @@ def test_mobile_rattan_cards_and_opening_review_use_shared_safe_actions():
     assert 'data-confirm="Подтвердить этот публичный сигнал' in openings
     assert "reviewOpening(" not in openings
     assert "<script>" not in openings
+
+
+def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
+    base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    auth = (PROJECT_ROOT / "app/web/templates/auth.html").read_text(encoding="utf-8")
+    contacts = (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(
+        encoding="utf-8"
+    )
+    css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
+    javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
+
+    assert "11.0.0-premium-glass" in base
+    assert "11.0.0-premium-glass" in auth
+    assert 'data-more-toggle aria-expanded="false"' in base
+    assert 'aria-controls="more-navigation"' in base
+    assert 'aria-label="Вертикаль бизнеса"' in base
+    assert 'aria-current="page"' in base
+    assert 'data-toast-message' in base
+    assert 'class="responsive-table"' in contacts
+    assert 'data-label="Клиент"' in contacts
+
+    assert "--motion-base: 240ms" in css
+    assert ".nav-secondary.is-open" in css
+    assert ".motion-ready [data-reveal].is-visible" in css
+    assert "@keyframes toast-progress" in css
+    assert ".modal-backdrop.is-open .modal" in css
+    assert "body.more-navigation-open .mobile-nav-backdrop" in css
+
+    assert "new IntersectionObserver" in javascript
+    assert "event.key === 'Tab'" in javascript
+    assert "sessionStorage.setItem('lr:scroll-y'" in javascript
+    assert "setLoading" in javascript
+    assert "prefers-reduced-motion: reduce" in javascript
