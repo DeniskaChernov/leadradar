@@ -15,12 +15,14 @@ from app.db.models import (
     Contact,
     ContactEventType,
     Deal,
+    DealSaleSnapshot,
     DealStatus,
     Lead,
     LeadStatus,
     NotificationLog,
     NotificationStatus,
     Post,
+    Product,
 )
 from app.db.repositories.events import ContactEventRepository
 
@@ -217,14 +219,19 @@ class LeadWorkflowService:
         product_name: str,
         amount: Decimal,
         quantity: int,
+        product_id: int | None = None,
+        sale_currency: str = "UZS",
     ) -> Deal:
         cleaned_product = product_name.strip()
-        if not cleaned_product:
+        if not cleaned_product and product_id is None:
             raise LeadWorkflowError("Product name is required")
-        if amount <= 0:
+        if not amount.is_finite() or amount <= 0:
             raise LeadWorkflowError("Deal amount must be positive")
         if quantity <= 0:
             raise LeadWorkflowError("Deal quantity must be positive")
+        normalized_currency = sale_currency.strip().upper()
+        if not normalized_currency or len(normalized_currency) > 8:
+            raise LeadWorkflowError("Sale currency is invalid")
         async with self.session_factory() as session:
             deal, lead = await self._load_deal_and_lead(
                 session,
@@ -232,11 +239,22 @@ class LeadWorkflowService:
                 manager_id,
                 allow_closed=True,
             )
+            product = None
+            if product_id is not None:
+                product = await session.get(Product, product_id)
+                if product is None or not product.active:
+                    raise LeadWorkflowError("Active catalog product not found")
+                cleaned_product = product.name
             if deal.status == DealStatus.WON:
-                if (
-                    deal.product_name == cleaned_product
-                    and deal.final_amount == amount
-                    and deal.quantity == quantity
+                snapshot = await session.scalar(
+                    select(DealSaleSnapshot).where(DealSaleSnapshot.deal_id == deal.id)
+                )
+                if snapshot is not None and (
+                    snapshot.product_id == product_id
+                    and snapshot.product_name == cleaned_product
+                    and snapshot.sale_amount == amount
+                    and snapshot.quantity == quantity
+                    and snapshot.sale_currency == normalized_currency
                 ):
                     return deal
                 raise LeadWorkflowError("Won deal cannot be changed by a repeated request")
@@ -244,6 +262,7 @@ class LeadWorkflowService:
                 raise LeadWorkflowError("Lost deal cannot become WON")
             now = datetime.now(UTC)
             deal.status = DealStatus.WON
+            deal.product_id = product.id if product is not None else None
             deal.product_name = cleaned_product
             deal.amount = amount
             deal.final_amount = amount
@@ -258,6 +277,44 @@ class LeadWorkflowService:
                 feedback.deal_created = True
                 feedback.deal_won = True
                 feedback.deal_amount = amount
+            evidence_ids = tuple((lead.analysis_details or {}).get("evidence_ids") or ())
+            session.add(
+                DealSaleSnapshot(
+                    deal_id=deal.id,
+                    product_id=product.id if product is not None else None,
+                    product_canonical_key=(
+                        product.canonical_key if product is not None else None
+                    ),
+                    product_name=cleaned_product,
+                    sku=product.sku if product is not None else None,
+                    category=(
+                        product.category
+                        if product is not None and product.category_confirmed_at is not None
+                        else (deal.product_category if product is None else None)
+                    ),
+                    catalog_price=(
+                        product.price
+                        if product is not None and product.price_confirmed_at is not None
+                        else None
+                    ),
+                    catalog_currency=(
+                        product.currency
+                        if product is not None and product.price_confirmed_at is not None
+                        else None
+                    ),
+                    cogs=(
+                        product.cogs
+                        if product is not None and product.cogs_confirmed_at is not None
+                        else None
+                    ),
+                    quantity=quantity,
+                    sale_amount=amount,
+                    sale_currency=normalized_currency,
+                    catalog_version=product.catalog_version if product is not None else None,
+                    evidence_ids_json=list(evidence_ids),
+                    manager_telegram_id=manager_id,
+                )
+            )
             await ContactEventRepository(session).add(
                 deal.contact_id,
                 ContactEventType.DEAL_WON,
@@ -268,6 +325,7 @@ class LeadWorkflowService:
                     "amount": str(amount),
                     "quantity": quantity,
                     "product": cleaned_product,
+                    "product_id": product.id if product is not None else None,
                 },
             )
             await session.commit()

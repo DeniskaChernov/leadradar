@@ -34,7 +34,8 @@
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
   const api = async (url, options = {}) => {
-    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const headers = { ...(options.headers || {}) };
+    if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
     if (csrfToken && !headers['X-CSRF-Token']) headers['X-CSRF-Token'] = csrfToken;
     const response = await fetch(url, {
       credentials: 'same-origin',
@@ -130,9 +131,10 @@
 
   const reloadSoon = (delay = 450) => setTimeout(() => location.reload(), delay);
 
-  const formPayload = (form) => {
+  const formPayload = (form, submitter) => {
     const result = {};
     for (const [key, value] of new FormData(form).entries()) result[key] = value;
+    if (submitter?.name) result[submitter.name] = submitter.value;
     return result;
   };
 
@@ -163,18 +165,47 @@
     const form = event.target.closest('[data-api-form]');
     if (!form) return;
     event.preventDefault();
-    const submit = form.querySelector('[type="submit"]');
+    if (event.submitter?.dataset.confirm) {
+      const proceed = await confirmAction(
+        'Подтвердите применение импорта',
+        event.submitter.dataset.confirm
+      );
+      if (!proceed) return;
+    }
+    const submit = event.submitter || form.querySelector('[type="submit"]');
     const oldText = submit?.textContent;
     if (submit) {
       submit.disabled = true;
       submit.textContent = 'Сохраняю…';
     }
     try {
+      const multipart = form.enctype === 'multipart/form-data';
+      const body = multipart ? new FormData(form) : formPayload(form, event.submitter);
+      if (multipart && event.submitter?.name) {
+        body.set(event.submitter.name, event.submitter.value);
+      }
       const data = await api(form.action, {
         method: (form.method || 'POST').toUpperCase(),
-        body: JSON.stringify(formPayload(form)),
+        body: multipart ? body : JSON.stringify(body),
       });
       toast(data.message || 'Сохранено');
+      if (form.dataset.output) {
+        const output = document.querySelector(form.dataset.output);
+        if (output) {
+          const rows = (data.changes || []).map((item) => {
+            const protectedText = item.protected_fields?.length
+              ? `; защищены: ${item.protected_fields.join(', ')}`
+              : '';
+            return `${item.status} ${item.canonical_key}: ${(item.fields || []).join(', ') || 'без изменений'}${protectedText}`;
+          });
+          output.textContent = [
+            data.applied ? 'Изменения применены атомарно.' : 'Предпросмотр: база не изменена.',
+            `Строк: ${data.rows}; новых: ${data.created}; обновлений: ${data.updated}; без изменений: ${data.unchanged}`,
+            ...rows,
+          ].join('\n');
+          output.hidden = false;
+        }
+      }
       if (form.dataset.reset === '1') form.reset();
       if (form.dataset.reload === '1') reloadSoon();
     } catch (error) {

@@ -33,6 +33,7 @@ from app.db.models import (
     NotificationLog,
     NotificationStatus,
     Post,
+    Product,
     PublicSignal,
     ReservationStatus,
     SignificantChange,
@@ -41,6 +42,7 @@ from app.db.models import (
     Vertical,
 )
 from app.services.audience_facet_service import AudienceFacetQuery
+from app.services.product_catalog_service import normalize_product_category
 from app.services.unit_economics_service import UnitEconomicsEngine
 
 OPEN_LEAD_STATUSES = [
@@ -1189,37 +1191,39 @@ class WebQueryService:
                 return {
                     "competitor_id": competitor_id,
                     "total_commercial": 0,
-                    "unanswered_count": 0,
-                    "unanswered_rate": 0.0,
+                    "unworked_count": 0,
+                    "unworked_rate": 0.0,
                     "b2b_gap": 0,
                     "multi_source_gap": 0,
+                    "catalog_coverage_percent": None,
+                    "catalog_coverage": [],
                     "boundary_note": boundary_note,
                 }
-            unanswered = [
+            unworked = [
                 lead
                 for lead in leads
                 if lead.status in (LeadStatus.NEW, LeadStatus.ANALYZING, LeadStatus.AI_PENDING)
             ]
-            unanswered_count = len(unanswered)
-            unanswered_rate = round(unanswered_count / total_commercial * 100, 1)
+            unworked_count = len(unworked)
+            unworked_rate = round(unworked_count / total_commercial * 100, 1)
 
             b2b_roles = {"B2B_HORECA", "DESIGNER_CONTRACTOR"}
             b2b_gap = sum(
                 1
-                for lead in unanswered
+                for lead in unworked
                 if (lead.analysis_details or {}).get("buyer_role") in b2b_roles
                 or lead.product_category in ("HORECA", "RATTAN_BAR_STOOL")
             )
 
-            unanswered_contact_ids = {lead.contact_id for lead in unanswered}
+            unworked_contact_ids = {lead.contact_id for lead in unworked}
 
             multi_source_gap = 0
-            if unanswered_contact_ids:
+            if unworked_contact_ids:
                 source_counts = (
                     (
                         await session.execute(
                             select(Comment.contact_id)
-                            .where(Comment.contact_id.in_(unanswered_contact_ids))
+                            .where(Comment.contact_id.in_(unworked_contact_ids))
                             .group_by(Comment.contact_id)
                             .having(func.count(func.distinct(Comment.competitor_id)) >= 2)
                         )
@@ -1229,13 +1233,61 @@ class WebQueryService:
                 )
                 multi_source_gap = len(source_counts)
 
+            demand_by_category: Counter[str] = Counter()
+            evidence_by_category: dict[str, set[int]] = {}
+            for lead in leads:
+                category = normalize_product_category(lead.product_category)
+                if category is None:
+                    continue
+                demand_by_category[category] += 1
+                evidence_by_category.setdefault(category, set()).update(
+                    int(item)
+                    for item in (lead.analysis_details or {}).get("evidence_ids", [])
+                    if isinstance(item, int)
+                )
+            product_rows = (
+                await session.execute(
+                    select(Product.category, func.count(Product.id))
+                    .where(
+                        Product.active.is_(True),
+                        Product.category != "UNCONFIRMED",
+                        Product.category_confirmed_at.is_not(None),
+                    )
+                    .group_by(Product.category)
+                )
+            ).all()
+            products_by_category = {
+                str(category): int(count) for category, count in product_rows
+            }
+            coverage = [
+                {
+                    "category": category,
+                    "lead_count": lead_count,
+                    "product_count": products_by_category.get(category, 0),
+                    "covered": products_by_category.get(category, 0) > 0,
+                    "evidence_ids": sorted(evidence_by_category.get(category, set()))[:10],
+                }
+                for category, lead_count in demand_by_category.most_common()
+            ]
+            covered_demand = sum(
+                item["lead_count"] for item in coverage if item["covered"]
+            )
+            categorized_demand = sum(item["lead_count"] for item in coverage)
+            catalog_coverage_percent = (
+                round(covered_demand / categorized_demand * 100, 1)
+                if products_by_category and categorized_demand
+                else None
+            )
+
             return {
                 "competitor_id": competitor_id,
                 "total_commercial": total_commercial,
-                "unanswered_count": unanswered_count,
-                "unanswered_rate": unanswered_rate,
+                "unworked_count": unworked_count,
+                "unworked_rate": unworked_rate,
                 "b2b_gap": b2b_gap,
                 "multi_source_gap": multi_source_gap,
+                "catalog_coverage_percent": catalog_coverage_percent,
+                "catalog_coverage": coverage,
                 "boundary_note": boundary_note,
             }
 
@@ -1254,7 +1306,7 @@ class WebQueryService:
                         **gap,
                     }
                 )
-            results.sort(key=lambda x: (x["unanswered_rate"], x["b2b_gap"]), reverse=True)
+            results.sort(key=lambda x: (x["unworked_rate"], x["b2b_gap"]), reverse=True)
             return results
 
     async def demand_heatmap(self, competitor_id: int | None = None, days: int = 30) -> dict:

@@ -371,6 +371,10 @@ def build_web_app(
             data["lead"],
             commercial_competitor_count=len(commercial_competitors),
         )
+        ranked_products, _quantity = await product_catalog_service.ranked_products_for_lead(
+            data["lead"]
+        )
+        data["catalog_matches"] = ranked_products[:3]
         return templates.TemplateResponse(
             request=request,
             name="lead_detail.html",
@@ -999,8 +1003,10 @@ def build_web_app(
                 deal_id,
                 manager_id(request),
                 product_name=str(payload.get("product_name") or "Продажа"),
+                product_id=_int_or_none(payload.get("product_id")),
                 amount=amount,
                 quantity=quantity,
+                sale_currency=str(payload.get("currency") or "UZS"),
             )
             return {"ok": True, "status": deal.status.value, "message": "Продажа зафиксирована"}
         except (LeadWorkflowError, InvalidOperation, ValueError) as exc:
@@ -1111,6 +1117,23 @@ def build_web_app(
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.post("/api/catalog/import")
+    async def import_catalog(request: Request):
+        form = await request.form()
+        upload = form.get("file")
+        if upload is None or not hasattr(upload, "read"):
+            raise HTTPException(status_code=400, detail="Выберите CSV-файл")
+        try:
+            result = await product_catalog_service.import_csv(
+                filename=str(getattr(upload, "filename", "") or ""),
+                content=await upload.read(),
+                manager_id=manager_id(request),
+                apply=str(form.get("apply") or "").lower() in {"1", "true", "yes"},
+            )
+            return {"ok": True, **result}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/catalog/{product_id}")
     async def update_catalog_product(request: Request, product_id: int):
         payload = await _json_or_form(request)
@@ -1120,7 +1143,10 @@ def build_web_app(
         try:
             product = await product_catalog_service.update_verified_fields(
                 product_id,
+                manager_id=manager_id(request),
                 category=str(payload["category"]) if "category" in payload else None,
+                price=payload.get("price") if "price" in payload else None,
+                currency=str(payload["currency"]) if "currency" in payload else None,
                 stock=payload.get("stock") if "stock" in payload else None,
                 cogs=payload.get("cogs") if "cogs" in payload else None,
                 active=active,

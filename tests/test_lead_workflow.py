@@ -10,9 +10,12 @@ from app.db.models import (
     ContactEvent,
     ContactEventType,
     ContactTask,
+    DealSaleSnapshot,
     DealStatus,
     Lead,
     LeadStatus,
+    Product,
+    Vertical,
 )
 from app.services.contact_service import ContactService
 from app.services.crm_service import CRMService
@@ -120,6 +123,8 @@ async def test_deal_won_updates_lead_feedback_and_event(session_factory):
             )
         )
         assert won_events == 1
+        snapshots = await session.scalar(select(func.count(DealSaleSnapshot.id)))
+        assert snapshots == 1
 
     with pytest.raises(LeadWorkflowError, match="cannot be changed"):
         await workflow.win_deal(
@@ -215,3 +220,55 @@ async def test_crm_rejects_cross_contact_links_and_deduplicates_same_open_task(
         )
     assert task_count == 1
     assert event_count == 1
+
+
+async def test_won_deal_snapshots_confirmed_product_facts(session_factory):
+    lead_id = await create_lead(session_factory, "catalog-sale")
+    workflow = LeadWorkflowService(session_factory, 70)
+    await workflow.assign_manager(lead_id, 1001)
+    deal = await workflow.create_deal(lead_id, 1001)
+    async with session_factory() as session:
+        product = Product(
+            canonical_key="catalog-chair",
+            name="CORDA",
+            vertical=Vertical.FURNITURE,
+            category="CHAIR",
+            category_confirmed_at=datetime.now(UTC),
+            category_confirmed_by=1001,
+            price=Decimal("33"),
+            price_confirmed_at=datetime.now(UTC),
+            price_confirmed_by=1001,
+            currency="USD",
+            cogs=Decimal("20"),
+            cogs_confirmed_at=datetime.now(UTC),
+            cogs_confirmed_by=1001,
+            colors_json=[],
+            b2b_suitability="UNCONFIRMED",
+            import_source="MANUAL",
+            active=True,
+        )
+        session.add(product)
+        await session.commit()
+        product_id = product.id
+
+    won = await workflow.win_deal(
+        deal.id,
+        1001,
+        product_name="ignored free text",
+        product_id=product_id,
+        amount=Decimal("4500000"),
+        quantity=2,
+    )
+    assert won.product_id == product_id
+    assert won.product_name == "CORDA"
+
+    async with session_factory() as session:
+        snapshot = await session.scalar(
+            select(DealSaleSnapshot).where(DealSaleSnapshot.deal_id == won.id)
+        )
+    assert snapshot is not None
+    assert snapshot.product_id == product_id
+    assert snapshot.product_name == "CORDA"
+    assert snapshot.catalog_price == Decimal("33")
+    assert snapshot.cogs == Decimal("20")
+    assert snapshot.quantity == 2

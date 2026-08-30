@@ -16,6 +16,16 @@ class ActionRecommendation:
     recommended_sku: str | None
     urgency: str
     evidence_ids: Sequence[int]
+    match_score: int | None
+    match_reasons: Sequence[str]
+    ranked_product_ids: Sequence[int]
+
+
+@dataclass(frozen=True, slots=True)
+class RankedProduct:
+    product: Product
+    score: int
+    reasons: Sequence[str]
 
 
 class NextBestActionEngine:
@@ -32,10 +42,11 @@ class NextBestActionEngine:
         competitor_count: int = 1,
         quantity: int | None = None,
         evidence_ids: Sequence[int] = (),
-        catalog_products: Sequence[Product] = (),
+        catalog_products: Sequence[RankedProduct] = (),
     ) -> ActionRecommendation:
         evidence_list = list(evidence_ids)
-        product = catalog_products[0] if catalog_products else None
+        selected = catalog_products[0] if catalog_products else None
+        product = selected.product if selected is not None else None
 
         if buyer_role == "B2B_HORECA" or (
             quantity and quantity >= B2BPolicy.PROBABLE_QUANTITY
@@ -51,7 +62,8 @@ class NextBestActionEngine:
                 action_type="B2B_PROPOSAL",
                 title=f"Уточнить объём и подготовить B2B-расчёт{quantity_text}",
                 description=description,
-                product=product,
+                candidate=selected,
+                ranked_products=catalog_products,
                 urgency="HIGH",
                 evidence_ids=evidence_list,
             )
@@ -64,7 +76,8 @@ class NextBestActionEngine:
                     f"Есть подтверждённый коммерческий интерес у {competitor_count} компаний. "
                     "Уточнить критерии выбора и только затем предложить подтверждённую модель."
                 ),
-                product=product,
+                candidate=selected,
+                ranked_products=catalog_products,
                 urgency="HIGH",
                 evidence_ids=evidence_list,
             )
@@ -77,7 +90,8 @@ class NextBestActionEngine:
                     "Запросить категорию, количество, размеры и срок проекта. "
                     "3D-модели и агентские условия не подтверждены в каталоге."
                 ),
-                product=product,
+                candidate=selected,
+                ranked_products=catalog_products,
                 urgency="MEDIUM",
                 evidence_ids=evidence_list,
             )
@@ -87,7 +101,8 @@ class NextBestActionEngine:
                 action_type="OFFER",
                 title=f"Проверить и предложить {product.name}",
                 description=cls._catalog_description(product),
-                product=product,
+                candidate=selected,
+                ranked_products=catalog_products,
                 urgency="HIGH" if lead_score >= 80 else "MEDIUM",
                 evidence_ids=evidence_list,
             )
@@ -100,7 +115,8 @@ class NextBestActionEngine:
                 "Подходящий подтверждённый товар пока не сопоставлен. "
                 "Уточнить количество, размеры и цвет; наличие проверить перед предложением."
             ),
-            product=None,
+            candidate=None,
+            ranked_products=catalog_products,
             urgency="MEDIUM" if lead_score >= 70 else "LOW",
             evidence_ids=evidence_list,
         )
@@ -124,10 +140,12 @@ class NextBestActionEngine:
         action_type: str,
         title: str,
         description: str,
-        product: Product | None,
+        candidate: RankedProduct | None,
+        ranked_products: Sequence[RankedProduct],
         urgency: str,
         evidence_ids: Sequence[int],
     ) -> ActionRecommendation:
+        product = candidate.product if candidate is not None else None
         return ActionRecommendation(
             action_type=action_type,
             title=title,
@@ -136,4 +154,7 @@ class NextBestActionEngine:
             recommended_sku=product.sku if product is not None else None,
             urgency=urgency,
             evidence_ids=evidence_ids,
+            match_score=candidate.score if candidate is not None else None,
+            match_reasons=tuple(candidate.reasons) if candidate is not None else (),
+            ranked_product_ids=tuple(item.product.id for item in ranked_products[:3]),
         )

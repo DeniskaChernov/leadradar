@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from app.db.models import Product, Vertical
-from app.services.next_best_action_service import NextBestActionEngine
+from app.services.next_best_action_service import NextBestActionEngine, RankedProduct
 
 
 def _product(*, stock: int | None = None) -> Product:
@@ -20,6 +20,14 @@ def _product(*, stock: int | None = None) -> Product:
         colors_json=[],
         b2b_suitability="BULK_CONFIRMED",
         active=True,
+    )
+
+
+def _ranked_product(*, stock: int | None = None) -> RankedProduct:
+    return RankedProduct(
+        product=_product(stock=stock),
+        score=80,
+        reasons=("Совпадает подтверждённая категория товара",),
     )
 
 
@@ -44,7 +52,7 @@ def test_confirmed_catalog_product_is_recommended_with_unknown_stock_warning():
         intent="PRICE",
         product_category="CHAIRS",
         lead_score=88,
-        catalog_products=[_product()],
+        catalog_products=[_ranked_product()],
         evidence_ids=[41],
     )
 
@@ -54,6 +62,8 @@ def test_confirmed_catalog_product_is_recommended_with_unknown_stock_warning():
     assert "33.00 USD" in recommendation.description
     assert "Наличие не подтверждено" in recommendation.description
     assert recommendation.evidence_ids == [41]
+    assert recommendation.match_score == 80
+    assert recommendation.ranked_product_ids == (7,)
 
 
 def test_confirmed_stock_can_be_stated_without_delivery_or_discount_claim():
@@ -62,7 +72,7 @@ def test_confirmed_stock_can_be_stated_without_delivery_or_discount_claim():
         intent="AVAILABILITY",
         product_category="CHAIRS",
         lead_score=75,
-        catalog_products=[_product(stock=12)],
+        catalog_products=[_ranked_product(stock=12)],
     )
 
     assert "Подтверждённый остаток: 12" in recommendation.description

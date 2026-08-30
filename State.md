@@ -6,15 +6,15 @@
 - live_calls: forbidden
 - external_kill_switch: enabled
 - db_source_of_truth: lead_radar.db
-- db_backup: .backups/lead_radar-20260830-161013-983142.db
-- alembic_head: e1f4a7c92b60
-- tests: 232 passed
+- db_backup: .backups/lead_radar-20260830-165723-306046.db
+- alembic_head: f2a5b8d13c70
+- tests: 235 passed
 - ruff: passed
 - compileall: passed
 - integrity: passed
 - schema_check: passed
 - schema_drift: none
-- completed_stages: 0,1,2,3
-- active_stage: 4
-- next: build confirmed catalog matching, sale snapshots and evidence-backed demand gaps
+- completed_stages: 0,1,2,3,4
+- active_stage: 5
+- next: calculate margin and ROI only from confirmed sale snapshots, COGS, attribution and FX
 - blocked_live: Instagram, OpenAI, Telegram delivery, Meta, Google

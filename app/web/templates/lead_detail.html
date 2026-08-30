@@ -27,7 +27,6 @@
     <div><span>Горизонт</span><b>{{ purchase_horizon_label(ai.get('purchase_horizon')) }}</b></div>
     <div><span>Язык</span><b>{{ lead.language or 'Не определён' }}</b></div>
   </div>
-  <div class="ai-action-callout"><span>Лучшее следующее действие</span><b>{{ ai.get('recommended_action', 'Проверить контекст и выбрать следующее действие.') }}</b></div>
   <div class="ai-evidence-grid">
     <div><h3>На чём основано решение</h3>{% for item in ai.get('evidence', []) %}<p><span class="evidence-check">✓</span>{{ item }}</p>{% else %}<p class="muted">Дополнительные признаки не сохранены.</p>{% endfor %}</div>
     <div><h3>Риски и неопределённость</h3>{% for item in ai.get('risk_flags', []) %}<p><span class="risk-mark">!</span>{{ item }}</p>{% else %}<p><span class="evidence-check">✓</span>Существенных рисков классификации не найдено.</p>{% endfor %}</div>
@@ -36,7 +35,8 @@
 {% endif %}
 
 <section class="panel catalog-action-card">
-  <div><span class="eyebrow">GROUNDED NEXT BEST ACTION</span><h2>{{ catalog_recommendation.title }}</h2><p>{{ catalog_recommendation.description }}</p></div>
+  <div><span class="eyebrow">GROUNDED NEXT BEST ACTION</span><h2>{{ catalog_recommendation.title }}</h2><p>{{ catalog_recommendation.description }}</p>
+  {% if catalog_recommendation.match_reasons %}<div class="evidence-list">{% for reason in catalog_recommendation.match_reasons %}<span class="tag success">✓ {{ reason }}</span>{% endfor %}</div>{% endif %}</div>
   {% if catalog_recommendation.recommended_product_id %}<a class="btn primary" href="/catalog#product-{{ catalog_recommendation.recommended_product_id }}">Открыть товар</a>{% else %}<a class="btn ghost" href="/catalog">Проверить каталог</a>{% endif %}
 </section>
 
@@ -102,7 +102,7 @@
       {% else %}
       <div class="deal-summary"><span>{{ deal_status_label(deal.status) }}</span><b>{{ deal.product_name or product_label(deal.product_category) }}</b><strong>{{ money(deal.final_amount or deal.amount) }} сум</strong></div>
       {% if deal.status.value not in ['WON','LOST'] %}
-      <details class="action-details"><summary>Зафиксировать продажу</summary><form data-api-form action="/api/deals/{{ deal.id }}/win" data-reload="1"><label>Товар<input name="product_name" value="{{ deal.product_name or '' }}" required></label><div class="form-row"><label>Количество<input name="quantity" type="number" min="1" value="{{ deal.quantity or 1 }}"></label><label>Сумма<input name="amount" value="{{ deal.final_amount or deal.amount or '' }}" required></label></div><button class="btn success" type="submit">✓ Продажа</button></form></details>
+      <details class="action-details"><summary>Зафиксировать продажу</summary><form data-api-form action="/api/deals/{{ deal.id }}/win" data-reload="1">{% if catalog_matches %}<label>Подтверждённый товар<select name="product_id"><option value="">Другой товар</option>{% for match in catalog_matches %}<option value="{{ match.product.id }}" {% if catalog_recommendation.recommended_product_id == match.product.id %}selected{% endif %}>{{ match.product.name }} · {{ match.product.price or 'цена неизвестна' }} {{ match.product.currency }}</option>{% endfor %}</select></label>{% endif %}<label>{% if catalog_matches %}Название, если товара нет в списке{% else %}Товар{% endif %}<input name="product_name" value="{{ deal.product_name or '' }}" {% if not catalog_matches %}required{% endif %}></label><div class="form-row"><label>Количество<input name="quantity" type="number" min="1" value="{{ deal.quantity or 1 }}"></label><label>Сумма<input name="amount" value="{{ deal.final_amount or deal.amount or '' }}" required></label><label>Валюта<input name="currency" value="UZS" maxlength="8" required></label></div><button class="btn success" type="submit">✓ Продажа</button></form></details>
       <details class="action-details danger-details"><summary>Сделка не состоялась</summary><form data-api-form action="/api/deals/{{ deal.id }}/lose" data-reload="1"><label>Причина<select name="reason" required><option value="">Выберите причину</option><option>Дорого</option><option>Купил у конкурента</option><option>Нет подходящей модели</option><option>Нет нужного цвета</option><option>Нет в наличии</option><option>Долго ждать</option><option>Не отвечает</option><option>Отложил покупку</option><option>Передумал</option><option>Другое</option></select></label><button class="btn danger" type="submit">Закрыть как проигранную</button></form></details>
       {% endif %}
       {% endif %}

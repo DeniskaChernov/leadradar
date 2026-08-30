@@ -82,9 +82,9 @@ Lead Radar больше не ограничен AIKO. При запуске си
 - в Mini App есть сегменты, Tier A/B/C, HOT-rate, продажи, выручка и рекомендация по приоритету;
 - кандидата можно подтвердить и добавить в мониторинг прямо из раздела «Конкуренты».
 
-Мультиконкурентный радар реализован как offline-фундамент. Текущая работа начинается с
-устранения schema drift, затем проходит через security, Catalog → Offer → Demand Gap,
-independent quality gates и deployment readiness. Полный порядок находится в `ROADMAP.md`.
+Мультиконкурентный радар реализован как offline-фундамент. Schema, security, workflow integrity
+и Catalog → Offer → Demand Gap закрыты; текущая работа — подтверждаемая Unit Economics,
+затем independent quality gates и deployment readiness. Полный порядок находится в `ROADMAP.md`.
 
 ## Competitor Intelligence V2
 
@@ -302,9 +302,9 @@ python -m alembic check
 python -m scripts.check_data_integrity
 ```
 
-Контрольная точка 2026-08-30: 232 теста, Ruff, compileall, integrity и `alembic check`
-проходят. Schema, production web security и workflow integrity закрыты; активный этап —
-Catalog → Offer → Demand Gap.
+Контрольная точка 2026-08-30: 235 тестов, Ruff, compileall, integrity и `alembic check`
+проходят. Schema, production web security, workflow integrity и Catalog → Offer → Demand Gap
+закрыты; активный этап — Unit Economics.
 
 ## Основные переменные `.env`
 

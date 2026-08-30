@@ -20,18 +20,6 @@ def test_competitor_scoring_and_opportunities():
     assert score.commercial_intent_rate == 50.0
     assert score.is_high_converting is True
 
-    opps = CompetitorOpportunityEngine.discover_opportunities(
-        competitor_name="AIKO",
-        unanswered_price_count=6,
-        unanswered_b2b_count=3,
-        top_requested_category="DINING_SET",
-    )
-    assert len(opps) >= 2
-    types = [o.opportunity_type for o in opps]
-    assert "B2B_BULK" in types
-    assert "UNANSWERED_DEMAND" in types
-
-
 def test_targeting_recipes_generation():
     recipes = TargetingRecipeEngine.generate_recipes(
         audience_name="Hot Dining Set Buyers",

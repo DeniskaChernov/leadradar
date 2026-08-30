@@ -8,9 +8,24 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-30: 232 теста, Ruff, compileall, data-integrity и `alembic check`
-проходят. Product/Meta metadata приведены к фактической схеме без изменения или удаления данных;
-fresh/repeated upgrade также проверен. Перед исправлением создана резервная копия рабочей SQLite БД.
+Контрольная точка 2026-08-30: 235 тестов, Ruff, compileall, data-integrity и `alembic check`
+проходят. Рабочая БД после backup обновлена до `f2a5b8d13c70`; fresh, downgrade/re-upgrade
+и повторный schema check также проходят.
+
+## Stage 4 — Catalog → Offer → Demand Gap завершён
+
+- свойства category, price, stock и COGS имеют timestamps/manager confirmation и versioned audit;
+- CSV импорт работает через dry-run diff и атомарный apply, повтор идемпотентен, а подтверждённые
+  факты не перезаписываются;
+- Next Best Action ранжирует только активные товары подтверждённой категории, объясняет score,
+  учитывает остаток, MOQ и не обещает наличие при неизвестном stock;
+- WON связывается с Product и создаёт единственный immutable `DealSaleSnapshot` с ценой, COGS,
+  версией каталога, валютой продажи и Evidence IDs;
+- карточка конкурента отделяет нашу неразобранную очередь от поведения конкурента и показывает
+  измеримое покрытие наблюдаемого спроса подтверждённым каталогом;
+- удалён недоказуемый генератор «неотвеченного спроса» и рекламных рекомендаций;
+- migration `f2a5b8d13c70` проверена на fresh/repeated/downgrade и рабочей БД после backup;
+- полный offline gate: **235 tests passed**, Ruff, compileall, Alembic и integrity чистые.
 
 ## Stage 3 — Workflow integrity завершён
 
@@ -59,7 +74,7 @@ fresh/repeated upgrade также проверен. Перед исправле�
 | Rattan Vertical V2 | OFFLINE · taxonomy safety hardened | 30 golden + 194 repository tests | UI offline | No |
 | Unit Economics | OFFLINE · DB-backed ledger aggregation | 197 repository tests + UI render | No | No |
 | Discovery Center / Diff Engine | OFFLINE · CSV/XLSX review queue implemented | Repository tests + migration + UI render | No | No |
-| Product Catalog / Next Best Action | OFFLINE · confirmed DB catalog and grounded actions | Repository tests + migration + UI render | No | No |
+| Product Catalog / Next Best Action | OFFLINE · versioned confirmation, protected CSV diff/apply, grounded ranking and sale snapshots | 235 repository tests + fresh/repeated migration + UI render | No | No |
 | Premium UI / Telegram Bot | Web auth/RBAC/CSRF + UI hardening + durable outbox implemented | 229 offline tests; delivery dry-run only | Delivery not run | No |
 | Real Agent / MCP | NOT_CONNECTED · fake execution disabled | Honest 503/NOT_CONNECTED tests | No | No |
 | Meta / Google | Not connected | Offline prototype only | No | No |

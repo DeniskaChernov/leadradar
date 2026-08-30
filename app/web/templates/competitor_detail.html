@@ -110,16 +110,16 @@
   </section>
 </div>
 
-{# Phase 7 & 8 · Demand Gap and Demand Heatmap #}
+{# Рабочая очередь, покрытие каталога и heatmap наблюдаемого спроса #}
 {% if demand_gap or heatmap %}
 <div class="grid two competitor-intel-grid">
   {% if demand_gap %}
   <section class="panel demand-gap-panel">
-    <div class="panel-head"><div><span class="eyebrow">DEMAND GAP (НЕОТВЕЧЕННЫЙ СПРОС)</span><h2>Анализ нереализованного спроса</h2><p>Коммерческие запросы, по которым нет продвижения в воронке.</p></div></div>
+    <div class="panel-head"><div><span class="eyebrow">НАША РАБОЧАЯ ОЧЕРЕДЬ</span><h2>Спрос, ещё не взятый в работу</h2><p>Статус нашей CRM, а не утверждение об ответах конкурента.</p></div></div>
     <div class="dna-profile-row">
       <div class="dna-role-card">
-        <span class="eyebrow">ДОЛЯ НЕОТВЕЧЕННЫХ</span>
-        <div class="dna-evidence-count"><b>{{ demand_gap.unanswered_rate }}%</b><span>({{ demand_gap.unanswered_count }} из {{ demand_gap.total_commercial }})</span></div>
+        <span class="eyebrow">НЕ ВЗЯТО В РАБОТУ</span>
+        <div class="dna-evidence-count"><b>{{ demand_gap.unworked_rate }}%</b><span>({{ demand_gap.unworked_count }} из {{ demand_gap.total_commercial }})</span></div>
       </div>
       <div class="dna-evidence-card">
         <span class="eyebrow">КРИТИЧЕСКИЕ GAP-СИГНАЛЫ</span>
@@ -127,6 +127,9 @@
         <div><span>Cross-competitor gap:</span> <b>{{ demand_gap.multi_source_gap }} лидов</b></div>
       </div>
     </div>
+    <h3>Покрытие подтверждённым каталогом</h3>
+    {% if demand_gap.catalog_coverage_percent is not none %}<p><b>{{ demand_gap.catalog_coverage_percent }}%</b> категоризированного спроса имеет хотя бы один активный подтверждённый товар.</p>{% else %}<p class="muted">Покрытие нельзя посчитать: нет подтверждённых категорий каталога или категоризированного спроса.</p>{% endif %}
+    {% for item in demand_gap.catalog_coverage %}<div class="rank-row"><span>{{ product_label(item.category) }} · {{ item.lead_count }} сигналов{% if item.evidence_ids %} · evidence {{ item.evidence_ids|join(', ') }}{% endif %}</span><b class="tag {% if item.covered %}success{% else %}warn{% endif %}">{% if item.covered %}{{ item.product_count }} товаров{% else %}Нет подтверждённого оффера{% endif %}</b></div>{% endfor %}
     <div class="truth-note"><b>Граница данных</b><span>{{ demand_gap.boundary_note }}</span></div>
   </section>
   {% endif %}

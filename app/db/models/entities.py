@@ -372,11 +372,35 @@ class Product(Base):
     b2b_suitability: Mapped[str] = mapped_column(String(32), default="UNCONFIRMED")
     photo_url: Mapped[str | None] = mapped_column(Text)
     source_reference: Mapped[str | None] = mapped_column(Text)
+    import_source: Mapped[str] = mapped_column(String(32), default="SEED")
+    catalog_version: Mapped[int] = mapped_column(Integer, default=1)
+    category_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    category_confirmed_by: Mapped[int | None] = mapped_column(Integer)
+    price_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    price_confirmed_by: Mapped[int | None] = mapped_column(Integer)
+    stock_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stock_confirmed_by: Mapped[int | None] = mapped_column(Integer)
+    cogs_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cogs_confirmed_by: Mapped[int | None] = mapped_column(Integer)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
+
+
+class ProductChange(Base):
+    __tablename__ = "product_changes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
+    change_type: Mapped[str] = mapped_column(String(32), index=True)
+    manager_telegram_id: Mapped[int] = mapped_column(Integer, index=True)
+    source: Mapped[str] = mapped_column(String(32), default="MANUAL")
+    before_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    after_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    catalog_version: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Post(Base):
@@ -1026,6 +1050,7 @@ class Deal(Base):
     contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
     lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"), index=True)
     manager_telegram_id: Mapped[int | None] = mapped_column()
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), index=True)
     status: Mapped[DealStatus] = mapped_column(
         Enum(DealStatus, native_enum=False), default=DealStatus.NEW, index=True
     )
@@ -1044,6 +1069,31 @@ class Deal(Base):
     lost_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     lead: Mapped[Lead | None] = relationship(back_populates="deals")
+
+
+class DealSaleSnapshot(Base):
+    __tablename__ = "deal_sale_snapshots"
+    __table_args__ = (
+        UniqueConstraint("deal_id", name="uq_deal_sale_snapshots_deal_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"), index=True)
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), index=True)
+    product_canonical_key: Mapped[str | None] = mapped_column(String(255))
+    product_name: Mapped[str] = mapped_column(String(255))
+    sku: Mapped[str | None] = mapped_column(String(128))
+    category: Mapped[str | None] = mapped_column(String(64))
+    catalog_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    catalog_currency: Mapped[str | None] = mapped_column(String(8))
+    cogs: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    quantity: Mapped[int] = mapped_column(Integer)
+    sale_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    sale_currency: Mapped[str] = mapped_column(String(8), default="UZS")
+    catalog_version: Mapped[int | None] = mapped_column(Integer)
+    evidence_ids_json: Mapped[list[int]] = mapped_column(JSON, default=list)
+    manager_telegram_id: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class ContactEvent(Base):

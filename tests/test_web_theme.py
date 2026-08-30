@@ -29,7 +29,8 @@ def test_lead_detail_and_radar_expose_deep_responsive_analysis():
     radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
 
     assert "ГЛУБОКИЙ AI-РАЗБОР" in lead_detail
-    assert "recommended_action" in lead_detail
+    assert "recommended_action" not in lead_detail
+    assert "catalog_recommendation.match_reasons" in lead_detail
     assert "risk_flags" in lead_detail
     assert 'data-label="AI-оценка"' in radar
 

@@ -70,7 +70,7 @@ Lead Radar строится не как «парсер комментариев�
 - race tests для CRM, discovery, catalog и moderation;
 - расширенный integrity scan.
 
-### Stage 4. Catalog → Offer → Demand Gap — В РАБОТЕ
+### Stage 4. Catalog → Offer → Demand Gap — ГОТОВО
 
 - versioned manager-confirmed свойства каталога и импорт с dry-run/diff;
 - объяснимое ранжирование предложений по Evidence;
@@ -78,7 +78,7 @@ Lead Radar строится не как «парсер комментариев�
 - наблюдаемый спрос против подтверждённого покрытия каталога;
 - без домыслов о Direct или скрытых ответах конкурента.
 
-### Stage 5. Unit Economics
+### Stage 5. Unit Economics — В РАБОТЕ
 
 - подтверждённый COGS проданного товара;
 - cohort attribution;
