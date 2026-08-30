@@ -8,7 +8,7 @@
 - db_source_of_truth: lead_radar.db
 - db_backup: .backups/lead_radar-20260830-171128-858177.db
 - alembic_head: a3c8f7d24e10
-- tests: 240 passed
+- tests: 245 passed
 - ruff: passed
 - compileall: passed
 - integrity: passed
@@ -16,7 +16,13 @@
 - schema_drift: none
 - premium_glass_ui: complete; responsive shell, accessible motion, feedback states
 - contact_detail_ui: explicit knowledge/intelligence grids; responsive qualification layout
+- master_completed_phases: 1
+- master_active_phase: 2
+- p0_readiness: offline-ready; live-blocked fail-closed
+- p0_ai_history: Evidence+InterestEvidence validated structured context v3.1
+- p0_audience_decay: per-InterestEvidence score/confidence + 45d source window
+- p0_external_uncertain: started ambiguous calls parked and budget-counted
 - completed_stages: 0,1,2,3,4,5
-- active_stage: 6
-- next: build independent audience and scoring quality gates with reproducible unseen reports
+- active_stage: master-phase-2
+- next: implement provider credit wallet, monthly policy, manual scan cap and reconciliation
 - blocked_live: Instagram, OpenAI, Telegram delivery, Meta, Google

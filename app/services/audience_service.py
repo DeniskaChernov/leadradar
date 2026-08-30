@@ -63,6 +63,8 @@ INTEREST_HALF_LIVES: dict[str, float] = {
 }
 
 INTEREST_PROFILE_ACTIVE_THRESHOLD = 20
+INTEREST_EVIDENCE_ACTIVE_SCORE_THRESHOLD = 20
+INTEREST_EVIDENCE_MIN_CONFIDENCE = 50
 INTEREST_ENGINE_VERSION = "3.0"
 
 
@@ -80,6 +82,18 @@ def calculate_decayed_interest_score(
     half_life = INTEREST_HALF_LIVES.get(topic.upper(), 30.0)
     decayed = score * (0.5 ** (days_elapsed / half_life))
     return round(max(0.0, min(100.0, decayed)), 2)
+
+
+def is_effective_interest_evidence(item: InterestEvidence, now: datetime) -> bool:
+    """Проверить decay и confidence каждого наблюдения независимо от агрегата."""
+    if not item.active or AudienceEngine._aware(item.expires_at) <= now:
+        return False
+    age_days = max(0.0, (now - AudienceEngine._aware(item.observed_at)).total_seconds() / 86400)
+    decayed_score = item.strength * (0.5 ** (age_days / item.half_life_days))
+    return (
+        decayed_score >= INTEREST_EVIDENCE_ACTIVE_SCORE_THRESHOLD
+        and item.confidence >= INTEREST_EVIDENCE_MIN_CONFIDENCE
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -506,8 +520,11 @@ class AudienceEngine:
                 )
             )
         )
+        effective_observations = [
+            item for item in active_observations if is_effective_interest_evidence(item, now)
+        ]
         grouped: dict[tuple[str, str, str], list[InterestEvidence]] = {}
-        for item in active_observations:
+        for item in effective_observations:
             grouped.setdefault((item.vertical, item.dimension, item.topic), []).append(item)
 
         profiles = list(
@@ -563,7 +580,7 @@ class AudienceEngine:
                 profile.evidence_ids_json = []
                 profile.calculated_at = now
         await session.flush()
-        return list(profile_by_scope.values()), active_observations, evidenced_comment_ids
+        return list(profile_by_scope.values()), effective_observations, evidenced_comment_ids
 
     async def _sync_outcome_dna(
         self,
@@ -708,13 +725,10 @@ class AudienceEngine:
                 for profile in profiles
                 if profile.current_score >= INTEREST_PROFILE_ACTIVE_THRESHOLD
             ]
-            active_evidence_ids = {
-                evidence_id
-                for profile in active_profiles
-                for evidence_id in profile.evidence_ids_json
-            }
             effective_observations = [
-                item for item in interest_observations if item.evidence_id in active_evidence_ids
+                item
+                for item in interest_observations
+                if is_effective_interest_evidence(item, now)
             ]
             sources = {item.competitor_id for item in effective_observations}
             product_counts = Counter(
@@ -909,6 +923,8 @@ class AudienceEngine:
                     (profile.dimension, profile.topic): profile for profile in active_profiles
                 },
                 "evidence_ids": sorted({item.evidence_id for item in effective_observations}),
+                "source_observations": effective_observations,
+                "evaluated_at": now,
                 "vertical": observed_vertical,
                 "rattan_layers": rattan_layers,
             }
@@ -1136,11 +1152,20 @@ class AudienceEngine:
                     profile.current_score,
                 )
         if sources := criteria.get("sources"):
-            active &= int(facts["sources"]) >= int(sources)
+            source_window_days = int(criteria.get("source_window_days", criteria.get("days", 45)))
+            source_cutoff = facts["evaluated_at"] - timedelta(days=source_window_days)
+            source_observations = [
+                item
+                for item in facts.get("source_observations", [])
+                if AudienceEngine._aware(item.observed_at) >= source_cutoff
+            ]
+            source_ids = {item.competitor_id for item in source_observations}
+            source_evidence_ids = sorted({item.evidence_id for item in source_observations})
+            active &= len(source_ids) >= int(sources)
             add_reason(
                 "SOURCES",
-                f"коммерческих источников: {facts['sources']}",
-                facts["evidence_ids"],
+                f"активных коммерческих источников за {source_window_days} дн.: {len(source_ids)}",
+                source_evidence_ids,
             )
         if customer_type := criteria.get("customer_type"):
             active &= facts["customer_type"] == customer_type

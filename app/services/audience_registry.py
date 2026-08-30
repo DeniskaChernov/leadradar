@@ -120,7 +120,7 @@ AUDIENCE_DEFINITIONS = (
         "Мебель · Сравнивают предложения",
         "Текущий коммерческий спрос у двух и более независимых продавцов.",
         "MARKET_BEHAVIOR",
-        {"sources": 2, "days": 90},
+        {"sources": 2, "days": 45, "source_window_days": 45},
         minimum_evidence_count=2,
     ),
     _definition(

@@ -78,6 +78,7 @@ class ExternalUsageService:
                             ExternalBudgetReservation.status == ReservationStatus.EXPIRED,
                             ExternalBudgetReservation.call_started_at.is_not(None),
                         ),
+                        ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
                     ),
                 )
             )
@@ -141,6 +142,7 @@ class ExternalUsageService:
                                 ExternalBudgetReservation.status == ReservationStatus.EXPIRED,
                                 ExternalBudgetReservation.call_started_at.is_not(None),
                             ),
+                            ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
                         ),
                     )
                 )
@@ -289,6 +291,32 @@ class ExternalUsageService:
                 )
                 await session.commit()
 
+    async def mark_reservation_uncertain(
+        self,
+        reservation_id: int,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """Зафиксировать неопределённый исход начатого вызова без догадок о списании."""
+        now = datetime.now(UTC)
+        async with self.session_factory() as session:
+            await session.execute(
+                update(ExternalBudgetReservation)
+                .where(
+                    ExternalBudgetReservation.id == reservation_id,
+                    ExternalBudgetReservation.status.in_(
+                        [ReservationStatus.RESERVED, ReservationStatus.EXPIRED]
+                    ),
+                    ExternalBudgetReservation.call_started_at.is_not(None),
+                )
+                .values(
+                    status=ReservationStatus.UNCERTAIN,
+                    finalized_at=now,
+                    details_json=details or {},
+                )
+            )
+            await session.commit()
+
     async def release_reservation(self, reservation_id: int) -> None:
         async with self.session_factory() as session:
             await session.execute(
@@ -296,6 +324,7 @@ class ExternalUsageService:
                 .where(
                     ExternalBudgetReservation.id == reservation_id,
                     ExternalBudgetReservation.status == ReservationStatus.RESERVED,
+                    ExternalBudgetReservation.call_started_at.is_(None),
                 )
                 .values(
                     status=ReservationStatus.RELEASED,

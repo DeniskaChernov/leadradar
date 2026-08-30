@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.models import AIRequest, AIRequestStatus, Vertical
 from app.schemas.leads import (
     BuyerRole,
+    CommercialSignalQuality,
     FunnelStage,
     Intent,
     LeadAnalysis,
@@ -28,9 +29,7 @@ from app.services.b2b_policy import B2BPolicy
 from app.services.lead_scoring_v3 import (
     HistoricalSignal,
     LeadScorerV3,
-    infer_historical_intent,
     parse_observed_at,
-    signal_quality,
 )
 from app.services.usage_service import ExternalUsageService
 
@@ -42,11 +41,20 @@ class AIAnalysisError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class PreviousSignal:
+class ValidatedPreviousSignal:
+    lead_id: int
+    public_signal_id: int
+    evidence_ids: list[int]
+    competitor_id: int
     competitor: str
-    post_caption: str
-    comment: str
-    discovered_at: str
+    intent: str
+    product_family: str | None
+    buyer_role: str
+    commercial_quality: str
+    priority_score: int
+    confidence: int
+    observed_at: str
+    vertical: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +63,7 @@ class LeadAnalysisContext:
     post_caption: str
     comment: str
     username: str
-    previous_signals: list[PreviousSignal]
+    previous_signals: list[ValidatedPreviousSignal]
     previous_interests: list[str]
     known_customer_context: dict[str, str | int | None] = field(default_factory=dict)
     evidence_ids: list[int] = field(default_factory=list)
@@ -745,15 +753,19 @@ class RuleBasedLeadAnalyzer:
     def _validated_history(context: LeadAnalysisContext) -> list[HistoricalSignal]:
         result: list[HistoricalSignal] = []
         for item in context.previous_signals:
-            intent = infer_historical_intent(item.comment)
-            if intent is None:
+            try:
+                intent = Intent(item.intent)
+                quality = CommercialSignalQuality(item.commercial_quality)
+            except ValueError:
+                continue
+            if quality == CommercialSignalQuality.NON_COMMERCIAL:
                 continue
             result.append(
                 HistoricalSignal(
                     competitor=item.competitor,
                     intent=intent,
-                    quality=signal_quality(is_lead=True, intent=intent),
-                    observed_at=parse_observed_at(item.discovered_at),
+                    quality=quality,
+                    observed_at=parse_observed_at(item.observed_at),
                 )
             )
         return result
@@ -1016,11 +1028,6 @@ class OpenAILeadAnalyzer:
 
     async def analyze(self, context: LeadAnalysisContext) -> LeadAnalysis:
         context_payload = asdict(context)
-        context_payload["previous_signals"] = [
-            asdict(signal)
-            for signal in context.previous_signals
-            if infer_historical_intent(signal.comment) is not None
-        ]
         payload = {
             **context_payload,
             "catalog_scope": [
@@ -1039,10 +1046,11 @@ class OpenAILeadAnalyzer:
             ),
         }
         system_prompt = (
-            "You are the evidence-first lead-intelligence layer for a furniture seller (version 3.0). Qualify public Instagram "
+            "You are Lead Radar Intelligence Agent (production prompt v3.1). Transform only supplied public commercial Evidence into structured sales intelligence. "
+            "ValidatedCommercialHistory is already server-validated and contains no arbitrary raw prior comments. Qualify the current public Instagram "
             "comments in Russian, Uzbek Latin, Uzbek Cyrillic, or mixed language. The outcome must "
             "help a sales manager decide whether to act, why, how quickly, and what to say next. "
-            "Use only supplied evidence. Never infer private traits, contact details, income, or "
+            "Use only CurrentSignal, PostContext, EvidenceBundle, ValidatedCommercialHistory, ContactCRMContext, and ProductCatalogFacts supplied in the input. Never infer private traits, contact details, income, or "
             "facts that are not present. Evaluate the comment together with the Reel caption and "
             "CTA, product fit, request specificity, repetition across prior signals, comparison "
             "across competitors, buyer role (B2C, HoReCa/B2B, Designer), and manager-entered CRM context. A plus sign is commercial only "
@@ -1098,7 +1106,7 @@ class OpenAILeadAnalyzer:
 
 
 class BudgetedCachedOpenAIAnalyzer:
-    PROMPT_VERSION = "lead-v3"
+    PROMPT_VERSION = "lead-v3.1-validated-history"
     SCHEMA_VERSION = "lead-analysis-v3"
 
     def __init__(

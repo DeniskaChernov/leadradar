@@ -79,6 +79,33 @@ async def test_finalize_reservation_is_exactly_once(session_factory):
 
 
 @pytest.mark.asyncio
+async def test_started_reservation_cannot_be_released_and_uncertain_still_consumes_budget(
+    session_factory,
+):
+    usage = ExternalUsageService(session_factory)
+    reservation_id = await usage.reserve_budget(
+        "instagram",
+        "get_reels",
+        1,
+        reservation_key="test:started-uncertain",
+    )
+    await usage.mark_call_started(reservation_id)
+    await usage.release_reservation(reservation_id)
+
+    async with session_factory() as session:
+        started = await session.get(ExternalBudgetReservation, reservation_id)
+    assert started is not None and started.status == ReservationStatus.RESERVED
+
+    await usage.mark_reservation_uncertain(
+        reservation_id,
+        details={"billing_state": "UNKNOWN", "requires_reconciliation": True},
+    )
+    assert await usage.active_reservations_today("instagram") == 1
+    with pytest.raises(ExternalBudgetExceeded):
+        await usage.reserve_budget("instagram", "get_reels", 1)
+
+
+@pytest.mark.asyncio
 async def test_expired_budget_reservation_is_reclaimed(session_factory):
     usage_svc = ExternalUsageService(session_factory)
     expired_id = await usage_svc.reserve_budget("openai", "lead_analysis", 1, lease_seconds=1)

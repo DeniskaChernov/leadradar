@@ -202,7 +202,11 @@ def test_rules_classify_social_congratulations_locally():
     assert result.intent == Intent.REACTION
 
 async def test_local_rules_raise_priority_for_cross_competitor_history():
-    from app.services.ai_service import LeadAnalysisContext, PreviousSignal, RuleBasedLeadAnalyzer
+    from app.services.ai_service import (
+        LeadAnalysisContext,
+        RuleBasedLeadAnalyzer,
+        ValidatedPreviousSignal,
+    )
 
     analyzer = RuleBasedLeadAnalyzer()
     base_context = LeadAnalysisContext(
@@ -219,11 +223,20 @@ async def test_local_rules_raise_priority_for_cross_competitor_history():
         comment="narxi?",
         username="buyer",
         previous_signals=[
-            PreviousSignal(
+            ValidatedPreviousSignal(
+                lead_id=1,
+                public_signal_id=1,
+                evidence_ids=[101],
+                competitor_id=2,
                 competitor="chinar.uz",
-                post_caption="Стол и 6 кресел",
-                comment="qancha?",
-                discovered_at="2026-08-25T10:00:00+00:00",
+                intent="PRICE",
+                product_family="DINING_SET",
+                buyer_role="B2C_CONSUMER",
+                commercial_quality="MEDIUM_COMMERCIAL",
+                priority_score=74,
+                confidence=88,
+                observed_at="2026-08-25T10:00:00+00:00",
+                vertical="FURNITURE",
             )
         ],
         previous_interests=["DINING_SET"],

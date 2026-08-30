@@ -48,8 +48,10 @@ async def test_recovery_releases_unsent_and_counts_ambiguous_reservation(session
         ambiguous = await session.get(ExternalBudgetReservation, ambiguous_id)
         usage_count = await session.scalar(select(func.count(ExternalUsage.id)))
     assert unsent is not None and unsent.status == ReservationStatus.RELEASED
-    assert ambiguous is not None and ambiguous.status == ReservationStatus.FINALIZED
-    assert usage_count == 1
+    assert ambiguous is not None and ambiguous.status == ReservationStatus.UNCERTAIN
+    assert ambiguous.actual_units is None
+    assert ambiguous.details_json["requires_reconciliation"] is True
+    assert usage_count == 0
 
 
 @pytest.mark.asyncio

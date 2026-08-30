@@ -20,8 +20,8 @@ from app.db.models import (
 from app.schemas.leads import BuyerRole, Intent
 from app.services.ai_service import (
     LeadAnalysisContext,
-    PreviousSignal,
     RuleBasedLeadAnalyzer,
+    ValidatedPreviousSignal,
 )
 from app.services.lead_service import LeadService
 
@@ -145,17 +145,35 @@ def test_intelligence_v2_history_and_comparison_boost():
 
     # Context with prior inquiries across 2 different competitors
     prior = [
-        PreviousSignal(
+        ValidatedPreviousSignal(
+            lead_id=1,
+            public_signal_id=1,
+            evidence_ids=[1],
+            competitor_id=1,
             competitor="competitor_a",
-            post_caption="Столы",
-            comment="Цена?",
-            discovered_at="2026-08-20T10:00:00Z",
+            intent="PRICE",
+            product_family="TABLE",
+            buyer_role="B2C_CONSUMER",
+            commercial_quality="MEDIUM_COMMERCIAL",
+            priority_score=72,
+            confidence=85,
+            observed_at="2026-08-20T10:00:00Z",
+            vertical="FURNITURE",
         ),
-        PreviousSignal(
+        ValidatedPreviousSignal(
+            lead_id=2,
+            public_signal_id=2,
+            evidence_ids=[2],
+            competitor_id=2,
             competitor="competitor_b",
-            post_caption="Стулья",
-            comment="В наличии?",
-            discovered_at="2026-08-22T10:00:00Z",
+            intent="AVAILABILITY",
+            product_family="CHAIRS",
+            buyer_role="B2C_CONSUMER",
+            commercial_quality="MEDIUM_COMMERCIAL",
+            priority_score=78,
+            confidence=88,
+            observed_at="2026-08-22T10:00:00Z",
+            vertical="FURNITURE",
         ),
     ]
     ctx = LeadAnalysisContext(

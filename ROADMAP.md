@@ -41,6 +41,19 @@ Lead Radar строится не как «парсер комментариев�
 Это не означает live/production readiness: независимые quality gates и controlled live pilot
 ещё не пройдены.
 
+## Master work order 2026-08-31
+
+- Phase 1 Remaining P0 correctness — **ГОТОВО**;
+- Phase 2 Radar Credit Budget — **В РАБОТЕ**;
+- Phase 3 Adaptive Monitoring — далее;
+- Phase 4 Economics — далее;
+- Phase 5 Audience correctness — далее;
+- Phase 6 Independent quality gates — далее;
+- Phase 7 Grounded Agent — далее;
+- Phase 8 UI final hardening — далее;
+- Phase 9 Deployment — далее;
+- Phase 10 Controlled live pilot — только по отдельному разрешению.
+
 ## Активная программа завершения
 
 ### Stage 0. Truth и baseline — ГОТОВО
@@ -85,7 +98,7 @@ Lead Radar строится не как «парсер комментариев�
 - versioned FX policy;
 - margin/ROI только при полном наборе фактов.
 
-### Stage 6. Independent quality gates — В РАБОТЕ
+### Stage 6. Independent quality gates — ЗАПЛАНИРОВАНО ПОСЛЕ MASTER PHASE 5
 
 - 100+ независимо размеченных audience membership cases;
 - отдельные calibration/challenge/robustness/unseen наборы;

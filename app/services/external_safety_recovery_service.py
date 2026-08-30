@@ -92,19 +92,22 @@ class ExternalSafetyRecoveryService:
                 released += 1
             else:
                 request_succeeded = await self._request_succeeded(reservation.reservation_key)
-                await self.usage.finalize_reservation(
-                    reservation.id,
-                    units=reservation.units_reserved,
-                    success=request_succeeded,
-                    details={
-                        "billing_state": (
-                            "SUCCEEDED_RECOVERED_AFTER_LEDGER_GAP"
-                            if request_succeeded
-                            else "UNKNOWN_RECOVERED_AFTER_STALE_LEASE"
-                        )
-                    },
-                )
-                uncertain += 1
+                if request_succeeded:
+                    await self.usage.finalize_reservation(
+                        reservation.id,
+                        units=reservation.units_reserved,
+                        success=True,
+                        details={"billing_state": "SUCCEEDED_RECOVERED_AFTER_LEDGER_GAP"},
+                    )
+                else:
+                    await self.usage.mark_reservation_uncertain(
+                        reservation.id,
+                        details={
+                            "billing_state": "UNKNOWN_RECOVERED_AFTER_STALE_LEASE",
+                            "requires_reconciliation": True,
+                        },
+                    )
+                    uncertain += 1
         return RecoveryStats(retryable, permanent, released, uncertain)
 
     async def _request_succeeded(self, reservation_key: str) -> bool:

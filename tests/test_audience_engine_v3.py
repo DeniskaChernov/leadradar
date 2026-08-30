@@ -188,6 +188,71 @@ async def test_decayed_interest_expires_membership_without_deleting_history(
     assert historical_count == 2
 
 
+async def test_comparison_requires_each_source_inside_individual_decay_window(
+    session_factory,
+):
+    engine = AudienceEngine(session_factory, hot_threshold=70)
+    contacts = ContactService(session_factory)
+    lead_service = LeadService(
+        session_factory,
+        StaticAnalyzer(),
+        hot_threshold=70,
+        audience_engine=engine,
+    )
+    old_signal = await contacts.persist_signal(
+        make_post().model_copy(
+            update={
+                "platform_post_id": "old-comparison-post",
+                "competitor": "aiko.uz",
+                "url": "https://www.instagram.com/reel/old-comparison-post/",
+            }
+        ),
+        make_comment("old-comparison").model_copy(
+            update={"platform_comment_id": "old-comparison"},
+        ),
+    )
+    await lead_service.process_signal(old_signal)
+    recent_signal = await contacts.persist_signal(
+        make_post().model_copy(
+            update={
+                "platform_post_id": "recent-comparison-post",
+                "competitor": "chinar.uz",
+                "url": "https://www.instagram.com/reel/recent-comparison-post/",
+            }
+        ),
+        make_comment("recent-comparison").model_copy(
+            update={"platform_comment_id": "recent-comparison"},
+        ),
+    )
+    await lead_service.process_signal(recent_signal)
+
+    async with session_factory() as session:
+        old_comment = await session.get(Comment, old_signal.comment_id)
+        old_comment.discovered_at = datetime.now(UTC) - timedelta(days=60)
+        await session.commit()
+    await engine.recalculate_contact(old_signal.contact_id)
+
+    async with session_factory() as session:
+        comparison = await session.scalar(
+            select(AudienceMembership)
+            .join(AudienceSegment, AudienceSegment.id == AudienceMembership.segment_id)
+            .where(
+                AudienceMembership.contact_id == old_signal.contact_id,
+                AudienceSegment.slug == "furniture-comparison",
+            )
+        )
+        observations = list(
+            await session.scalars(
+                select(InterestEvidence).where(
+                    InterestEvidence.contact_id == old_signal.contact_id
+                )
+            )
+        )
+
+    assert comparison is not None and comparison.active is False
+    assert len({item.competitor_id for item in observations}) == 2
+
+
 async def test_outcome_dna_uses_only_pre_won_evidence(session_factory):
     engine = AudienceEngine(session_factory, hot_threshold=70)
     contact_service = ContactService(session_factory)

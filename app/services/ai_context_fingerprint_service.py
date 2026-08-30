@@ -4,8 +4,6 @@ import hashlib
 import json
 from typing import Any
 
-from app.services.lead_scoring_v3 import infer_historical_intent
-
 
 class AIContextFingerprintService:
     """Build a stable semantic key for one versioned AI analysis contract."""
@@ -26,16 +24,25 @@ class AIContextFingerprintService:
     def fingerprint(self, context: Any) -> str:
         commercial_signals = [
             {
+                "lead_id": signal.lead_id,
+                "public_signal_id": signal.public_signal_id,
+                "evidence_ids": sorted(set(signal.evidence_ids)),
+                "competitor_id": signal.competitor_id,
                 "competitor": (signal.competitor or "").strip().lower(),
-                "comment": (signal.comment or "").strip(),
-                "discovered_at": signal.discovered_at,
+                "intent": signal.intent,
+                "product_family": signal.product_family,
+                "buyer_role": signal.buyer_role,
+                "commercial_quality": signal.commercial_quality,
+                "priority_score": signal.priority_score,
+                "confidence": signal.confidence,
+                "observed_at": signal.observed_at,
+                "vertical": signal.vertical,
             }
             for signal in context.previous_signals
-            if infer_historical_intent(signal.comment) is not None
         ]
         commercial_signals.sort(
             key=lambda item: (
-                item["discovered_at"], item["competitor"], item["comment"]
+                item["observed_at"], item["competitor_id"], item["lead_id"]
             )
         )
         canonical = {

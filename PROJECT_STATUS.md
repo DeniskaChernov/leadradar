@@ -8,9 +8,25 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: 240 тестов, Ruff, compileall, data-integrity и `alembic check`
+Контрольная точка 2026-08-31: 245 тестов, Ruff, compileall, data-integrity и `alembic check`
 проходят. Рабочая БД после backup обновлена до `a3c8f7d24e10`; fresh, downgrade/re-upgrade
 и повторный schema check также проходят.
+
+## Master Phase 1 — Remaining P0 correctness завершён
+
+- `live_readiness_check.py` разделяет `READY FOR OFFLINE USE` и `LIVE BLOCKED`; unlock,
+  provider credentials, Telegram admin, backup, DB health, Alembic drift и `UNCERTAIN`
+  являются блокирующими условиями, а не warnings;
+- AI history больше не содержит произвольные raw-комментарии: `ValidatedPreviousSignal`
+  строится только из commercial Lead + реальных Evidence + InterestEvidence той же vertical;
+- `previous_interests` выводятся из активных `ContactInterestProfile` или валидированной
+  коммерческой истории, но не из произвольного `Lead.product_category`;
+- Audience source diversity требует индивидуальный decayed score и confidence каждого
+  InterestEvidence; comparison window ограничен 45 днями;
+- начатая операция с неизвестным исходом переводится в `UNCERTAIN`, не создаёт ложный
+  usage/cost fact и продолжает удерживать бюджет до reconciliation;
+- runtime остановлен; Instagram, Telegram, OpenAI, Meta и другие внешние вызовы не выполнялись;
+- полный offline gate: **245 tests passed**, Ruff, compileall, integrity и Alembic check чистые.
 
 ## Premium Glass UI — большой проход завершён
 

@@ -12,7 +12,7 @@ from app.services.ai_service import (
     BudgetedCachedOpenAIAnalyzer,
     LeadAnalysisContext,
     OpenAILeadAnalyzer,
-    PreviousSignal,
+    ValidatedPreviousSignal,
 )
 from app.services.usage_service import ExternalUsageService
 from tests.test_lead_workflow import create_lead
@@ -119,23 +119,16 @@ async def test_context_fingerprint_deterministic_and_sensitive(session_factory):
     # Different comment produces different fingerprint
     assert analyzer.context_fingerprint(ctx1) != analyzer.context_fingerprint(ctx3)
 
-    ctx_with_reaction = LeadAnalysisContext(
+    ctx_without_validated_history = LeadAnalysisContext(
         competitor="aiko.uz",
         post_caption="Диван",
         comment="Цена?",
         username="user1",
-        previous_signals=[
-            PreviousSignal(
-                competitor="other",
-                post_caption="Диван",
-                comment="Красиво!",
-                discovered_at="2026-08-27T10:00:00Z",
-            )
-        ],
+        previous_signals=[],
         previous_interests=[],
     )
     assert analyzer.context_fingerprint(ctx1) == analyzer.context_fingerprint(
-        ctx_with_reaction
+        ctx_without_validated_history
     )
 
     ctx_with_commercial_history = LeadAnalysisContext(
@@ -144,11 +137,20 @@ async def test_context_fingerprint_deterministic_and_sensitive(session_factory):
         comment="Цена?",
         username="user1",
         previous_signals=[
-            PreviousSignal(
+            ValidatedPreviousSignal(
+                lead_id=1,
+                public_signal_id=1,
+                evidence_ids=[11],
+                competitor_id=2,
                 competitor="other",
-                post_caption="Диван",
-                comment="Доставка есть?",
-                discovered_at="2026-08-27T10:00:00Z",
+                intent="DELIVERY",
+                product_family="SOFA",
+                buyer_role="B2C_CONSUMER",
+                commercial_quality="MEDIUM_COMMERCIAL",
+                priority_score=76,
+                confidence=86,
+                observed_at="2026-08-27T10:00:00Z",
+                vertical="FURNITURE",
             )
         ],
         previous_interests=[],

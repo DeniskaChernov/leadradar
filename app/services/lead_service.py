@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm import selectinload
 
 from app.db.models import (
     AIFeedback,
@@ -16,7 +15,9 @@ from app.db.models import (
     Competitor,
     Contact,
     ContactEventType,
+    ContactInterestProfile,
     Evidence,
+    InterestEvidence,
     Lead,
     LeadStatus,
     Post,
@@ -28,8 +29,8 @@ from app.services.ai_service import (
     AIAnalysisError,
     LeadAnalysisContext,
     LeadAnalyzer,
-    PreviousSignal,
     RuleBasedLeadAnalyzer,
+    ValidatedPreviousSignal,
 )
 from app.services.contact_service import PersistedSignal
 
@@ -475,36 +476,125 @@ class LeadService:
         if row is None:
             raise RuntimeError(f"Comment {comment_id} was not found")
         comment, contact, post, competitor = row
+        public_signal = await session.scalar(
+            select(PublicSignal).where(PublicSignal.comment_id == comment.id)
+        )
         history_rows = (
             await session.execute(
-                select(Comment, Post, Competitor)
-                .join(Post, Comment.post_id == Post.id)
-                .join(Competitor, Comment.competitor_id == Competitor.id)
-                .where(Comment.contact_id == contact.id, Comment.id != comment.id)
-                .order_by(Comment.discovered_at.desc())
+                select(Lead, PublicSignal, Competitor)
+                .join(PublicSignal, PublicSignal.comment_id == Lead.comment_id)
+                .join(Competitor, Competitor.id == Lead.competitor_id)
+                .where(
+                    Lead.contact_id == contact.id,
+                    Lead.comment_id != comment.id,
+                    Lead.vertical
+                    == (public_signal.vertical if public_signal is not None else "FURNITURE"),
+                )
+                .order_by(Lead.created_at.desc())
                 .limit(20)
             )
         ).all()
-        previous = [
-            PreviousSignal(
-                competitor=history_competitor.normalized_handle,
-                post_caption=history_post.caption,
-                comment=history_comment.text,
-                discovered_at=history_comment.discovered_at.isoformat(),
+        history_signal_ids = [signal.id for _lead, signal, _competitor in history_rows]
+        history_evidence = (
+            list(
+                await session.scalars(
+                    select(Evidence).where(Evidence.public_signal_id.in_(history_signal_ids))
+                )
             )
-            for history_comment, history_post, history_competitor in history_rows
-        ]
-        interests = (
+            if history_signal_ids
+            else []
+        )
+        history_interest_evidence = (
+            list(
+                await session.scalars(
+                    select(InterestEvidence).where(
+                        InterestEvidence.contact_id == contact.id,
+                        InterestEvidence.public_signal_id.in_(history_signal_ids),
+                    )
+                )
+            )
+            if history_signal_ids
+            else []
+        )
+        evidence_by_signal: dict[int, set[int]] = {}
+        for item in history_evidence:
+            evidence_by_signal.setdefault(item.public_signal_id, set()).add(item.id)
+        interests_by_signal: dict[int, list[InterestEvidence]] = {}
+        for item in history_interest_evidence:
+            interests_by_signal.setdefault(item.public_signal_id, []).append(item)
+
+        previous: list[ValidatedPreviousSignal] = []
+        for history_lead, history_signal, history_competitor in history_rows:
+            details = history_lead.analysis_details or {}
+            quality = str(details.get("commercial_quality") or "")
+            buyer_role = str(details.get("buyer_role") or "UNKNOWN")
+            intent = str(history_lead.intent or "")
+            if (
+                details.get("is_commercial") is not True
+                or quality == "NON_COMMERCIAL"
+                or buyer_role == "JOB_SEEKER"
+                or intent in {"REACTION", "SPAM", "OTHER", ""}
+            ):
+                continue
+            signal_interests = interests_by_signal.get(history_signal.id, [])
+            validated_ids = sorted(
+                evidence_by_signal.get(history_signal.id, set())
+                & {item.evidence_id for item in signal_interests}
+            )
+            if not validated_ids:
+                continue
+            product_observations = [
+                item for item in signal_interests if item.dimension == "PRODUCT"
+            ]
+            latest_observation = max(
+                signal_interests,
+                key=lambda item: item.observed_at,
+            )
+            latest_product = (
+                max(product_observations, key=lambda item: item.observed_at).topic
+                if product_observations
+                else None
+            )
+            previous.append(
+                ValidatedPreviousSignal(
+                    lead_id=history_lead.id,
+                    public_signal_id=history_signal.id,
+                    evidence_ids=validated_ids,
+                    competitor_id=history_competitor.id,
+                    competitor=history_competitor.normalized_handle,
+                    intent=intent,
+                    product_family=latest_product,
+                    buyer_role=buyer_role,
+                    commercial_quality=quality,
+                    priority_score=int(details.get("priority_score") or history_lead.lead_score),
+                    confidence=int(
+                        details.get("confidence_score") or details.get("confidence") or 0
+                    ),
+                    observed_at=latest_observation.observed_at.isoformat(),
+                    vertical=history_lead.vertical.value,
+                )
+            )
+        active_profiles = list(
             await session.scalars(
-                select(Lead)
-                .options(selectinload(Lead.comment))
-                .where(Lead.contact_id == contact.id, Lead.product_category.is_not(None))
-                .order_by(Lead.created_at.desc())
-                .limit(10)
+                select(ContactInterestProfile).where(
+                    ContactInterestProfile.contact_id == contact.id,
+                    ContactInterestProfile.vertical
+                    == (public_signal.vertical.value if public_signal else "FURNITURE"),
+                    ContactInterestProfile.dimension == "PRODUCT",
+                    ContactInterestProfile.current_score >= 20,
+                    ContactInterestProfile.confidence >= 50,
+                )
             )
-        ).all()
-        public_signal = await session.scalar(
-            select(PublicSignal).where(PublicSignal.comment_id == comment.id)
+        )
+        previous_interests = sorted(
+            {
+                profile.topic for profile in active_profiles
+            }
+            | {
+                item.product_family
+                for item in previous
+                if item.product_family is not None
+            }
         )
         lead_id = await session.scalar(select(Lead.id).where(Lead.comment_id == comment.id))
         evidence_ids: list[int] = []
@@ -524,9 +614,7 @@ class LeadService:
             comment=comment.text,
             username=contact.username,
             previous_signals=previous,
-            previous_interests=[
-                lead.product_category for lead in interests if lead.product_category
-            ],
+            previous_interests=previous_interests,
             known_customer_context={
                 "city": contact.city,
                 "interest_summary": contact.interest_summary,

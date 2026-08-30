@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from app.schemas.leads import BuyerRole, CommercialSignalQuality, Intent
-from app.services.ai_service import LeadAnalysisContext, PreviousSignal, RuleBasedLeadAnalyzer
+from app.services.ai_service import LeadAnalysisContext, RuleBasedLeadAnalyzer
 from app.services.b2b_policy import B2BPolicy
 from app.services.lead_scoring_v3 import HistoricalSignal, LeadScorerV3
 
@@ -34,16 +34,13 @@ def _score(history: list[HistoricalSignal], intent: Intent = Intent.PRICE):
     )
 
 
-def test_reactions_do_not_boost_history_or_multi_competitor_activity():
+def test_absent_validated_history_does_not_boost_multi_competitor_activity():
     context = LeadAnalysisContext(
         competitor="competitor-c",
         post_caption="Обеденный стол",
         comment="Какая цена?",
         username="buyer",
-        previous_signals=[
-            PreviousSignal("competitor-a", "Стол", "Красиво!", "2026-08-26T10:00:00Z"),
-            PreviousSignal("competitor-b", "Стол", "🔥🔥🔥", "2026-08-26T11:00:00Z"),
-        ],
+        previous_signals=[],
         previous_interests=[],
         evidence_ids=[1],
     )
