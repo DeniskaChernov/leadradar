@@ -284,6 +284,15 @@ class Competitor(Base):
     website_url: Mapped[str | None] = mapped_column(Text)
     catalog_managed: Mapped[bool] = mapped_column(Boolean, default=False)
     last_scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    monitoring_state: Mapped[str] = mapped_column(
+        String(16), default="DORMANT", index=True
+    )
+    next_scan_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    adaptive_priority_score: Mapped[int] = mapped_column(Integer, default=0)
+    adaptive_reasons_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    adaptive_policy_version: Mapped[str | None] = mapped_column(String(64))
     scan_error_count: Mapped[int] = mapped_column(Integer, default=0)
     baseline_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     baseline_provider: Mapped[str | None] = mapped_column(String(128))

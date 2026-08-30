@@ -63,6 +63,8 @@ async def test_zero_comments_never_calls_comments_api(session_factory):
     stats = await monitor.run_cycle()
 
     assert stats.comment_requests == 0
+    assert stats.zero_comment_posts_skipped == 1
+    assert stats.avoided_requests == 1
     assert provider.comment_batch_calls == 0
     async with session_factory() as session:
         post = await session.scalar(select(Post))
@@ -173,6 +175,70 @@ class ProfileProvider(InstagramProvider):
 
     async def get_comments(self, post: InstagramPost) -> list[InstagramComment]:
         raise NotImplementedError
+
+
+class TwoPhaseProvider(InstagramProvider):
+    name = "two-phase"
+
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
+    async def get_profile(self, handle: str) -> InstagramProfile:
+        raise NotImplementedError
+
+    async def get_reels(self, handle: str) -> list[InstagramPost]:
+        self.events.append(f"reels:{handle}")
+        return [
+            InstagramPost(
+                platform_post_id=f"post-{handle}",
+                competitor=handle,
+                url=f"https://www.instagram.com/reel/{handle}/",
+                published_at=datetime.now(UTC),
+                comments_count=1,
+            )
+        ]
+
+    async def get_post(self, url: str, competitor: str) -> InstagramPost:
+        raise NotImplementedError
+
+    async def get_comments(self, post: InstagramPost) -> list[InstagramComment]:
+        return []
+
+    async def get_comment_batch(
+        self,
+        post: InstagramPost,
+        *,
+        known_comment_ids: set[str] | None = None,
+        max_pages: int | None = None,
+    ) -> CommentFetchResult:
+        self.events.append(f"comments:{post.competitor}")
+        return CommentFetchResult(
+            comments=[],
+            provider=self.name,
+            pages_fetched=1,
+            coverage_status="PARTIAL",
+            cursor_exhausted=False,
+        )
+
+
+async def test_monitor_completes_discovery_phase_before_any_comment_refresh(
+    session_factory,
+):
+    provider = TwoPhaseProvider()
+    monitor = InstagramMonitor(
+        session_factory=session_factory,
+        provider=provider,
+        contact_service=ContactService(session_factory),
+        lead_service=LeadService(session_factory, StaticAnalyzer(), hot_threshold=70),
+        notifier=RecordingNotifier(),
+        competitors=["alpha.uz", "beta.uz"],
+        process_existing_comments=False,
+    )
+
+    await monitor.run_cycle(force=True)
+
+    assert provider.events[:2] == ["reels:alpha.uz", "reels:beta.uz"]
+    assert all(event.startswith("comments:") for event in provider.events[2:])
 
 
 async def test_fallback_cannot_bypass_one_unit_scan_budget(session_factory):

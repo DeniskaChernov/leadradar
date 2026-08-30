@@ -804,7 +804,7 @@ def build_web_app(
             ),
             "budget_status": budget.budget_status if budget is not None else "NOT_CONFIGURED",
             "active_competitors": plan["active_competitors"],
-            "due_competitors": plan["active_competitors"],
+            "due_competitors": plan["due_competitors"],
             "estimated_competitors_reachable": min(
                 plan["active_competitors"], effective
             ),

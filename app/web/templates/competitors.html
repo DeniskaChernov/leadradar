@@ -48,7 +48,7 @@
 <section class="panel competitor-block {% if not item.competitor.active %}paused-block{% endif %}">
   <div class="competitor-head">
     <div>
-      <div class="title-line"><h2><a href="/competitors/{{ item.competitor.id }}">{{ item.competitor.display_name or '@' ~ item.competitor.normalized_handle }}</a></h2><span class="tier tier-{{ item.competitor.tier|lower }}">Приоритет {{ item.competitor.tier }}</span>{% if item.competitor.active %}<span class="tag success">Активный</span>{% else %}<span class="tag muted-tag">На паузе</span>{% endif %}</div>
+      <div class="title-line"><h2><a href="/competitors/{{ item.competitor.id }}">{{ item.competitor.display_name or '@' ~ item.competitor.normalized_handle }}</a></h2><span class="tier tier-{{ item.competitor.tier|lower }}">Приоритет {{ item.competitor.tier }}</span>{% if item.competitor.active %}<span class="tag success">Активный</span><span class="tag neutral">{{ item.competitor.monitoring_state }}</span>{% else %}<span class="tag muted-tag">На паузе</span>{% endif %}</div>
       <p><a target="_blank" rel="noopener" href="https://instagram.com/{{ item.competitor.normalized_handle }}">@{{ item.competitor.normalized_handle }} ↗</a> · {{ competitor_category_label(item.competitor.category) }}</p>
       {% if item.competitor.notes %}<small>{{ item.competitor.notes }}</small>{% endif %}
       {% if item.competitor.website_url %}<small><a target="_blank" rel="noopener" href="{{ item.competitor.website_url }}">Сайт компании ↗</a></small>{% endif %}

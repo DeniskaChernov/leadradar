@@ -53,6 +53,9 @@ class InstagramProvider(ABC):
         """Установить durable-проверенный лимит текущего ручного запуска."""
         return None
 
+    def scan_budget_status(self) -> dict[str, int] | None:
+        return None
+
     @abstractmethod
     async def get_profile(self, handle: str) -> InstagramProfile:
         raise NotImplementedError

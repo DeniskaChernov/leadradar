@@ -1719,6 +1719,18 @@ class WebQueryService:
                 )
                 or 0
             )
+            due_competitors = int(
+                await session.scalar(
+                    select(func.count(Competitor.id)).where(
+                        Competitor.active.is_(True),
+                        or_(
+                            Competitor.next_scan_at.is_(None),
+                            Competitor.next_scan_at <= datetime.now(UTC),
+                        ),
+                    )
+                )
+                or 0
+            )
             comment_candidates = int(
                 await session.scalar(
                     select(func.count(Post.id))
@@ -1753,6 +1765,7 @@ class WebQueryService:
         return {
             "live_enabled": live_enabled,
             "active_competitors": active_competitors,
+            "due_competitors": due_competitors,
             "comment_candidates": comment_candidates,
             "partial_posts": partial_posts,
             "expected_min_units": min(expected_min, hard_cap) if hard_cap else 0,

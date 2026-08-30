@@ -8,7 +8,8 @@
 <section class="panel scan-plan">
   <div class="panel-head"><div><h2>План следующей проверки</h2><p>Расчёт строится только по нашей базе и сам по себе ничего не тратит</p></div><span class="tag {% if scan_plan.live_enabled %}status-contacted{% else %}neutral{% endif %}">{% if scan_plan.live_enabled %}live разрешён{% else %}без внешних запросов{% endif %}</span></div>
   <div class="plan-grid">
-    <div><span>Активных конкурентов</span><b>{{ scan_plan.active_competitors }}</b><small>минимум по одному запросу Reels на каждого</small></div>
+    <div><span>Активных конкурентов</span><b>{{ scan_plan.active_competitors }}</b><small>портфель источников, не число обязательных запросов</small></div>
+    <div><span>Наступил срок проверки</span><b>{{ scan_plan.due_competitors }}</b><small>adaptive policy ACTIVE / WARM / COLD / DORMANT</small></div>
     <div><span>Reels с изменившимся счётчиком</span><b>{{ scan_plan.comment_candidates }}</b><small>им может понадобиться загрузка комментариев</small></div>
     <div><span>Неполная история</span><b>{{ scan_plan.partial_posts }}</b><small>{% if settings.instagram_auto_repair_partial_coverage %}может дозагружаться автоматически{% else %}не дозагружается автоматически, чтобы беречь квоту{% endif %}</small></div>
     <div class="plan-cap"><span>Жёсткий предел одной проверки</span><b>{{ scan_plan.hard_cap_units }}</b><small>даже fallback и пагинация не должны пройти выше этого значения</small></div>

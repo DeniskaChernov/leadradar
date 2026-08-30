@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import CostEvent, MonitorRun, MonitorRunStatus
+from app.services.adaptive_monitoring_policy import AdaptiveMonitoringPolicy
 from app.services.instagram_monitor import CycleStats
 from app.services.provider_credit_budget_service import ProviderCreditBudgetService
 
@@ -40,6 +41,7 @@ class MonitorRunService:
                 monthly_used_before=(
                     budget.used_this_month if budget is not None else None
                 ),
+                adaptive_policy_version=AdaptiveMonitoringPolicy.VERSION,
                 started_at=datetime.now(UTC),
             )
             session.add(run)

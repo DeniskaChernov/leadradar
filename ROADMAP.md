@@ -45,14 +45,23 @@ Lead Radar строится не как «парсер комментариев�
 
 - Phase 1 Remaining P0 correctness — **ГОТОВО**;
 - Phase 2 Radar Credit Budget — **ГОТОВО**;
-- Phase 3 Adaptive Monitoring — **В РАБОТЕ**;
-- Phase 4 Economics — далее;
+- Phase 3 Adaptive Monitoring — **ГОТОВО**;
+- Phase 4 Economics — **СЛЕДУЮЩАЯ**;
 - Phase 5 Audience correctness — далее;
 - Phase 6 Independent quality gates — далее;
 - Phase 7 Grounded Agent — далее;
 - Phase 8 UI final hardening — далее;
 - Phase 9 Deployment — далее;
 - Phase 10 Controlled live pilot — только по отдельному разрешению.
+
+### Master Phase 3. Adaptive Monitoring — ГОТОВО
+
+- persisted `ACTIVE / WARM / COLD / DORMANT` state и due scheduling без fixed polling;
+- deterministic competitor/post priority из наблюдаемых фактов;
+- общий scan budget распределяется между discovery-first и ranked comment refresh;
+- skipped, deferred и avoided request metrics сохраняются в `MonitorRun`;
+- dormant-источники продолжают редкий discovery, но старые неизменные posts не вызывают
+  Comments endpoint.
 
 ## Активная программа завершения
 

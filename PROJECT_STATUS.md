@@ -8,9 +8,28 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: 253 теста, Ruff, compileall, data-integrity и `alembic check`
-проходят. Рабочая БД после backup обновлена до `b7d9e2a46f10`; fresh, downgrade/re-upgrade
+Контрольная точка 2026-08-31: 256 тестов, Ruff, compileall, data-integrity и `alembic check`
+проходят. Рабочая БД после backup обновлена до `c8f3a1d57b20`; fresh, downgrade/re-upgrade
 и повторный schema check также проходят.
+
+## Master Phase 3 — Adaptive Monitoring завершён
+
+- deterministic policy назначает `ACTIVE / WARM / COLD / DORMANT` только из наблюдаемых
+  фактов и хранит state, priority, reasons, policy version и `next_scan_at` у конкурента;
+- due scheduler исключает ещё не наступившие проверки и ранжирует остальные по состоянию,
+  Tier, полезной активности, HOT/B2B, просрочке и ошибкам без GPT и fixed polling;
+- Radar сначала завершает discovery coverage по ранжированным источникам, затем глобально
+  ранжирует найденные Reel и расходует остаток общего scan budget на comment refresh;
+- zero comments, unchanged posts и известный comment продолжают экономить paid requests;
+  dormant означает редкий discovery, а не окончательное исключение источника;
+- `MonitorRun.stats_json` хранит skipped unchanged/zero comments/pagination stop/not due,
+  budget deferred и avoided request facts; Radar показывает их в результате проверки;
+- migration `c8f3a1d57b20` проверена fresh, repeated, downgrade/re-upgrade и на рабочей БД
+  после backup; schema drift отсутствует;
+- desktop 1440px/mobile 390px проверены read-only на `/radar`, `/system`, `/competitors`;
+  overflow и JS errors не обнаружены;
+- полный offline gate: **256 tests passed**, Ruff, compileall, JS syntax, Alembic и integrity
+  чистые; внешних вызовов, ScrapeCreators credits и OpenAI tokens: **0**.
 
 ## Master Phase 2 — Radar Credit Budget завершён
 

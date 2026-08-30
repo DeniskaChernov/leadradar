@@ -6,9 +6,9 @@
 - live_calls: forbidden
 - external_kill_switch: enabled
 - db_source_of_truth: lead_radar.db
-- db_backup: .backups/lead_radar-20260830-213858-800287.db
-- alembic_head: b7d9e2a46f10
-- tests: 253 passed
+- db_backup: .backups/lead_radar-20260830-225522-370547.db
+- alembic_head: c8f3a1d57b20
+- tests: 256 passed
 - ruff: passed
 - compileall: passed
 - integrity: passed
@@ -16,8 +16,8 @@
 - schema_drift: none
 - premium_glass_ui: complete; responsive shell, accessible motion, feedback states
 - contact_detail_ui: explicit knowledge/intelligence grids; responsive qualification layout
-- master_completed_phases: 1,2
-- master_active_phase: 3
+- master_completed_phases: 1,2,3
+- master_active_phase: 4
 - p0_readiness: offline-ready; live-blocked fail-closed
 - p0_ai_history: Evidence+InterestEvidence validated structured context v3.1
 - p0_audience_decay: per-InterestEvidence score/confidence + 45d source window
@@ -26,7 +26,10 @@
 - provider_wallet: DB-backed; balance UNKNOWN until API_RESPONSE/BALANCE_ENDPOINT/MANUAL fact
 - scan_budget: server-clamped daily+monthly+manual+confirmed-balance; actual charge reconciled
 - radar_budget_ui: presets 5/10/20/40/custom; truthful max; MonitorRun actual result
+- adaptive_monitoring: deterministic ACTIVE/WARM/COLD/DORMANT; persisted due state and rank
+- radar_scan: discovery-first then globally ranked comment refresh under one scan budget
+- adaptive_savings: unchanged/zero/pagination/not-due/deferred/avoided metrics persisted per run
 - completed_stages: 0,1,2,3,4,5
-- active_stage: master-phase-3
-- next: implement deterministic adaptive monitoring and two-phase discovery/comment allocation
+- active_stage: master-phase-4
+- next: implement dedicated /economics provider burn and outcome economics
 - blocked_live: Instagram, OpenAI, Telegram delivery, Meta, Google
