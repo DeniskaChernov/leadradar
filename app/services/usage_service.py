@@ -16,6 +16,7 @@ from app.db.models import (
     ExternalBudgetReservation,
     ExternalUsage,
     PricingConfig,
+    ProviderBudgetPolicy,
     ReservationStatus,
     Vertical,
 )
@@ -107,6 +108,7 @@ class ExternalUsageService:
         async with self._lock:
             now = datetime.now(UTC)
             start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            month_start = start.replace(day=1)
             async with self.session_factory() as session:
                 bind = session.get_bind()
                 if bind.dialect.name == "sqlite":
@@ -151,11 +153,61 @@ class ExternalUsageService:
                     raise ExternalBudgetExceeded(
                         f"Дневной лимит {service} исчерпан (использовано: {used}, зарезервировано: {active_res}, лимит: {daily_limit})"
                     )
+                normalized_provider = (provider or service).strip().lower()
+                monthly_policy = await session.scalar(
+                    select(ProviderBudgetPolicy).where(
+                        ProviderBudgetPolicy.provider == normalized_provider,
+                        ProviderBudgetPolicy.service == service,
+                        ProviderBudgetPolicy.active.is_(True),
+                    )
+                )
+                if monthly_policy is not None:
+                    monthly_used = await session.scalar(
+                        select(func.coalesce(func.sum(CostEvent.units), 0)).where(
+                            CostEvent.provider == normalized_provider,
+                            CostEvent.created_at >= month_start,
+                        )
+                    )
+                    monthly_active = await session.scalar(
+                        select(
+                            func.coalesce(
+                                func.sum(ExternalBudgetReservation.units_reserved),
+                                0,
+                            )
+                        ).where(
+                            ExternalBudgetReservation.provider == normalized_provider,
+                            ExternalBudgetReservation.created_at >= month_start,
+                            or_(
+                                and_(
+                                    ExternalBudgetReservation.status
+                                    == ReservationStatus.RESERVED,
+                                    ExternalBudgetReservation.expires_at > now,
+                                ),
+                                and_(
+                                    ExternalBudgetReservation.status
+                                    == ReservationStatus.EXPIRED,
+                                    ExternalBudgetReservation.call_started_at.is_not(None),
+                                ),
+                                ExternalBudgetReservation.status
+                                == ReservationStatus.UNCERTAIN,
+                            ),
+                        )
+                    )
+                    if (
+                        int(monthly_used or 0) + int(monthly_active or 0) + units
+                        > monthly_policy.monthly_hard_limit_units
+                    ):
+                        raise ExternalBudgetExceeded(
+                            f"Месячный hard limit {normalized_provider} исчерпан "
+                            f"(использовано: {monthly_used}, зарезервировано: "
+                            f"{monthly_active}, лимит: "
+                            f"{monthly_policy.monthly_hard_limit_units})"
+                        )
                 reservation = ExternalBudgetReservation(
                     reservation_key=reservation_key or f"reservation:{uuid4().hex}",
                     worker_id=worker_id,
                     service=service,
-                    provider=(provider or service).strip().lower(),
+                    provider=normalized_provider,
                     operation=operation,
                     units_reserved=units,
                     estimated_cost_usd=Decimal(str(estimated_cost)),
@@ -209,11 +261,23 @@ class ExternalUsageService:
         lead_id: int | None = None,
         audience_id: int | None = None,
         campaign_id: int | None = None,
+        unit_source: str = "ESTIMATED",
     ) -> None:
-        if units <= 0:
-            raise ValueError("units must be positive")
+        if units < 0:
+            raise ValueError("units must be non-negative")
         now = datetime.now(UTC)
+        normalized_source = unit_source.strip().upper()
+        if normalized_source not in {"ESTIMATED", "PROVIDER_CONFIRMED"}:
+            raise ValueError("unit_source must be ESTIMATED or PROVIDER_CONFIRMED")
         async with self.session_factory() as session:
+            stored = await session.get(ExternalBudgetReservation, reservation_id)
+            resolved_details = dict(details or {})
+            if stored is not None and units > stored.units_reserved:
+                resolved_details["reservation_discrepancy"] = {
+                    "reserved_units": stored.units_reserved,
+                    "actual_units": units,
+                    "actual_exceeded_reservation": True,
+                }
             reservation = (
                 await session.execute(
                     update(ExternalBudgetReservation)
@@ -222,7 +286,6 @@ class ExternalUsageService:
                         ExternalBudgetReservation.status.in_(
                             [ReservationStatus.RESERVED, ReservationStatus.EXPIRED]
                         ),
-                        ExternalBudgetReservation.units_reserved >= units,
                     )
                     .values(
                         status=ReservationStatus.FINALIZED,
@@ -231,7 +294,7 @@ class ExternalUsageService:
                         actual_cost_usd=(
                             Decimal(str(actual_cost)) if actual_cost is not None else None
                         ),
-                        details_json=details or {},
+                        details_json=resolved_details,
                     )
                     .returning(
                         ExternalBudgetReservation.service,
@@ -252,7 +315,7 @@ class ExternalUsageService:
                         units=units,
                         input_tokens=input_tokens,
                         output_tokens=output_tokens,
-                        model_name=str((details or {}).get("model") or "") or None,
+                        model_name=str(resolved_details.get("model") or "") or None,
                     )
                 )
                 await session.execute(
@@ -266,8 +329,9 @@ class ExternalUsageService:
                         operation=reservation[1],
                         idempotency_key=f"reservation:{reservation[2]}",
                         units=units,
+                        unit_source=normalized_source,
                         success=success,
-                        details_json=details or {},
+                        details_json=resolved_details,
                     )
                 )
                 session.add(
@@ -283,10 +347,11 @@ class ExternalUsageService:
                         audience_id=audience_id,
                         campaign_id=campaign_id,
                         units=units,
+                        unit_source=normalized_source,
                         input_tokens=input_tokens,
                         output_tokens=output_tokens,
                         cost_usd=resolved_cost,
-                        details_json=details or {},
+                        details_json=resolved_details,
                     )
                 )
                 await session.commit()
@@ -297,7 +362,7 @@ class ExternalUsageService:
         *,
         details: dict[str, Any] | None = None,
     ) -> None:
-        """Зафиксировать неопределённый исход начатого вызова без догадок о списании."""
+        """Зафиксировать неопределённый исход начатого вызова без предположений насчёт списания."""
         now = datetime.now(UTC)
         async with self.session_factory() as session:
             await session.execute(

@@ -26,6 +26,8 @@ from app.db.models import (
     OpeningSignal,
     OutcomeDNA,
     Post,
+    ProviderBudgetPolicy,
+    ProviderCreditSnapshot,
     PublicSignal,
     SignificantChange,
     SignificantChangeNotification,
@@ -71,6 +73,8 @@ async def inspect_integrity() -> IntegrityResult:
                 OutcomeDNA,
                 AIRequest,
                 ExternalBudgetReservation,
+                ProviderBudgetPolicy,
+                ProviderCreditSnapshot,
             )
             counts = {
                 model.__tablename__: await session.scalar(select(func.count(model.id))) or 0
@@ -212,6 +216,22 @@ async def inspect_integrity() -> IntegrityResult:
                 "AI request claim tokens": select(AIRequest.claim_token, func.count())
                 .where(AIRequest.claim_token.is_not(None))
                 .group_by(AIRequest.claim_token)
+                .having(func.count() > 1),
+                "provider budget policy scopes": select(
+                    ProviderBudgetPolicy.provider,
+                    ProviderBudgetPolicy.service,
+                    func.count(),
+                )
+                .group_by(
+                    ProviderBudgetPolicy.provider,
+                    ProviderBudgetPolicy.service,
+                )
+                .having(func.count() > 1),
+                "provider credit snapshot keys": select(
+                    ProviderCreditSnapshot.idempotency_key,
+                    func.count(),
+                )
+                .group_by(ProviderCreditSnapshot.idempotency_key)
                 .having(func.count() > 1),
                 "lead/public-signal vertical mismatches": select(Lead.id)
                 .join(PublicSignal, PublicSignal.comment_id == Lead.comment_id)

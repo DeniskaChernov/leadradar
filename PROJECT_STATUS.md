@@ -8,9 +8,30 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: 245 тестов, Ruff, compileall, data-integrity и `alembic check`
-проходят. Рабочая БД после backup обновлена до `a3c8f7d24e10`; fresh, downgrade/re-upgrade
+Контрольная точка 2026-08-31: 253 теста, Ruff, compileall, data-integrity и `alembic check`
+проходят. Рабочая БД после backup обновлена до `b7d9e2a46f10`; fresh, downgrade/re-upgrade
 и повторный schema check также проходят.
+
+## Master Phase 2 — Radar Credit Budget завершён
+
+- `ProviderBudgetPolicy` хранит ScrapeCreators target `3000`, soft `3500`, hard `3800`,
+  default scan `10`, manual max `50` и плановые категории расхода;
+- `ProviderCreditSnapshot` хранит только явно маркированные `API_RESPONSE`,
+  `BALANCE_ENDPOINT`, `MANUAL` или `LOCAL_ESTIMATE`; текущий баланс остаётся `UNKNOWN`,
+  пока реальный факт не получен;
+- месячный hard limit проверяется в той же SQLite write transaction, что и durable reservation;
+  дневной, месячный, ручной предел и подтверждённый остаток одновременно ограничивают scan;
+- ScrapeCreators adapter извлекает только явные `credits_remaining`/`credits_charged`;
+  provider-confirmed charge заменяет estimate, превышение резерва сохраняется и останавливает run;
+- `MonitorRun` хранит requested/effective/actual credits, balance/month before/after,
+  operation breakdown и нормальную причину budget stop;
+- `/api/scan/preview` не делает внешних вызовов и возвращает wallet, burn, forecast,
+  месячные пределы, эффективный cap и blocking reasons;
+- `/radar` получил budget-first карточку, пресеты `5/10/20/40/custom`, live confirmation
+  и factual result card; desktop 1440px/mobile 390px проверены без overflow;
+- migration `b7d9e2a46f10` проверена fresh, downgrade/re-upgrade и на рабочей БД после backup;
+- полный offline gate: **253 tests passed**, Ruff, compileall, JS syntax, Alembic и integrity чистые;
+  внешних вызовов, ScrapeCreators credits и OpenAI tokens: **0**.
 
 ## Master Phase 1 — Remaining P0 correctness завершён
 

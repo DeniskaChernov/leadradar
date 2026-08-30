@@ -28,6 +28,10 @@ class FallbackInstagramProvider(InstagramProvider):
         self.primary.begin_cycle()
         self.fallback.begin_cycle()
 
+    def set_scan_budget_limit(self, limit: int) -> None:
+        self.primary.set_scan_budget_limit(limit)
+        self.fallback.set_scan_budget_limit(limit)
+
     async def _call(
         self,
         operation: str,

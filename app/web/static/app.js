@@ -350,33 +350,52 @@
       scan.disabled = true;
       scan.textContent = 'Проверяю лимиты…';
       try {
-        const preview = await api('/api/scan/preview', { method: 'GET' });
+        const selectedBudget = document.querySelector('input[name="scan_budget"]:checked');
+        let requestedCredits = selectedBudget?.value;
+        if (requestedCredits === 'custom') {
+          requestedCredits = document.querySelector('[data-custom-scan-budget]')?.value;
+        }
+        const previewUrl = requestedCredits
+          ? `/api/scan/preview?max_credits=${encodeURIComponent(requestedCredits)}`
+          : '/api/scan/preview';
+        const preview = await api(previewUrl, { method: 'GET' });
         if (!preview.search_enabled) {
-          throw new Error('Поиск лидов временно приостановлен. Токены не расходуются.');
+          throw new Error('Поиск лидов временно приостановлен. Credits не расходуются.');
         }
         let confirmLive = false;
         if (preview.is_live) {
           if (!preview.live_enabled) {
-            throw new Error('Live-запросы выключены. Токены не будут потрачены.');
+            throw new Error('Live-запросы выключены. Credits не будут потрачены.');
           }
-          const plan = preview.plan || {};
-          const hardCap = Number(plan.hard_cap_units || 0);
-          const daily = Number(plan.daily_remaining || 0);
-          const competitors = Number(plan.active_competitors || 0);
-          const candidates = Number(plan.comment_candidates || 0);
+          if (!preview.can_start) {
+            throw new Error((preview.blocking_reasons || []).join(' ') || 'Бюджет проверки недоступен.');
+          }
+          const hardCap = Number(preview.effective_max_credits || 0);
+          const monthlyUsed = Number(preview.used_this_month || 0);
+          const monthlyHard = Number(preview.monthly_hard_limit || 0);
+          const balance = preview.credits_remaining == null
+            ? 'не подтверждён'
+            : `${Number(preview.credits_remaining).toLocaleString('ru-RU')} credits`;
+          const months = preview.package_months_remaining_estimate == null
+            ? 'неизвестен'
+            : `~${preview.package_months_remaining_estimate} месяца`;
           const proceed = await confirmAction(
-            'Подтвердить расход live-запросов?',
-            `Активных конкурентов: ${competitors}. Reels с изменениями: ${candidates}. ` +
-            `Жёсткий предел этой проверки: ${hardCap} операций. Остаток дневного лимита: ${daily}. ` +
-            'Система не сможет превысить указанный предел даже при fallback.'
+            'Запустить Radar?',
+            `Provider: ScrapeCreators. Максимум: ${hardCap} credits. ` +
+            `Использовано за месяц: ${monthlyUsed} / ${monthlyHard}. Остаток: ${balance}. ` +
+            `Прогноз запаса после запуска: ${months}.`
           );
           if (!proceed) return;
           confirmLive = true;
+          requestedCredits = Number(preview.requested_credits);
         }
         scan.textContent = 'Запускаю…';
         const data = await api('/api/scan', {
           method: 'POST',
-          body: JSON.stringify({ confirm_live: confirmLive }),
+          body: JSON.stringify({
+            confirm_live: confirmLive,
+            max_credits: requestedCredits ? Number(requestedCredits) : 0,
+          }),
         });
         toast(data.message || 'Проверка запущена');
         if (data.ok) reloadSoon(1800);

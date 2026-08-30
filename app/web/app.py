@@ -32,6 +32,7 @@ from app.services.product_catalog_service import (
     ALLOWED_PRODUCT_CATEGORIES,
     ProductCatalogService,
 )
+from app.services.provider_credit_budget_service import ProviderCreditBudgetService
 from app.services.significant_change_service import SignificantChangeDetector
 from app.services.usage_service import ExternalUsageService
 from app.web.auth import TelegramAuthError, TelegramWebAuth, WebRole, required_role
@@ -85,6 +86,7 @@ def build_web_app(
     app.mount("/static", StaticFiles(directory=str(root / "static")), name="static")
     auth = TelegramWebAuth(settings)
     usage_service = usage_service or ExternalUsageService(workflow.session_factory)
+    provider_budget_service = ProviderCreditBudgetService(workflow.session_factory)
     crm = crm or CRMService(workflow.session_factory)
     # The Mini App button "Разобрать сохранённые сигналы" is intentionally local-only.
     # Even if production OpenAI is unlocked elsewhere, this service has no network analyzer, so
@@ -320,6 +322,8 @@ def build_web_app(
         rows = await queries.signals(q=q, competitor=competitor, kind=kind)
         competitors = await queries.competitors()
         overview = await queries.signal_overview()
+        scan_budget = await _scan_preview_payload()
+        recent_runs = await queries.monitor_runs(limit=1)
         return templates.TemplateResponse(
             request=request,
             name="radar.html",
@@ -331,6 +335,8 @@ def build_web_app(
                 kind_filter=kind,
                 competitors=competitors,
                 overview=overview,
+                scan_budget=scan_budget,
+                last_run=recent_runs[0] if recent_runs else None,
             ),
         )
 
@@ -720,17 +726,39 @@ def build_web_app(
             "message": f"Сценарий сброшен: {status.title}",
         }
 
-    async def _scan_preview_payload() -> dict:
-        usage = await queries.usage_today()
-        instagram_remaining = max(
-            0, settings.instagram_daily_request_limit - usage.get("instagram", 0)
+    async def _scan_preview_payload(requested_credits: int | None = None) -> dict:
+        daily = await usage_service.snapshot(
+            "instagram", settings.instagram_daily_request_limit
         )
-        plan = await queries.scan_plan(
-            max_units_per_scan=settings.instagram_max_units_per_scan,
-            daily_remaining=instagram_remaining,
-            live_enabled=settings.instagram_live_enabled,
+        policy = await provider_budget_service.policy(
+            settings.instagram_provider,
+            "instagram",
+        )
+        requested = (
+            requested_credits
+            if requested_credits is not None
+            else policy.default_scan_budget_units
+            if policy is not None
+            else settings.instagram_max_units_per_scan
         )
         is_live = settings.instagram_provider not in {"mock", "replay"}
+        availability = await provider_budget_service.available_for_scan(
+            provider=settings.instagram_provider,
+            requested_units=requested,
+            daily_remaining=daily.remaining,
+        )
+        effective = availability.effective_units if is_live else 0
+        plan = await queries.scan_plan(
+            max_units_per_scan=effective,
+            daily_remaining=daily.remaining,
+            live_enabled=settings.instagram_live_enabled,
+        )
+        budget = await provider_budget_service.snapshot(settings.instagram_provider)
+        blocking_reasons = list(availability.blocking_reasons) if is_live else []
+        if not settings.lead_search_enabled:
+            blocking_reasons.append("Поиск лидов приостановлен.")
+        if is_live and not settings.instagram_live_enabled:
+            blocking_reasons.append("Live-вызовы Instagram отключены.")
         return {
             "ok": True,
             "search_enabled": settings.lead_search_enabled,
@@ -738,37 +766,105 @@ def build_web_app(
             "provider": settings.instagram_provider,
             "live_enabled": settings.instagram_live_enabled,
             "requires_confirmation": is_live,
+            "requested_credits": requested,
+            "effective_max_credits": effective,
+            "credits_remaining": availability.provider_balance,
+            "credits_remaining_source": availability.provider_balance_source,
+            "used_today": daily.used_today,
+            "daily_remaining": daily.remaining,
+            "used_this_month": budget.used_this_month if budget is not None else 0,
+            "monthly_target": budget.monthly_target if budget is not None else None,
+            "monthly_soft_limit": (
+                budget.monthly_soft_limit if budget is not None else None
+            ),
+            "monthly_hard_limit": (
+                budget.monthly_hard_limit if budget is not None else None
+            ),
+            "monthly_remaining": availability.monthly_remaining,
+            "default_scan_budget": (
+                policy.default_scan_budget_units if policy is not None else None
+            ),
+            "maximum_manual_scan_budget": (
+                policy.maximum_manual_scan_budget_units if policy is not None else None
+            ),
+            "average_daily_burn_7d": (
+                budget.average_daily_burn_7d if budget is not None else 0
+            ),
+            "average_daily_burn_30d": (
+                budget.average_daily_burn_30d if budget is not None else 0
+            ),
+            "projected_monthly_burn": (
+                budget.projected_monthly_burn if budget is not None else 0
+            ),
+            "package_months_remaining_estimate": (
+                budget.months_remaining if budget is not None else None
+            ),
+            "package_months_remaining_at_target": (
+                budget.months_remaining_at_target if budget is not None else None
+            ),
+            "budget_status": budget.budget_status if budget is not None else "NOT_CONFIGURED",
+            "active_competitors": plan["active_competitors"],
+            "due_competitors": plan["active_competitors"],
+            "estimated_competitors_reachable": min(
+                plan["active_competitors"], effective
+            ),
+            "estimated_comment_pages": max(
+                0, effective - min(plan["active_competitors"], effective)
+            ),
+            "can_start": not blocking_reasons and (effective > 0 or not is_live),
+            "blocking_reasons": blocking_reasons,
             "plan": plan,
         }
 
     @app.get("/api/scan/preview")
     async def scan_preview(request: Request):
-        return await _scan_preview_payload()
+        raw = request.query_params.get("max_credits")
+        try:
+            requested = int(raw) if raw is not None else None
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="max_credits должен быть целым") from exc
+        return await _scan_preview_payload(requested)
 
     @app.post("/api/scan")
     async def scan_now(request: Request):
         if not settings.lead_search_enabled:
             raise HTTPException(
                 status_code=409,
-                detail="Поиск лидов временно приостановлен. Внешние токены не расходуются.",
+                detail="Поиск лидов временно приостановлен. ScrapeCreators credits не расходуются.",
             )
         payload = await _json_or_form(request)
+        try:
+            requested_credits = int(payload.get("max_credits") or 0)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="max_credits должен быть целым") from exc
         is_live = settings.instagram_provider not in {"mock", "replay"}
         if is_live and not settings.instagram_live_enabled:
             raise HTTPException(
                 status_code=409,
-                detail="Реальные Instagram-запросы выключены, поэтому токены не будут потрачены. Включайте их только перед контрольным тестом.",
+                detail="Реальные Instagram-запросы выключены, поэтому ScrapeCreators credits не будут потрачены. Включайте их только перед контрольным тестом.",
             )
         if is_live and payload.get("confirm_live") is not True:
             raise HTTPException(
                 status_code=428,
                 detail="Live-проверка требует отдельного подтверждения расхода.",
             )
-        started = controller.start_cycle("web")
+        preview = await _scan_preview_payload(requested_credits)
+        if is_live and not preview["can_start"]:
+            raise HTTPException(
+                status_code=409,
+                detail=" ".join(preview["blocking_reasons"]),
+            )
+        started = controller.start_cycle(
+            "web",
+            max_units=preview["effective_max_credits"] if is_live else None,
+            requested_units=requested_credits if is_live else None,
+        )
         return JSONResponse(
             {
                 "ok": started,
                 "message": "Проверка запущена" if started else "Проверка уже выполняется",
+                "requested_credits": requested_credits,
+                "effective_max_credits": preview["effective_max_credits"],
             }
         )
 

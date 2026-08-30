@@ -44,8 +44,8 @@ Lead Radar строится не как «парсер комментариев�
 ## Master work order 2026-08-31
 
 - Phase 1 Remaining P0 correctness — **ГОТОВО**;
-- Phase 2 Radar Credit Budget — **В РАБОТЕ**;
-- Phase 3 Adaptive Monitoring — далее;
+- Phase 2 Radar Credit Budget — **ГОТОВО**;
+- Phase 3 Adaptive Monitoring — **В РАБОТЕ**;
 - Phase 4 Economics — далее;
 - Phase 5 Audience correctness — далее;
 - Phase 6 Independent quality gates — далее;

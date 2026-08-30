@@ -14,6 +14,7 @@ from app.schemas.instagram import (
     InstagramPost,
     InstagramProfile,
 )
+from app.services.provider_credit_budget_service import ProviderCreditBudgetService
 from app.services.usage_service import ExternalBudgetExceeded, ExternalUsageService
 
 T = TypeVar("T")
@@ -84,11 +85,17 @@ class BudgetedInstagramProvider(InstagramProvider):
         self.daily_limit = daily_limit
         self.scan_budget = scan_budget
         self.name = inner.name
+        self.credit_budget = ProviderCreditBudgetService(usage.session_factory)
 
     def begin_cycle(self) -> None:
         if self.scan_budget is not None:
             self.scan_budget.reset()
         self.inner.begin_cycle()
+
+    def set_scan_budget_limit(self, limit: int) -> None:
+        if self.scan_budget is not None:
+            self.scan_budget.limit = max(0, int(limit))
+            self.scan_budget.reset()
 
     def scan_budget_status(self) -> dict[str, int] | None:
         if self.scan_budget is None:
@@ -147,9 +154,24 @@ class BudgetedInstagramProvider(InstagramProvider):
                 reservation_id, units=1, success=False, details=details
             )
             raise
+        confirmed_units = await self._persist_credit_observations()
+        actual_units = confirmed_units if confirmed_units is not None else 1
+        if self.scan_budget is not None and actual_units == 0:
+            self.scan_budget.refund(1)
         await self.usage.finalize_reservation(
-            reservation_id, units=1, success=True, details=details
+            reservation_id,
+            units=actual_units,
+            success=True,
+            details=details,
+            unit_source=(
+                "PROVIDER_CONFIRMED" if confirmed_units is not None else "ESTIMATED"
+            ),
         )
+        if actual_units > 1:
+            raise ScanBudgetExceededError(
+                "Фактическое списание провайдера превысило резерв одной операции. "
+                "Проверка остановлена для сверки бюджета."
+            )
         return result
 
     async def get_profile(self, handle: str) -> InstagramProfile:
@@ -217,7 +239,12 @@ class BudgetedInstagramProvider(InstagramProvider):
             )
             raise
 
-        units = max(1, int(result.pages_fetched or 1))
+        confirmed_units = await self._persist_credit_observations()
+        units = (
+            confirmed_units
+            if confirmed_units is not None
+            else max(1, int(result.pages_fetched or 1))
+        )
         if units > remaining:
             # A provider adapter that ignored max_pages is unsafe. Block further work and surface it.
             await self.usage.finalize_reservation(
@@ -230,6 +257,9 @@ class BudgetedInstagramProvider(InstagramProvider):
                     "over_budget_adapter": True,
                     "source_account": post.competitor.strip().lower().lstrip("@"),
                 },
+                unit_source=(
+                    "PROVIDER_CONFIRMED" if confirmed_units is not None else "ESTIMATED"
+                ),
             )
             raise ScanBudgetExceededError(
                 f"Провайдер вернул {units} страниц при разрешённом лимите {remaining}. "
@@ -247,8 +277,27 @@ class BudgetedInstagramProvider(InstagramProvider):
                 "pages": units,
                 "source_account": post.competitor.strip().lower().lstrip("@"),
             },
+            unit_source=(
+                "PROVIDER_CONFIRMED" if confirmed_units is not None else "ESTIMATED"
+            ),
         )
         return result
+
+    async def _persist_credit_observations(self) -> int | None:
+        observations = self.inner.pop_credit_observations()
+        confirmed_charges: list[int] = []
+        for observation in observations:
+            await self.credit_budget.record_credit_snapshot(
+                idempotency_key=observation.idempotency_key,
+                provider=observation.provider,
+                operation=observation.operation,
+                source="API_RESPONSE",
+                credits_remaining=observation.credits_remaining,
+                credits_charged=observation.credits_charged,
+            )
+            if observation.credits_charged is not None:
+                confirmed_charges.append(observation.credits_charged)
+        return sum(confirmed_charges) if confirmed_charges else None
 
     async def aclose(self) -> None:
         await self.inner.aclose()

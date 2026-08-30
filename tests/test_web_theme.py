@@ -172,8 +172,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "11.0.1-contact-layout" in base
-    assert "11.0.1-contact-layout" in auth
+    assert "12.0.0-radar-budget" in base
+    assert "12.0.0-radar-budget" in auth
     assert 'data-more-toggle aria-expanded="false"' in base
     assert 'aria-controls="more-navigation"' in base
     assert 'aria-label="Вертикаль бизнеса"' in base
@@ -210,3 +210,20 @@ def test_contact_qualification_and_intelligence_sections_have_explicit_layouts()
     assert ".interest-columns {" in css
     assert ".edit-knowledge > summary" in css
     assert ".audience-profile > .intelligence-summary" in css
+
+
+def test_radar_budget_ui_uses_credit_presets_truthful_max_and_result_facts():
+    radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
+    css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
+
+    assert "Сколько разрешить на эту проверку?" in radar
+    assert "Максимальный расход" in radar
+    assert "Потрачено" in radar
+    assert "Не израсходовано" in radar
+    for preset in ("Эконом", "Обычно", "Расширенно", "Глубоко"):
+        assert preset in radar
+    assert "max_credits" in javascript
+    assert "Использовано за месяц" in javascript
+    assert ".radar-budget-card" in css
+    assert ".scan-result-grid" in css

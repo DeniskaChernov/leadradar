@@ -4,6 +4,50 @@
 {% block subheading %}Каждый комментарий: кто написал, где нашли и что он означает{% endblock %}
 {% block content %}
 <div class="page-help"><b>Что здесь происходит?</b><span>Радар показывает все сохранённые комментарии, даже если они не являются лидами. Так всегда видно, откуда система взяла человека и почему дала ему конкретную оценку.</span></div>
+<section class="panel radar-budget-card" aria-labelledby="radar-budget-title">
+  <div class="radar-budget-head">
+    <div><span class="eyebrow">SCRAPECREATORS CREDITS</span><h2 id="radar-budget-title">Бюджет проверки</h2></div>
+    <span class="tag {% if scan_budget.budget_status == 'HEALTHY' %}success{% elif scan_budget.budget_status in ['WATCH','UNKNOWN'] %}warning{% else %}danger{% endif %}">{{ scan_budget.budget_status }}</span>
+  </div>
+  {% if scan_budget.is_live %}
+  <div class="radar-budget-metrics">
+    <div><small>Остаток</small><b>{% if scan_budget.credits_remaining is not none %}{{ '{:,}'.format(scan_budget.credits_remaining).replace(',', ' ') }} credits{% else %}Не подтверждён{% endif %}</b><span>{{ scan_budget.credits_remaining_source }}</span></div>
+    <div><small>Этот месяц</small><b>{{ scan_budget.used_this_month }} / {{ scan_budget.monthly_hard_limit or '—' }}</b><span>Рабочая цель: {{ scan_budget.monthly_target or '—' }}</span></div>
+    <div><small>Прогноз месяца</small><b>~{{ scan_budget.projected_monthly_burn|round|int }} credits</b><span>Soft limit: {{ scan_budget.monthly_soft_limit or '—' }}</span></div>
+    <div><small>Примерно хватит</small><b>{% if scan_budget.package_months_remaining_estimate is not none %}{{ scan_budget.package_months_remaining_estimate }} месяца{% else %}Баланс неизвестен{% endif %}</b><span>Цель: ≥6 месяцев</span></div>
+  </div>
+  <fieldset class="scan-budget-picker">
+    <legend>Сколько разрешить на эту проверку?</legend>
+    {% for units, title in [(5, 'Эконом'), (10, 'Обычно'), (20, 'Расширенно'), (40, 'Глубоко')] %}
+    <label><input type="radio" name="scan_budget" value="{{ units }}" {% if units == scan_budget.requested_credits %}checked{% endif %}><span><b>{{ units }}</b><small>{{ title }}</small></span></label>
+    {% endfor %}
+    <label class="custom"><input type="radio" name="scan_budget" value="custom"><span><b>Свой лимит</b><input type="number" data-custom-scan-budget min="1" max="{{ scan_budget.maximum_manual_scan_budget or 50 }}" value="{{ scan_budget.default_scan_budget or 10 }}" aria-label="Свой лимит ScrapeCreators credits"></span></label>
+  </fieldset>
+  <div class="scan-budget-preview">
+    <span>Максимальный расход: <b data-budget-max>{{ scan_budget.effective_max_credits }} credits</b></span>
+    <span>Осталось в месяце: <b>{{ scan_budget.monthly_remaining }}</b></span>
+    <span>Доступно сегодня: <b>{{ scan_budget.daily_remaining }}</b></span>
+    <button class="btn primary" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Запустить Radar</button>
+  </div>
+  {% else %}
+  <div class="alert info"><b>Offline-режим</b><span>Replay/mock не расходует ScrapeCreators credits. Live Radar остаётся отключён.</span></div>
+  {% endif %}
+</section>
+{% if last_run and last_run.status.value == 'SUCCESS' and last_run.requested_credit_budget is not none %}
+<section class="panel scan-result-card">
+  <div><span class="eyebrow">ПОСЛЕДНИЙ ЗАПУСК</span><h2>Проверка завершена</h2>{% if last_run.budget_stop_reason %}<p class="muted">Проверка корректно остановлена после достижения выбранного лимита.</p>{% endif %}</div>
+  <div class="scan-result-grid">
+    <span>Разрешено <b>{{ last_run.effective_credit_budget }}</b></span>
+    <span>Потрачено <b>{{ last_run.actual_credits_spent }}</b></span>
+    <span>Не израсходовано <b>{{ [0, (last_run.effective_credit_budget or 0) - last_run.actual_credits_spent]|max }}</b></span>
+    <span>Конкурентов <b>{{ last_run.stats_json.get('competitors_checked', 0) }}</b></span>
+    <span>Новых Reel <b>{{ last_run.stats_json.get('reels_found', 0) }}</b></span>
+    <span>Страниц комментариев <b>{{ last_run.stats_json.get('comment_requests', 0) }}</b></span>
+    <span>Новых комментариев <b>{{ last_run.stats_json.get('comments_created', 0) }}</b></span>
+    <span>Новых лидов <b>{{ last_run.stats_json.get('leads_created', 0) }}</b></span>
+  </div>
+</section>
+{% endif %}
 <div class="radar-summary">
   <a href="/radar"><span>Все сигналы</span><b>{{ overview.total }}</b></a>
   <a href="/radar?kind=pending"><span>Не разобраны</span><b>{{ overview.unprocessed + overview.pending }}</b></a>

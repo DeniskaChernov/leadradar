@@ -6,9 +6,9 @@
 - live_calls: forbidden
 - external_kill_switch: enabled
 - db_source_of_truth: lead_radar.db
-- db_backup: .backups/lead_radar-20260830-171128-858177.db
-- alembic_head: a3c8f7d24e10
-- tests: 245 passed
+- db_backup: .backups/lead_radar-20260830-213858-800287.db
+- alembic_head: b7d9e2a46f10
+- tests: 253 passed
 - ruff: passed
 - compileall: passed
 - integrity: passed
@@ -16,13 +16,17 @@
 - schema_drift: none
 - premium_glass_ui: complete; responsive shell, accessible motion, feedback states
 - contact_detail_ui: explicit knowledge/intelligence grids; responsive qualification layout
-- master_completed_phases: 1
-- master_active_phase: 2
+- master_completed_phases: 1,2
+- master_active_phase: 3
 - p0_readiness: offline-ready; live-blocked fail-closed
 - p0_ai_history: Evidence+InterestEvidence validated structured context v3.1
 - p0_audience_decay: per-InterestEvidence score/confidence + 45d source window
 - p0_external_uncertain: started ambiguous calls parked and budget-counted
+- provider_budget: scrapecreators target=3000 soft=3500 hard=3800 default_scan=10 manual_max=50
+- provider_wallet: DB-backed; balance UNKNOWN until API_RESPONSE/BALANCE_ENDPOINT/MANUAL fact
+- scan_budget: server-clamped daily+monthly+manual+confirmed-balance; actual charge reconciled
+- radar_budget_ui: presets 5/10/20/40/custom; truthful max; MonitorRun actual result
 - completed_stages: 0,1,2,3,4,5
-- active_stage: master-phase-2
-- next: implement provider credit wallet, monthly policy, manual scan cap and reconciliation
+- active_stage: master-phase-3
+- next: implement deterministic adaptive monitoring and two-phase discovery/comment allocation
 - blocked_live: Instagram, OpenAI, Telegram delivery, Meta, Google

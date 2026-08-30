@@ -12,6 +12,7 @@ from app.schemas.instagram import (
     InstagramComment,
     InstagramPost,
     InstagramProfile,
+    ProviderCreditObservation,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,10 @@ class InstagramProvider(ABC):
         """
         return None
 
+    def set_scan_budget_limit(self, limit: int) -> None:
+        """Установить durable-проверенный лимит текущего ручного запуска."""
+        return None
+
     @abstractmethod
     async def get_profile(self, handle: str) -> InstagramProfile:
         raise NotImplementedError
@@ -82,6 +87,10 @@ class InstagramProvider(ABC):
 
     async def aclose(self) -> None:
         return None
+
+    def pop_credit_observations(self) -> list[ProviderCreditObservation]:
+        """Вернуть provider-confirmed credit facts, накопленные последним вызовом."""
+        return []
 
 
 class HTTPInstagramProvider(InstagramProvider):

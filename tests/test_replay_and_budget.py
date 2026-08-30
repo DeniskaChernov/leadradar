@@ -5,12 +5,24 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select
 
-from app.db.models import Comment, Contact, Lead
+from app.db.models import (
+    Comment,
+    Contact,
+    ExternalBudgetReservation,
+    ExternalUsage,
+    Lead,
+    ProviderCreditSnapshot,
+)
 from app.providers.base import InstagramProvider, ProviderError
-from app.providers.budgeted import BudgetedInstagramProvider
+from app.providers.budgeted import BudgetedInstagramProvider, ScanBudgetExceededError
 from app.providers.fallback import FallbackInstagramProvider
 from app.providers.replay import ReplayInstagramProvider
-from app.schemas.instagram import InstagramComment, InstagramPost, InstagramProfile
+from app.schemas.instagram import (
+    InstagramComment,
+    InstagramPost,
+    InstagramProfile,
+    ProviderCreditObservation,
+)
 from app.services.ai_service import HybridLeadAnalyzer, RuleBasedLeadAnalyzer
 from app.services.contact_service import ContactService
 from app.services.instagram_monitor import InstagramMonitor
@@ -79,6 +91,25 @@ class StubProfileProvider(InstagramProvider):
         raise NotImplementedError
 
 
+class CreditAwareProfileProvider(StubProfileProvider):
+    def __init__(self) -> None:
+        super().__init__("scrapecreators", False)
+        self._observations = [
+            ProviderCreditObservation(
+                idempotency_key="provider-response:credit-aware",
+                provider="scrapecreators",
+                operation="get_profile",
+                credits_remaining=21_840,
+                credits_charged=2,
+            )
+        ]
+
+    def pop_credit_observations(self) -> list[ProviderCreditObservation]:
+        observations = self._observations
+        self._observations = []
+        return observations
+
+
 @pytest.mark.asyncio
 async def test_fallback_spend_counts_each_provider_operation(session_factory):
     usage = ExternalUsageService(session_factory)
@@ -96,6 +127,32 @@ async def test_fallback_spend_counts_each_provider_operation(session_factory):
     assert await usage.used_today("instagram") == 2
     breakdown = await usage.breakdown_today("instagram")
     assert breakdown == {"scrapecreators": 1, "brightdata": 1}
+
+
+@pytest.mark.asyncio
+async def test_provider_confirmed_response_reconciles_wallet_and_actual_usage(
+    session_factory,
+):
+    usage = ExternalUsageService(session_factory)
+    provider = BudgetedInstagramProvider(
+        CreditAwareProfileProvider(),
+        usage,
+        enabled=True,
+        daily_limit=10,
+    )
+
+    with pytest.raises(ScanBudgetExceededError, match="превысило резерв"):
+        await provider.get_profile("aiko.uz")
+
+    async with session_factory() as session:
+        snapshot = await session.scalar(select(ProviderCreditSnapshot))
+        reservation = await session.scalar(select(ExternalBudgetReservation))
+        recorded = await session.scalar(select(ExternalUsage))
+    assert snapshot is not None and snapshot.credits_remaining == 21_840
+    assert snapshot.credits_charged == 2
+    assert reservation is not None and reservation.actual_units == 2
+    assert recorded is not None and recorded.units == 2
+    assert recorded.unit_source == "PROVIDER_CONFIRMED"
 
 async def test_tasks_page_renders_in_russian(session_factory):
     from httpx import ASGITransport, AsyncClient

@@ -36,12 +36,24 @@ class MonitorController:
         self.last_stats: CycleStats | None = None
         self.last_error: str | None = None
         self._cycle_trigger: str | None = None
+        self._requested_credit_budget: int | None = None
+        self._effective_credit_budget: int | None = None
         self._task: asyncio.Task[CycleStats] | None = None
 
-    def start_cycle(self, trigger: str) -> bool:
+    def start_cycle(
+        self,
+        trigger: str,
+        *,
+        max_units: int | None = None,
+        requested_units: int | None = None,
+    ) -> bool:
         if self._task is not None and not self._task.done():
             return False
         self._cycle_trigger = trigger
+        self._requested_credit_budget = requested_units
+        self._effective_credit_budget = max_units
+        if max_units is not None and self.monitor.provider is not None:
+            self.monitor.provider.set_scan_budget_limit(max_units)
         self._task = asyncio.create_task(self._execute_cycle(), name=f"monitor:{trigger}")
         self._task.add_done_callback(_consume_task_exception)
         return True
@@ -77,7 +89,11 @@ class MonitorController:
         self.last_error = None
         run_id = None
         if self.run_service is not None:
-            run_id = await self.run_service.start(self._cycle_trigger or "unknown")
+            run_id = await self.run_service.start(
+                self._cycle_trigger or "unknown",
+                requested_credit_budget=self._requested_credit_budget,
+                effective_credit_budget=self._effective_credit_budget,
+            )
         try:
             force = (self._cycle_trigger or "") in {"web", "manual", "bot", "once"}
             parameters = inspect.signature(self.monitor.run_cycle).parameters

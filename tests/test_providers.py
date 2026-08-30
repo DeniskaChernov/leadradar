@@ -33,6 +33,26 @@ def test_scrapecreators_normalizes_documented_fields():
     assert comment.platform_user_id == "46773599357"
 
 
+def test_scrapecreators_captures_only_explicit_provider_credit_facts():
+    provider = object.__new__(ScrapeCreatorsProvider)
+    provider._credit_observations = []
+    provider._capture_credit_observation(
+        {
+            "items": [],
+            "credits_remaining": 21_842,
+            "credits_charged": 1,
+        },
+        "https://api.scrapecreators.com/v2/instagram/user/posts",
+    )
+    observations = provider.pop_credit_observations()
+
+    assert len(observations) == 1
+    assert observations[0].operation == "get_reels"
+    assert observations[0].credits_remaining == 21_842
+    assert observations[0].credits_charged == 1
+    assert provider.pop_credit_observations() == []
+
+
 def test_brightdata_normalizes_documented_fields():
     post = BrightDataProvider.normalize_post(
         {

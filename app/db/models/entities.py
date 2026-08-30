@@ -1187,6 +1187,16 @@ class MonitorRun(Base):
         index=True,
     )
     stats_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    requested_credit_budget: Mapped[int | None] = mapped_column(Integer)
+    effective_credit_budget: Mapped[int | None] = mapped_column(Integer)
+    actual_credits_spent: Mapped[int] = mapped_column(Integer, default=0)
+    provider_balance_before: Mapped[int | None] = mapped_column(Integer)
+    provider_balance_after: Mapped[int | None] = mapped_column(Integer)
+    monthly_used_before: Mapped[int | None] = mapped_column(Integer)
+    monthly_used_after: Mapped[int | None] = mapped_column(Integer)
+    budget_stop_reason: Mapped[str | None] = mapped_column(String(255))
+    operations_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    adaptive_policy_version: Mapped[str | None] = mapped_column(String(64))
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
@@ -1234,10 +1244,89 @@ class ExternalUsage(Base):
     service: Mapped[str] = mapped_column(String(64), index=True)
     operation: Mapped[str] = mapped_column(String(128), index=True)
     units: Mapped[int] = mapped_column(Integer, default=1)
+    unit_source: Mapped[str] = mapped_column(String(32), default="ESTIMATED", index=True)
     success: Mapped[bool] = mapped_column(Boolean, default=True)
     details_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
+    )
+
+
+class ProviderBudgetPolicy(Base):
+    __tablename__ = "provider_budget_policies"
+    __table_args__ = (
+        UniqueConstraint("provider", "service", name="uq_provider_budget_policy_scope"),
+        CheckConstraint(
+            "monthly_target_units >= 0 AND monthly_soft_limit_units >= monthly_target_units "
+            "AND monthly_hard_limit_units >= monthly_soft_limit_units",
+            name="ck_provider_budget_policy_monthly_limits",
+        ),
+        CheckConstraint(
+            "default_scan_budget_units > 0 "
+            "AND maximum_manual_scan_budget_units >= default_scan_budget_units",
+            name="ck_provider_budget_policy_scan_limits",
+        ),
+        CheckConstraint(
+            "comments_target_units >= 0 AND discovery_target_units >= 0 "
+            "AND enrichment_target_units >= 0 AND reserve_target_units >= 0",
+            name="ck_provider_budget_policy_allocations",
+        ),
+        CheckConstraint(
+            "target_minimum_months > 0",
+            name="ck_provider_budget_policy_minimum_months",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(128), index=True)
+    service: Mapped[str] = mapped_column(String(64), index=True)
+    monthly_target_units: Mapped[int] = mapped_column(Integer)
+    monthly_soft_limit_units: Mapped[int] = mapped_column(Integer)
+    monthly_hard_limit_units: Mapped[int] = mapped_column(Integer)
+    default_scan_budget_units: Mapped[int] = mapped_column(Integer)
+    maximum_manual_scan_budget_units: Mapped[int] = mapped_column(Integer)
+    target_minimum_months: Mapped[int] = mapped_column(Integer)
+    comments_target_units: Mapped[int] = mapped_column(Integer)
+    discovery_target_units: Mapped[int] = mapped_column(Integer)
+    enrichment_target_units: Mapped[int] = mapped_column(Integer)
+    reserve_target_units: Mapped[int] = mapped_column(Integer)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    manager_confirmed_by: Mapped[int | None] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class ProviderCreditSnapshot(Base):
+    __tablename__ = "provider_credit_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "idempotency_key",
+            name="uq_provider_credit_snapshots_idempotency_key",
+        ),
+        CheckConstraint(
+            "credits_remaining IS NULL OR credits_remaining >= 0",
+            name="ck_provider_credit_snapshot_remaining",
+        ),
+        CheckConstraint(
+            "credits_charged IS NULL OR credits_charged >= 0",
+            name="ck_provider_credit_snapshot_charged",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(160), index=True)
+    provider: Mapped[str] = mapped_column(String(128), index=True)
+    credits_remaining: Mapped[int | None] = mapped_column(Integer)
+    credits_charged: Mapped[int | None] = mapped_column(Integer)
+    operation: Mapped[str] = mapped_column(String(128), index=True)
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+    monitor_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("monitor_runs.id"), index=True
     )
 
 
@@ -1359,6 +1448,7 @@ class CostEvent(Base):
     audience_id: Mapped[int | None] = mapped_column(ForeignKey("audience_segments.id"), index=True)
     campaign_id: Mapped[int | None] = mapped_column(Integer, index=True)
     units: Mapped[int] = mapped_column(Integer, default=1)
+    unit_source: Mapped[str] = mapped_column(String(32), default="ESTIMATED", index=True)
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
     cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))

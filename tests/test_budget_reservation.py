@@ -106,6 +106,38 @@ async def test_started_reservation_cannot_be_released_and_uncertain_still_consum
 
 
 @pytest.mark.asyncio
+async def test_provider_confirmed_charge_over_reservation_is_recorded_truthfully(
+    session_factory,
+):
+    usage = ExternalUsageService(session_factory)
+    reservation_id = await usage.reserve_budget(
+        "instagram",
+        "get_reels",
+        10,
+        units=1,
+        provider="scrapecreators",
+    )
+    await usage.mark_call_started(reservation_id)
+    await usage.finalize_reservation(
+        reservation_id,
+        units=2,
+        unit_source="PROVIDER_CONFIRMED",
+    )
+
+    async with session_factory() as session:
+        reservation = await session.get(ExternalBudgetReservation, reservation_id)
+        recorded = await session.scalar(select(ExternalUsage))
+    assert reservation is not None
+    assert reservation.actual_units == 2
+    assert reservation.details_json["reservation_discrepancy"][
+        "actual_exceeded_reservation"
+    ] is True
+    assert recorded is not None
+    assert recorded.units == 2
+    assert recorded.unit_source == "PROVIDER_CONFIRMED"
+
+
+@pytest.mark.asyncio
 async def test_expired_budget_reservation_is_reclaimed(session_factory):
     usage_svc = ExternalUsageService(session_factory)
     expired_id = await usage_svc.reserve_budget("openai", "lead_analysis", 1, lease_seconds=1)
