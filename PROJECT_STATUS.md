@@ -4,8 +4,13 @@
 
 **CORE HARDENING IN PROGRESS · NOT READY FOR LIVE PILOT**
 
-Текущая цель: доказать корректность ядра по новому Master Task. Старые заявления «100% complete»
+Текущая программа: последовательный offline hardening от схемы данных и security boundary
+до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
+
+Контрольная точка 2026-08-30: 223 теста, Ruff, compileall и data-integrity проходят.
+`alembic check` обнаруживает schema drift в Product/Meta metadata; это текущий P0 и следующий
+этап до развития бизнес-функций. Перед исправлением создана резервная копия рабочей SQLite БД.
 
 ## Честная матрица готовности
 
@@ -20,7 +25,7 @@
 | Unit Economics | OFFLINE · DB-backed ledger aggregation | 197 repository tests + UI render | No | No |
 | Discovery Center / Diff Engine | OFFLINE · CSV/XLSX review queue implemented | Repository tests + migration + UI render | No | No |
 | Product Catalog / Next Best Action | OFFLINE · confirmed DB catalog and grounded actions | Repository tests + migration + UI render | No | No |
-| Premium UI / Telegram Bot | UI hardening + read-only readiness + durable outbox implemented | 213 offline tests + responsive browser QA | Delivery not run | No |
+| Premium UI / Telegram Bot | UI hardening + read-only readiness + durable outbox implemented | 223 offline tests; auth/security hardening pending | Delivery not run | No |
 | Real Agent / MCP | NOT_CONNECTED · fake execution disabled | Honest 503/NOT_CONNECTED tests | No | No |
 | Meta / Google | Not connected | Offline prototype only | No | No |
 | Offline 500–1000 signal pilot | 600-case robustness replay passed | 60 curated roots × 10 variants; unseen corpus pending | No | No |
@@ -467,11 +472,13 @@
 
 ## На какой стадии мы сейчас
 
-**Master Phase 3 из 12 завершена; Phase 4 готова к реализации.**
+Активная программа завершения начата с **Stage 0 — truth/baseline**. Следом выполняется
+**Stage 1 — устранение schema drift без потери данных**. После него: production auth,
+идемпотентность workflows, Catalog → Offer → Demand Gap, Unit Economics, независимые
+quality gates, grounded Agent/MCP, UI/Telegram hardening и deployment readiness.
 
-Ранее выполненные стадии 1–3 старого roadmap сохраняются как рабочий фундамент: CRM,
-Mini App, сделки, replay, локальный AI, защита расходов, мультиконкурентный радар и аудитории.
-Новый порядок реализации и критерии приёмки зафиксированы в `docs/V4_AUDIT_REPORT.md`.
+Стадии и утверждённый порядок отражены в актуальном `ROADMAP.md`; старые Master/V6-разделы
+ниже сохранены только как исторические контрольные точки.
 
 ## Новое в V4.1 Foundation
 
@@ -680,7 +687,8 @@ API-токены.
 
 - Python compileall: passed.
 - `ruff check app scripts`: passed.
-- Alembic schema check: passed, новых операций не требуется.
+- Alembic head/current: `d6b1e4f92a50`; `alembic check` сейчас выявляет drift metadata
+  для Product/Meta. Исправление является активным P0; миграции до него не объявляются чистыми.
 - Проверка целостности: passed; дубли по comment ID, post URL, lead/comment, deal/lead и
   notification target отсутствуют.
 - Исходные данные сохранены: 25 контактов, 12 постов и 28 комментариев. После локальной
@@ -688,7 +696,7 @@ API-токены.
 - Результат синхронизации: **16 competitors / 1 active / 24 открытых market candidates**.
 - Повторная синхронизация каталога дважды создала `0` конкурентов и `0` кандидатов.
 - Локальный web smoke: `/health` и `/` успешны; `/api/scan` возвращает блокировку `409`.
-- актуальный полный `pytest`: **213 passed**; тесты блокируют внешнюю сеть и не обращаются
+- актуальный полный `pytest`: **223 passed**; тесты блокируют внешнюю сеть и не обращаются
   к Instagram/OpenAI, поэтому API-токены не расходуются.
 - `ruff check .`, compileall и data-integrity check: passed.
 - новые `/competitors` и `/competitors/{id}` проверены на рабочей БД: browser console чиста,
@@ -704,11 +712,10 @@ API-токены.
 
 ## Следующая цель
 
-Следующий вертикальный этап V4.1 — **Demand Gap Engine**: сопоставление наблюдаемого спроса с
-управляемым каталогом предложений и объяснимые пробелы без домыслов о скрытых действиях
-конкурентов. Для начала потребуется импорт собственного каталога товаров/категорий.
+Текущий P0 — привести ORM и Alembic schema к одному контракту, доказать сохранность рабочей
+БД на upgrade/fresh/repeated проверках и включить `alembic check` в CI. После этого выполняется
+production security boundary, затем Catalog → Offer → Demand Gap.
 
-Live-поиск остаётся выключенным до отдельного решения владельца; разработка продолжается на
-накопленной БД и replay без внешнего расхода.
+Live-поиск и все платные интеграции остаются выключенными до отдельного controlled pilot.
 
 Полная дорожная карта: `ROADMAP.md`.

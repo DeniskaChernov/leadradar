@@ -1,10 +1,15 @@
-# Lead Radar V6 — Integration Docs Gate Verification
+# Lead Radar V6 — historical integration research
 
-## Verified Documentation Sources
+Этот файл фиксирует ранее изученные направления, но не доказывает текущее подключение,
+совместимость версий API или production readiness. Перед реализацией каждой интеграции
+официальная документация должна проверяться повторно, а результат — покрываться контрактными
+тестами. Сейчас Agent/MCP, Meta и Google остаются `NOT_CONNECTED`.
+
+## Previously reviewed documentation sources
 
 ### 1. OpenAI Agents SDK & MCP
-- Verified Agents SDK python docs: `https://openai.github.io/openai-agents-python/`
-- Verified MCP gateway tool schemas & Human-in-the-Loop approval patterns.
+- Agents SDK Python docs: `https://openai.github.io/openai-agents-python/`.
+- MCP gateway tool schemas и Human-in-the-Loop approval patterns.
 
 ### 2. Telegram Mini Apps & Bot API
 - Verified WebApp `initData` HMAC-SHA256 signature validation & viewport safe areas.

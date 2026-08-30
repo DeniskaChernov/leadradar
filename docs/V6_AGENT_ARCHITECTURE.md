@@ -1,12 +1,15 @@
-# Lead Radar V6 — OpenAI Agent Architecture & MCP Gateway
+# Lead Radar V6 — planned Agent/MCP contract (NOT_CONNECTED)
 
-## 1. System Overview
-Lead Radar features a central conversational AI Agent integrated with the OpenAI Agents SDK and an internal MCP (Model Context Protocol) tool gateway (`LeadRadarMCPGateway`).
+Этот документ описывает целевой контракт, а не текущее подключение. В репозитории есть
+типизированные определения `LeadRadarMCPGateway`, но их выполнение возвращает `NOT_CONNECTED`;
+`AgentSessionAssistant` отсутствует, а `/api/agent/query` честно отвечает HTTP 503.
+
+## 1. Target system overview
 
 ```text
 User / Manager Query (Web UI or Telegram)
        ↓
-AgentSessionAssistant (app/services/agent_session_service.py)
+Grounded Agent service (planned)
        ↓
 LeadRadarMCPGateway (app/services/mcp_gateway_service.py)
        ↓
@@ -15,6 +18,9 @@ LeadRadarMCPGateway (app/services/mcp_gateway_service.py)
        ↓
 Database + Evidence Graph + Catalog Facts
 ```
+
+До подключения реальных DB-backed tools этот контур нельзя считать реализованным или
+использовать как доказательство production readiness.
 
 ## 2. Security & Factuality Principles
 1. **Facts First**: GPT is a reasoning layer, NOT a fact generator. All facts originate from `PublicSignal`, `Evidence`, and SQLite DB.
