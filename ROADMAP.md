@@ -49,14 +49,14 @@ Lead Radar строится не как «парсер комментариев�
 - проверяемая резервная копия рабочей БД;
 - зафиксированные offline quality gates и честные блокировки live.
 
-### Stage 1. Schema contract — В РАБОТЕ
+### Stage 1. Schema contract — ГОТОВО
 
 - устранить drift ORM/Alembic для Product и Meta foundation;
 - сохранить все существующие данные;
 - проверить fresh/existing/repeated migration и `alembic check`;
 - сделать schema check обязательным в CI.
 
-### Stage 2. Production security boundary
+### Stage 2. Production security boundary — В РАБОТЕ
 
 - fail-closed при публичном запуске без auth;
 - Telegram initData/session, CSRF/origin protection;

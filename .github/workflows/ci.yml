@@ -26,9 +26,12 @@ jobs:
       - run: python -m compileall -q app alembic tests
       - run: python -m alembic upgrade head
       - run: python -m alembic upgrade head
+      - run: python -m alembic check
       - name: Upgrade an existing pre-Phase-B database twice
         run: |
           DATABASE_URL=sqlite+aiosqlite:///./ci-existing.db python -m alembic upgrade a6d4e2c91f30
           DATABASE_URL=sqlite+aiosqlite:///./ci-existing.db python -m alembic upgrade head
           DATABASE_URL=sqlite+aiosqlite:///./ci-existing.db python -m alembic upgrade head
+          DATABASE_URL=sqlite+aiosqlite:///./ci-existing.db python -m alembic check
       - run: python -m pytest -q
+      - run: python -m scripts.check_data_integrity

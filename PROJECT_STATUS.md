@@ -8,9 +8,18 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-30: 223 теста, Ruff, compileall и data-integrity проходят.
-`alembic check` обнаруживает schema drift в Product/Meta metadata; это текущий P0 и следующий
-этап до развития бизнес-функций. Перед исправлением создана резервная копия рабочей SQLite БД.
+Контрольная точка 2026-08-30: 224 теста, Ruff, compileall, data-integrity и `alembic check`
+проходят. Product/Meta metadata приведены к фактической схеме без изменения или удаления данных;
+fresh/repeated upgrade также проверен. Перед исправлением создана резервная копия рабочей SQLite БД.
+
+## Stage 1 — Schema contract завершён
+
+- именованные Product/Meta unique constraints отражены в ORM metadata;
+- `Product.vertical` согласован с существующим `VARCHAR(32)` контрактом;
+- новая миграция не создана, поскольку фактическая схема уже была корректной, а drift находился
+  только в metadata; лишний rebuild SQLite создал бы необоснованный риск;
+- CI теперь запускает `alembic check` на fresh и existing DB и data-integrity scan;
+- полный offline gate: **224 tests passed**, Ruff, compileall, Alembic и integrity чистые.
 
 ## Честная матрица готовности
 
@@ -472,8 +481,8 @@
 
 ## На какой стадии мы сейчас
 
-Активная программа завершения начата с **Stage 0 — truth/baseline**. Следом выполняется
-**Stage 1 — устранение schema drift без потери данных**. После него: production auth,
+Активная программа завершения закрыла **Stage 0 — truth/baseline** и
+**Stage 1 — schema contract**. Сейчас выполняется **Stage 2 — production auth**. Далее:
 идемпотентность workflows, Catalog → Offer → Demand Gap, Unit Economics, независимые
 quality gates, grounded Agent/MCP, UI/Telegram hardening и deployment readiness.
 
@@ -687,8 +696,7 @@ API-токены.
 
 - Python compileall: passed.
 - `ruff check app scripts`: passed.
-- Alembic head/current: `d6b1e4f92a50`; `alembic check` сейчас выявляет drift metadata
-  для Product/Meta. Исправление является активным P0; миграции до него не объявляются чистыми.
+- Alembic head/current: `d6b1e4f92a50`; `alembic check` не выявляет новых операций.
 - Проверка целостности: passed; дубли по comment ID, post URL, lead/comment, deal/lead и
   notification target отсутствуют.
 - Исходные данные сохранены: 25 контактов, 12 постов и 28 комментариев. После локальной
@@ -696,7 +704,7 @@ API-токены.
 - Результат синхронизации: **16 competitors / 1 active / 24 открытых market candidates**.
 - Повторная синхронизация каталога дважды создала `0` конкурентов и `0` кандидатов.
 - Локальный web smoke: `/health` и `/` успешны; `/api/scan` возвращает блокировку `409`.
-- актуальный полный `pytest`: **223 passed**; тесты блокируют внешнюю сеть и не обращаются
+- актуальный полный `pytest`: **224 passed**; тесты блокируют внешнюю сеть и не обращаются
   к Instagram/OpenAI, поэтому API-токены не расходуются.
 - `ruff check .`, compileall и data-integrity check: passed.
 - новые `/competitors` и `/competitors/{id}` проверены на рабочей БД: browser console чиста,
@@ -712,9 +720,9 @@ API-токены.
 
 ## Следующая цель
 
-Текущий P0 — привести ORM и Alembic schema к одному контракту, доказать сохранность рабочей
-БД на upgrade/fresh/repeated проверках и включить `alembic check` в CI. После этого выполняется
-production security boundary, затем Catalog → Offer → Demand Gap.
+Текущая цель — production security boundary: fail-closed публичный запуск, роли,
+authorization и защита mutating requests. После этого выполняются workflow integrity
+и Catalog → Offer → Demand Gap.
 
 Live-поиск и все платные интеграции остаются выключенными до отдельного controlled pilot.
 

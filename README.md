@@ -302,8 +302,8 @@ python -m alembic check
 python -m scripts.check_data_integrity
 ```
 
-Контрольная точка 2026-08-30: 223 теста, Ruff, compileall и integrity проходят.
-`alembic check` выявляет известный Product/Meta metadata drift и является текущим P0.
+Контрольная точка 2026-08-30: 224 теста, Ruff, compileall, integrity и `alembic check`
+проходят. Следующий обязательный этап — production auth/security boundary.
 
 ## Основные переменные `.env`
 

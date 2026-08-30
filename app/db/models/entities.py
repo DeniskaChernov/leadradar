@@ -346,13 +346,19 @@ class MarketCandidateDiff(Base):
 
 class Product(Base):
     __tablename__ = "products"
+    __table_args__ = (
+        UniqueConstraint("canonical_key", name="uq_products_canonical_key"),
+        UniqueConstraint("sku", name="uq_products_sku"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     canonical_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     sku: Mapped[str | None] = mapped_column(String(128), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
     vertical: Mapped[Vertical] = mapped_column(
-        Enum(Vertical, native_enum=False), default=Vertical.FURNITURE, index=True
+        Enum(Vertical, native_enum=False, length=32),
+        default=Vertical.FURNITURE,
+        index=True,
     )
     category: Mapped[str] = mapped_column(String(64), default="UNCONFIRMED", index=True)
     price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
@@ -811,6 +817,12 @@ class MetaAudienceBlueprint(Base):
 
 class MetaInterest(Base):
     __tablename__ = "meta_interests"
+    __table_args__ = (
+        UniqueConstraint(
+            "meta_interest_id",
+            name="uq_meta_interests_meta_interest_id",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     meta_interest_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
@@ -898,6 +910,12 @@ class MetaExportCandidate(Base):
 
 class MetaAudienceSync(Base):
     __tablename__ = "meta_audience_syncs"
+    __table_args__ = (
+        UniqueConstraint(
+            "idempotency_key",
+            name="uq_meta_audience_syncs_idempotency_key",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
