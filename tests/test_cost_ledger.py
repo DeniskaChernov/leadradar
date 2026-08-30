@@ -75,6 +75,14 @@ async def test_pricing_update_preserves_history_and_activates_latest(session_fac
         input_price=Decimal("0.000003"),
         output_price=Decimal("0.000004"),
     )
+    repeated = await service.set_price(
+        provider="openai",
+        operation="lead_analysis",
+        model_name="gpt-test",
+        pricing_basis="TOKENS",
+        input_price=Decimal("0.000003"),
+        output_price=Decimal("0.000004"),
+    )
 
     active = await service.active_price(
         "openai", "lead_analysis", model_name="gpt-test"
@@ -85,6 +93,7 @@ async def test_pricing_update_preserves_history_and_activates_latest(session_fac
     assert total == 2
     assert historical is not None and historical.active is False
     assert active is not None and active.id == second.id
+    assert repeated.id == second.id
 
 
 @pytest.mark.asyncio

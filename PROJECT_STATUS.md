@@ -8,9 +8,23 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-30: 229 тестов, Ruff, compileall, data-integrity и `alembic check`
+Контрольная точка 2026-08-30: 232 теста, Ruff, compileall, data-integrity и `alembic check`
 проходят. Product/Meta metadata приведены к фактической схеме без изменения или удаления данных;
 fresh/repeated upgrade также проверен. Перед исправлением создана резервная копия рабочей SQLite БД.
+
+## Stage 3 — Workflow integrity завершён
+
+- CRM запрещает связывать ответ/задачу с лидом другого контакта;
+- одинаковая открытая задача повторно возвращает существующую запись и не дублирует ContactEvent;
+- WON/LOST повторы с тем же payload идемпотентны, а конфликтующий повтор не переписывает сделку;
+- закрытая сделка больше не редактируется через общий upsert; quantity/amount проверяются в service;
+- review сигнала открытия идемпотентен и запрещает заменить уже принятое решение;
+- `(contact_id, place_name)` защищён DB unique constraint с race-safe возвратом существующей записи;
+- конкурентное продвижение кандидата обрабатывает unique race и возвращает одну компанию;
+- повтор той же версии pricing больше не создаёт новую историческую строку;
+- migration `e1f4a7c92b60` проверена на рабочей БД после backup, fresh, downgrade/re-upgrade;
+- integrity scan теперь покрывает opening signals;
+- полный offline gate: **232 tests passed**, Ruff, compileall, Alembic и integrity чистые.
 
 ## Stage 2 — Production security boundary завершён
 
@@ -493,9 +507,9 @@ fresh/repeated upgrade также проверен. Перед исправле�
 
 ## На какой стадии мы сейчас
 
-Активная программа завершения закрыла **Stages 0–2**: truth/baseline, schema contract
-и production web security. Сейчас выполняется **Stage 3 — workflow integrity**. Далее:
-Catalog → Offer → Demand Gap, Unit Economics, независимые
+Активная программа завершения закрыла **Stages 0–3**: truth/baseline, schema contract,
+production web security и workflow integrity. Сейчас выполняется
+**Stage 4 — Catalog → Offer → Demand Gap**. Далее: Unit Economics, независимые
 quality gates, grounded Agent/MCP, UI/Telegram hardening и deployment readiness.
 
 Стадии и утверждённый порядок отражены в актуальном `ROADMAP.md`; старые Master/V6-разделы
@@ -716,7 +730,7 @@ API-токены.
 - Результат синхронизации: **16 competitors / 1 active / 24 открытых market candidates**.
 - Повторная синхронизация каталога дважды создала `0` конкурентов и `0` кандидатов.
 - Локальный web smoke: `/health` и `/` успешны; `/api/scan` возвращает блокировку `409`.
-- актуальный полный `pytest`: **229 passed**; тесты блокируют внешнюю сеть и не обращаются
+- актуальный полный `pytest`: **232 passed**; тесты блокируют внешнюю сеть и не обращаются
   к Instagram/OpenAI, поэтому API-токены не расходуются.
 - `ruff check .`, compileall и data-integrity check: passed.
 - новые `/competitors` и `/competitors/{id}` проверены на рабочей БД: browser console чиста,
@@ -732,8 +746,8 @@ API-токены.
 
 ## Следующая цель
 
-Текущая цель — workflow integrity: транзакционные границы, immutable audit events,
-идемпотентность повторов и race tests. После этого выполняется Catalog → Offer → Demand Gap.
+Текущая цель — Catalog → Offer → Demand Gap: подтверждённые свойства и импорт каталога,
+объяснимое ранжирование, sale snapshot и измерение непокрытого наблюдаемого спроса.
 
 Live-поиск и все платные интеграции остаются выключенными до отдельного controlled pilot.
 

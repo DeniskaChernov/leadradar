@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.models import PricingConfig
 
 VALID_PRICING_BASES = {"REQUEST", "UNIT", "TOKENS"}
+_PRICING_WRITE_LOCK = asyncio.Lock()
 
 
 class PricingConfigService:
@@ -42,32 +44,51 @@ class PricingConfigService:
             raise ValueError("Provider и operation обязательны")
         model_key = model_name.strip().lower() if model_name else ""
         effective = effective_from or datetime.now(UTC)
-        async with self.session_factory() as session:
-            await session.execute(
-                update(PricingConfig)
-                .where(
-                    PricingConfig.provider == provider_key,
-                    PricingConfig.operation == operation_key,
-                    PricingConfig.model_name == model_key,
-                    PricingConfig.active.is_(True),
+        async with _PRICING_WRITE_LOCK:
+            async with self.session_factory() as session:
+                current = await session.scalar(
+                    select(PricingConfig)
+                    .where(
+                        PricingConfig.provider == provider_key,
+                        PricingConfig.operation == operation_key,
+                        PricingConfig.model_name == model_key,
+                        PricingConfig.active.is_(True),
+                    )
+                    .order_by(desc(PricingConfig.effective_from))
+                    .limit(1)
                 )
-                .values(active=False)
-            )
-            config = PricingConfig(
-                provider=provider_key,
-                operation=operation_key,
-                model_name=model_key,
-                pricing_basis=basis,
-                input_price=input_price,
-                output_price=output_price,
-                unit_price=unit_price,
-                effective_from=effective,
-                active=True,
-            )
-            session.add(config)
-            await session.commit()
-            await session.refresh(config)
-            return config
+                if current is not None and (
+                    current.pricing_basis == basis
+                    and current.input_price == input_price
+                    and current.output_price == output_price
+                    and current.unit_price == unit_price
+                ):
+                    return current
+                await session.execute(
+                    update(PricingConfig)
+                    .where(
+                        PricingConfig.provider == provider_key,
+                        PricingConfig.operation == operation_key,
+                        PricingConfig.model_name == model_key,
+                        PricingConfig.active.is_(True),
+                    )
+                    .values(active=False)
+                )
+                config = PricingConfig(
+                    provider=provider_key,
+                    operation=operation_key,
+                    model_name=model_key,
+                    pricing_basis=basis,
+                    input_price=input_price,
+                    output_price=output_price,
+                    unit_price=unit_price,
+                    effective_from=effective,
+                    active=True,
+                )
+                session.add(config)
+                await session.commit()
+                await session.refresh(config)
+                return config
 
     async def active_price(
         self, provider: str, operation: str, *, model_name: str | None = None

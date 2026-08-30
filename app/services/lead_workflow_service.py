@@ -218,11 +218,33 @@ class LeadWorkflowService:
         amount: Decimal,
         quantity: int,
     ) -> Deal:
+        cleaned_product = product_name.strip()
+        if not cleaned_product:
+            raise LeadWorkflowError("Product name is required")
+        if amount <= 0:
+            raise LeadWorkflowError("Deal amount must be positive")
+        if quantity <= 0:
+            raise LeadWorkflowError("Deal quantity must be positive")
         async with self.session_factory() as session:
-            deal, lead = await self._load_deal_and_lead(session, deal_id, manager_id)
+            deal, lead = await self._load_deal_and_lead(
+                session,
+                deal_id,
+                manager_id,
+                allow_closed=True,
+            )
+            if deal.status == DealStatus.WON:
+                if (
+                    deal.product_name == cleaned_product
+                    and deal.final_amount == amount
+                    and deal.quantity == quantity
+                ):
+                    return deal
+                raise LeadWorkflowError("Won deal cannot be changed by a repeated request")
+            if deal.status == DealStatus.LOST:
+                raise LeadWorkflowError("Lost deal cannot become WON")
             now = datetime.now(UTC)
             deal.status = DealStatus.WON
-            deal.product_name = product_name
+            deal.product_name = cleaned_product
             deal.amount = amount
             deal.final_amount = amount
             deal.quantity = quantity
@@ -242,16 +264,34 @@ class LeadWorkflowService:
                 lead_id=lead.id,
                 deal_id=deal.id,
                 manager_telegram_id=manager_id,
-                payload={"amount": str(amount), "quantity": quantity, "product": product_name},
+                payload={
+                    "amount": str(amount),
+                    "quantity": quantity,
+                    "product": cleaned_product,
+                },
             )
             await session.commit()
             return deal
 
     async def lose_deal(self, deal_id: int, manager_id: int, *, reason: str) -> Deal:
+        cleaned_reason = reason.strip()
+        if not cleaned_reason:
+            raise LeadWorkflowError("Lost reason is required")
         async with self.session_factory() as session:
-            deal, lead = await self._load_deal_and_lead(session, deal_id, manager_id)
+            deal, lead = await self._load_deal_and_lead(
+                session,
+                deal_id,
+                manager_id,
+                allow_closed=True,
+            )
+            if deal.status == DealStatus.LOST:
+                if deal.lost_reason == cleaned_reason:
+                    return deal
+                raise LeadWorkflowError("Lost deal reason cannot be changed by a repeated request")
+            if deal.status == DealStatus.WON:
+                raise LeadWorkflowError("Won deal cannot become LOST")
             deal.status = DealStatus.LOST
-            deal.lost_reason = reason
+            deal.lost_reason = cleaned_reason
             deal.lost_at = datetime.now(UTC)
             lead.status = LeadStatus.LOST
             feedback = await session.scalar(
@@ -261,14 +301,14 @@ class LeadWorkflowService:
                 feedback.actual_outcome = DealStatus.LOST.value
                 feedback.deal_created = True
                 feedback.deal_won = False
-                feedback.lost_reason = reason
+                feedback.lost_reason = cleaned_reason
             await ContactEventRepository(session).add(
                 deal.contact_id,
                 ContactEventType.DEAL_LOST,
                 lead_id=lead.id,
                 deal_id=deal.id,
                 manager_telegram_id=manager_id,
-                payload={"reason": reason},
+                payload={"reason": cleaned_reason},
             )
             await session.commit()
             return deal
@@ -392,7 +432,12 @@ class LeadWorkflowService:
             )
 
     async def _load_deal_and_lead(
-        self, session: AsyncSession, deal_id: int, manager_id: int
+        self,
+        session: AsyncSession,
+        deal_id: int,
+        manager_id: int,
+        *,
+        allow_closed: bool = False,
     ) -> tuple[Deal, Lead]:
         deal = await session.get(Deal, deal_id)
         if deal is None or deal.lead_id is None:
@@ -402,6 +447,6 @@ class LeadWorkflowService:
         lead = await session.get(Lead, deal.lead_id)
         if lead is None:
             raise LeadWorkflowError("Lead for deal not found")
-        if deal.status in {DealStatus.WON, DealStatus.LOST}:
+        if not allow_closed and deal.status in {DealStatus.WON, DealStatus.LOST}:
             raise LeadWorkflowError("Deal is already closed")
         return deal, lead

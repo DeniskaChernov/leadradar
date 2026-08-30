@@ -63,14 +63,14 @@ Lead Radar строится не как «парсер комментариев�
 - роли viewer/manager/admin и авторизация mutating/system endpoints;
 - security regression tests без внешней сети.
 
-### Stage 3. Workflow integrity — В РАБОТЕ
+### Stage 3. Workflow integrity — ГОТОВО
 
 - единый порядок DB transaction → immutable event → commit → outbox;
 - идемпотентность HTTP/Telegram повторов;
 - race tests для CRM, discovery, catalog и moderation;
 - расширенный integrity scan.
 
-### Stage 4. Catalog → Offer → Demand Gap
+### Stage 4. Catalog → Offer → Demand Gap — В РАБОТЕ
 
 - versioned manager-confirmed свойства каталога и импорт с dry-run/diff;
 - объяснимое ранжирование предложений по Evidence;

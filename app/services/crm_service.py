@@ -93,6 +93,10 @@ class CRMService:
             contact = await session.get(Contact, contact_id)
             if contact is None:
                 raise LeadWorkflowError("Клиент не найден")
+            if lead_id is not None:
+                lead = await session.get(Lead, lead_id)
+                if lead is None or lead.contact_id != contact_id:
+                    raise LeadWorkflowError("Лид не принадлежит этому клиенту")
             contact.last_contacted_at = datetime.now(UTC)
             await ContactEventRepository(session).add(
                 contact_id,
@@ -218,6 +222,22 @@ class CRMService:
             contact = await session.get(Contact, contact_id)
             if contact is None:
                 raise LeadWorkflowError("Клиент не найден")
+            if lead_id is not None:
+                lead = await session.get(Lead, lead_id)
+                if lead is None or lead.contact_id != contact_id:
+                    raise LeadWorkflowError("Лид не принадлежит этому клиенту")
+            existing = await session.scalar(
+                select(ContactTask).where(
+                    ContactTask.contact_id == contact_id,
+                    ContactTask.lead_id == lead_id,
+                    ContactTask.manager_telegram_id == manager_id,
+                    ContactTask.due_at == due_at,
+                    ContactTask.note == note.strip(),
+                    ContactTask.status == TaskStatus.OPEN,
+                )
+            )
+            if existing is not None:
+                return existing
             task = ContactTask(
                 contact_id=contact_id,
                 lead_id=lead_id,
@@ -228,10 +248,8 @@ class CRMService:
             )
             session.add(task)
             if lead_id is not None:
-                lead = await session.get(Lead, lead_id)
-                if lead is not None:
-                    lead.next_action_at = due_at
-                    lead.next_action_note = note.strip()
+                lead.next_action_at = due_at
+                lead.next_action_note = note.strip()
             await session.flush()
             await ContactEventRepository(session).add(
                 contact_id,
@@ -329,6 +347,10 @@ class CRMService:
         quantity: int | None = None,
         amount: Decimal | None = None,
     ) -> Deal:
+        if quantity is not None and quantity <= 0:
+            raise LeadWorkflowError("Количество должно быть больше нуля")
+        if amount is not None and amount < 0:
+            raise LeadWorkflowError("Сумма сделки не может быть отрицательной")
         async with self.session_factory() as session:
             lead = await session.get(Lead, lead_id)
             if lead is None:
@@ -347,6 +369,8 @@ class CRMService:
                 )
                 session.add(deal)
                 await session.flush()
+            elif deal.status in {DealStatus.WON, DealStatus.LOST}:
+                raise LeadWorkflowError("Закрытую сделку нельзя изменять")
             if product_name.strip():
                 deal.product_name = product_name.strip()
             if quantity is not None:

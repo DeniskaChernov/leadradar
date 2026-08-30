@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import normalize_instagram_handle
@@ -134,5 +135,19 @@ class MarketIntelligenceService:
                 session.add(competitor)
             candidate.instagram_handle = normalized
             candidate.status = "PROMOTED"
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                competitor = await session.scalar(
+                    select(Competitor).where(
+                        Competitor.normalized_handle == normalized
+                    )
+                )
+                candidate = await session.get(MarketCandidate, candidate_id)
+                if competitor is None or candidate is None:
+                    raise
+                candidate.instagram_handle = normalized
+                candidate.status = "PROMOTED"
+                await session.commit()
             return competitor

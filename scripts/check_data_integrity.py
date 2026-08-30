@@ -23,6 +23,7 @@ from app.db.models import (
     InterestEvidence,
     Lead,
     NotificationLog,
+    OpeningSignal,
     OutcomeDNA,
     Post,
     PublicSignal,
@@ -62,6 +63,7 @@ async def inspect_integrity() -> IntegrityResult:
                 Deal,
                 ContactEvent,
                 NotificationLog,
+                OpeningSignal,
                 SignificantChange,
                 SignificantChangeNotification,
                 Evidence,
@@ -168,6 +170,14 @@ async def inspect_integrity() -> IntegrityResult:
                     NotificationLog.idempotency_key, func.count()
                 )
                 .group_by(NotificationLog.idempotency_key)
+                .having(func.count() > 1),
+                "opening signal contact/place keys": select(
+                    OpeningSignal.contact_id,
+                    OpeningSignal.place_name,
+                    func.count(),
+                )
+                .where(OpeningSignal.contact_id.is_not(None))
+                .group_by(OpeningSignal.contact_id, OpeningSignal.place_name)
                 .having(func.count() > 1),
                 "significant changes per lead": select(SignificantChange.lead_id, func.count())
                 .group_by(SignificantChange.lead_id)

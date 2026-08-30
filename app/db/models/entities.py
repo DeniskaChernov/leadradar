@@ -1193,6 +1193,13 @@ class ExternalUsage(Base):
 
 class OpeningSignal(Base):
     __tablename__ = "opening_signals"
+    __table_args__ = (
+        UniqueConstraint(
+            "contact_id",
+            "place_name",
+            name="uq_opening_signals_contact_place",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     place_name: Mapped[str] = mapped_column(String(255), index=True)

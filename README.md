@@ -302,8 +302,9 @@ python -m alembic check
 python -m scripts.check_data_integrity
 ```
 
-Контрольная точка 2026-08-30: 229 тестов, Ruff, compileall, integrity и `alembic check`
-проходят. Production auth/RBAC/CSRF boundary закрыт; следующий этап — workflow integrity.
+Контрольная точка 2026-08-30: 232 теста, Ruff, compileall, integrity и `alembic check`
+проходят. Schema, production web security и workflow integrity закрыты; активный этап —
+Catalog → Offer → Demand Gap.
 
 ## Основные переменные `.env`
 
