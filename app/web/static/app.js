@@ -31,10 +31,14 @@
     return { ok: response.ok, detail: await response.text() };
   };
 
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
   const api = async (url, options = {}) => {
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    if (csrfToken && !headers['X-CSRF-Token']) headers['X-CSRF-Token'] = csrfToken;
     const response = await fetch(url, {
       credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      headers,
       ...options,
     });
     const data = await readResponse(response);
@@ -184,6 +188,16 @@
   });
 
   document.addEventListener('click', async (event) => {
+    const logout = event.target.closest('[data-logout]');
+    if (logout) {
+      try {
+        await api('/logout', { method: 'POST', body: '{}' });
+      } finally {
+        location.href = '/auth';
+      }
+      return;
+    }
+
     const discoveryImport = event.target.closest('[data-discovery-import]');
     if (discoveryImport) {
       const input = document.getElementById('discovery-file');
@@ -199,7 +213,10 @@
         const response = await fetch(`/api/discovery/import?filename=${encodeURIComponent(file.name)}`, {
           method: 'POST',
           credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/octet-stream' },
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+          },
           body: file,
         });
         const data = await readResponse(response);

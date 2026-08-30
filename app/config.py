@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import Annotated
+from urllib.parse import urlparse
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -23,6 +24,8 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     external_live_unlock: str = ""
     telegram_admin_chat_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
+    telegram_manager_chat_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
+    telegram_viewer_chat_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
 
     openai_api_key: str = ""
     openai_model: str = "gpt-5-mini"
@@ -78,7 +81,7 @@ class Settings(BaseSettings):
     web_public_url: str = ""
     web_manager_id: int = 0
     web_auth_enabled: bool = False
-    telegram_init_data_max_age_seconds: int = Field(default=86400, ge=60, le=604800)
+    telegram_init_data_max_age_seconds: int = Field(default=300, ge=60, le=3600)
     log_level: str = "INFO"
     http_timeout_seconds: float = Field(default=60.0, gt=0)
     http_max_attempts: int = Field(default=3, ge=1, le=5)
@@ -107,14 +110,61 @@ class Settings(BaseSettings):
         return self.openai_live_calls_enabled and self.external_spend_unlocked
 
 
-    @field_validator("telegram_admin_chat_ids", mode="before")
+    @field_validator(
+        "telegram_admin_chat_ids",
+        "telegram_manager_chat_ids",
+        "telegram_viewer_chat_ids",
+        mode="before",
+    )
     @classmethod
-    def parse_admin_ids(cls, value: object) -> object:
+    def parse_telegram_user_ids(cls, value: object) -> object:
         if value in (None, ""):
             return []
         if isinstance(value, str):
             return [int(item.strip()) for item in value.split(",") if item.strip()]
         return value
+
+    @model_validator(mode="after")
+    def validate_web_security_boundary(self) -> Settings:
+        public_host = self.web_host.strip().lower() not in {
+            "127.0.0.1",
+            "localhost",
+            "::1",
+        }
+        public_url_host = (
+            (urlparse(self.web_public_url).hostname or "").lower()
+            if self.web_public_url
+            else ""
+        )
+        public_url = bool(public_url_host) and public_url_host not in {
+            "127.0.0.1",
+            "localhost",
+            "::1",
+        }
+        publicly_exposed = public_host or public_url
+
+        if publicly_exposed and not self.web_auth_enabled:
+            raise ValueError("Public WEB_HOST/WEB_PUBLIC_URL requires WEB_AUTH_ENABLED=true")
+        if publicly_exposed and not self.web_public_url.startswith("https://"):
+            raise ValueError("Public web access requires an HTTPS WEB_PUBLIC_URL")
+        if self.web_auth_enabled:
+            if not self.telegram_bot_token:
+                raise ValueError("WEB_AUTH_ENABLED=true requires TELEGRAM_BOT_TOKEN")
+            access_ids = (
+                set(self.telegram_admin_chat_ids)
+                | set(self.telegram_manager_chat_ids)
+                | set(self.telegram_viewer_chat_ids)
+            )
+            if not access_ids:
+                raise ValueError("WEB_AUTH_ENABLED=true requires at least one allowed Telegram ID")
+            role_sets = (
+                set(self.telegram_admin_chat_ids),
+                set(self.telegram_manager_chat_ids),
+                set(self.telegram_viewer_chat_ids),
+            )
+            if any(role_sets[index] & role_sets[other] for index in range(3) for other in range(index + 1, 3)):
+                raise ValueError("A Telegram ID must belong to exactly one web role")
+        return self
 
     @field_validator("competitors", mode="before")
     @classmethod

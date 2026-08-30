@@ -302,14 +302,16 @@ python -m alembic check
 python -m scripts.check_data_integrity
 ```
 
-Контрольная точка 2026-08-30: 224 теста, Ruff, compileall, integrity и `alembic check`
-проходят. Следующий обязательный этап — production auth/security boundary.
+Контрольная точка 2026-08-30: 229 тестов, Ruff, compileall, integrity и `alembic check`
+проходят. Production auth/RBAC/CSRF boundary закрыт; следующий этап — workflow integrity.
 
 ## Основные переменные `.env`
 
 ```dotenv
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_ADMIN_CHAT_IDS=
+TELEGRAM_MANAGER_CHAT_IDS=
+TELEGRAM_VIEWER_CHAT_IDS=
 
 EXTERNAL_LIVE_UNLOCK=
 
@@ -344,6 +346,7 @@ WEB_HOST=127.0.0.1
 WEB_PORT=8000
 WEB_PUBLIC_URL=
 WEB_AUTH_ENABLED=false
+TELEGRAM_INIT_DATA_MAX_AGE_SECONDS=300
 ```
 
 ## Когда будем включать реальный Instagram
@@ -374,11 +377,16 @@ EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS
 1. SQLite заменяем на PostgreSQL через `DATABASE_URL`;
 2. получаем HTTPS URL;
 3. задаём `WEB_PUBLIC_URL`;
-4. включаем `WEB_AUTH_ENABLED=true`;
-5. Mini App проверяет Telegram `initData` на сервере;
-6. доступ получают только Telegram ID из разрешённого списка.
+4. задаём непересекающиеся списки `TELEGRAM_ADMIN_CHAT_IDS`,
+   `TELEGRAM_MANAGER_CHAT_IDS` и `TELEGRAM_VIEWER_CHAT_IDS`;
+5. включаем `WEB_AUTH_ENABLED=true`;
+6. Mini App проверяет свежий Telegram `initData` на сервере;
+7. mutating requests требуют подписанную session cookie, CSRF token и достаточную роль.
 
-До включения серверной Telegram-авторизации публично выставлять CRM нельзя.
+Приложение fail-closed: публичный host/URL без HTTPS и серверной Telegram-авторизации
+отклоняется при чтении конфигурации.
+
+Полный контракт ролей, сессии, CSRF и security headers: `docs/WEB_SECURITY_BOUNDARY.md`.
 
 ## Privacy
 

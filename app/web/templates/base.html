@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#f4f7ff">
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <title>{% block title %}Lead Radar{% endblock %}</title>
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
@@ -81,7 +82,10 @@
       </div>
 
       <div class="top-actions">
-
+        {% if settings.web_auth_enabled %}
+        <span class="status-pill safe">{{ web_role }}</span>
+        <button class="btn ghost" type="button" data-logout>Выйти</button>
+        {% endif %}
         {% if search_paused %}
         <span class="status-pill paused">⏸ Поиск на паузе</span>
         {% elif safe_mode %}

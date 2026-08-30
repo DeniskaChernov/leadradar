@@ -3,11 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import Settings
 from app.db.models import LeadStatus, NotificationPolicy
@@ -31,7 +33,7 @@ from app.services.product_catalog_service import (
 )
 from app.services.significant_change_service import SignificantChangeDetector
 from app.services.usage_service import ExternalUsageService
-from app.web.auth import TelegramAuthError, TelegramWebAuth
+from app.web.auth import TelegramAuthError, TelegramWebAuth, WebRole, required_role
 from app.web.labels import (
     AI_SOURCE_LABELS,
     BUYER_ROLE_ICONS,
@@ -69,6 +71,14 @@ def build_web_app(
     notification_worker_active: bool = False,
 ) -> FastAPI:
     app = FastAPI(title="Lead Radar", docs_url="/api/docs", redoc_url=None)
+    if settings.web_auth_enabled:
+        configured_host = urlparse(settings.web_public_url).hostname
+        allowed_hosts = {"127.0.0.1", "localhost", "testserver"}
+        if configured_host:
+            allowed_hosts.add(configured_host)
+        if settings.web_host not in {"0.0.0.0", "::"}:
+            allowed_hosts.add(settings.web_host)
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=sorted(allowed_hosts))
     root = Path(__file__).resolve().parent
     templates = Jinja2Templates(directory=str(root / "templates"))
     app.mount("/static", StaticFiles(directory=str(root / "static")), name="static")
@@ -148,10 +158,13 @@ def build_web_app(
         public_paths = {"/auth", "/api/auth/telegram", "/health"}
         if not settings.web_auth_enabled:
             request.state.manager_id = local_manager_id()
+            request.state.web_role = WebRole.ADMIN
+            request.state.csrf_token = ""
             return await call_next(request)
         if request.url.path.startswith("/static/") or request.url.path in public_paths:
             return await call_next(request)
-        manager = auth.validate_session(request.cookies.get(auth.COOKIE_NAME))
+        session_token = request.cookies.get(auth.COOKIE_NAME)
+        manager = auth.validate_session(session_token)
         if manager is None:
             if request.url.path.startswith("/api/"):
                 return JSONResponse(
@@ -164,8 +177,56 @@ def build_web_app(
                 context={"request": request, "settings": settings},
                 status_code=401,
             )
+        principal = auth.principal_for(manager)
+        if principal is None:
+            return JSONResponse(
+                {"ok": False, "detail": "Доступ этого пользователя отозван."},
+                status_code=401,
+            )
+        if request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+            csrf_token = request.headers.get("X-CSRF-Token")
+            if session_token is None or not auth.validate_csrf_token(session_token, csrf_token):
+                return JSONResponse(
+                    {"ok": False, "detail": "Запрос отклонён: неверный CSRF token."},
+                    status_code=403,
+                )
+        if principal.role < required_role(request.method, request.url.path):
+            return JSONResponse(
+                {"ok": False, "detail": "Недостаточно прав для этого действия."},
+                status_code=403,
+            )
         request.state.manager_id = manager
+        request.state.web_role = principal.role
+        request.state.csrf_token = auth.create_csrf_token(session_token)
         return await call_next(request)
+
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=()"
+        )
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' https://telegram.org https://unpkg.com; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "connect-src 'self'; "
+            "font-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org"
+        )
+        if not request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-store"
+        if settings.web_public_url.startswith("https://"):
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
+        return response
 
     def base_context(request: Request, **kwargs):
         snapshot = controller.snapshot()
@@ -182,6 +243,8 @@ def build_web_app(
             "settings": settings,
             "active_path": request.url.path,
             "manager_id": getattr(request.state, "manager_id", local_manager_id()),
+            "web_role": getattr(request.state, "web_role", WebRole.ADMIN).name,
+            "csrf_token": getattr(request.state, "csrf_token", ""),
             "safe_mode": (
                 settings.instagram_provider in {"mock", "replay"}
                 or not settings.instagram_live_enabled
@@ -221,7 +284,7 @@ def build_web_app(
         )
         return response
 
-    @app.get("/logout")
+    @app.post("/logout")
     async def logout():
         response = RedirectResponse("/auth", status_code=303)
         response.delete_cookie(auth.COOKIE_NAME)

@@ -56,14 +56,14 @@ Lead Radar строится не как «парсер комментариев�
 - проверить fresh/existing/repeated migration и `alembic check`;
 - сделать schema check обязательным в CI.
 
-### Stage 2. Production security boundary — В РАБОТЕ
+### Stage 2. Production security boundary — ГОТОВО
 
 - fail-closed при публичном запуске без auth;
 - Telegram initData/session, CSRF/origin protection;
 - роли viewer/manager/admin и авторизация mutating/system endpoints;
 - security regression tests без внешней сети.
 
-### Stage 3. Workflow integrity
+### Stage 3. Workflow integrity — В РАБОТЕ
 
 - единый порядок DB transaction → immutable event → commit → outbox;
 - идемпотентность HTTP/Telegram повторов;

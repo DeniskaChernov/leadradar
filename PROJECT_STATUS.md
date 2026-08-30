@@ -8,9 +8,21 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-30: 224 теста, Ruff, compileall, data-integrity и `alembic check`
+Контрольная точка 2026-08-30: 229 тестов, Ruff, compileall, data-integrity и `alembic check`
 проходят. Product/Meta metadata приведены к фактической схеме без изменения или удаления данных;
 fresh/repeated upgrade также проверен. Перед исправлением создана резервная копия рабочей SQLite БД.
+
+## Stage 2 — Production security boundary завершён
+
+- публичный host/URL без Telegram auth и HTTPS теперь отклоняется до запуска;
+- web-доступ разделён на непересекающиеся роли viewer/manager/admin;
+- роль и allowlist перепроверяются на каждом запросе, удаление ID отзывает активную сессию;
+- все mutating requests требуют подписанную cookie и session-bound CSRF token;
+- системные, import, catalog, competitor, pricing и scan операции доступны только admin;
+- добавлены trusted host, CSP, no-store, nosniff, referrer/permissions headers и HSTS;
+- Telegram `initData` по умолчанию действует 300 секунд вместо суток;
+- контракт описан в `docs/WEB_SECURITY_BOUNDARY.md`;
+- полный offline gate: **229 tests passed**, Ruff, compileall, Alembic и integrity чистые.
 
 ## Stage 1 — Schema contract завершён
 
@@ -34,7 +46,7 @@ fresh/repeated upgrade также проверен. Перед исправле�
 | Unit Economics | OFFLINE · DB-backed ledger aggregation | 197 repository tests + UI render | No | No |
 | Discovery Center / Diff Engine | OFFLINE · CSV/XLSX review queue implemented | Repository tests + migration + UI render | No | No |
 | Product Catalog / Next Best Action | OFFLINE · confirmed DB catalog and grounded actions | Repository tests + migration + UI render | No | No |
-| Premium UI / Telegram Bot | UI hardening + read-only readiness + durable outbox implemented | 223 offline tests; auth/security hardening pending | Delivery not run | No |
+| Premium UI / Telegram Bot | Web auth/RBAC/CSRF + UI hardening + durable outbox implemented | 229 offline tests; delivery dry-run only | Delivery not run | No |
 | Real Agent / MCP | NOT_CONNECTED · fake execution disabled | Honest 503/NOT_CONNECTED tests | No | No |
 | Meta / Google | Not connected | Offline prototype only | No | No |
 | Offline 500–1000 signal pilot | 600-case robustness replay passed | 60 curated roots × 10 variants; unseen corpus pending | No | No |
@@ -481,9 +493,9 @@ fresh/repeated upgrade также проверен. Перед исправле�
 
 ## На какой стадии мы сейчас
 
-Активная программа завершения закрыла **Stage 0 — truth/baseline** и
-**Stage 1 — schema contract**. Сейчас выполняется **Stage 2 — production auth**. Далее:
-идемпотентность workflows, Catalog → Offer → Demand Gap, Unit Economics, независимые
+Активная программа завершения закрыла **Stages 0–2**: truth/baseline, schema contract
+и production web security. Сейчас выполняется **Stage 3 — workflow integrity**. Далее:
+Catalog → Offer → Demand Gap, Unit Economics, независимые
 quality gates, grounded Agent/MCP, UI/Telegram hardening и deployment readiness.
 
 Стадии и утверждённый порядок отражены в актуальном `ROADMAP.md`; старые Master/V6-разделы
@@ -704,7 +716,7 @@ API-токены.
 - Результат синхронизации: **16 competitors / 1 active / 24 открытых market candidates**.
 - Повторная синхронизация каталога дважды создала `0` конкурентов и `0` кандидатов.
 - Локальный web smoke: `/health` и `/` успешны; `/api/scan` возвращает блокировку `409`.
-- актуальный полный `pytest`: **224 passed**; тесты блокируют внешнюю сеть и не обращаются
+- актуальный полный `pytest`: **229 passed**; тесты блокируют внешнюю сеть и не обращаются
   к Instagram/OpenAI, поэтому API-токены не расходуются.
 - `ruff check .`, compileall и data-integrity check: passed.
 - новые `/competitors` и `/competitors/{id}` проверены на рабочей БД: browser console чиста,
@@ -720,9 +732,8 @@ API-токены.
 
 ## Следующая цель
 
-Текущая цель — production security boundary: fail-closed публичный запуск, роли,
-authorization и защита mutating requests. После этого выполняются workflow integrity
-и Catalog → Offer → Demand Gap.
+Текущая цель — workflow integrity: транзакционные границы, immutable audit events,
+идемпотентность повторов и race tests. После этого выполняется Catalog → Offer → Demand Gap.
 
 Live-поиск и все платные интеграции остаются выключенными до отдельного controlled pilot.
 
