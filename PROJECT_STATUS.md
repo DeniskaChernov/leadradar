@@ -8,7 +8,7 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: 239 тестов, Ruff, compileall, data-integrity и `alembic check`
+Контрольная точка 2026-08-31: 240 тестов, Ruff, compileall, data-integrity и `alembic check`
 проходят. Рабочая БД после backup обновлена до `a3c8f7d24e10`; fresh, downgrade/re-upgrade
 и повторный schema check также проходят.
 
@@ -23,7 +23,7 @@
 - формы сохраняют позицию прокрутки после подтверждённой перезагрузки, modal удерживает focus;
 - таблица клиентов превращается в читаемые mobile cards, фильтры закреплены на длинных страницах;
 - cache versions синхронизированы для основного shell и auth;
-- UI contract расширен; полный gate: **239 tests passed**, Ruff, compileall и JS syntax check чистые.
+- UI contract расширен; полный gate: **240 tests passed**, Ruff, compileall и JS syntax check чистые.
 
 ## Stage 5 — Unit Economics завершён
 

@@ -1980,3 +1980,141 @@ body::after { animation: ambient-drift-b 22s ease-in-out infinite alternate; }
   }
   .motion-ready [data-reveal] { opacity: 1; transform: none; }
 }
+
+/* Premium Glass UI · contact intelligence and qualification layout */
+.audience-profile,
+.customer-knowledge { margin-bottom: 18px; }
+.audience-profile > .intelligence-summary {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 9px;
+  margin: 16px 18px 0;
+  padding: 0;
+  background: transparent;
+}
+.intelligence-summary > div,
+.knowledge-grid > div {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(255,255,255,.88);
+  border-radius: 14px;
+  background: linear-gradient(145deg,rgba(250,252,255,.86),rgba(237,244,253,.70));
+  box-shadow: inset 0 1px 0 #fff, 0 7px 20px rgba(48,74,116,.055);
+}
+.intelligence-summary span,
+.knowledge-grid span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+.intelligence-summary b,
+.knowledge-grid b {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.audience-profile > .dna-profile-row,
+.audience-profile > .interest-columns { margin-inline: 18px; }
+.interest-columns {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(280px,.72fr);
+  gap: 12px;
+  margin-top: 14px;
+  margin-bottom: 18px;
+}
+.interest-columns > div {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: rgba(246,249,255,.67);
+}
+.interest-columns h3 { margin: 0 0 12px; font-size: 14px; }
+.audience-chip-list a {
+  padding: 7px 10px;
+  border: 1px solid rgba(49,85,255,.15);
+  border-radius: 999px;
+  background: rgba(235,241,255,.84);
+  color: #3c55aa;
+  font-size: 11px;
+}
+.knowledge-grid {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 9px;
+  padding: 16px 18px 18px;
+}
+.knowledge-grid > .wide { grid-column: 1 / -1; }
+.knowledge-grid p {
+  margin: 0;
+  color: #425570;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.edit-knowledge {
+  margin: 0 18px 18px;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: rgba(246,249,255,.58);
+}
+.edit-knowledge > summary {
+  position: relative;
+  min-height: 48px;
+  padding: 13px 44px 13px 15px;
+  cursor: pointer;
+  list-style: none;
+  color: #315b88;
+  font-weight: 720;
+}
+.edit-knowledge > summary::-webkit-details-marker { display: none; }
+.edit-knowledge > summary::after {
+  content: "+";
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(49,85,255,.09);
+  transform: translateY(-50%);
+  transition: transform var(--motion-base) var(--ease-spring);
+}
+.edit-knowledge[open] > summary::after { transform: translateY(-50%) rotate(45deg); }
+.edit-knowledge .qualification-form {
+  border-top-color: var(--line-soft);
+  background: rgba(255,255,255,.38);
+}
+.form-footnote {
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: #586b84;
+  background: rgba(228,241,255,.72);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.quick-crm-card { border-color: rgba(49,85,255,.16); }
+
+@media (max-width: 1250px) {
+  .audience-profile > .intelligence-summary { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .knowledge-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}
+@media (max-width: 940px) {
+  .interest-columns { grid-template-columns: 1fr; }
+  .knowledge-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 560px) {
+  .audience-profile > .intelligence-summary { grid-template-columns: 1fr 1fr; margin-inline: 12px; }
+  .audience-profile > .dna-profile-row,
+  .audience-profile > .interest-columns { margin-inline: 12px; }
+  .knowledge-grid { grid-template-columns: 1fr 1fr; padding: 12px; }
+  .knowledge-grid > div { padding: 11px; }
+  .edit-knowledge { margin: 0 12px 12px; }
+}
