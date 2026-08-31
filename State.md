@@ -8,7 +8,7 @@
 - db_source_of_truth: lead_radar.db
 - db_backup: .backups/lead_radar-20260830-225522-370547.db
 - alembic_head: c8f3a1d57b20
-- tests: 290 passed
+- tests: 292 passed
 - ruff: passed
 - compileall: passed
 - integrity: passed
@@ -42,4 +42,5 @@
 - next: UI final hardening (mobile, Telegram Mini App, system/economics workspaces)
 - p0_readiness: offline-ready; live-blocked fail-closed
 - independent_quality_gates: lead/rattan/audience unseen on /system; precision/recall/F1/confusion
+- phase8_ui: system agent workspace; export dry-run UI; mobile economics/audience tables; Telegram Mini App hardening
 - bug_hunt_pass: grounded flag; export segment guard; competitor_id required; invalid filters fail-closed; system/agent UI truth
