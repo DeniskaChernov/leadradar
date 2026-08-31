@@ -8,7 +8,7 @@
 - db_source_of_truth: lead_radar.db
 - db_backup: .backups/lead_radar-20260830-225522-370547.db
 - alembic_head: c8f3a1d57b20
-- tests: 272 passed
+- tests: 275 passed
 - ruff: passed
 - compileall: passed
 - integrity: passed
@@ -16,8 +16,8 @@
 - schema_drift: none
 - premium_glass_ui: complete; responsive shell, accessible motion, feedback states
 - contact_detail_ui: explicit knowledge/intelligence grids; responsive qualification layout
-- master_completed_phases: 1,2,3,4,5
-- master_active_phase: 6
+- master_completed_phases: 1,2,3,4,5,6
+- master_active_phase: 7
 - p0_readiness: offline-ready; live-blocked fail-closed
 - p0_ai_history: Evidence+InterestEvidence validated structured context v3.1
 - p0_audience_decay: per-InterestEvidence score/confidence + 45d source window
@@ -34,6 +34,7 @@
 - analytics_split: /analytics market-only; money metrics on /economics
 - audience_quality: /audiences/quality; health snapshots; Jaccard overlap; membership confidence v2
 - audience_rattan_role: registry rattan_role criteria wired to taxonomy roles
-- active_stage: master-phase-6
-- next: independent quality gates (lead/audience/rattan unseen sets)
+- active_stage: master-phase-7
+- next: grounded GPT agent with read-only DB tools
+- independent_quality_gates: lead/rattan/audience unseen on /system; precision/recall/F1/confusion
 - blocked_live: Instagram, OpenAI, Telegram delivery, Meta, Google

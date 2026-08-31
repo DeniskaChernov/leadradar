@@ -48,6 +48,7 @@ def test_v41_signal_first_states_and_notification_modes_are_manager_readable():
     assert "OFFLINE CHALLENGE" in system
     assert "Качество локального интеллекта" in system
     assert "production accuracy" in system
+    assert "INDEPENDENT QUALITY GATES" in system
     assert "Каждый новый комментарий" in competitors
     assert "Только покупательский интерес" in competitors
     assert "Только горячие лиды" in competitors

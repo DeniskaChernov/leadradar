@@ -1,0 +1,203 @@
+[
+  {
+    "text": "polirotang 10mm flat strip wholesale",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "WHOLESALER"
+  },
+  {
+    "text": "искусственный ротанг круглый 6 мм оптом",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "WHOLESALER"
+  },
+  {
+    "text": "ротанговая лента для плетения цена за кг",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "RAW_RATTAN_RESELLER"
+  },
+  {
+    "text": "куплю полиротанг 8 мм для производства",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "BUYER"
+  },
+  {
+    "text": "импорт полиротанга из Китая под заказ",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "IMPORTER"
+  },
+  {
+    "text": "официальный дилер техноротанга",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "DISTRIBUTOR"
+  },
+  {
+    "text": "производим мебель из искусственного ротанга",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "MANUFACTURER"
+  },
+  {
+    "text": "плетём кресла из полиротанга на заказ",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "WEAVER"
+  },
+  {
+    "text": "ротанговое кресло для террасы в наличии",
+    "is_rattan": true,
+    "layer": "READY_FURNITURE",
+    "role": "FURNITURE_RESELLER"
+  },
+  {
+    "text": "искусственный ротанг диван садовый комплект",
+    "is_rattan": true,
+    "layer": "READY_FURNITURE",
+    "role": "FURNITURE_RESELLER"
+  },
+  {
+    "text": "нужен ротанговый стол для кафе",
+    "is_rattan": true,
+    "layer": "READY_FURNITURE",
+    "role": "BUYER"
+  },
+  {
+    "text": "стол обеденный деревянный цена",
+    "is_rattan": false,
+    "layer": "NONE"
+  },
+  {
+    "text": "пластиковый стул для кухни",
+    "is_rattan": false,
+    "layer": "NONE"
+  },
+  {
+    "text": "железный каркас для стола",
+    "is_rattan": false,
+    "layer": "NONE"
+  },
+  {
+    "text": "натуральный ротанг корзина",
+    "is_rattan": false,
+    "layer": "NONE"
+  },
+  {
+    "text": "natural rattan basket handmade",
+    "is_rattan": false,
+    "layer": "NONE"
+  },
+  {
+    "text": "ротанг красивый материал",
+    "is_rattan": true,
+    "layer": "NONE"
+  },
+  {
+    "text": "polirotang narxini yozing",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "RAW_RATTAN_RESELLER"
+  },
+  {
+    "text": "rotang buxta 8mm half round",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "profile": "HALF_ROUND"
+  },
+  {
+    "text": "техноротанг трубка 12 мм профиль",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "profile": "TUBE"
+  },
+  {
+    "text": "ротанговый гарнитур для сада цена",
+    "is_rattan": true,
+    "layer": "READY_FURNITURE",
+    "product": "RATTAN_SET"
+  },
+  {
+    "text": "искусственный ротанг кресло armchair",
+    "is_rattan": true,
+    "layer": "READY_FURNITURE",
+    "product": "RATTAN_ARMCHAIR"
+  },
+  {
+    "text": "ротанг оптом от 100 кг",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "WHOLESALER"
+  },
+  {
+    "text": "собственный цех по плетению ротанга",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "MANUFACTURER"
+  },
+  {
+    "text": "дистрибьютор экоротанга по Узбекистану",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "DISTRIBUTOR"
+  },
+  {
+    "text": "мебель для офиса оптом",
+    "is_rattan": false,
+    "layer": "NONE"
+  },
+  {
+    "text": "алюминиевый профиль для мебели",
+    "is_rattan": false,
+    "layer": "NONE"
+  },
+  {
+    "text": "ротанг 8 мм",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "profile": "PROFILE"
+  },
+  {
+    "text": "ротанг без контекста продажи",
+    "is_rattan": true,
+    "layer": "NONE"
+  },
+  {
+    "text": "искусственный ротанг полоса 5 мм",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "profile": "FLAT_RATTAN"
+  },
+  {
+    "text": "ротанговый стул sotiladi",
+    "is_rattan": true,
+    "layer": "READY_FURNITURE",
+    "role": "FURNITURE_RESELLER"
+  },
+  {
+    "text": "polirotangdan stul narxi",
+    "is_rattan": true,
+    "layer": "READY_FURNITURE",
+    "product": "RATTAN_CHAIR"
+  },
+  {
+    "text": "ротанг для плетения 50 кг",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "BUYER"
+  },
+  {
+    "text": "экоротанг импорт из Турции",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "IMPORTER"
+  },
+  {
+    "text": "мастерская плетения из полиротанга",
+    "is_rattan": true,
+    "layer": "RAW_MATERIAL",
+    "role": "CRAFT_MASTER"
+  }
+]

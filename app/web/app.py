@@ -20,6 +20,7 @@ from app.services.crm_service import CRMService
 from app.services.discovery_service import DiscoveryService
 from app.services.export_recipe_service import ExportRecipeService
 from app.services.fx_policy_service import FxPolicyService
+from app.services.independent_quality_gates_service import IndependentQualityGatesService
 from app.services.lead_intelligence_challenge import LeadIntelligenceChallenge
 from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowService
@@ -121,6 +122,7 @@ def build_web_app(
     pricing_service = PricingConfigService(workflow.session_factory)
     fx_policy_service = FxPolicyService(workflow.session_factory)
     intelligence_challenge = LeadIntelligenceChallenge()
+    quality_gates_service = IndependentQualityGatesService()
 
     templates.env.globals.update(
         lead_status_label=lambda value: label(LEAD_STATUS_LABELS, value),
@@ -592,6 +594,7 @@ def build_web_app(
         intelligence_quality = intelligence_challenge.evaluate(
             hot_threshold=settings.hot_lead_threshold
         )
+        quality_gates = quality_gates_service.snapshot()
         pricing_configs = await pricing_service.list_active()
         fx_policies = await fx_policy_service.list_active()
         notification_modes = {
@@ -662,6 +665,7 @@ def build_web_app(
                 notification_readiness=notification_readiness,
                 ai_safety=ai_safety,
                 intelligence_quality=intelligence_quality,
+                quality_gates=quality_gates,
                 pricing_configs=pricing_configs,
                 fx_policies=fx_policies,
             ),

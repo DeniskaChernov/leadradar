@@ -48,11 +48,18 @@ Lead Radar строится не как «парсер комментариев�
 - Phase 3 Adaptive Monitoring — **ГОТОВО**;
 - Phase 4 Economics — **ГОТОВО**;
 - Phase 5 Audience correctness — **ГОТОВО**;
-- Phase 6 Independent quality gates — **СЛЕДУЮЩАЯ**;
-- Phase 7 Grounded Agent — далее;
+- Phase 6 Independent quality gates — **ГОТОВО**;
+- Phase 7 Grounded Agent — **СЛЕДУЮЩАЯ**;
 - Phase 8 UI final hardening — далее;
 - Phase 9 Deployment — далее;
 - Phase 10 Controlled live pilot — только по отдельному разрешению.
+
+### Master Phase 6. Independent quality gates — ГОТОВО
+
+- `IndependentQualityGatesService` + unseen fixtures для lead (56), rattan (35), audience (106 labels);
+- reproducible precision/recall/F1/confusion без БД и внешних вызовов;
+- calibration/challenge/robustness наборы отделены от unseen;
+- `/system` показывает три unseen gates и статус PASS/FAIL.
 
 ### Master Phase 5. Audience correctness — ГОТОВО
 

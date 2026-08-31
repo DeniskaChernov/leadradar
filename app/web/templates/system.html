@@ -76,6 +76,32 @@
   {% if intelligence_quality.mismatches %}<details class="quality-errors"><summary>Открыть оставшиеся ошибки: {{ intelligence_quality.mismatches|length }}</summary><div class="table-wrap embedded"><table><thead><tr><th>Case</th><th>Фраза</th><th>Ожидалось</th><th>Получено</th></tr></thead><tbody>{% for item in intelligence_quality.mismatches %}<tr><td><code>{{ item.case_id }}</code><br><small>{{ item.language }}</small></td><td>{{ item.comment }}</td><td>{{ item.expected }}</td><td>{{ item.predicted }}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
 </section>
 
+<section class="panel intelligence-quality" aria-labelledby="quality-gates-title">
+  <div class="panel-head"><div><span class="eyebrow">INDEPENDENT QUALITY GATES · UNSEEN</span><h2 id="quality-gates-title">Независимые offline gates</h2><p>Отдельные unseen-наборы для lead, audience membership и rattan. Calibration/challenge/robustness остаются в других фикстурах и не смешиваются с unseen.</p></div><span class="tag {% if quality_gates.passed %}status-contacted{% else %}neutral{% endif %}">{% if quality_gates.passed %}unseen gates пройдены{% else %}unseen gates заблокированы{% endif %}</span></div>
+  <div class="mini-metrics">
+    <span><b>{{ quality_gates.calibration_cases }}</b> calibration roots</span>
+    <span><b>{{ quality_gates.challenge_cases }}</b> challenge cases</span>
+    <span><b>{{ quality_gates.robustness_cases }}</b> robustness roots</span>
+  </div>
+  {% for gate in [quality_gates.lead_unseen, quality_gates.rattan_unseen, quality_gates.audience_unseen] %}
+  <div class="quality-gate-card">
+    <div class="panel-head compact"><div><h3>{{ gate.label }}</h3><p>{{ gate.dataset_version }} · {{ gate.case_count }} cases · {{ gate.labeled_decisions }} labels</p></div><span class="tag {% if gate.passed %}status-contacted{% else %}neutral{% endif %}">{% if gate.passed %}PASS{% else %}FAIL{% endif %}</span></div>
+    <div class="mini-metrics">
+      <span><b>{{ '%.1f'|format(gate.precision * 100) }}%</b> precision</span>
+      <span><b>{{ '%.1f'|format(gate.recall * 100) }}%</b> recall</span>
+      <span><b>{{ '%.1f'|format(gate.f1 * 100) }}%</b> F1</span>
+      <span><b>{{ '%.1f'|format(gate.accuracy * 100) }}%</b> accuracy</span>
+      {% if gate.intent_accuracy is not none %}<span><b>{{ '%.1f'|format(gate.intent_accuracy * 100) }}%</b> intent</span>{% endif %}
+      {% if gate.layer_accuracy is not none %}<span><b>{{ '%.1f'|format(gate.layer_accuracy * 100) }}%</b> layer</span>{% endif %}
+    </div>
+    {% if gate.confusion %}
+    <div class="table-wrap embedded"><table><thead><tr><th>Expected</th><th>Predicted</th><th>Count</th></tr></thead><tbody>{% for cell in gate.confusion[:8] %}<tr><td><code>{{ cell.expected }}</code></td><td><code>{{ cell.predicted }}</code></td><td>{{ cell.count }}</td></tr>{% endfor %}</tbody></table></div>
+    {% endif %}
+    {% if gate.mismatches %}<details class="quality-errors"><summary>Ошибки: {{ gate.mismatches|length }}</summary><div class="table-wrap embedded"><table><thead><tr><th>Case</th><th>Ожидалось</th><th>Получено</th><th>Деталь</th></tr></thead><tbody>{% for item in gate.mismatches[:12] %}<tr><td><code>{{ item.case_id }}</code></td><td>{{ item.expected }}</td><td>{{ item.predicted }}</td><td>{{ item.detail }}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+
 <details class="panel action-form-card">
   <summary><div><b>Тарифы внешних сервисов</b><span>Версионированные цены для честного расчёта расходов</span></div></summary>
   <p class="muted">Lead Radar не подставляет выдуманные цены. Если тарифа нет, стоимость операции хранится как «неизвестно», а не как $0.</p>

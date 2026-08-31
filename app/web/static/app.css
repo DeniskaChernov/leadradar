@@ -1952,6 +1952,9 @@ body::after { animation: ambient-drift-b 22s ease-in-out infinite alternate; }
 .audience-quality-section { margin-bottom: 18px; }
 .audience-quality-issues td { background: rgba(248, 250, 252, .72); border-top: none; padding-top: 0; }
 .audience-quality-issues span { display: inline-block; margin: 0 8px 8px 0; padding: 4px 8px; border-radius: 999px; background: rgba(255,255,255,.8); border: 1px solid rgba(148,163,184,.25); color: #64748b; font-size: 11px; }
+.quality-gate-card { margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(148,163,184,.18); }
+.quality-gate-card:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
+.panel-head.compact h3 { margin: 0; font-size: 16px; }
 .interest-meter { display: grid; gap: 6px; margin: 10px 0; }
 .interest-meter > div { display: flex; justify-content: space-between; gap: 12px; }
 .interest-meter > i { display: block; height: 7px; border-radius: 99px; background: linear-gradient(90deg,var(--brand),var(--brand-2)); transform-origin: left; animation: meter-grow .8s var(--ease-out) both; }

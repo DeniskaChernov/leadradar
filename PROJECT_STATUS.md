@@ -8,8 +8,20 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: 272 тестов, Ruff, compileall, data-integrity и `alembic check`
+Контрольная точка 2026-08-31: 275 тестов, Ruff, compileall, data-integrity и `alembic check`
 проходят. Рабочая БД на `c8f3a1d57b20`; schema drift отсутствует.
+
+## Master Phase 6 — Independent quality gates завершён
+
+- `IndependentQualityGatesService` оценивает отдельные unseen-наборы:
+  lead (`fixtures/lead_intelligence_unseen_v1.json`, 56 cases),
+  rattan (`fixtures/rattan_unseen_v1.json`, 35 cases),
+  audience (`audience_membership_unseen_cases.py`, 106 labeled decisions);
+- метрики precision/recall/F1/accuracy и intent/layer confusion считаются детерминированно;
+- calibration (`lead_intelligence_v3_eval`), challenge (`lead_intelligence_challenge_v1`) и
+  robustness roots (`golden_lead_calibration`, `rattan_vertical_v2_golden`) не смешиваются с unseen;
+- `/system` показывает три gate cards с PASS/FAIL и mismatch details;
+- migration не потребовалась; полный offline gate: **275 tests passed**; внешних вызовов: **0**.
 
 ## Master Phase 5 — Audience correctness завершён
 
