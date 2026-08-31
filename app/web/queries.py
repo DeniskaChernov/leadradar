@@ -111,6 +111,77 @@ class WebQueryService:
             "cost_events": int(await self._scalar_count(CostEvent.id)),
         }
 
+    async def uncertain_notification_queue(self, *, limit: int = 30) -> list[dict]:
+        """Очередь неоднозначных Telegram-доставок для ручной сверки в UI."""
+        limit = max(1, min(limit, 100))
+        async with self.session_factory() as session:
+            lead_rows = (
+                await session.execute(
+                    select(NotificationLog, Lead, Contact)
+                    .join(Lead, Lead.id == NotificationLog.lead_id)
+                    .join(Contact, Contact.id == Lead.contact_id)
+                    .where(NotificationLog.status == NotificationStatus.UNCERTAIN)
+                    .order_by(desc(NotificationLog.uncertain_at), desc(NotificationLog.id))
+                    .limit(limit)
+                )
+            ).all()
+            change_rows = (
+                await session.execute(
+                    select(SignificantChangeNotification, SignificantChange, Contact)
+                    .join(
+                        SignificantChange,
+                        SignificantChange.id == SignificantChangeNotification.change_id,
+                    )
+                    .join(Contact, Contact.id == SignificantChange.contact_id)
+                    .where(
+                        SignificantChangeNotification.status == NotificationStatus.UNCERTAIN
+                    )
+                    .order_by(
+                        desc(SignificantChangeNotification.uncertain_at),
+                        desc(SignificantChangeNotification.id),
+                    )
+                    .limit(limit)
+                )
+            ).all()
+        items: list[dict] = []
+        for log, lead, contact in lead_rows:
+            items.append(
+                {
+                    "kind": "lead",
+                    "log_id": log.id,
+                    "lead_id": lead.id,
+                    "contact_id": contact.id,
+                    "username": contact.username or f"contact-{contact.id}",
+                    "chat_id": log.chat_id,
+                    "error": log.error,
+                    "uncertain_at": log.uncertain_at,
+                    "message_id": log.message_id,
+                }
+            )
+        for log, change, contact in change_rows:
+            items.append(
+                {
+                    "kind": "change",
+                    "log_id": log.id,
+                    "lead_id": change.lead_id,
+                    "contact_id": contact.id,
+                    "username": contact.username or f"contact-{contact.id}",
+                    "chat_id": log.chat_id,
+                    "error": log.error,
+                    "uncertain_at": log.uncertain_at,
+                    "message_id": log.message_id,
+                }
+            )
+        items.sort(
+            key=lambda row: (
+                row["uncertain_at"] is not None,
+                row["uncertain_at"] or datetime.min.replace(tzinfo=UTC),
+                row["log_id"],
+            ),
+            reverse=True,
+        )
+        return items[:limit]
+
     async def _scalar_count(self, column) -> int:
         async with self.session_factory() as session:
             return int(await session.scalar(select(func.count(column))) or 0)

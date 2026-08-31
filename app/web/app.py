@@ -38,6 +38,10 @@ from app.services.product_catalog_service import (
 )
 from app.services.provider_credit_budget_service import ProviderCreditBudgetService
 from app.services.significant_change_service import SignificantChangeDetector
+from app.services.telegram_notification_service import (
+    resolve_uncertain_change_log,
+    resolve_uncertain_lead_log,
+)
 from app.services.usage_service import ExternalUsageService
 from app.web.auth import TelegramAuthError, TelegramWebAuth, WebRole, required_role
 from app.web.labels import (
@@ -649,6 +653,7 @@ def build_web_app(
         replay_scenario = getattr(getattr(controller.monitor, "provider", None), "scenario", None)
         replay_status = replay_scenario.status() if replay_scenario is not None else None
         notification_readiness = await notification_readiness_service.preview(limit=10)
+        uncertain_notifications = await queries.uncertain_notification_queue(limit=20)
         ai_safety = await queries.ai_safety_diagnostics()
         intelligence_quality = intelligence_challenge.evaluate(
             hot_threshold=settings.hot_lead_threshold
@@ -672,6 +677,18 @@ def build_web_app(
         }
         notification_policy_info = notification_modes[settings.notification_policy]
         production_notifications = notification_readiness.controlled_pilot_ready
+        if production_notifications:
+            telegram_detail = "Production-уведомления включены"
+        elif not settings.telegram_bot_token:
+            telegram_detail = "Нет TELEGRAM_BOT_TOKEN"
+        elif not notification_readiness.worker_active:
+            telegram_detail = "Worker не запущен (нужен полный python -m app.main, не web-only)"
+        elif not notification_readiness.delivery_allowed_by_config:
+            telegram_detail = "Доставка заблокирована конфигурацией (replay/mock или kill switch)"
+        elif notification_readiness.admin_target_count <= 0:
+            telegram_detail = "Нет admin chat id для доставки"
+        else:
+            telegram_detail = "Реальная отправка сейчас не выполняется"
         from app.services.export_recipe_service import RECIPES
 
         export_recipes = list(RECIPES.values())
@@ -679,11 +696,7 @@ def build_web_app(
             "Telegram": {
                 "configured": bool(settings.telegram_bot_token),
                 "enabled": production_notifications,
-                "detail": (
-                    "Production-уведомления включены"
-                    if production_notifications
-                    else "Replay/mock не отправляет production-уведомления"
-                ),
+                "detail": telegram_detail,
             },
             "Локальный анализ": {
                 "configured": True,
@@ -732,6 +745,7 @@ def build_web_app(
                 replay_status=replay_status,
                 notification_policy_info=notification_policy_info,
                 notification_readiness=notification_readiness,
+                uncertain_notifications=uncertain_notifications,
                 ai_safety=ai_safety,
                 intelligence_quality=intelligence_quality,
                 quality_gates=quality_gates,
@@ -1042,6 +1056,63 @@ def build_web_app(
                 "OpenAI анализ включён для неоднозначных лидов (hybrid)."
                 if snap.openai_live_armed
                 else "OpenAI анализ выключен. Работают только локальные правила."
+            ),
+        }
+
+    @app.post("/api/notifications/uncertain/{kind}/{log_id}/resolve")
+    async def resolve_uncertain_notification(
+        request: Request,
+        kind: str,
+        log_id: int,
+    ):
+        payload = await _json_or_form(request)
+        delivered_raw = str(payload.get("delivered", "")).strip().lower()
+        if delivered_raw not in {"1", "true", "yes", "on", "0", "false", "no", "off"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Укажите delivered=true (уже в Telegram) или delivered=false (вернуть в очередь)",
+            )
+        delivered = delivered_raw in {"1", "true", "yes", "on"}
+        message_id_raw = payload.get("message_id")
+        message_id = None
+        if message_id_raw not in (None, ""):
+            try:
+                message_id = int(message_id_raw)
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=400, detail="message_id должен быть целым"
+                ) from exc
+        kind_norm = kind.strip().lower()
+        if kind_norm == "lead":
+            ok = await resolve_uncertain_lead_log(
+                workflow.session_factory,
+                log_id,
+                delivered=delivered,
+                message_id=message_id,
+            )
+        elif kind_norm == "change":
+            ok = await resolve_uncertain_change_log(
+                workflow.session_factory,
+                log_id,
+                delivered=delivered,
+                message_id=message_id,
+            )
+        else:
+            raise HTTPException(status_code=404, detail="Тип сверки: lead или change")
+        if not ok:
+            raise HTTPException(
+                status_code=409,
+                detail="Запись не найдена или уже не в статусе UNCERTAIN",
+            )
+        return {
+            "ok": True,
+            "kind": kind_norm,
+            "log_id": log_id,
+            "delivered": delivered,
+            "message": (
+                "Отмечено как доставлено в Telegram"
+                if delivered
+                else "Возвращено в очередь на повторную отправку"
             ),
         }
 

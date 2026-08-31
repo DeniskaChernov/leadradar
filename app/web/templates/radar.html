@@ -13,13 +13,13 @@
     <a class="btn primary" href="/leads">Лиды ({{ overview.qualified }})</a>
     <a class="btn" href="/radar?kind=hot">HOT</a>
     <a class="btn" href="/radar?kind=new">Новые</a>
-    <button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-reload="1">Retry AI</button>
-    <button class="btn ghost" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Scan</button>
+    <button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-reload="1">Повторить AI</button>
+    <button class="btn ghost" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Проверить</button>
   </div>
 </section>
 <section class="panel ops-arm-card">
   <div class="panel-head"><div><h2>Управление Live</h2><p>Тумблеры пишутся в БД. Master unlock остаётся в .env</p></div>
-    <span class="tag {% if ops.radar_live_armed %}success{% else %}muted-tag{% endif %}">{% if ops.radar_live_armed %}Radar armed{% else %}Radar off{% endif %}</span>
+    <span class="tag {% if ops.radar_live_armed %}success{% else %}muted-tag{% endif %}">{% if ops.radar_live_armed %}Radar включён{% else %}Radar выключен{% endif %}</span>
   </div>
   {% if not master_live_ready %}
   <div class="alert warn"><b>Master unlock не готов</b><span>В .env нужны scrapecreators + live flags + EXTERNAL_LIVE_UNLOCK. Без этого тумблер не включится.</span></div>

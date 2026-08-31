@@ -464,28 +464,12 @@ class TelegramLeadNotifier:
         message_id: int | None = None,
     ) -> bool:
         """Explicitly resolve an ambiguous send; it is never retried automatically."""
-
-        async with self.session_factory() as session:
-            log = await session.get(NotificationLog, log_id)
-            if log is None or log.status != NotificationStatus.UNCERTAIN:
-                return False
-            log.resolved_at = datetime.now(UTC)
-            log.uncertain_at = None
-            log.error = None
-            log.lease_owner = None
-            log.lease_token = None
-            log.lease_expires_at = None
-            if delivered:
-                log.status = NotificationStatus.SENT
-                log.message_id = message_id or log.message_id
-                log.resolution = "CONFIRMED_SENT"
-            else:
-                log.status = NotificationStatus.PENDING
-                log.delivery_started_at = None
-                log.next_attempt_at = datetime.now(UTC)
-                log.resolution = "CONFIRMED_NOT_SENT_REQUEUED"
-            await session.commit()
-            return True
+        return await resolve_uncertain_lead_log(
+            self.session_factory,
+            log_id,
+            delivered=delivered,
+            message_id=message_id,
+        )
 
     async def resolve_uncertain_change_delivery(
         self,
@@ -495,28 +479,12 @@ class TelegramLeadNotifier:
         message_id: int | None = None,
     ) -> bool:
         """Resolve an ambiguous significant-change send without guessing its outcome."""
-
-        async with self.session_factory() as session:
-            log = await session.get(SignificantChangeNotification, log_id)
-            if log is None or log.status != NotificationStatus.UNCERTAIN:
-                return False
-            log.resolved_at = datetime.now(UTC)
-            log.uncertain_at = None
-            log.error = None
-            log.lease_owner = None
-            log.lease_token = None
-            log.lease_expires_at = None
-            if delivered:
-                log.status = NotificationStatus.SENT
-                log.message_id = message_id or log.message_id
-                log.resolution = "CONFIRMED_SENT"
-            else:
-                log.status = NotificationStatus.PENDING
-                log.delivery_started_at = None
-                log.next_attempt_at = datetime.now(UTC)
-                log.resolution = "CONFIRMED_NOT_SENT_REQUEUED"
-            await session.commit()
-            return True
+        return await resolve_uncertain_change_log(
+            self.session_factory,
+            log_id,
+            delivered=delivered,
+            message_id=message_id,
+        )
 
     async def _deliver_pending(self, *, lead_id: int | None = None) -> int:
         now = datetime.now(UTC)
@@ -968,3 +936,65 @@ def lead_keyboard(card: LeadCard, *, web_public_url: str | None = None) -> Inlin
             ]
         )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def resolve_uncertain_lead_log(
+    session_factory: async_sessionmaker[AsyncSession],
+    log_id: int,
+    *,
+    delivered: bool,
+    message_id: int | None = None,
+) -> bool:
+    """Ручная сверка неоднозначной доставки карточки лида."""
+    async with session_factory() as session:
+        log = await session.get(NotificationLog, log_id)
+        if log is None or log.status != NotificationStatus.UNCERTAIN:
+            return False
+        log.resolved_at = datetime.now(UTC)
+        log.uncertain_at = None
+        log.error = None
+        log.lease_owner = None
+        log.lease_token = None
+        log.lease_expires_at = None
+        if delivered:
+            log.status = NotificationStatus.SENT
+            log.message_id = message_id or log.message_id
+            log.resolution = "CONFIRMED_SENT"
+        else:
+            log.status = NotificationStatus.PENDING
+            log.delivery_started_at = None
+            log.next_attempt_at = datetime.now(UTC)
+            log.resolution = "CONFIRMED_NOT_SENT_REQUEUED"
+        await session.commit()
+        return True
+
+
+async def resolve_uncertain_change_log(
+    session_factory: async_sessionmaker[AsyncSession],
+    log_id: int,
+    *,
+    delivered: bool,
+    message_id: int | None = None,
+) -> bool:
+    """Ручная сверка неоднозначной доставки significant-change."""
+    async with session_factory() as session:
+        log = await session.get(SignificantChangeNotification, log_id)
+        if log is None or log.status != NotificationStatus.UNCERTAIN:
+            return False
+        log.resolved_at = datetime.now(UTC)
+        log.uncertain_at = None
+        log.error = None
+        log.lease_owner = None
+        log.lease_token = None
+        log.lease_expires_at = None
+        if delivered:
+            log.status = NotificationStatus.SENT
+            log.message_id = message_id or log.message_id
+            log.resolution = "CONFIRMED_SENT"
+        else:
+            log.status = NotificationStatus.PENDING
+            log.delivery_started_at = None
+            log.next_attempt_at = datetime.now(UTC)
+            log.resolution = "CONFIRMED_NOT_SENT_REQUEUED"
+        await session.commit()
+        return True

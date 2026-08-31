@@ -12,9 +12,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=13.8.1-bug-hunt">
+  <link rel="stylesheet" href="/static/app.css?v=13.8.2-ops-ui">
   <script defer src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
-  <script defer src="/static/app.js?v=13.8.1-bug-hunt"></script>
+  <script defer src="/static/app.js?v=13.8.2-ops-ui"></script>
 </head>
 <body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}" data-page="{{ active_path }}">
 <a class="skip-link" href="#main-content">Перейти к содержимому</a>
@@ -34,8 +34,9 @@
       </div>
       <button class="nav nav-more" type="button" data-more-toggle aria-expanded="false" aria-controls="more-navigation"><span aria-hidden="true"><i data-lucide="grid-2x2"></i></span><b>Ещё</b></button>
       <div class="nav-secondary" id="more-navigation" aria-label="Дополнительная навигация">
+        <a class="nav {% if active_path.startswith('/competitors') %}active{% endif %}" href="/competitors"><span aria-hidden="true"><i data-lucide="building-2"></i></span><b>Конкуренты</b></a>
         <a class="nav {% if active_path.startswith('/catalog') %}active{% endif %}" href="/catalog?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true"><i data-lucide="notebook-tabs"></i></span><b>Каталог</b></a>
-        <a class="nav" href="/system?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true"><i data-lucide="settings-2"></i></span><b>Источники</b></a>
+        <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true"><i data-lucide="settings-2"></i></span><b>Система</b></a>
       </div>
       {% else %}
       <div class="nav-primary">

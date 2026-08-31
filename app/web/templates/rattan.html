@@ -5,9 +5,9 @@
 {% block content %}
 <section class="hero-status safe rattan-hero">
   <div>
-    <span class="eyebrow">ARTIFICIAL RATTAN PORTFOLIO</span>
+    <span class="eyebrow">ПОРТФЕЛЬ РОТАНГА</span>
     <h2>{% if rattan_counts.portfolio_empty %}Портфель пуст{% else %}{{ rattan_counts.companies }} источников · {{ rattan_counts.signals }} сигналов{% endif %}</h2>
-    <p>{% if rattan_counts.portfolio_empty %}Добавьте Instagram-источники в портфель ротанга на странице «Конкуренты» (вертикаль = Ротанг). Пока источников нет — сканы мебели сюда не попадают.{% else %}Только источники с явной вертикалью ARTIFICIAL_RATTAN и коммерческие сигналы по ним.{% endif %}</p>
+    <p>{% if rattan_counts.portfolio_empty %}Добавьте Instagram-источники в портфель на странице «Конкуренты» (вертикаль = Ротанг). Пока источников нет — сканы мебели сюда не попадают.{% else %}Только источники с вертикалью «Ротанг» и коммерческие сигналы по ним.{% endif %}</p>
   </div>
   <div class="hero-actions">
     <a class="btn primary" href="/competitors">Портфель источников</a>
@@ -20,25 +20,29 @@
 {% endif %}
 
 <div class="metrics rattan-metrics">
-  <div class="metric"><span>В портфеле</span><strong>{{ rattan_counts.companies }}</strong><small>источников enrollment</small></div>
+  <div class="metric"><span>В портфеле</span><strong>{{ rattan_counts.companies }}</strong><small>источников с вертикалью Ротанг</small></div>
   <div class="metric"><span>Коммерческий спрос</span><strong>{{ rattan_counts.signals }}</strong><small>{{ rattan_counts.filtered_noise }} реакций/очереди исключено</small></div>
   <div class="metric accent"><span>Сырьё</span><strong>{{ rattan_counts.raw }}</strong><small>бухты, кг, профиль</small></div>
-  <div class="metric success"><span>Готовая мебель</span><strong>{{ rattan_counts.ready }}</strong><small>с явным rattan-контекстом</small></div>
+  <div class="metric success"><span>Готовая мебель</span><strong>{{ rattan_counts.ready }}</strong><small>с явным контекстом ротанга</small></div>
 </div>
 
 <section class="panel" id="companies">
-  <div class="panel-head"><div><h2>Компании портфеля</h2><p>Только explicit enrollment, без автодобавления из мебельного скана</p></div></div>
-  <div class="audience-chip-list">{% for company in rattan_companies %}<a href="/competitors/{{ company.id }}">@{{ company.normalized_handle }}{% if company.active %} · active{% else %} · пауза{% endif %}</a>{% else %}<span class="muted">Источников нет. Откройте конкурента → вертикаль «Ротанг» → при необходимости включите мониторинг.</span>{% endfor %}</div>
+  <div class="panel-head"><div><h2>Компании портфеля</h2><p>Только явный выбор вертикали, без автодобавления из мебельного скана</p></div></div>
+  {% if rattan_companies %}
+  <div class="audience-chip-list">{% for company in rattan_companies %}<a href="/competitors/{{ company.id }}">@{{ company.normalized_handle }}{% if company.active %} · мониторинг{% else %} · пауза{% endif %}</a>{% endfor %}</div>
+  {% else %}
+  <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="building-2"></i></span><b>Источников пока нет</b><span>Откройте конкурента → вертикаль «Ротанг» → при необходимости включите мониторинг.</span></div>
+  {% endif %}
 </section>
 
 <section class="panel" id="signals">
-  <div class="panel-head"><div><h2>Коммерческие rattan-сигналы</h2><p>Только из источников портфеля</p></div></div>
+  <div class="panel-head"><div><h2>Коммерческие сигналы ротанга</h2><p>Только из источников портфеля</p></div></div>
   {% if rattan_rows %}
   <div class="table-wrap embedded"><table class="rattan-table"><thead><tr><th>Контакт</th><th>Текст</th><th>Категория</th><th>Источник</th></tr></thead><tbody>
   {% for lead, comment, contact, competitor, signal, evidence in rattan_rows %}<tr><td data-label="Контакт"><a href="/contacts/{{ lead.contact_id }}">{% if contact.username %}@{{ contact.username }}{% else %}Контакт #{{ contact.id }}{% endif %}</a></td><td data-label="Сигнал">{{ comment.text }}</td><td data-label="Категория"><span class="tag neutral">{{ evidence.topic or lead.product_category or 'Не определено' }}</span></td><td data-label="Источник">@{{ competitor.normalized_handle }}</td></tr>{% endfor %}
   </tbody></table></div>
   {% else %}
-  <div class="empty-box"><span class="empty-icon">🪴</span><b>Сигналов портфеля пока нет</b><span>{% if rattan_counts.portfolio_empty %}Сначала добавьте источники в вертикаль ротанга.{% else %}Запустите Live Radar по enrolled-источникам.{% endif %}</span></div>
+  <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="radio-tower"></i></span><b>Сигналов портфеля пока нет</b><span>{% if rattan_counts.portfolio_empty %}Сначала добавьте источники в вертикаль ротанга.{% else %}Запустите Live Radar по источникам портфеля.{% endif %}</span></div>
   {% endif %}
 </section>
 

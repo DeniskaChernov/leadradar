@@ -29,8 +29,8 @@
 
 <section class="operations-strip panel">
   <div><span class="op-icon" aria-hidden="true"><i data-lucide="scan-search"></i></span><div><b>{{ counts.unprocessed + counts.ai_pending }} сигналов требуют разбора</b><small>{{ counts.unprocessed }} не классифицировано · {{ counts.ai_pending }} ждут AI</small></div></div>
-  <div><span class="op-icon" aria-hidden="true"><i data-lucide="bell-ring"></i></span><div><b>{% if telegram_manager_count %}Уведомления: {{ telegram_manager_count }} менеджер{% if telegram_manager_count != 1 %}ов{% endif %}{% else %}Telegram не настроен{% endif %}</b><small>{{ counts.notifications_pending }} в очереди · {{ counts.notifications_failed }} ошибок · {{ counts.notifications_uncertain }} сверка</small></div></div>
-  <button class="btn tiny" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %}>Scan сейчас</button>
+  <div><span class="op-icon" aria-hidden="true"><i data-lucide="bell-ring"></i></span><div><b>{% if telegram_manager_count %}Уведомления: {{ telegram_manager_count }} менеджер{% if telegram_manager_count != 1 %}ов{% endif %}{% else %}Telegram не настроен{% endif %}</b><small>{{ counts.notifications_pending }} в очереди · {{ counts.notifications_failed }} ошибок · <a href="/system#uncertain-notifications">{{ counts.notifications_uncertain }} сверка</a></small></div></div>
+  <button class="btn tiny" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %}>Проверить сейчас</button>
 </section>
 
 <div class="metrics dashboard-metrics">

@@ -35,6 +35,8 @@ async def test_system_page_renders_agent_and_export_workspaces(session_factory):
     assert response.status_code == 200
     assert "GROUNDED AGENT · OFFLINE" in response.text
     assert "Export recipes preview" in response.text
+    assert 'id="uncertain-notifications"' in response.text
+    assert 'id="quality-gates"' in response.text
     assert "b2b_horeca_wholesale" in response.text
     assert agent.status_code == 200
     assert agent.json()["grounded"] is True
@@ -97,3 +99,53 @@ async def test_contact_detail_renders_grounded_agent_panel(session_factory):
     assert "data-agent-query" in response.text
     assert agent.status_code == 200
     assert agent.json()["grounded"] is True
+
+
+async def test_uncertain_notification_resolve_api(session_factory):
+    from sqlalchemy import select
+
+    from app.db.models import NotificationLog, NotificationStatus
+    from app.services.telegram_notification_service import TelegramLeadNotifier
+    from tests.test_notifications import AmbiguousBot
+
+    lead_id = await create_lead(session_factory)
+    notifier = TelegramLeadNotifier(
+        AmbiguousBot(),
+        session_factory,
+        LeadWorkflowService(session_factory, 70),
+        [1001],
+        hot_threshold=70,
+    )
+    assert await notifier.notify_hot_lead(lead_id) == 0
+    async with session_factory() as session:
+        log = await session.scalar(select(NotificationLog))
+        assert log is not None
+        assert log.status == NotificationStatus.UNCERTAIN
+        log_id = log.id
+
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+        notification_worker_active=True,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        system = await client.get("/system")
+        resolve = await client.post(
+            f"/api/notifications/uncertain/lead/{log_id}/resolve",
+            json={"delivered": False},
+        )
+    assert system.status_code == 200
+    assert "Неоднозначные Telegram-отправки" in system.text
+    assert resolve.status_code == 200
+    assert resolve.json()["ok"] is True
+    async with session_factory() as session:
+        log = await session.get(NotificationLog, log_id)
+        assert log is not None
+        assert log.status == NotificationStatus.PENDING
+        assert log.resolution == "CONFIRMED_NOT_SENT_REQUEUED"
+        assert log.uncertain_at is None
+        assert log.resolved_at is not None

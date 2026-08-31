@@ -162,8 +162,9 @@ def test_mobile_rattan_cards_and_opening_review_use_shared_safe_actions():
 
     assert 'class="rattan-table"' in rattan
     assert 'data-label="Сигнал"' in rattan
-    assert "Портфель пуст" in rattan or "источников enrollment" in rattan
-    assert "Коммерческие rattan-сигналы" in rattan
+    assert "Портфель пуст" in rattan
+    assert "источников с вертикалью Ротанг" in rattan
+    assert "Коммерческие сигналы ротанга" in rattan
     assert ".rattan-table thead { display: none; }" in css
     assert 'data-api-action="/api/openings/' in openings
     assert 'data-payload=\'{"decision":"VERIFIED"}\'' in openings
@@ -209,8 +210,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.8.1-bug-hunt" in base
-    assert "13.8.1-bug-hunt" in auth
+    assert "13.8.2-ops-ui" in base
+    assert "13.8.2-ops-ui" in auth
     assert "fonts.googleapis.com" in base
     assert 'href="/catalog"' in base
     assert 'href="/discovery"' in base

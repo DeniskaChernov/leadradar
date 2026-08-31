@@ -3008,3 +3008,18 @@ a:hover { color: #2445d9; }
     align-items: flex-start;
   }
 }
+
+.actions-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.actions-cell .inline-form { margin: 0; }
+.empty-box .empty-icon i {
+  width: 28px;
+  height: 28px;
+  display: block;
+  color: var(--primary);
+}
+#uncertain-notifications .actions-cell .btn { white-space: nowrap; }
