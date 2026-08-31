@@ -98,7 +98,7 @@ def test_competitor_intelligence_explains_data_boundary_and_actions():
         encoding="utf-8"
     )
 
-    assert "COMPETITOR INTELLIGENCE V2" in overview
+    assert "РАЗВЕДКА КОНКУРЕНТОВ" in overview
     assert "Пересечение спроса" in overview
     assert "Самые коммерчески эффективные публикации" in detail
     assert "Мы не утверждаем, что конкурент не ответил клиенту" in detail
@@ -210,8 +210,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.8.2-ops-ui" in base
-    assert "13.8.2-ops-ui" in auth
+    assert "13.8.3-local-polish" in base
+    assert "13.8.3-local-polish" in auth
     assert "fonts.googleapis.com" in base
     assert 'href="/catalog"' in base
     assert 'href="/discovery"' in base

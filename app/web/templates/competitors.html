@@ -7,7 +7,7 @@
   <div>
     <span class="eyebrow">КАРТА РЫНКА</span>
     <h2>Мы больше не ограничены AIKO</h2>
-    <p>Здесь находятся только компании, уже добавленные в радар. Поиск, импорт и проверка новых компаний вынесены в <a href="/discovery"><b>Разведку</b></a>. Новые компании запускаются <b>на паузе</b>, поэтому расширение карты рынка само по себе не расходует токены.</p>
+    <p>Здесь находятся только компании, уже добавленные в радар. Поиск, импорт и проверка новых компаний вынесены в <a href="/discovery"><b>Разведку</b></a>. Синхронизация каталога добавляет компании <b>на паузе</b> — без расхода токенов. Ручное добавление сразу запускает мониторинг, если компания не поставлена на паузу.</p>
   </div>
   <div class="market-kpis">
     <div><strong>{{ market_overview.verified }}</strong><span>в радаре</span></div>
@@ -18,11 +18,11 @@
 </section>
 
 <section class="competitive-command panel">
-  <div><span class="eyebrow">COMPETITOR INTELLIGENCE V2</span><h2>Где обнаружен коммерческий спрос</h2><p>Метрики считаются только по комментариям, реально сохранённым в Lead Radar. Они не подменяют полную статистику Instagram.</p></div>
+  <div><span class="eyebrow">РАЗВЕДКА КОНКУРЕНТОВ</span><h2>Где обнаружен коммерческий спрос</h2><p>Метрики считаются только по комментариям, реально сохранённым в Lead Radar. Они не подменяют полную статистику Instagram.</p></div>
   <div class="competitive-kpis">
     <div><strong>{{ intelligence_overview.observed_comments }}</strong><span>наблюдаемых комментариев</span></div>
     <div><strong>{{ intelligence_overview.commercial_comments }}</strong><span>коммерческих</span></div>
-    <div><strong>{{ intelligence_overview.commercial_rate }}%</strong><span>commercial intent rate</span></div>
+    <div><strong>{{ intelligence_overview.commercial_rate }}%</strong><span>доля коммерческих</span></div>
     <div><strong>{{ intelligence_overview.unique_buyers }}</strong><span>уникальных покупателей</span></div>
     <div><strong>{{ intelligence_overview.multi_competitor }}</strong><span>сравнивают компании</span></div>
   </div>
@@ -48,13 +48,13 @@
 <section class="panel competitor-block {% if not item.competitor.active %}paused-block{% endif %}">
   <div class="competitor-head">
     <div>
-      <div class="title-line"><h2><a href="/competitors/{{ item.competitor.id }}">{{ item.competitor.display_name or '@' ~ item.competitor.normalized_handle }}</a></h2><span class="tier tier-{{ item.competitor.tier|lower }}">Приоритет {{ item.competitor.tier }}</span>{% if item.competitor.active %}<span class="tag success">Активный</span><span class="tag neutral">{{ item.competitor.monitoring_state }}</span>{% else %}<span class="tag muted-tag">На паузе</span>{% endif %}</div>
+      <div class="title-line"><h2><a href="/competitors/{{ item.competitor.id }}">{{ item.competitor.display_name or '@' ~ item.competitor.normalized_handle }}</a></h2><span class="tier tier-{{ item.competitor.tier|lower }}">Приоритет {{ item.competitor.tier }}</span>{% if item.competitor.active %}<span class="tag success">Активный</span><span class="tag neutral">{% if item.competitor.monitoring_state == 'ACTIVE' %}Активный{% elif item.competitor.monitoring_state == 'WARM' %}Тёплый{% elif item.competitor.monitoring_state == 'COLD' %}Холодный{% elif item.competitor.monitoring_state == 'DORMANT' %}Спящий{% else %}{{ item.competitor.monitoring_state }}{% endif %}</span>{% else %}<span class="tag muted-tag">На паузе</span>{% endif %}</div>
       <p><a target="_blank" rel="noopener" href="https://instagram.com/{{ item.competitor.normalized_handle }}">@{{ item.competitor.normalized_handle }} ↗</a> · {{ competitor_category_label(item.competitor.category) }}</p>
       {% if item.competitor.notes %}<small>{{ item.competitor.notes }}</small>{% endif %}
       {% if item.competitor.website_url %}<small><a target="_blank" rel="noopener" href="{{ item.competitor.website_url }}">Сайт компании ↗</a></small>{% endif %}
     </div>
     <div class="mini-metrics">
-      <span><b>{{ item.posts|length }}</b> Reels</span><span><b>{{ item.comments }}</b> комментариев</span><span><b>{{ item.commercial }}</b> коммерческих</span><span><b>{{ item.commercial_rate }}%</b> intent rate</span><span><b>{{ item.unique_buyers }}</b> покупателей</span><span><b>{{ item.multi_competitor }}</b> пересечений</span>
+      <span><b>{{ item.posts|length }}</b> Reels</span><span><b>{{ item.comments }}</b> комментариев</span><span><b>{{ item.commercial }}</b> коммерческих</span><span><b>{{ item.commercial_rate }}%</b> доля коммерческих</span><span><b>{{ item.unique_buyers }}</b> покупателей</span><span><b>{{ item.multi_competitor }}</b> пересечений</span>
     </div>
   </div>
   <div class="competitor-insight"><span class="insight-label">Рекомендация</span><b class="{{ item.recommendation_tone }}">{{ item.recommendation }}</b><small>{% if item.comments < 10 %}Нужно больше реальных сигналов для вывода.{% elif item.commercial_rate >= 15 %}Высокая доля коммерческого интереса среди наблюдаемых комментариев.{% elif item.commercial_rate >= 5 %}Источник даёт полезные сигналы, продолжаем собирать статистику.{% else %}Пока мало коммерческих обращений относительно наблюдаемого объёма.{% endif %}</small><a href="/competitors/{{ item.competitor.id }}">Открыть полный разбор →</a></div>

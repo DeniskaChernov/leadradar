@@ -5,21 +5,21 @@
 {% block content %}
 <section class="hero-status {% if safe_mode %}safe{% else %}live{% endif %}">
   <div>
-    <span class="eyebrow">{% if safe_mode %}OFFLINE READY{% else %}LIVE PILOT PREP{% endif %}</span>
-    <h2>{% if safe_mode %}База и CRM работают без расхода credits{% else %}Готовим controlled Radar pilot{% endif %}</h2>
+    <span class="eyebrow">{% if safe_mode %}БЕЗ LIVE · ГОТОВО{% else %}ПОДГОТОВКА LIVE{% endif %}</span>
+    <h2>{% if safe_mode %}База и CRM работают без расхода credits{% else %}Готовим контролируемый пилот радара{% endif %}</h2>
     <p>{% if safe_mode %}Live ScrapeCreators выключен. Разбор сигналов, задачи и сделки доступны. Запуск Radar — только с подтверждением лимита 5–10 credits.{% else %}Новые комментарии сохраняются в базу. Запускайте проверку с /radar или кнопкой «Проверить сейчас» с явным cap.{% endif %}</p>
   </div>
   <div class="hero-actions">
     <a class="btn primary" href="/radar">Открыть Radar</a>
     <button class="btn" type="button" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Разобрать локально</button>
-    <button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-reload="1">Retry AI_PENDING</button>
+    <button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-reload="1">Повторить очередь AI</button>
   </div>
 </section>
 
-<section class="alert info compact-help"><b>Локальный разбор</b><span>Кнопки «Разобрать локально» и «Retry AI_PENDING» не вызывают OpenAI — только rule-based analyzer. Неоднозначные сигналы остаются в AI_PENDING.</span></section>
+<section class="alert info compact-help"><b>Локальный разбор</b><span>Кнопки «Разобрать локально» и «Повторить очередь AI» не вызывают OpenAI — только rule-based analyzer. Неоднозначные сигналы остаются в AI_PENDING.</span></section>
 
 <section class="quick-actions panel" aria-label="Быстрые действия">
-  <a class="quick-action" href="/radar"><span class="quick-action-icon"><i data-lucide="radar"></i></span><b>Radar</b><small>Бюджет и запуск scan</small></a>
+  <a class="quick-action" href="/radar"><span class="quick-action-icon"><i data-lucide="radar"></i></span><b>Radar</b><small>Бюджет и запуск проверки</small></a>
   <a class="quick-action" href="/leads"><span class="quick-action-icon hot"><i data-lucide="zap"></i></span><b>{{ counts.hot }} HOT</b><small>Открыть горячие лиды</small></a>
   <a class="quick-action" href="/tasks"><span class="quick-action-icon warn"><i data-lucide="circle-check-big"></i></span><b>{{ counts.tasks_today }} задач</b><small>{% if counts.tasks_due %}{{ counts.tasks_due }} просрочено{% else %}На сегодня{% endif %}</small></a>
   <a class="quick-action" href="/economics"><span class="quick-action-icon"><i data-lucide="wallet"></i></span><b>Экономика</b><small>Credits и эффективность</small></a>
@@ -63,7 +63,7 @@
       </a>
       {% endfor %}
       {% if not recent_changes and not tasks and not hot_leads %}
-      <div class="empty-box"><span class="empty-icon">✨</span><b>Всё спокойно</b><span>Новые HOT и задачи появятся здесь автоматически.</span></div>
+      <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="layout-dashboard"></i></span><b>Всё спокойно</b><span>HOT и задачи появятся здесь при активных источниках и проверках; Live Radar нужен, когда он включён.</span></div>
       {% endif %}
     </div>
   </section>
@@ -93,7 +93,7 @@
         <div class="score {% if lead and lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead %}warm{% else %}muted{% endif %}">{% if lead and lead.status.value not in ['ANALYZING','AI_PENDING'] %}{{ lead.lead_score }}{% else %}…{% endif %}</div>
       </a>
       {% else %}
-      <div class="empty-box"><span class="empty-icon">📡</span><b>Сигналов пока нет</b><span>Запустите Radar на странице «Радар».</span></div>
+      <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="radio-tower"></i></span><b>Сигналов пока нет</b><span>Запустите Radar на странице «Радар».</span></div>
       {% endfor %}
     </div>
   </section>
@@ -109,7 +109,7 @@
         <div class="run-stat"><b>{{ run.actual_credits_spent or 0 }}</b><small>credits</small></div>
       </div>
       {% else %}
-      <div class="empty-box"><span class="empty-icon">⚙️</span><b>Проверок ещё не было</b><span>Запустите Radar с лимитом 5–10 credits.</span></div>
+      <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="settings-2"></i></span><b>Проверок ещё не было</b><span>Запустите Radar с лимитом 5–10 credits.</span></div>
       {% endfor %}
     </div>
   </section>

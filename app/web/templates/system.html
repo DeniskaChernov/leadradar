@@ -9,7 +9,7 @@
 
 <section class="hero-status system-hero safe">
   <div>
-    <span class="eyebrow">SYSTEM COCKPIT</span>
+    <span class="eyebrow">КАБИНА СИСТЕМЫ</span>
     <h2>Диагностика, AI и расходы</h2>
     <p>Локальный разбор без OpenAI · retry AI_PENDING · quality gates · уведомления</p>
   </div>
@@ -26,9 +26,9 @@
   <a href="#scan-plan">План проверки</a>
   <a href="#notifications">Уведомления</a>
   <a href="#uncertain-notifications">Сверка Telegram</a>
-  <a href="#ai-safety">AI safety</a>
-  <a href="#quality-gates">Quality gates</a>
-  <a href="#agent-workspace">Agent</a>
+  <a href="#ai-safety">AI-безопасность</a>
+  <a href="#quality-gates">Проверки качества</a>
+  <a href="#agent-workspace">Ассистент</a>
   <a href="/roadmap">Roadmap</a>
 </nav>
 
@@ -79,7 +79,7 @@
 <section class="panel notification-readiness">
   <div class="panel-head"><div><span class="eyebrow">DRY-RUN · БЕЗ ОТПРАВКИ</span><h2>Готовность Telegram-уведомлений</h2><p>Read-only preview применяет реальные политики и проверяет outbox, но ничего не записывает и не отправляет.</p></div><span class="tag {% if notification_readiness.controlled_pilot_ready %}status-contacted{% else %}neutral{% endif %}">{% if notification_readiness.controlled_pilot_ready %}worker активен{% else %}pilot заблокирован{% endif %}</span></div>
   <div class="mini-metrics">
-    <span><b>{% if settings.external_kill_switch %}ВКЛ{% else %}ВЫКЛ{% endif %}</b> global kill switch</span>
+    <span><b>{% if settings.external_kill_switch %}ВКЛ{% else %}ВЫКЛ{% endif %}</b> глобальный стоп</span>
     <span><b>{{ usage.get('openai', 0) }}</b> AI-запросов сегодня</span>
     <span><b>{{ [0, settings.openai_daily_request_limit - usage.get('openai', 0)]|max }}</b> остаток AI-лимита</span>
     <span><b>{{ notification_readiness.total_reviewed }}</b> проверено</span>
@@ -94,9 +94,9 @@
   <p class="table-scroll-hint">На узком экране строки сворачиваются в карточки.</p>
   <div class="table-wrap embedded system-table-wrap">
     <table class="responsive-table system-table notification-preview-table">
-      <thead><tr><th>Лид</th><th>Сигнал</th><th>Policy</th><th>Решение</th><th>Почему</th><th>Получатели</th></tr></thead>
+      <thead><tr><th>Лид</th><th>Сигнал</th><th>Политика</th><th>Решение</th><th>Почему</th><th>Получатели</th></tr></thead>
       <tbody>
-    {% for item in notification_readiness.previews %}<tr><td data-label="Лид"><a href="/leads/{{ item.lead_id }}">@{{ item.username }}</a><br><small>{{ item.score }}/100 · {{ item.intent }}</small></td><td data-label="Сигнал">{{ item.comment }}</td><td data-label="Policy"><code>{{ item.policy }}</code></td><td data-label="Решение"><span class="tag notification-{{ item.decision|lower }}">{{ item.decision }}</span></td><td data-label="Почему">{{ item.reason }}<br><small>{{ item.idempotency_pattern }}</small></td><td data-label="Получатели">{{ item.target_count }}</td></tr>{% else %}<tr><td colspan="6" class="empty">Сохранённых лидов для preview пока нет.</td></tr>{% endfor %}
+    {% for item in notification_readiness.previews %}<tr><td data-label="Лид"><a href="/leads/{{ item.lead_id }}">@{{ item.username }}</a><br><small>{{ item.score }}/100 · {{ item.intent }}</small></td><td data-label="Сигнал">{{ item.comment }}</td><td data-label="Политика"><code>{{ item.policy }}</code></td><td data-label="Решение"><span class="tag notification-{{ item.decision|lower }}">{{ item.decision }}</span></td><td data-label="Почему">{{ item.reason }}<br><small>{{ item.idempotency_pattern }}</small></td><td data-label="Получатели">{{ item.target_count }}</td></tr>{% else %}<tr><td colspan="6" class="empty">Сохранённых лидов для preview пока нет.</td></tr>{% endfor %}
   </tbody></table>  </div>
 </section>
 

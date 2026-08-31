@@ -40,14 +40,14 @@
 </section>
 <section class="panel radar-budget-card" aria-labelledby="radar-budget-title">
   <div class="radar-budget-head">
-    <div><span class="eyebrow">SCRAPECREATORS CREDITS</span><h2 id="radar-budget-title">Бюджет проверки</h2></div>
-    <span class="tag {% if scan_budget.budget_status == 'HEALTHY' %}success{% elif scan_budget.budget_status in ['WATCH','UNKNOWN'] %}warning{% else %}danger{% endif %}">{{ scan_budget.budget_status }}</span>
+    <div><span class="eyebrow">ЛИМИТ CREDITS</span><h2 id="radar-budget-title">Бюджет проверки</h2></div>
+    <span class="tag {% if scan_budget.budget_status == 'HEALTHY' %}success{% elif scan_budget.budget_status in ['WATCH','UNKNOWN'] %}warning{% else %}danger{% endif %}">{% if scan_budget.budget_status == 'HEALTHY' %}В норме{% elif scan_budget.budget_status == 'WATCH' %}Наблюдение{% elif scan_budget.budget_status == 'UNKNOWN' %}Неизвестно{% elif scan_budget.budget_status == 'NOT_CONFIGURED' %}Не задан{% elif scan_budget.budget_status == 'DANGER' %}Опасно{% else %}{{ scan_budget.budget_status }}{% endif %}</span>
   </div>
   {% if scan_budget.is_live and scan_budget.live_enabled %}
   <div class="radar-budget-metrics">
     <div><small>Остаток</small><b>{% if scan_budget.credits_remaining is not none %}{{ '{:,}'.format(scan_budget.credits_remaining).replace(',', ' ') }} credits{% else %}Не подтверждён{% endif %}</b><span>{{ scan_budget.credits_remaining_source }}</span></div>
     <div><small>Этот месяц</small><b>{{ scan_budget.used_this_month }} / {{ scan_budget.monthly_hard_limit or '—' }}</b><span>Рабочая цель: {{ scan_budget.monthly_target or '—' }}</span></div>
-    <div><small>Прогноз месяца</small><b>~{{ scan_budget.projected_monthly_burn|round|int }} credits</b><span>Soft limit: {{ scan_budget.monthly_soft_limit or '—' }}</span></div>
+    <div><small>Прогноз месяца</small><b>~{{ scan_budget.projected_monthly_burn|round|int }} credits</b><span>Мягкий лимит: {{ scan_budget.monthly_soft_limit or '—' }}</span></div>
     <div><small>Примерно хватит</small><b>{% if scan_budget.package_months_remaining_estimate is not none %}{{ scan_budget.package_months_remaining_estimate }} месяца{% else %}Баланс неизвестен{% endif %}</b><span>Цель: ≥6 месяцев</span></div>
   </div>
   <fieldset class="scan-budget-picker">
@@ -87,7 +87,7 @@
   <a class="metric warn" href="/radar?kind=pending"><span>Не разобраны</span><strong>{{ overview.unprocessed + overview.pending }}</strong><small>очередь + AI</small></a>
   <a class="metric" href="/leads"><span>Лиды</span><strong>{{ overview.qualified }}</strong><small>воронка</small></a>
   <a class="metric accent" href="/radar?kind=hot"><span>HOT</span><strong>{{ overview.hot }}</strong><small>от {{ settings.hot_lead_threshold }}/100</small></a>
-  <div class="metric muted-metric"><span>Отсеяно</span><strong>{{ overview.rejected }}</strong><small>NOT_LEAD</small></div>
+  <div class="metric muted-metric"><span>Отсеяно</span><strong>{{ overview.rejected }}</strong><small>Не лид</small></div>
 </div>
 <form class="filters radar-filters" method="get">
   <input name="q" value="{{ q }}" aria-label="Поиск по радару" placeholder="Имя, username, комментарий или товар">
