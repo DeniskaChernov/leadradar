@@ -14,11 +14,9 @@
 - spend: billed parse-fail settles credits; AI claim-lost finalizes + parks result (no second paid call)
 - openings: null-contact store idempotent by place_name/city/PENDING_REVIEW
 - removed: unsafe ExternalUsageService.record()
-- next: await user approve multi-competitor pilot env (no live yet)
+- next: await next pilot instructions (env re-locked after aiko 5-credit run)
 - ci_status: GREEN 2/2 (59a8e33, run 33380716448; prior 9bf6dff alembic fix)
-- env_audit: tokens present; kill=true; unlock empty; provider=replay; daily/scan=0; live OFF; usage units=0
-- competitors_db: 16 seeded; only aiko.uz active=True; COMPETITORS env=[aiko.uz]
-- budget_model: shared daily pool + per-scan cap; fair discovery then priority comments; NO hard per-company quota
-- scrapecreators_policy: monthly_hard=3800 default_scan=10 max_manual=50
+- pilot_run: 2026-08-31 aiko.uz live scrapecreators --once cap=5; budget_stop 5/5; reels=12; comments_created=10; leads=10; hot scores 78/78/81/85; OpenAI OFF
+- env_now: kill=true; provider=replay; live OFF; daily/scan=0; WEB_MANAGER_ID set to admin
+- competitors_db: only aiko.uz active
 - meta_live: KEEP OFF
-- phase9: CI green done; real pilot still required
