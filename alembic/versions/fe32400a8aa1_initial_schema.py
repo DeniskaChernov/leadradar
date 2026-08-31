@@ -46,8 +46,8 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_contacts')),
-    sa.UniqueConstraint('platform', 'normalized_username', name=op.f('uq_contacts_platform')),
-    sa.UniqueConstraint('platform', 'platform_user_id', name=op.f('uq_contacts_platform'))
+    sa.UniqueConstraint('platform', 'normalized_username', name=op.f('uq_contacts_platform_username')),
+    sa.UniqueConstraint('platform', 'platform_user_id', name=op.f('uq_contacts_platform_user_id'))
     )
     op.create_index(op.f('ix_contacts_normalized_username'), 'contacts', ['normalized_username'], unique=False)
     op.create_index(op.f('ix_contacts_platform_user_id'), 'contacts', ['platform_user_id'], unique=False)
@@ -86,7 +86,7 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['contact_id'], ['contacts.id'], name=op.f('fk_comments_contact_id_contacts')),
     sa.ForeignKeyConstraint(['post_id'], ['posts.id'], name=op.f('fk_comments_post_id_posts')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_comments')),
-    sa.UniqueConstraint('platform', 'platform_comment_id', name=op.f('uq_comments_platform'))
+    sa.UniqueConstraint('platform', 'platform_comment_id', name=op.f('uq_comments_platform_comment_id'))
     )
     op.create_index(op.f('ix_comments_competitor_id'), 'comments', ['competitor_id'], unique=False)
     op.create_index(op.f('ix_comments_contact_id'), 'comments', ['contact_id'], unique=False)

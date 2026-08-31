@@ -40,6 +40,9 @@ class OperationPlanningRow:
 @dataclass(frozen=True, slots=True)
 class CreditsOutcomeMetrics:
     known_credits: int
+    confirmed_credits: int
+    estimated_credits: int
+    confirmed_coverage_percent: Decimal | None
     credit_events: int
     credits_per_signal: Decimal | None
     credits_per_commercial_signal: Decimal | None
@@ -139,9 +142,23 @@ class EconomicsPageService:
                 )
             )
         known_credits = sum(int(event.units or 0) for event in events)
+        confirmed_credits = sum(
+            int(event.units or 0)
+            for event in events
+            if str(getattr(event, "unit_source", "") or "").upper() == "PROVIDER_CONFIRMED"
+        )
+        estimated_credits = max(0, known_credits - confirmed_credits)
         credits_complete = bool(events)
+        coverage = None
+        if known_credits > 0:
+            coverage = (
+                Decimal(confirmed_credits) * Decimal(100) / Decimal(known_credits)
+            ).quantize(_RATIO_QUANT, rounding=ROUND_HALF_UP)
         return CreditsOutcomeMetrics(
             known_credits=known_credits,
+            confirmed_credits=confirmed_credits,
+            estimated_credits=estimated_credits,
+            confirmed_coverage_percent=coverage,
             credit_events=len(events),
             credits_per_signal=self._credits_per(
                 known_credits, usd.signals_count, credits_complete

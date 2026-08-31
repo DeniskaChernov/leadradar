@@ -34,12 +34,37 @@ class ScanBudget:
 
     The primary and fallback providers receive the same instance. That matters because a failed
     ScrapeCreators operation followed by Bright Data must consume two units from the same cap.
+
+    Controller assigns current_cycle_limit before each run:
+    - explicit manual cap → that value
+    - scheduler / None → default_limit
+    begin_cycle() only clears used; it never mutates the assigned cycle limit.
     """
 
-    limit: int
+    default_limit: int
+    current_cycle_limit: int | None = None
     used: int = 0
 
-    def reset(self) -> None:
+    def __post_init__(self) -> None:
+        self.default_limit = max(0, int(self.default_limit))
+        if self.current_cycle_limit is None:
+            self.current_cycle_limit = self.default_limit
+
+    @property
+    def limit(self) -> int:
+        return self.current_cycle_limit if self.current_cycle_limit is not None else self.default_limit
+
+    def reset_usage(self) -> None:
+        self.used = 0
+
+    def restore_default_limit(self) -> None:
+        """Scheduler path: next cycle uses default_limit, not a prior manual Deep scan."""
+        self.current_cycle_limit = self.default_limit
+        self.used = 0
+
+    def apply_cycle_limit(self, limit: int) -> None:
+        """Explicit manual/API cap for the upcoming cycle only."""
+        self.current_cycle_limit = max(0, int(limit))
         self.used = 0
 
     @property
@@ -89,13 +114,16 @@ class BudgetedInstagramProvider(InstagramProvider):
 
     def begin_cycle(self) -> None:
         if self.scan_budget is not None:
-            self.scan_budget.reset()
+            self.scan_budget.reset_usage()
         self.inner.begin_cycle()
 
     def set_scan_budget_limit(self, limit: int) -> None:
         if self.scan_budget is not None:
-            self.scan_budget.limit = max(0, int(limit))
-            self.scan_budget.reset()
+            self.scan_budget.apply_cycle_limit(limit)
+
+    def restore_default_scan_budget(self) -> None:
+        if self.scan_budget is not None:
+            self.scan_budget.restore_default_limit()
 
     def scan_budget_status(self) -> dict[str, int] | None:
         if self.scan_budget is None:
@@ -150,8 +178,11 @@ class BudgetedInstagramProvider(InstagramProvider):
         try:
             result = await call()
         except Exception:
-            await self.usage.finalize_reservation(
-                reservation_id, units=1, success=False, details=details
+            # Call already left the process: without provider credit proof we must not invent a charge.
+            await self.usage.mark_reservation_uncertain(
+                reservation_id,
+                reason="external_call_failed_without_provider_credit_observation",
+                details=details,
             )
             raise
         confirmed_units = await self._persist_credit_observations()
@@ -227,13 +258,12 @@ class BudgetedInstagramProvider(InstagramProvider):
                 max_pages=effective_pages,
             )
         except Exception:
-            await self.usage.finalize_reservation(
+            await self.usage.mark_reservation_uncertain(
                 reservation_id,
-                units=effective_pages,
-                success=False,
+                reason="comment_batch_failed_without_provider_credit_observation",
                 details={
                     "provider": self.inner.name,
-                    "pages": 1,
+                    "reserved_pages": effective_pages,
                     "source_account": post.competitor.strip().lower().lstrip("@"),
                 },
             )

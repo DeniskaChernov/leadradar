@@ -242,8 +242,12 @@ async def test_monitor_completes_discovery_phase_before_any_comment_refresh(
 
 
 async def test_fallback_cannot_bypass_one_unit_scan_budget(session_factory):
+    from sqlalchemy import select
+
+    from app.db.models import ExternalBudgetReservation, ReservationStatus
+
     usage = ExternalUsageService(session_factory)
-    shared = ScanBudget(limit=1)
+    shared = ScanBudget(default_limit=1)
     primary_inner = ProfileProvider("scrapecreators", fail=True)
     fallback_inner = ProfileProvider("brightdata", fail=False)
     primary = BudgetedInstagramProvider(
@@ -261,4 +265,10 @@ async def test_fallback_cannot_bypass_one_unit_scan_budget(session_factory):
     assert primary_inner.calls == 1
     assert fallback_inner.calls == 0
     assert shared.used == 1
-    assert await usage.used_today("instagram") == 1
+    # Started call without provider credit proof must not invent ExternalUsage rows.
+    assert await usage.used_today("instagram") == 0
+    assert await usage.active_reservations_today("instagram") == 1
+    async with session_factory() as session:
+        reservation = await session.scalar(select(ExternalBudgetReservation))
+    assert reservation is not None
+    assert reservation.status == ReservationStatus.UNCERTAIN

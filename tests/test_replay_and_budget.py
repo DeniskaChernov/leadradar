@@ -112,6 +112,10 @@ class CreditAwareProfileProvider(StubProfileProvider):
 
 @pytest.mark.asyncio
 async def test_fallback_spend_counts_each_provider_operation(session_factory):
+    from sqlalchemy import select
+
+    from app.db.models import ExternalBudgetReservation, ReservationStatus
+
     usage = ExternalUsageService(session_factory)
     primary = BudgetedInstagramProvider(
         StubProfileProvider("scrapecreators", True), usage, enabled=True, daily_limit=10
@@ -124,9 +128,21 @@ async def test_fallback_spend_counts_each_provider_operation(session_factory):
     result = await provider.get_profile("aiko.uz")
 
     assert result.username == "aiko.uz"
-    assert await usage.used_today("instagram") == 2
+    # Primary fail after call_started → UNCERTAIN (no invented charge). Fallback success → 1 usage.
+    assert await usage.used_today("instagram") == 1
+    assert await usage.active_reservations_today("instagram") == 1
     breakdown = await usage.breakdown_today("instagram")
-    assert breakdown == {"scrapecreators": 1, "brightdata": 1}
+    assert breakdown == {"brightdata": 1}
+    async with session_factory() as session:
+        uncertain = list(
+            await session.scalars(
+                select(ExternalBudgetReservation).where(
+                    ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN
+                )
+            )
+        )
+    assert len(uncertain) == 1
+    assert uncertain[0].provider == "scrapecreators"
 
 
 @pytest.mark.asyncio

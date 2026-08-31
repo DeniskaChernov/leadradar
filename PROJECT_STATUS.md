@@ -8,8 +8,23 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: **306 тестов**, Ruff, compileall, data-integrity и `alembic check`
-проходят. Рабочая БД на `c8f3a1d57b20`; schema drift отсутствует.
+Контрольная точка 2026-08-31: **314 тестов локально (SQLite)**, Ruff clean.
+**CI matrix не считается зелёной, пока PostgreSQL job не пройдёт** — предыдущий run
+падал на `DuplicateTableError: uq_contacts_platform` в initial migration (не на boolean seed).
+
+## Hardening sprint (после review HEAD 9a9e2ca)
+
+P0/P1 закрыты в коде:
+- initial schema: уникальные имена `uq_contacts_platform_username` / `uq_contacts_platform_user_id`;
+  normalize migration idempotent;
+- provider budget seed через SQLAlchemy `active=True` (dialect-safe);
+- `ScanBudget.default_limit` + `current_cycle_limit`; manual Deep scan не протекает в scheduler;
+- external fail после `call_started` без provider credit → `UNCERTAIN`, не invented charge;
+- PostgreSQL `pg_advisory_xact_lock` в `reserve_budget`;
+- `/economics`: confirmed vs estimated credits + coverage %;
+- Postgres `backup_present` больше не auto-True (нужен `.runtime/postgres_backup_verified`).
+
+**Phase 9 не завершена.** Meta live остаётся выключенным. Controlled live pilot — только после зелёного CI.
 
 ## Master Phase 9 — Deployment readiness (offline, в процессе)
 

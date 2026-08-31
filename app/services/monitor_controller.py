@@ -52,8 +52,13 @@ class MonitorController:
         self._cycle_trigger = trigger
         self._requested_credit_budget = requested_units
         self._effective_credit_budget = max_units
-        if max_units is not None and self.monitor.provider is not None:
-            self.monitor.provider.set_scan_budget_limit(max_units)
+        provider = getattr(self.monitor, "provider", None)
+        if provider is not None:
+            if max_units is not None:
+                provider.set_scan_budget_limit(max_units)
+            else:
+                # Scheduler path: never inherit a prior manual Deep-scan cap.
+                provider.restore_default_scan_budget()
         self._task = asyncio.create_task(self._execute_cycle(), name=f"monitor:{trigger}")
         self._task.add_done_callback(_consume_task_exception)
         return True

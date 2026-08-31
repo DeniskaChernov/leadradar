@@ -50,7 +50,11 @@ class InstagramProvider(ABC):
         return None
 
     def set_scan_budget_limit(self, limit: int) -> None:
-        """Установить durable-проверенный лимит текущего ручного запуска."""
+        """Установить лимит только для текущего ручного/API запуска."""
+        return None
+
+    def restore_default_scan_budget(self) -> None:
+        """Вернуть per-scan cap к default_limit перед scheduler cycle."""
         return None
 
     def scan_budget_status(self) -> dict[str, int] | None:

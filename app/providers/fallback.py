@@ -32,6 +32,10 @@ class FallbackInstagramProvider(InstagramProvider):
         self.primary.set_scan_budget_limit(limit)
         self.fallback.set_scan_budget_limit(limit)
 
+    def restore_default_scan_budget(self) -> None:
+        self.primary.restore_default_scan_budget()
+        self.fallback.restore_default_scan_budget()
+
     def scan_budget_status(self) -> dict[str, int] | None:
         return self.primary.scan_budget_status() or self.fallback.scan_budget_status()
 

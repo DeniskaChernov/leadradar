@@ -115,6 +115,12 @@ class ExternalUsageService:
                     # SQLite has no row-level SELECT FOR UPDATE. Taking the write lock before
                     # reading serializes the check-and-reserve transaction across processes.
                     await session.execute(text("BEGIN IMMEDIATE"))
+                elif bind.dialect.name == "postgresql":
+                    # Serialize monthly/daily budget check+reserve across cloud workers.
+                    await session.execute(
+                        text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+                        {"lock_key": f"lead-radar:budget:{service}"},
+                    )
                 await session.execute(
                     update(ExternalBudgetReservation)
                     .where(
@@ -360,10 +366,14 @@ class ExternalUsageService:
         self,
         reservation_id: int,
         *,
+        reason: str | None = None,
         details: dict[str, Any] | None = None,
     ) -> None:
         """Зафиксировать неопределённый исход начатого вызова без предположений насчёт списания."""
         now = datetime.now(UTC)
+        payload = dict(details or {})
+        if reason:
+            payload["reason"] = reason
         async with self.session_factory() as session:
             await session.execute(
                 update(ExternalBudgetReservation)
@@ -377,7 +387,7 @@ class ExternalUsageService:
                 .values(
                     status=ReservationStatus.UNCERTAIN,
                     finalized_at=now,
-                    details_json=details or {},
+                    details_json=payload,
                 )
             )
             await session.commit()

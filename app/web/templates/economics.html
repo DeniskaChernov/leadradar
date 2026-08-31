@@ -61,10 +61,13 @@
   <div class="panel-head"><div><span class="eyebrow">FUNNEL COST</span><h2 id="economics-funnel-title">Стоимость воронки</h2><p>USD и ScrapeCreators credits на исход за {{ page.days }} дн.</p></div></div>
   <div class="metrics economics-metrics">
     <div class="metric"><span>ScrapeCreators credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.known_credits }}{% else %}—{% endif %}</strong><small>{{ page.credits.credit_events }} cost events</small></div>
+    <div class="metric"><span>Confirmed credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.confirmed_credits }}{% else %}—{% endif %}</strong><small>PROVIDER_CONFIRMED</small></div>
+    <div class="metric"><span>Estimated credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.estimated_credits }}{% else %}—{% endif %}</strong><small>без ответа провайдера</small></div>
+    <div class="metric"><span>Credit accuracy</span><strong>{% if page.credits.confirmed_coverage_percent is not none %}{{ page.credits.confirmed_coverage_percent }}%{% else %}—{% endif %}</strong><small>доля confirmed</small></div>
     <div class="metric"><span>credits / сигнал</span><strong>{{ ratio(page.credits.credits_per_signal) }}</strong><small>{{ economics.signals_count }} сигналов</small></div>
     <div class="metric"><span>credits / коммерч.</span><strong>{{ ratio(page.credits.credits_per_commercial_signal) }}</strong><small>{{ economics.commercial_leads_count }} коммерч.</small></div>
     <div class="metric"><span>credits / лид</span><strong>{{ ratio(page.credits.credits_per_lead) }}</strong><small>{{ economics.leads_count }} лидов</small></div>
-    <div class="metric"><span>credits / HOT</span><strong>{{ ratio(page.credits.credits_per_hot) }}</strong><small>{{ economics.hot_count }} HOT</small></div>
+    <div class="metric"><span>credits / HOT</span><strong>{{ ratio(page.credits.credits_per_hot) }}</strong><small>{{ economics.hot_count }} HOT{% if page.credits.confirmed_coverage_percent is not none and page.credits.confirmed_coverage_percent < 100 %} · ⚠ {{ (100 - page.credits.confirmed_coverage_percent)|round(1) }}% estimated{% endif %}</small></div>
     <div class="metric"><span>credits / B2B</span><strong>{{ ratio(page.credits.credits_per_b2b) }}</strong><small>{{ economics.b2b_count }} B2B</small></div>
     <div class="metric"><span>credits / WON</span><strong>{{ ratio(page.credits.credits_per_won) }}</strong><small>{{ economics.won_count }} WON</small></div>
     <div class="metric"><span>HOT / 1 000 credits</span><strong>{{ ratio(page.credits.hot_per_1000_credits) }}</strong><small>эффективность Radar</small></div>

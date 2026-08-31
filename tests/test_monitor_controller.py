@@ -32,9 +32,14 @@ class BudgetAwareProvider:
 
     def __init__(self) -> None:
         self.limit = None
+        self.default_restored = 0
 
     def set_scan_budget_limit(self, limit: int) -> None:
         self.limit = limit
+
+    def restore_default_scan_budget(self) -> None:
+        self.limit = "default"
+        self.default_restored += 1
 
 
 class BudgetAwareMonitor:
@@ -99,3 +104,17 @@ async def test_controller_persists_requested_effective_and_actual_run_budget(
     assert run.effective_credit_budget == 7
     assert run.actual_credits_spent == 0
     assert run.budget_stop_reason == "SELECTED_SCAN_LIMIT_REACHED"
+
+
+async def test_manual_scan_budget_does_not_leak_into_scheduler_cycle():
+    monitor = BudgetAwareMonitor()
+    controller = MonitorController(monitor)  # type: ignore[arg-type]
+
+    assert controller.start_cycle("web", max_units=40) is True
+    await controller.wait_current()
+    assert monitor.provider.limit == 40
+
+    assert controller.start_cycle("schedule") is True
+    await controller.wait_current()
+    assert monitor.provider.limit == "default"
+    assert monitor.provider.default_restored == 1

@@ -193,26 +193,39 @@ def upgrade() -> None:
         ["monitor_run_id"],
     )
 
+    # Dialect-safe seed: PostgreSQL rejects integer 1 for boolean; use SQLAlchemy insert.
     op.execute(
-        sa.text(
-            """
-            INSERT INTO provider_budget_policies (
-                provider, service,
-                monthly_target_units, monthly_soft_limit_units, monthly_hard_limit_units,
-                default_scan_budget_units, maximum_manual_scan_budget_units,
-                target_minimum_months,
-                comments_target_units, discovery_target_units,
-                enrichment_target_units, reserve_target_units,
-                active, manager_confirmed_by
-            ) VALUES (
-                'scrapecreators', 'instagram',
-                3000, 3500, 3800,
-                10, 50,
-                6,
-                2400, 600, 200, 600,
-                1, NULL
-            )
-            """
+        sa.insert(sa.table(
+            "provider_budget_policies",
+            sa.column("provider", sa.String),
+            sa.column("service", sa.String),
+            sa.column("monthly_target_units", sa.Integer),
+            sa.column("monthly_soft_limit_units", sa.Integer),
+            sa.column("monthly_hard_limit_units", sa.Integer),
+            sa.column("default_scan_budget_units", sa.Integer),
+            sa.column("maximum_manual_scan_budget_units", sa.Integer),
+            sa.column("target_minimum_months", sa.Integer),
+            sa.column("comments_target_units", sa.Integer),
+            sa.column("discovery_target_units", sa.Integer),
+            sa.column("enrichment_target_units", sa.Integer),
+            sa.column("reserve_target_units", sa.Integer),
+            sa.column("active", sa.Boolean),
+            sa.column("manager_confirmed_by", sa.BigInteger),
+        )).values(
+            provider="scrapecreators",
+            service="instagram",
+            monthly_target_units=3000,
+            monthly_soft_limit_units=3500,
+            monthly_hard_limit_units=3800,
+            default_scan_budget_units=10,
+            maximum_manual_scan_budget_units=50,
+            target_minimum_months=6,
+            comments_target_units=2400,
+            discovery_target_units=600,
+            enrichment_target_units=200,
+            reserve_target_units=600,
+            active=True,
+            manager_confirmed_by=None,
         )
     )
 

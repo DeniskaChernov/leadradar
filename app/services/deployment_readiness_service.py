@@ -59,10 +59,12 @@ def alembic_config() -> Config:
 
 
 def backup_present(settings: Settings) -> bool:
-    if not settings.database_url.startswith("sqlite"):
-        return True
-    backups = (PROJECT_ROOT / ".backups").glob("*.db")
-    return any(path.is_file() and path.stat().st_size > 0 for path in backups)
+    if settings.database_url.startswith("sqlite"):
+        backups = (PROJECT_ROOT / ".backups").glob("*.db")
+        return any(path.is_file() and path.stat().st_size > 0 for path in backups)
+    # PostgreSQL: never claim backup exists without an explicit restore-drill marker.
+    marker = PROJECT_ROOT / ".runtime" / "postgres_backup_verified"
+    return marker.is_file() and marker.stat().st_size > 0
 
 
 async def inspect_offline_readiness(settings: Settings) -> OfflineReadinessState:
