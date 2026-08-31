@@ -258,7 +258,7 @@ class MCPReadToolService:
                 }
                 for item in rows
             ],
-            "evidence_ids": [],
+            "evidence_ids": [item.id for item in rows],
         }
 
     async def _evidence_ids_for_comment(self, comment_id: int) -> list[int]:

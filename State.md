@@ -8,18 +8,14 @@
 - db_source_of_truth: lead_radar.db
 - db_backup: .backups/lead_radar-20260830-225522-370547.db
 - alembic_head: c8f3a1d57b20
-- tests: 306 passed
+- tests: 310 passed
 - ruff: clean
 - master_completed_phases: 1,2,3,4,5,6,7,8
 - master_active_phase: 9
 - active_stage: master-phase-9-deployment
-- next: PostgreSQL CI matrix; SIGTERM full-stack graceful shutdown
-- agent_grounded: /api/agent/query; MCP read tools DB-backed; crm.assign_lead write tool wired
-- auth_hardening: dev POST /api/* 403 без web_manager_id; /api/docs скрыт при web_auth_enabled=false
-- phase8_ui_done: lead/contact agent panels; economics responsive tables; dashboard LOST funnel
-- phase9_deployment: /ready; PORT env; railway healthcheck; Dockerfile HEALTHCHECK; docs/DEPLOYMENT.md; LOG_FORMAT=json
-- meta_write: meta.create_campaign_draft via write service (NOT_CONNECTED until Meta adapter)
-- bug_hunt_pass: grounded flag; export segment guard; invalid filters fail-closed
-- bug_hunt_pass2: export dry-run audit manager_id; pricing 503; audience.dna namespace
+- next: Meta Custom Audience confirmed export
+- phase9_deployment: /ready; PORT; railway; SIGTERM; PostgreSQL CI matrix
+- meta_ads: MetaAdsService Graph API adapter; META_ADS_* config gate
+- bug_hunt_pass3: monitor logging; MCP INTERNAL; export ineligible_count; openings evidence_ids
 - p0_readiness: offline-ready; live-blocked fail-closed
-- blocked_live: Instagram, OpenAI, Telegram delivery, Meta, Google
+- blocked_live: Instagram, OpenAI, Telegram delivery, Meta (until unlock), Google

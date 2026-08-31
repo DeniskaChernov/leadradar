@@ -4,7 +4,7 @@ test_export_recipes.py — Master Phase 9 test suite
 Tests:
   1. CatalogMapper taxonomy resolution
   2. ExportRecipeService dry-run preview (non-mutating)
-  3. ExportRecipeService confirmed export (mutates status, creates audit record)
+  3. ExportRecipeService confirmed export blocked until Meta Custom Audience path exists
   4. FIRST_PARTY_ELIGIBLE gate enforcement
   5. Privacy assurance: dry-run returns SHA-256 hashes only
   6. Invalid recipe slug handling

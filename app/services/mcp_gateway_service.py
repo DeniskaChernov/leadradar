@@ -8,10 +8,13 @@ Defines the controlled tool surface and least-privilege schemas for the grounded
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
 from app.services.mcp_write_tool_service import WRITE_TOOL_NAMES
+
+logger = logging.getLogger(__name__)
 
 READ_TOOL_NAMES = frozenset(
     {
@@ -206,6 +209,15 @@ class LeadRadarMCPGateway:
                     approval_granted=approval_granted,
                     trace_id=trace_id,
                 )
+            except Exception as exc:
+                logger.exception("mcp_read_tool_failed tool=%s", tool_name)
+                return ToolExecutionResult(
+                    tool_name=tool_name,
+                    success=False,
+                    output={"error": "INTERNAL", "message": str(exc)[:200]},
+                    approval_granted=approval_granted,
+                    trace_id=trace_id,
+                )
             success = not (isinstance(output, dict) and output.get("error"))
             return ToolExecutionResult(
                 tool_name=tool_name,
@@ -225,6 +237,15 @@ class LeadRadarMCPGateway:
                     tool_name=tool_name,
                     success=False,
                     output={"error": "INVALID_ARGUMENTS", "message": str(exc)},
+                    approval_granted=approval_granted,
+                    trace_id=trace_id,
+                )
+            except Exception as exc:
+                logger.exception("mcp_write_tool_failed tool=%s", tool_name)
+                return ToolExecutionResult(
+                    tool_name=tool_name,
+                    success=False,
+                    output={"error": "INTERNAL", "message": str(exc)[:200]},
                     approval_granted=approval_granted,
                     trace_id=trace_id,
                 )

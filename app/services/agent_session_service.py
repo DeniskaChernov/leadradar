@@ -153,10 +153,6 @@ class AgentSessionService:
         ):
             return [("lead.search", {"query": ""})]
 
-        if any(token in lowered for token in ("скор", "score", "explain", "объясни", "лид", "lead")):
-            if lead_id is not None:
-                return [("lead.explain_score", {"lead_id": lead_id})]
-
         return [("lead.search", {"query": query})]
 
     @staticmethod

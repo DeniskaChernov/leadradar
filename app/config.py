@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     notification_policy: str = "ALL_NEW_COMMENTS"
     external_kill_switch: bool = True
 
+    meta_ads_access_token: str = ""
+    meta_ads_ad_account_id: str = ""
+    meta_ads_live_calls_enabled: bool = False
+
     @property
     def external_spend_unlocked(self) -> bool:
         if self.external_kill_switch:
@@ -108,6 +112,17 @@ class Settings(BaseSettings):
         if self.external_kill_switch:
             return False
         return self.openai_live_calls_enabled and self.external_spend_unlocked
+
+    @property
+    def meta_ads_live_enabled(self) -> bool:
+        if self.external_kill_switch:
+            return False
+        return (
+            self.meta_ads_live_calls_enabled
+            and self.external_spend_unlocked
+            and bool(self.meta_ads_access_token.strip())
+            and bool(self.meta_ads_ad_account_id.strip())
+        )
 
 
     @field_validator(

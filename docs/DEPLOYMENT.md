@@ -35,6 +35,22 @@ INSTAGRAM_PROVIDER=replay
 
 Railway автоматически задаёт `PORT` — приложение читает его и переопределяет `WEB_PORT`.
 
+## Meta Ads (optional live)
+
+```env
+META_ADS_ACCESS_TOKEN=
+META_ADS_AD_ACCOUNT_ID=
+META_ADS_LIVE_CALLS_ENABLED=false
+```
+
+Live calls требуют `EXTERNAL_KILL_SWITCH=false` и `EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS`.
+MCP tool `meta.create_campaign_draft` создаёт PAUSED campaign + adset через Graph API.
+
+## Graceful shutdown
+
+Linux/containers: SIGTERM/SIGINT останавливает Telegram polling, web server и фоновые задачи.
+Windows dev: Ctrl+C через `KeyboardInterrupt`.
+
 ## PostgreSQL
 
 - URL `postgres://` нормализуется в `postgresql+asyncpg://` (`app/db/session.py`).

@@ -14,6 +14,7 @@ from typing import Any, ClassVar
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config import get_settings
 from app.db.models import (
     AudienceMembership,
     AudienceSegment,
@@ -23,6 +24,7 @@ from app.db.models import (
     ExportEligibility,
 )
 from app.db.repositories.events import ContactEventRepository
+from app.services.meta_ads_service import MetaAdsService
 
 
 class CatalogMapper:
@@ -121,8 +123,13 @@ class ExportRecipeService:
         if recipe is None:
             raise ValueError(f"Unknown export recipe: {recipe_slug}")
         if not dry_run:
+            meta_ads = MetaAdsService(get_settings())
+            if not meta_ads.connected:
+                raise RuntimeError(
+                    "NOT_CONNECTED · подтверждённый Meta export недоступен; используйте dry-run"
+                )
             raise RuntimeError(
-                "NOT_CONNECTED · подтверждённый Meta export недоступен; используйте dry-run"
+                "NOT_CONNECTED · Meta Custom Audience export ещё не реализован; используйте dry-run"
             )
 
         meta_category = CatalogMapper.get_meta_category(recipe.product_category)
@@ -163,9 +170,10 @@ class ExportRecipeService:
                 if intel.export_eligibility == ExportEligibility.FIRST_PARTY_ELIGIBLE
             ]
             eligible_count = len(eligible_rows)
+            ineligible_count = total_matched - eligible_count
 
             sample_hashes = [
-                self._hash(contact.phone or contact.username)
+                self._hash(contact.phone or contact.username or str(contact.id))
                 for contact, _intel in eligible_rows[:5]
             ]
             audit_contact_id = None
@@ -184,6 +192,7 @@ class ExportRecipeService:
                         "dry_run": True,
                         "total_matched": total_matched,
                         "eligible_count": eligible_count,
+                        "ineligible_count": ineligible_count,
                         "meta_catalog_category": meta_category,
                     },
                 )
@@ -194,7 +203,11 @@ class ExportRecipeService:
                 "dry_run": True,
                 "total_matched": total_matched,
                 "eligible_count": eligible_count,
+                "ineligible_count": ineligible_count,
                 "meta_catalog_category": meta_category,
                 "sample_privacy_hashes": sample_hashes,
-                "message": f"Dry-run: найдено {total_matched}; first-party eligible: {eligible_count}. Meta NOT_CONNECTED.",
+                "message": (
+                    f"Dry-run: найдено {total_matched}; first-party eligible: {eligible_count}; "
+                    f"ineligible: {ineligible_count}. Meta NOT_CONNECTED."
+                ),
             }

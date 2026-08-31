@@ -78,7 +78,6 @@ def build_web_app(
     workflow: LeadWorkflowService,
     controller: MonitorController,
     usage_service: ExternalUsageService | None = None,
-    lead_service: LeadService | None = None,
     crm: CRMService | None = None,
     notification_worker_active: bool = False,
 ) -> FastAPI:
@@ -683,12 +682,19 @@ def build_web_app(
             "AI Agent / MCP": {
                 "configured": True,
                 "enabled": True,
-                "detail": "Read tools: DB-backed · Write tools: NOT_CONNECTED",
+                "detail": (
+                    "Read tools: DB-backed · Write: crm.assign_lead (approval) · "
+                    f"Meta: {'live' if settings.meta_ads_live_enabled else 'NOT_CONNECTED'}"
+                ),
             },
             "Meta / Google": {
-                "configured": False,
-                "enabled": False,
-                "detail": "NOT_CONNECTED · статические прототипы не являются live API",
+                "configured": bool(settings.meta_ads_access_token and settings.meta_ads_ad_account_id),
+                "enabled": settings.meta_ads_live_enabled,
+                "detail": (
+                    "Meta Ads live"
+                    if settings.meta_ads_live_enabled
+                    else "NOT_CONNECTED · Google openings — локальная БД"
+                ),
             },
             "База данных": {"configured": True, "enabled": True, "detail": "Источник истины"},
         }

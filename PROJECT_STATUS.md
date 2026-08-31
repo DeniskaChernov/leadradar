@@ -21,9 +21,12 @@
 - `railway.json`: `--web-only`, `healthcheckPath=/ready`;
 - `Dockerfile`: `HEALTHCHECK`, default `--web-only`;
 - `docs/DEPLOYMENT.md` — runbook env/probes/rollback;
-- `meta.create_campaign_draft` — routed через write service, явный `NOT_CONNECTED`;
-- полный offline gate: **306 tests passed**; внешних вызовов: **0**.
-- backlog: PostgreSQL CI matrix, SIGTERM для full-stack mode.
+- `meta.create_campaign_draft` — `MetaAdsService` Graph API (campaign + adset PAUSED) при live unlock;
+- PostgreSQL CI matrix в GitHub Actions (sqlite + postgres);
+- SIGTERM/SIGINT graceful shutdown для full-stack и web-only;
+- bug-hunt pass 3: monitor errors logged; MCP catch-all INTERNAL; export `ineligible_count`;
+- полный offline gate: **310 tests passed**; внешних вызовов: **0**.
+- backlog: Meta Custom Audience confirmed export; SIGTERM на Windows dev.
 
 ## Master Phase 8 — UI final hardening (завершён offline)
 

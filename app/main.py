@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import argparse
 import asyncio
 import contextlib
 import logging
+import signal
+import sys
 
 import uvicorn
 from aiogram import Bot, Dispatcher
@@ -52,6 +53,39 @@ from app.web.queries import WebQueryService
 logger = logging.getLogger(__name__)
 
 
+def _install_shutdown_handlers(
+    shutdown_event: asyncio.Event,
+    *,
+    web_server: uvicorn.Server | None = None,
+) -> None:
+    """SIGTERM/SIGINT для контейнеров; на Windows только KeyboardInterrupt в main()."""
+    if sys.platform == "win32":
+        return
+    loop = asyncio.get_running_loop()
+
+    def _request_shutdown() -> None:
+        logger.info("shutdown_requested signal=SIGTERM|SIGINT")
+        shutdown_event.set()
+        if web_server is not None:
+            web_server.should_exit = True
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        with contextlib.suppress(NotImplementedError):
+            loop.add_signal_handler(sig, _request_shutdown)
+
+
+async def _serve_web_until_shutdown(
+    web_server: uvicorn.Server,
+    shutdown_event: asyncio.Event,
+) -> None:
+    _install_shutdown_handlers(shutdown_event, web_server=web_server)
+    serve_task = asyncio.create_task(web_server.serve(), name="lead-radar-web")
+    await shutdown_event.wait()
+    web_server.should_exit = True
+    with contextlib.suppress(asyncio.CancelledError):
+        await serve_task
+
+
 async def run(*, once: bool = False, web_only: bool = False) -> int:
     settings = get_settings()
     backup = backup_sqlite_database(settings)
@@ -98,7 +132,11 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
     audience_contacts = await audience_engine.recalculate_all()
     logger.info("audience_engine_synced contacts=%s", audience_contacts)
     meta_plans = await MetaAudiencePlanningService(session_factory).sync_blueprints()
-    logger.info("meta_audience_plans_synced changes=%s status=NOT_CONNECTED", meta_plans)
+    logger.info(
+        "meta_audience_plans_synced changes=%s meta_ads_connected=%s",
+        meta_plans,
+        settings.meta_ads_live_enabled,
+    )
     change_detector = SignificantChangeDetector(
         session_factory, hot_threshold=settings.hot_lead_threshold
     )
@@ -172,7 +210,6 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             workflow,
             controller,
             usage_service,
-            lead_service,
         )
         web_server = uvicorn.Server(
             uvicorn.Config(
@@ -184,10 +221,12 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             )
         )
         monitor_task = asyncio.create_task(_monitor_loop(controller, settings))
+        shutdown_event = asyncio.Event()
         logger.info("web_only_started url=http://%s:%s", settings.web_host, settings.web_port)
         try:
-            await web_server.serve()
+            await _serve_web_until_shutdown(web_server, shutdown_event)
         finally:
+            shutdown_event.set()
             monitor_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await monitor_task
@@ -258,7 +297,6 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             workflow,
             controller,
             usage_service,
-            lead_service,
             notification_worker_active=True,
         )
         web_config = uvicorn.Config(
@@ -277,11 +315,24 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         settings.competitors,
         settings.instagram_poll_interval_seconds,
     )
+    shutdown_event = asyncio.Event()
+    _install_shutdown_handlers(shutdown_event, web_server=web_server)
+    polling_task = asyncio.create_task(dispatcher.start_polling(bot), name="lead-radar-polling")
+
+    def _mark_shutdown(_task: asyncio.Task[object]) -> None:
+        shutdown_event.set()
+
+    polling_task.add_done_callback(_mark_shutdown)
     try:
-        await dispatcher.start_polling(bot)
+        await shutdown_event.wait()
     finally:
+        with contextlib.suppress(Exception):
+            await dispatcher.stop_polling()
+        polling_task.cancel()
         monitor_task.cancel()
         notification_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await polling_task
         with contextlib.suppress(asyncio.CancelledError):
             await monitor_task
         with contextlib.suppress(asyncio.CancelledError):
@@ -307,8 +358,10 @@ async def _monitor_loop(controller: MonitorController, settings: Settings) -> No
             live_provider = settings.instagram_provider not in {"mock", "replay"}
             scheduled_live_blocked = live_provider and settings.instagram_manual_live_scan_only
             if not scheduled_live_blocked and controller.start_cycle("schedule"):
-                with contextlib.suppress(Exception):
+                try:
                     await controller.wait_current()
+                except Exception:
+                    logger.exception("scheduled_monitor_cycle_failed")
         await asyncio.sleep(settings.instagram_poll_interval_seconds)
 
 
@@ -360,6 +413,8 @@ def configure_logging(settings: Settings) -> None:
 
 
 def main() -> None:
+    import argparse
+
     parser = argparse.ArgumentParser(description="Lead Radar local MVP")
     parser.add_argument("--once", action="store_true", help="Run one Instagram polling cycle")
     parser.add_argument(

@@ -51,7 +51,7 @@ Lead Radar строится не как «парсер комментариев�
 - Phase 6 Independent quality gates — **ГОТОВО**;
 - Phase 7 Grounded Agent — **ГОТОВО**;
 - Phase 8 UI final hardening — **ЗАВЕРШЁН offline** (agent panels, auth fail-closed, crm.assign_lead, 303 tests);
-- Phase 9 Deployment readiness — **В ПРОЦЕССЕ** (/ready, PORT, railway, DEPLOYMENT.md, 306 tests);
+- Phase 9 Deployment readiness — **В ПРОЦЕССЕ** (/ready, PORT, SIGTERM, PostgreSQL CI, MetaAdsService, 310 tests);
 - Phase 10 Controlled live pilot — только по отдельному разрешению.
 
 ### Master Phase 6. Independent quality gates — ГОТОВО

@@ -6,11 +6,13 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config import Settings, get_settings
 from app.services.lead_workflow_service import (
     LeadAlreadyAssignedError,
     LeadWorkflowError,
     LeadWorkflowService,
 )
+from app.services.meta_ads_service import MetaAdsService
 
 WRITE_TOOL_NAMES = frozenset({"crm.assign_lead", "meta.create_campaign_draft"})
 
@@ -23,8 +25,12 @@ class MCPWriteToolService:
         session_factory: async_sessionmaker[AsyncSession],
         *,
         hot_threshold: int,
+        settings: Settings | None = None,
+        meta_ads: MetaAdsService | None = None,
     ) -> None:
+        resolved_settings = settings or get_settings()
         self.workflow = LeadWorkflowService(session_factory, hot_threshold=hot_threshold)
+        self.meta_ads = meta_ads or MetaAdsService(resolved_settings)
 
     async def dispatch(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if tool_name == "crm.assign_lead":
@@ -58,9 +64,4 @@ class MCPWriteToolService:
         }
 
     async def meta_create_campaign_draft(self, recipe_type: str, budget_usd: float) -> dict[str, Any]:
-        # Meta Ads connector не подключён в offline-hardening; явный NOT_CONNECTED из write layer.
-        _ = recipe_type, budget_usd
-        return {
-            "error": "NOT_CONNECTED",
-            "message": "Meta Ads connector is not configured.",
-        }
+        return await self.meta_ads.create_campaign_draft(recipe_type, budget_usd)
