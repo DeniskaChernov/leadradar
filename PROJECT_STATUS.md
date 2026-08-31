@@ -8,8 +8,17 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: 284 тестов, Ruff, compileall, data-integrity и `alembic check`
+Контрольная точка 2026-08-31: 292 тестов, Ruff, compileall, data-integrity и `alembic check`
 проходят. Рабочая БД на `c8f3a1d57b20`; schema drift отсутствует.
+
+## Master Phase 8 — UI final hardening (в процессе)
+
+- `/system`: grounded agent workspace (`data-agent-query` → `/api/agent/query`) и export recipes dry-run UI;
+- `/audiences/{slug}`: segment-bound export dry-run preview;
+- mobile: responsive economics/audience-quality tables, Telegram BackButton + safe-area;
+- dev auth warning на `/system` когда `web_auth_enabled=false`;
+- CSS/JS cache `13.2.0-phase8-ui`;
+- полный offline gate: **292 tests passed**; внешних вызовов: **0**.
 
 ## Master Phase 7 — Grounded Agent завершён
 
