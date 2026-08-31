@@ -20,6 +20,7 @@ READ_TOOL_NAMES = frozenset(
     {
         "lead.search",
         "lead.explain_score",
+        "catalog.recommend",
         "audience.dna",
         "competitor.opportunities",
         "rattan.company_analysis",
@@ -61,6 +62,13 @@ class LeadRadarMCPGateway:
             name="lead.explain_score",
             namespace="lead",
             description="Детальное объяснение оценки скора лида по факторам и фактам (evidence).",
+            requires_approval=False,
+            parameters_schema={"type": "object", "properties": {"lead_id": {"type": "integer"}}},
+        ),
+        "catalog.recommend": MCPToolDefinition(
+            name="catalog.recommend",
+            namespace="catalog",
+            description="Grounded next-best-action и рекомендация товара по лиду.",
             requires_approval=False,
             parameters_schema={"type": "object", "properties": {"lead_id": {"type": "integer"}}},
         ),

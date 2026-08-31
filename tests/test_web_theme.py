@@ -203,8 +203,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.5.1-layout-fix" in base
-    assert "13.5.1-layout-fix" in auth
+    assert "13.6.0-system-pass" in base
+    assert "13.6.0-system-pass" in auth
     assert 'id="agent-quick"' in base
     assert "data-agent-open" in base
     assert 'data-more-toggle aria-expanded="false"' in base
@@ -277,6 +277,13 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
 
     assert "GROUNDED AGENT · OFFLINE" in system
+    assert "system-hero" in system
+    assert "system-toc" in system
+    assert "retry-pending" in system
+    assert "/api/leads/retry-pending" in radar
+    assert "rattan-metrics" in (PROJECT_ROOT / "app/web/templates/rattan.html").read_text(encoding="utf-8")
+    assert ".rattan-metrics" in css
+    assert 'name="contact_id"' in contact_detail
     assert "data-agent-query" in system
     assert "Export recipes preview" in system
     assert "export-recipe-grid" in system

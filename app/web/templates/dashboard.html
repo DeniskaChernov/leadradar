@@ -12,8 +12,11 @@
   <div class="hero-actions">
     <a class="btn primary" href="/radar">Открыть Radar</a>
     <button class="btn" type="button" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Разобрать локально</button>
+    <button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-reload="1">Retry AI_PENDING</button>
   </div>
 </section>
+
+<section class="alert info compact-help"><b>Локальный разбор</b><span>Кнопки «Разобрать локально» и «Retry AI_PENDING» не вызывают OpenAI — только rule-based analyzer. Неоднозначные сигналы остаются в AI_PENDING.</span></section>
 
 <section class="quick-actions panel" aria-label="Быстрые действия">
   <a class="quick-action" href="/radar"><span class="quick-action-icon"><i data-lucide="radar"></i></span><b>Radar</b><small>Бюджет и запуск scan</small></a>
@@ -70,8 +73,9 @@
   <section class="panel funnel-panel">
     <div class="panel-head"><div><h2>Воронка</h2><p>Стадии лидов</p></div><a href="/leads">Открыть →</a></div>
     <div class="funnel">
+      {% set funnel_peak = [1, funnel.get('NEW',0), funnel.get('TAKEN',0), funnel.get('CONTACTED',0), funnel.get('QUALIFIED',0), funnel.get('OFFER_SENT',0), funnel.get('NEGOTIATION',0), funnel.get('WON',0), funnel.get('LOST',0)]|max %}
       {% for status in ['NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}
-      <div class="funnel-step"><div><span>{{ lead_status_label(status) }}</span><strong>{{ funnel.get(status, 0) }}</strong></div><div class="funnel-bar"><i style="width: {{ [100, (funnel.get(status, 0) * 14)]|min }}%"></i></div></div>
+      <div class="funnel-step"><div><span>{{ lead_status_label(status) }}</span><strong>{{ funnel.get(status, 0) }}</strong></div><div class="funnel-bar"><i style="width: {{ [100, funnel.get(status, 0) * 100 / funnel_peak]|min }}%"></i></div></div>
       {% endfor %}
     </div>
   </section>

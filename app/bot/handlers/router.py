@@ -136,19 +136,48 @@ def build_router(
     async def help_command(message: Message) -> None:
         if not authorized(message):
             return await reject(message)
+        dashboard_url = _dashboard_url(settings)
+        web_hint = (
+            "🌐 Кабина — кнопка в меню (WebApp)\n"
+            if dashboard_url.startswith("https://")
+            else "/web — адрес интерфейса Lead Radar\n"
+        )
         await message.answer(
             "ℹ️ <b>Как пользоваться Lead Radar</b>\n\n"
             "/status — работает ли мониторинг\n"
             "/stats — контакты, лиды и сделки\n"
+            "/pending — очередь AI_PENDING\n"
             "/hot — карточки открытых HOT-лидов\n"
             "/lead 12 — открыть лид №12\n"
             "/scan — проверить Instagram сейчас\n"
             "/competitors — кого отслеживаем\n"
-            "/web — адрес интерфейса Lead Radar\n"
+            f"{web_hint}"
             "/cancel — отменить заполнение сделки\n\n"
             "Новые комментарии сохраняются автоматически. База данных — источник истины.",
             reply_markup=main_menu(),
         )
+
+    @router.message(Command("pending"))
+    async def pending_leads(message: Message) -> None:
+        if not authorized(message):
+            return await reject(message)
+        cards = await workflow.list_ai_pending_leads(limit=8)
+        if not cards:
+            return await message.answer(
+                "✅ Очередь AI_PENDING пуста.\n"
+                f"Подробнее: {_dashboard_url(settings)}/radar?kind=pending",
+                reply_markup=main_menu(),
+            )
+        await message.answer(
+            f"🤖 <b>Ожидают AI-разбора: {len(cards)}</b>\n"
+            f"Разбор в кабине: {_dashboard_url(settings)}/radar?kind=pending",
+            reply_markup=main_menu(),
+        )
+        for card in cards:
+            await message.answer(
+                render_lead_card(card),
+                reply_markup=lead_keyboard(card, web_public_url=_dashboard_url(settings)),
+            )
 
     @router.message(Command("status"))
     async def status(message: Message) -> None:
@@ -281,7 +310,7 @@ def build_router(
             return await message.answer("Сейчас нет открытых HOT-лидов.")
         await message.answer(f"🔥 Открытых HOT-лидов: <b>{len(cards)}</b>")
         for card in cards:
-            await message.answer(render_lead_card(card), reply_markup=lead_keyboard(card))
+            await message.answer(render_lead_card(card), reply_markup=lead_keyboard(card, web_public_url=_dashboard_url(settings)))
 
     @router.message(Command("lead"))
     async def lead(message: Message, command: CommandObject) -> None:
@@ -294,7 +323,7 @@ def build_router(
             return await message.answer("Укажите ID: <code>/lead 12</code>")
         except LeadWorkflowError:
             return await message.answer("Лид с таким ID не найден.")
-        await message.answer(render_lead_card(card), reply_markup=lead_keyboard(card))
+        await message.answer(render_lead_card(card), reply_markup=lead_keyboard(card, web_public_url=_dashboard_url(settings)))
 
     @router.message(Command("competitors"))
     async def competitors(message: Message) -> None:
@@ -337,7 +366,7 @@ def build_router(
         try:
             await workflow.assign_manager(lead_id, callback.from_user.id)
             await notifier.refresh_lead_messages(lead_id)
-            await _refresh_visible_card(callback, workflow)
+            await _refresh_visible_card(callback, workflow, settings)
             await callback.answer("Лид назначен вам")
         except LeadAlreadyAssignedError as exc:
             await callback.answer(f"Лид уже взял менеджер {exc.manager_id}", show_alert=True)
@@ -352,7 +381,7 @@ def build_router(
         try:
             await workflow.mark_not_lead(lead_id, callback.from_user.id)
             await notifier.refresh_lead_messages(lead_id)
-            await _refresh_visible_card(callback, workflow)
+            await _refresh_visible_card(callback, workflow, settings)
             await callback.answer("Feedback сохранён")
         except LeadWorkflowError as exc:
             await callback.answer(str(exc), show_alert=True)
@@ -572,14 +601,15 @@ async def _report_scan_result(
 
 
 async def _refresh_visible_card(
-    callback: CallbackQuery, workflow: LeadWorkflowService
+    callback: CallbackQuery, workflow: LeadWorkflowService, settings: Settings
 ) -> None:
     if callback.message is None:
         return
     card = await workflow.get_lead_card(_callback_id(callback))
     try:
         await callback.message.edit_text(
-            render_lead_card(card), reply_markup=lead_keyboard(card)
+            render_lead_card(card),
+            reply_markup=lead_keyboard(card, web_public_url=_dashboard_url(settings)),
         )
     except TelegramAPIError:
         pass

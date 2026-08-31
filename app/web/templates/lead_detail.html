@@ -85,7 +85,7 @@
       <div class="agent-presets inline" role="group" aria-label="Быстрые вопросы по лиду">
         <button class="agent-preset" type="button" data-agent-preset='{"query":"Объясни оценку лида","lead_id":"{{ lead.id }}"}'>Оценка</button>
         <button class="agent-preset" type="button" data-agent-preset='{"query":"Что предложить клиенту","lead_id":"{{ lead.id }}"}'>Что предложить</button>
-        <button class="agent-preset" type="button" data-agent-preset='{"query":"lead.explain_score","lead_id":"{{ lead.id }}"}'>Score breakdown</button>
+        <button class="agent-preset" type="button" data-agent-preset='{"query":"Почему такой score","lead_id":"{{ lead.id }}"}'>Почему score</button>
       </div>
       <form class="agent-query-form form-grid compact" data-agent-query data-agent-target="#lead-agent-result">
         <input type="hidden" name="lead_id" value="{{ lead.id }}">

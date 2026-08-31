@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -429,6 +430,22 @@ class LeadWorkflowService:
                 )
             ).all()
         return [await self.get_lead_card(lead_id) for lead_id in ids]
+
+    async def list_ai_pending_leads(self, limit: int = 10) -> list[LeadCard]:
+        async with self.session_factory() as session:
+            ids = (
+                await session.scalars(
+                    select(Lead.id)
+                    .where(Lead.status == LeadStatus.AI_PENDING)
+                    .order_by(Lead.created_at)
+                    .limit(limit)
+                )
+            ).all()
+        cards: list[LeadCard] = []
+        for lead_id in ids:
+            with contextlib.suppress(LeadWorkflowError):
+                cards.append(await self.get_lead_card(lead_id))
+        return cards
 
     async def get_stats(self) -> WorkflowStats:
         async with self.session_factory() as session:

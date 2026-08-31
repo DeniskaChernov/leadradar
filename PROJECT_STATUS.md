@@ -71,6 +71,23 @@ P0/P1 закрыты в коде:
 - CSS/JS cache `13.3.0-pilot-cockpit`;
 - полный offline gate: **316 passed, 1 skipped**; ruff clean; внешних вызовов: **0**.
 
+## System pass UI + AI routing (offline)
+
+- `catalog.recommend` read tool: «Что предложить» с `lead_id` больше не уходит в `lead.explain_score`;
+- intent-first routing в `AgentSessionService`; человекочитаемый синтез explain/catalog;
+- `/api/leads/retry-pending` + кнопки на dashboard/radar/system;
+- `/system`: hero cockpit, TOC anchors, operator actions;
+- `rattan-metrics` 4-col grid; leads kanban score mask; filter `q` сохраняется;
+- dashboard funnel пропорционален peak; local analyze alert;
+- bot: `/pending`, deep link «🌐 Карточка» в Telegram cards, dynamic `/help`;
+- CSS/JS cache `13.6.0-system-pass`;
+- полный offline gate: **321 passed, 1 skipped**; ruff clean; внешних вызовов: **0**.
+
+## Layout fix radar metrics (offline)
+
+- `radar-metrics` отдельно от `dashboard-metrics`; hero-status на radar/leads/economics;
+- cache `13.5.1-layout-fix` (commit `863405f`).
+
 ## Economics + Radar/Leads UI pass (offline)
 
 - `/economics`: hero KPI, `safe_attr` для credit accuracy, segmented period control; fix 500 от stale server;

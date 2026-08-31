@@ -257,6 +257,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         lease_seconds=settings.telegram_notification_lease_seconds,
         notification_policy=NotificationPolicy(settings.notification_policy),
         delivery_enabled=settings.instagram_provider not in {"mock", "replay"},
+        web_public_url=settings.web_public_url or "",
     )
     monitor = InstagramMonitor(
         session_factory=session_factory,

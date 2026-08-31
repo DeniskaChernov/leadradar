@@ -956,6 +956,23 @@ def build_web_app(
             ),
         }
 
+    @app.post("/api/leads/retry-pending")
+    async def retry_pending_leads(request: Request):
+        payload = await _json_or_form(request)
+        limit = max(1, min(int(payload.get("limit") or 10), 50))
+        results = await local_lead_service.retry_pending(limit, cooldown_seconds=0)
+        still_pending = sum(item.status == LeadStatus.AI_PENDING for item in results)
+        return {
+            "ok": True,
+            "processed": len(results),
+            "still_pending": still_pending,
+            "message": (
+                f"Повторно разобрано лидов: {len(results)}. "
+                f"Осталось AI_PENDING: {still_pending}. "
+                "Используется только локальный analyzer без OpenAI."
+            ),
+        }
+
     @app.post("/api/leads/{lead_id}/take")
     async def take_lead(request: Request, lead_id: int):
         try:

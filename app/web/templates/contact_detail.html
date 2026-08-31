@@ -154,10 +154,11 @@
       <p class="muted">@{{ contact.username }} · клиент #{{ contact.id }}{% if leads %} · lead #{{ leads[0].id }}{% endif %}</p>
       <div class="agent-presets inline" role="group" aria-label="Быстрые вопросы по клиенту">
         {% if leads %}<button class="agent-preset" type="button" data-agent-preset='{"query":"Объясни оценку лида","lead_id":"{{ leads[0].id }}"}'>Оценка лида</button>{% endif %}
-        <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи лиды клиента"{% if leads %},"lead_id":"{{ leads[0].id }}"{% endif %}}'>Лиды клиента</button>
-        <button class="agent-preset" type="button" data-agent-preset='{"query":"История сигналов"{% if leads %},"lead_id":"{{ leads[0].id }}"{% endif %}}'>Сигналы</button>
+        <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи лиды клиента","contact_id":"{{ contact.id }}"}'>Лиды клиента</button>
+        <button class="agent-preset" type="button" data-agent-preset='{"query":"История сигналов","contact_id":"{{ contact.id }}"}'>Сигналы</button>
       </div>
       <form class="agent-query-form" data-agent-query data-agent-target="#contact-agent-result">
+        <input type="hidden" name="contact_id" value="{{ contact.id }}">
         {% if leads %}<input type="hidden" name="lead_id" value="{{ leads[0].id }}">{% endif %}
         <label>Вопрос<input name="query" placeholder="Покажи лиды · объясни score" required autocomplete="off"></label>
         <button class="btn primary btn-sm" type="submit">Спросить</button>

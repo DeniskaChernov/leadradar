@@ -511,6 +511,7 @@ class WebQueryService:
         *,
         q: str = "",
         status: str = "",
+        contact_id: int | None = None,
         limit: int = 300,
         include_not_leads: bool = False,
     ) -> list:
@@ -536,6 +537,8 @@ class WebQueryService:
                         func.lower(Competitor.normalized_handle).like(pattern),
                     )
                 )
+            if contact_id is not None:
+                stmt = stmt.where(Lead.contact_id == contact_id)
             if status.strip():
                 try:
                     stmt = stmt.where(Lead.status == LeadStatus(status.strip().upper()))

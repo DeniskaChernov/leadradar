@@ -59,6 +59,7 @@ class TelegramLeadNotifier:
         delivery_enabled: bool = True,
         lease_seconds: int = 120,
         worker_id: str | None = None,
+        web_public_url: str = "",
     ) -> None:
         self.bot = bot
         self.session_factory = session_factory
@@ -70,6 +71,7 @@ class TelegramLeadNotifier:
         self.delivery_enabled = delivery_enabled
         self.lease_seconds = lease_seconds
         self.worker_id = worker_id or f"telegram-{uuid4().hex[:12]}"
+        self.web_public_url = web_public_url
         self._delivery_lock = asyncio.Lock()
 
 
@@ -193,7 +195,7 @@ class TelegramLeadNotifier:
                         chat_id=chat_id,
                         message_id=message_id,
                         text=render_lead_card(card),
-                        reply_markup=lead_keyboard(card),
+                        reply_markup=lead_keyboard(card, web_public_url=self.web_public_url),
                     )
                     async with self.session_factory() as session:
                         log = await session.get(NotificationLog, log_id)
@@ -304,7 +306,7 @@ class TelegramLeadNotifier:
             await self.bot.send_message(
                 chat_id,
                 render_enrichment_followup(card),
-                reply_markup=lead_keyboard(card),
+                reply_markup=lead_keyboard(card, web_public_url=self.web_public_url),
             )
         except Exception as fallback_error:
             logger.error(
@@ -587,7 +589,7 @@ class TelegramLeadNotifier:
             message = await self.bot.send_message(
                 chat_id,
                 render_signal_card(card) if initial else render_lead_card(card),
-                reply_markup=lead_keyboard(card),
+                reply_markup=lead_keyboard(card, web_public_url=self.web_public_url),
             )
             persisted = False
             async with self.session_factory() as session:
@@ -930,13 +932,22 @@ def significant_change_keyboard(
     )
 
 
-def lead_keyboard(card: LeadCard) -> InlineKeyboardMarkup:
+def lead_keyboard(card: LeadCard, *, web_public_url: str | None = None) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(text="👤 Профиль", url=card.profile_url),
             InlineKeyboardButton(text="📹 Reel", url=card.post_url),
         ]
     ]
+    dashboard = (web_public_url or "").rstrip("/")
+    if dashboard:
+        lead_url = f"{dashboard}/leads/{card.lead_id}"
+        if dashboard.startswith("https://"):
+            from aiogram.types import WebAppInfo
+
+            rows.append([InlineKeyboardButton(text="🌐 Карточка", web_app=WebAppInfo(url=lead_url))])
+        else:
+            rows.append([InlineKeyboardButton(text="🌐 Карточка", url=lead_url)])
     if card.status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING, LeadStatus.NEW}:
         rows.append(
             [

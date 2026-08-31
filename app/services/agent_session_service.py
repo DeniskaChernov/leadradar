@@ -16,11 +16,36 @@ READ_TOOL_NAMES = frozenset(
     {
         "lead.search",
         "lead.explain_score",
+        "catalog.recommend",
         "audience.dna",
         "competitor.opportunities",
         "rattan.company_analysis",
         "google.openings",
     }
+)
+
+_CATALOG_QUERY_TOKENS = (
+    "что предложить",
+    "next action",
+    "каталог",
+    "recommend",
+    "предложить клиент",
+)
+_EXPLAIN_QUERY_TOKENS = (
+    "объясни",
+    "explain",
+    "оценк",
+    "score",
+    "почему",
+    "breakdown",
+)
+_CONTACT_LEADS_QUERY_TOKENS = (
+    "лиды клиента",
+    "покажи лиды",
+    "лиды контакта",
+    "list lead",
+    "show lead",
+    "список лид",
 )
 
 
@@ -108,6 +133,7 @@ class AgentSessionService:
         lead_id = self._optional_int(context.get("lead_id")) or self._match_int(
             self._LEAD_ID_RE, query
         )
+        contact_id = self._optional_int(context.get("contact_id"))
         competitor_id = self._optional_int(context.get("competitor_id")) or self._match_int(
             self._COMPETITOR_ID_RE, query
         )
@@ -117,6 +143,17 @@ class AgentSessionService:
         company_name = str(context.get("company_name") or "").strip()
         if not company_name and any(token in lowered for token in ("ротанг", "rattan", "компан")):
             company_name = self._extract_company_hint(query)
+
+        if lead_id is not None and self._matches_intent(lowered, _CATALOG_QUERY_TOKENS):
+            return [("catalog.recommend", {"lead_id": lead_id})]
+
+        if contact_id is not None and self._matches_intent(
+            lowered, (*_CONTACT_LEADS_QUERY_TOKENS, "история сигнал", "сигнал")
+        ):
+            return [("lead.search", {"query": "", "contact_id": contact_id})]
+
+        if lead_id is not None and self._matches_intent(lowered, _EXPLAIN_QUERY_TOKENS):
+            return [("lead.explain_score", {"lead_id": lead_id})]
 
         if lead_id is not None:
             return [("lead.explain_score", {"lead_id": lead_id})]
@@ -154,6 +191,10 @@ class AgentSessionService:
             return [("lead.search", {"query": ""})]
 
         return [("lead.search", {"query": query})]
+
+    @staticmethod
+    def _matches_intent(lowered_query: str, tokens: tuple[str, ...]) -> bool:
+        return any(token in lowered_query for token in tokens)
 
     @staticmethod
     def _optional_int(value: Any) -> int | None:
@@ -233,6 +274,8 @@ class AgentSessionService:
             return self._synthesize_lead_search(query, output)
         if invocation.tool_name == "lead.explain_score":
             return self._synthesize_lead_explain(output)
+        if invocation.tool_name == "catalog.recommend":
+            return self._synthesize_catalog_recommend(output)
         if invocation.tool_name == "audience.dna":
             return self._synthesize_audience_dna(output)
         if invocation.tool_name == "competitor.opportunities":
@@ -273,28 +316,66 @@ class AgentSessionService:
     @staticmethod
     def _synthesize_lead_explain(output: dict[str, Any]) -> str:
         if output.get("error") == "NOT_FOUND":
-            return f"Lead #{output.get('lead_id')} не найден."
+            return f"Лид #{output.get('lead_id')} не найден в базе."
         evidence = output.get("evidence_ids") or []
         memberships = output.get("audience_memberships") or []
-        lines = [
-            f"Lead #{output.get('lead_id')} (@{output.get('username')}) · score {output.get('score')}.",
-            f"Intent: {output.get('intent')} · category: {output.get('product_category') or '—'}.",
-            f"Competitor: {output.get('competitor')}.",
-            f"Evidence IDs: {', '.join(str(item) for item in evidence) or 'нет'}.",
-        ]
         analysis = output.get("analysis_details") or {}
-        if analysis:
-            lines.append(f"Analysis keys: {', '.join(sorted(analysis))}.")
-        if memberships:
-            lines.append("Audience memberships:")
-            for item in memberships[:5]:
-                lines.append(
-                    f"- {item.get('segment_slug')} · confidence {item.get('confidence')} · "
-                    f"evidence {item.get('evidence_ids')}"
-                )
+        lines = [
+            f"Лид #{output.get('lead_id')} (@{output.get('username')}) — оценка {output.get('score')}/100.",
+            f"Намерение: {output.get('intent')} · категория: {output.get('product_category') or 'не определена'}.",
+            f"Источник: @{output.get('competitor')}.",
+        ]
+        funnel_stage = analysis.get("funnel_stage")
+        if funnel_stage:
+            lines.append(f"Стадия покупки: {funnel_stage}.")
+        buyer_role = analysis.get("buyer_role") or analysis.get("v2_buyer_role")
+        if buyer_role:
+            lines.append(f"Роль покупателя: {buyer_role}.")
+        commercial = analysis.get("commercial_quality")
+        if commercial:
+            lines.append(f"Коммерческое качество сигнала: {commercial}.")
         excerpt = output.get("comment_excerpt")
         if excerpt:
-            lines.append(f"Comment excerpt: {excerpt}")
+            lines.append(f"Комментарий: «{excerpt}»")
+        if memberships:
+            lines.append("Сегменты аудитории:")
+            for item in memberships[:5]:
+                lines.append(
+                    f"- {item.get('segment_name') or item.get('segment_slug')} "
+                    f"(confidence {item.get('confidence')})"
+                )
+        if evidence:
+            lines.append(
+                f"Evidence IDs: {', '.join(str(item) for item in evidence[:8])}"
+                f"{'…' if len(evidence) > 8 else ''}."
+            )
+        lines.append(
+            "Ответ основан только на сохранённых фактах Lead Radar — "
+            "каталог и наличие проверяйте отдельно."
+        )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _synthesize_catalog_recommend(output: dict[str, Any]) -> str:
+        if output.get("error") == "NOT_FOUND":
+            return f"Лид #{output.get('lead_id')} не найден."
+        lines = [
+            f"Рекомендация для лида #{output.get('lead_id')}: {output.get('title')}.",
+            output.get("description") or "Описание действия не сохранено.",
+        ]
+        reasons = output.get("match_reasons") or []
+        if reasons:
+            lines.append("Основания:")
+            for reason in reasons[:6]:
+                lines.append(f"- {reason}")
+        product_id = output.get("recommended_product_id")
+        if product_id:
+            lines.append(f"Подтверждённый товар в каталоге: #{product_id}.")
+        else:
+            lines.append("Автоматически подтверждённый SKU не выбран — проверьте каталог вручную.")
+        evidence = output.get("evidence_ids") or []
+        if evidence:
+            lines.append(f"Evidence IDs: {', '.join(str(item) for item in evidence[:8])}.")
         return "\n".join(lines)
 
     @staticmethod

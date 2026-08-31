@@ -82,8 +82,23 @@
         plainOutput.hidden = false;
         plainOutput.textContent = formatAgentAnswer(data);
       }
-      toast(data.grounded ? 'Ответ grounded' : 'Tool вернул ошибку', !data.grounded);
+      const useful = Boolean(data.answer && data.answer.trim());
+      toast(
+        data.grounded ? 'Ответ grounded' : (useful ? 'Ответ получен' : 'Tool вернул ошибку'),
+        !data.grounded && !useful,
+      );
       return data;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Ошибка запроса';
+      if (output?.classList.contains('agent-result-rich')) {
+        output.hidden = false;
+        output.innerHTML = `<div class="agent-result-head warn"><span class="tag neutral">Ошибка</span></div><div class="agent-result-body">${message}</div>`;
+      } else if (plainOutput) {
+        plainOutput.hidden = false;
+        plainOutput.textContent = message;
+      }
+      toast(message, true);
+      throw error;
     } finally {
       setLoading(submitButton, false);
     }
@@ -99,6 +114,7 @@
     const close = () => {
       root.classList.remove('is-open');
       document.removeEventListener('keydown', onKeydown);
+      root.removeEventListener('click', onBackdrop);
       cancel.onclick = null;
       setTimeout(() => {
         root.hidden = true;
@@ -111,7 +127,11 @@
         close();
       }
     };
+    const onBackdrop = (event) => {
+      if (event.target === root) close();
+    };
     cancel.onclick = close;
+    root.addEventListener('click', onBackdrop);
     document.addEventListener('keydown', onKeydown);
     const input = root.querySelector('input[name="query"]');
     if (input instanceof HTMLInputElement) input.focus();

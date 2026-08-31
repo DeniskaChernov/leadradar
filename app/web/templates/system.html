@@ -6,9 +6,32 @@
 {% if not settings.web_auth_enabled %}
 <section class="panel"><div class="alert warn"><b>Локальный режим без Telegram auth</b><span>Mutating POST выполняются от manager_id={{ request.state.manager_id }}. Не используйте на публичном хосте без WEB_AUTH_ENABLED.</span></div></section>
 {% endif %}
-<section class="cost-guard panel {% if safe_mode %}safe{% else %}live{% endif %}"><div><span class="eyebrow">КОНТРОЛЬ РАСХОДОВ</span><h2>{% if safe_mode %}Внешние Instagram-запросы заблокированы{% else %}Live-запросы разрешены{% endif %}</h2><p>{% if safe_mode %}Это намеренно. Тесты, интерфейс, база, локальный скоринг и CRM работают без списания бесплатных токенов. Чтобы сделать реальный контрольный скан, нужно явно включить live-настройку и второй предохранитель EXTERNAL_LIVE_UNLOCK. Одной случайной галочки недостаточно.{% else %}Каждая внешняя операция записывается в журнал и ограничивается дневным лимитом. Автоматические live-сканы могут быть отдельно отключены настройкой INSTAGRAM_MANUAL_LIVE_SCAN_ONLY.{% endif %}</p></div><div class="budget-box"><div><span>Instagram сегодня</span><b>{{ usage.get('instagram',0) }} / {{ settings.instagram_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('instagram',0) / (settings.instagram_daily_request_limit if settings.instagram_daily_request_limit else 1) * 100]|min }}%"></i></div><div><span>OpenAI сегодня</span><b>{{ usage.get('openai',0) }} / {{ settings.openai_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('openai',0) / (settings.openai_daily_request_limit if settings.openai_daily_request_limit else 1) * 100]|min }}%"></i></div></div></section>
 
-<section class="panel scan-plan">
+<section class="hero-status system-hero safe">
+  <div>
+    <span class="eyebrow">SYSTEM COCKPIT</span>
+    <h2>Диагностика, AI и расходы</h2>
+    <p>Локальный разбор без OpenAI · retry AI_PENDING · quality gates · уведомления</p>
+  </div>
+  <div class="hero-actions">
+    <button class="btn primary" type="button" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Локальный разбор</button>
+    <button class="btn" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-reload="1">Retry AI_PENDING</button>
+    <a class="btn ghost" href="/radar?kind=pending">Очередь</a>
+  </div>
+</section>
+
+<nav class="system-toc panel" aria-label="Разделы системной страницы">
+  <a href="#cost-guard">Расходы</a>
+  <a href="#scan-plan">План проверки</a>
+  <a href="#notifications">Уведомления</a>
+  <a href="#ai-safety">AI safety</a>
+  <a href="#quality-gates">Quality gates</a>
+  <a href="#agent-workspace">Agent</a>
+</nav>
+
+<section class="cost-guard panel {% if safe_mode %}safe{% else %}live{% endif %}" id="cost-guard"><div><span class="eyebrow">КОНТРОЛЬ РАСХОДОВ</span><h2>{% if safe_mode %}Внешние Instagram-запросы заблокированы{% else %}Live-запросы разрешены{% endif %}</h2><p>{% if safe_mode %}Это намеренно. Тесты, интерфейс, база, локальный скоринг и CRM работают без списания бесплатных токенов. Чтобы сделать реальный контрольный скан, нужно явно включить live-настройку и второй предохранитель EXTERNAL_LIVE_UNLOCK. Одной случайной галочки недостаточно.{% else %}Каждая внешняя операция записывается в журнал и ограничивается дневным лимитом. Автоматические live-сканы могут быть отдельно отключены настройкой INSTAGRAM_MANUAL_LIVE_SCAN_ONLY.{% endif %}</p></div><div class="budget-box"><div><span>Instagram сегодня</span><b>{{ usage.get('instagram',0) }} / {{ settings.instagram_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('instagram',0) / (settings.instagram_daily_request_limit if settings.instagram_daily_request_limit else 1) * 100]|min }}%"></i></div><div><span>OpenAI сегодня</span><b>{{ usage.get('openai',0) }} / {{ settings.openai_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('openai',0) / (settings.openai_daily_request_limit if settings.openai_daily_request_limit else 1) * 100]|min }}%"></i></div></div></section>
+
+<section class="panel scan-plan" id="scan-plan">
   <div class="panel-head"><div><h2>План следующей проверки</h2><p>Расчёт строится только по нашей базе и сам по себе ничего не тратит</p></div><span class="tag {% if scan_plan.live_enabled %}status-contacted{% else %}neutral{% endif %}">{% if scan_plan.live_enabled %}live разрешён{% else %}без внешних запросов{% endif %}</span></div>
   <div class="plan-grid">
     <div><span>Активных конкурентов</span><b>{{ scan_plan.active_competitors }}</b><small>портфель источников, не число обязательных запросов</small></div>
@@ -21,7 +44,7 @@
   </div>
 </section>
 
-<section class="panel action-form-card">
+<section class="panel action-form-card" id="notifications">
   <span class="eyebrow">УВЕДОМЛЕНИЯ МЕНЕДЖЕРУ</span>
   <h3>{{ notification_policy_info[0] }}</h3>
   <p>{{ notification_policy_info[1] }}</p>
@@ -48,7 +71,7 @@
   </tbody></table></div>
 </section>
 
-<section class="panel">
+<section class="panel" id="ai-safety">
   <div class="panel-head"><div><span class="eyebrow">PHASE B · БЕЗОПАСНОСТЬ AI</span><h2>AI-запросы и бюджетные lease</h2><p>Диагностика читает только локальную БД и не вызывает внешние сервисы.</p></div><span class="tag {% if ai_safety.stale_ai_leases or ai_safety.uncertain_reservations %}neutral{% else %}status-contacted{% endif %}">{% if ai_safety.stale_ai_leases or ai_safety.uncertain_reservations %}нужна сверка{% else %}контур чист{% endif %}</span></div>
   <div class="mini-metrics">
     <span><b>{{ ai_safety.statuses.get('CLAIMED', 0) }}</b> AI выполняются</span>
@@ -155,7 +178,7 @@
 <section class="panel usage-breakdown"><div class="panel-head"><div><h2>Куда ушли Instagram-запросы сегодня</h2><p>Fallback считается отдельно, поэтому расход не прячется за одной операцией</p></div></div><div class="mini-metrics">{% for provider, units in usage_breakdown.items() %}<span><b>{{ units }}</b> {{ provider }}</span>{% endfor %}</div></section>
 {% endif %}
 
-<section class="panel agent-workspace" aria-labelledby="agent-workspace-title">
+<section class="panel agent-workspace" id="agent-workspace" aria-labelledby="agent-workspace-title">
   <div class="panel-head"><div><span class="eyebrow">GROUNDED AGENT · OFFLINE</span><h2 id="agent-workspace-title">Read-only ассистент</h2><p>Ответ только из MCP read tools и evidence_ids. GPT не вызывается; write tools остаются NOT_CONNECTED.</p></div><span class="tag status-contacted">DB-backed</span></div>
   <div class="agent-presets inline" role="group" aria-label="Примеры вопросов">
     <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи quality gates"}'>Quality gates</button>

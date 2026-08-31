@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.models import Evidence, PublicSignal
 from app.services.allowed_audience_registry import AllowedAudienceRegistry
 from app.services.audience_membership_resolver import AudienceMembershipResolver
+from app.services.product_catalog_service import ProductCatalogService
 from app.web.queries import WebQueryService
 
 
@@ -25,14 +26,21 @@ class MCPReadToolService:
         self.session_factory = session_factory
         self.hot_threshold = hot_threshold
         self.queries = WebQueryService(session_factory, hot_threshold)
+        self.catalog_service = ProductCatalogService(session_factory)
         self.membership_resolver = AudienceMembershipResolver(session_factory)
 
     async def dispatch(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if tool_name == "lead.search":
-            return await self.lead_search(str(arguments.get("query") or ""))
+            contact_id = arguments.get("contact_id")
+            return await self.lead_search(
+                str(arguments.get("query") or ""),
+                contact_id=int(contact_id) if contact_id not in (None, "") else None,
+            )
         if tool_name == "lead.explain_score":
             lead_id = int(arguments["lead_id"])
             return await self.lead_explain_score(lead_id)
+        if tool_name == "catalog.recommend":
+            return await self.catalog_recommend(int(arguments["lead_id"]))
         if tool_name == "audience.dna":
             return await self.audience_dna(str(arguments.get("segment_slug") or ""))
         if tool_name == "competitor.opportunities":
@@ -43,8 +51,8 @@ class MCPReadToolService:
             return await self.google_openings(str(arguments.get("status") or "PENDING_REVIEW"))
         raise ValueError(f"Unsupported read tool: {tool_name}")
 
-    async def lead_search(self, query: str) -> dict[str, Any]:
-        rows = await self.queries.leads(q=query, limit=20)
+    async def lead_search(self, query: str, *, contact_id: int | None = None) -> dict[str, Any]:
+        rows = await self.queries.leads(q=query, contact_id=contact_id, limit=20)
         leads: list[dict[str, Any]] = []
         evidence_ids: list[int] = []
         for lead, contact, comment, competitor, _post, deal in rows:
@@ -115,6 +123,25 @@ class MCPReadToolService:
                 }
                 for item in (membership.memberships if membership else ())
             ],
+        }
+
+    async def catalog_recommend(self, lead_id: int) -> dict[str, Any]:
+        detail = await self.queries.lead_detail(lead_id)
+        if detail is None:
+            return {"error": "NOT_FOUND", "lead_id": lead_id}
+        lead = detail["lead"]
+        recommendation = await self.catalog_service.recommend_for_lead(lead)
+        evidence_ids = list(recommendation.evidence_ids)
+        return {
+            "lead_id": lead_id,
+            "title": recommendation.title,
+            "description": recommendation.description,
+            "action_type": recommendation.action_type,
+            "urgency": recommendation.urgency,
+            "recommended_product_id": recommendation.recommended_product_id,
+            "recommended_sku": recommendation.recommended_sku,
+            "match_reasons": list(recommendation.match_reasons),
+            "evidence_ids": evidence_ids,
         }
 
     async def audience_dna(self, segment_slug: str) -> dict[str, Any]:

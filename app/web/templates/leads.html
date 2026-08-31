@@ -11,7 +11,7 @@
   {% if lead.status.value in ['TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION'] %}{% set ns.active = ns.active + 1 %}{% endif %}
 {% endfor %}
 
-<section class="hero-status leads-hero live">
+<section class="hero-status leads-hero {% if safe_mode %}safe{% else %}live{% endif %}">
   <div>
     <span class="eyebrow">LEAD PIPELINE</span>
     <h2>{{ ns.total }} лидов · {{ ns.hot }} HOT</h2>
@@ -37,10 +37,10 @@
 </form>
 
 <div class="filters segmented-control leads-view-toggle" aria-label="Быстрый фильтр">
-  <a class="btn {% if not status_filter %}ghost{% endif %}" href="/leads" {% if not status_filter %}aria-current="page"{% endif %}>Канban</a>
-  <a class="btn {% if status_filter != 'NEW' %}ghost{% endif %}" href="/leads?status=NEW" {% if status_filter == 'NEW' %}aria-current="page"{% endif %}>NEW</a>
-  <a class="btn {% if status_filter != 'NEGOTIATION' %}ghost{% endif %}" href="/leads?status=NEGOTIATION" {% if status_filter == 'NEGOTIATION' %}aria-current="page"{% endif %}>Переговоры</a>
-  <a class="btn {% if status_filter != 'WON' %}ghost{% endif %}" href="/leads?status=WON" {% if status_filter == 'WON' %}aria-current="page"{% endif %}>WON</a>
+  <a class="btn {% if not status_filter %}ghost{% endif %}" href="/leads{% if q %}?q={{ q|urlencode }}{% endif %}" {% if not status_filter %}aria-current="page"{% endif %}>Kanban</a>
+  <a class="btn {% if status_filter != 'NEW' %}ghost{% endif %}" href="/leads?status=NEW{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'NEW' %}aria-current="page"{% endif %}>NEW</a>
+  <a class="btn {% if status_filter != 'NEGOTIATION' %}ghost{% endif %}" href="/leads?status=NEGOTIATION{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'NEGOTIATION' %}aria-current="page"{% endif %}>Переговоры</a>
+  <a class="btn {% if status_filter != 'WON' %}ghost{% endif %}" href="/leads?status=WON{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'WON' %}aria-current="page"{% endif %}>WON</a>
 </div>
 
 {% if status_filter %}
@@ -63,7 +63,7 @@
   <div class="kanban-stack">
   {% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}
     <a class="kanban-card {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %}" href="/leads/{{ lead.id }}">
-      <div class="kanban-top"><b>@{{ contact.username }}</b><span>{{ lead.lead_score }}</span></div>
+      <div class="kanban-top"><b>@{{ contact.username }}</b><span>{% if lead.status.value in ['ANALYZING','AI_PENDING'] %}…{% else %}{{ lead.lead_score }}{% endif %}</span></div>
       <p>{{ comment.text[:120] }}{% if comment.text|length > 120 %}…{% endif %}</p>
       <small>{{ intent_label(lead.intent) }} · {{ product_label(lead.product_category) }}</small>
       <div class="kanban-source"><span>@{{ competitor.normalized_handle }}</span>{% if lead.next_action_at %}<em>⏱ {{ lead.next_action_at.strftime('%d.%m %H:%M') }}</em>{% endif %}</div>

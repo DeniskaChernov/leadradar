@@ -85,6 +85,31 @@ async def test_audience_membership_resolver_returns_snapshot(session_factory):
 
 
 @pytest.mark.asyncio
+async def test_agent_session_routes_catalog_recommend_when_lead_id_present(session_factory):
+    lead_id = await create_lead(session_factory)
+    service = AgentSessionService(session_factory, hot_threshold=70)
+
+    result = await service.query("Что предложить клиенту", context={"lead_id": lead_id})
+
+    assert result.grounded is True
+    assert result.tool_calls[0].tool_name == "catalog.recommend"
+    assert result.tool_calls[0].arguments == {"lead_id": lead_id}
+    assert "Рекомендация" in result.answer or "рекомендация" in result.answer.lower()
+
+
+@pytest.mark.asyncio
+async def test_mcp_read_tool_catalog_recommend(session_factory):
+    lead_id = await create_lead(session_factory)
+    read_service = MCPReadToolService(session_factory, hot_threshold=70)
+
+    output = await read_service.catalog_recommend(lead_id)
+
+    assert output["lead_id"] == lead_id
+    assert output["title"]
+    assert isinstance(output["match_reasons"], list)
+
+
+@pytest.mark.asyncio
 async def test_agent_session_service_is_grounded_without_fake_catalog(session_factory):
     await create_lead(session_factory)
     service = AgentSessionService(session_factory, hot_threshold=70)
