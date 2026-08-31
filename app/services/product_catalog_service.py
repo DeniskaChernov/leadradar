@@ -110,7 +110,7 @@ class ProductCatalogService:
             try:
                 stmt = stmt.where(Product.vertical == Vertical(vertical))
             except ValueError:
-                pass
+                return []
         async with self.session_factory() as session:
             return list(await session.scalars(stmt))
 

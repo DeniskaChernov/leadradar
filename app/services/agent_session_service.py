@@ -93,12 +93,13 @@ class AgentSessionService:
                 evidence_ids.update(self._extract_evidence_ids(result.output))
 
         answer = self._synthesize(normalized, invocations)
+        all_success = bool(invocations) and all(item.result.success for item in invocations)
         return AgentQueryResult(
             query=normalized,
             answer=answer,
             evidence_ids=tuple(sorted(evidence_ids)),
             tool_calls=tuple(invocations),
-            grounded=True,
+            grounded=all_success,
             synthesis_mode="offline_deterministic",
         )
 
@@ -123,11 +124,13 @@ class AgentSessionService:
         if segment_slug:
             return [("audience.dna", {"segment_slug": segment_slug})]
 
-        if competitor_id is not None or any(
-            token in lowered for token in ("конкурент", "competitor", "спрос", "opportunit")
+        if any(
+            token in lowered
+            for token in ("конкурент", "competitor", "спрос", "opportunit")
         ):
-            if competitor_id is not None:
-                return [("competitor.opportunities", {"competitor_id": competitor_id})]
+            if competitor_id is None:
+                raise ValueError("competitor_id is required for competitor opportunity queries")
+            return [("competitor.opportunities", {"competitor_id": competitor_id})]
 
         if company_name or any(token in lowered for token in ("ротанг", "rattan")):
             return [("rattan.company_analysis", {"company_name": company_name})]
@@ -386,14 +389,6 @@ class AgentSessionService:
                 f"{item.get('city') or '—'} · confidence {item.get('confidence')}"
             )
         return "\n".join(lines)
-
-    @staticmethod
-    def _format_bucket(item: Any) -> str:
-        if isinstance(item, dict):
-            return f"{item.get('name')} ({item.get('count')})"
-        if isinstance(item, (list, tuple)) and len(item) == 2:
-            return f"{item[0]} ({item[1]})"
-        return str(item)
 
     @staticmethod
     def _format_bucket(item: Any) -> str:

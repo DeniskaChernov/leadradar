@@ -40,7 +40,7 @@
 </section>
 
 <section class="panel meta-readiness">
-  <div class="panel-head"><div><span class="eyebrow">META ACTIVATION BOUNDARY</span><h2>Готовность к активации</h2></div><span class="pill warn">NOT_CONNECTED</span></div>
+  <div class="panel-head"><div><span class="eyebrow">META ACTIVATION BOUNDARY</span><h2>Готовность к активации</h2></div><span class="pill warn">{{ meta_readiness.blueprint.eligibility_status if meta_readiness else 'NOT_CONNECTED' }}</span></div>
   {% if meta_readiness %}
   <p>{{ meta_readiness.blueprint.reason }}</p>
   <div class="audience-definition-meta"><span>{{ meta_readiness.blueprint.mode }}</span><span>{% if meta_readiness.blueprint.first_party_required %}Нужны first-party identifiers{% else %}First-party seed не требуется для планирования{% endif %}</span><span>Meta IDs: отсутствуют</span></div>

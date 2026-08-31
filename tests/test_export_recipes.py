@@ -141,11 +141,14 @@ async def test_export_recipes_api_endpoints(session_factory):
     from httpx import ASGITransport, AsyncClient
 
     from app.config import Settings
+    from app.services.audience_service import AudienceEngine
     from app.services.crm_service import CRMService
     from app.services.lead_workflow_service import LeadWorkflowService
     from app.services.monitor_controller import MonitorController
     from app.web.app import build_web_app
     from app.web.queries import WebQueryService
+
+    await AudienceEngine(session_factory, hot_threshold=70).sync_segments()
 
     settings = Settings(web_auth_enabled=False)
     queries = WebQueryService(session_factory, hot_threshold=70)

@@ -540,7 +540,7 @@ class WebQueryService:
                 try:
                     stmt = stmt.where(Lead.status == LeadStatus(status.strip().upper()))
                 except ValueError:
-                    pass
+                    return []
             elif not include_not_leads:
                 stmt = stmt.where(Lead.status != LeadStatus.NOT_LEAD)
             return (await session.execute(stmt)).all()
@@ -1623,7 +1623,7 @@ class WebQueryService:
                 try:
                     stmt = stmt.where(Deal.status == DealStatus(status.strip().upper()))
                 except ValueError:
-                    pass
+                    return []
             if q.strip():
                 pattern = f"%{q.strip().lower()}%"
                 stmt = stmt.where(

@@ -135,13 +135,17 @@ class ExportRecipeService:
                 segment = await session.scalar(
                     select(AudienceSegment).where(AudienceSegment.slug == recipe.segment_slug)
                 )
-                if segment is not None:
-                    stmt = stmt.join(
-                        AudienceMembership,
-                        (AudienceMembership.contact_id == Contact.id)
-                        & (AudienceMembership.segment_id == segment.id)
-                        & (AudienceMembership.active.is_(True)),
+                if segment is None:
+                    raise ValueError(
+                        f"Audience segment '{recipe.segment_slug}' is not synced; "
+                        "run audience recalculation before export preview."
                     )
+                stmt = stmt.join(
+                    AudienceMembership,
+                    (AudienceMembership.contact_id == Contact.id)
+                    & (AudienceMembership.segment_id == segment.id)
+                    & (AudienceMembership.active.is_(True)),
+                )
 
             if recipe.buyer_roles:
                 stmt = stmt.where(ContactIntelligence.primary_buyer_role.in_(recipe.buyer_roles))

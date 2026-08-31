@@ -639,9 +639,9 @@ def build_web_app(
                 "detail": f"{usage.get('instagram', 0)}/{settings.instagram_daily_request_limit} операций сегодня",
             },
             "AI Agent / MCP": {
-                "configured": False,
-                "enabled": False,
-                "detail": "NOT_CONNECTED · демонстрационные ответы отключены",
+                "configured": True,
+                "enabled": True,
+                "detail": "Read tools: DB-backed · Write tools: NOT_CONNECTED",
             },
             "Meta / Google": {
                 "configured": False,

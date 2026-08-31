@@ -99,6 +99,7 @@ async def test_catalog_page_and_agent_grounded_state(session_factory):
     assert agent.status_code == 200
     payload = agent.json()
     assert payload["grounded"] is True
+    assert payload["tool_calls"][0]["success"] is True
     assert "SKU-DINING-SET-6P" not in payload["answer"]
     assert "каталог" in payload["answer"].lower()
 

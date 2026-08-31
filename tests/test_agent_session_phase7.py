@@ -92,6 +92,7 @@ async def test_agent_session_service_is_grounded_without_fake_catalog(session_fa
     result = await service.query("Что предложить?")
 
     assert result.grounded is True
+    assert result.tool_calls[0].result.success is True
     assert result.synthesis_mode == "offline_deterministic"
     assert "SKU-DINING-SET-6P" not in result.answer
     assert "10%" not in result.answer
@@ -116,6 +117,7 @@ async def test_agent_query_endpoint_returns_grounded_payload(session_factory):
     assert response.status_code == 200
     payload = response.json()
     assert payload["grounded"] is True
+    assert payload["tool_calls"][0]["success"] is True
     assert payload["synthesis_mode"] == "offline_deterministic"
     assert payload["tool_calls"][0]["tool_name"] == "lead.search"
     assert "SKU-DINING-SET-6P" not in payload["answer"]
