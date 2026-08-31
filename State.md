@@ -11,4 +11,5 @@
 - after_pilot: disarm Live Radar (pending if not confirmed)
 - ui: 13.8.4-gpt-ui
 - gpt_web: hybrid_lead_service + live_gate; analyze-local rules-only; retry-pending/single analyze use OpenAI when armed
+- meta_live: KEEP OFF
 - note: rattan sources paused — no live spend on them yet
