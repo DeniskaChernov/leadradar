@@ -194,3 +194,32 @@ async def test_place_openings_api_endpoints(session_factory):
         d2 = r2.json()
         assert d2["ok"] is True
         assert d2["review_status"] == "VERIFIED"
+
+
+async def test_store_opening_signal_without_contact_is_idempotent(session_factory):
+    service = PlaceOpeningService(session_factory)
+
+    first = await service.store_opening_signal(
+        place_name="Отель Silk Road",
+        place_type="HOTEL",
+        city="Tashkent",
+        contact_id=None,
+        confidence=70,
+    )
+    second = await service.store_opening_signal(
+        place_name="Отель Silk Road",
+        place_type="HOTEL",
+        city="Tashkent",
+        contact_id=None,
+        confidence=90,
+    )
+
+    assert second.id == first.id
+    async with session_factory() as session:
+        count = await session.scalar(
+            select(func.count(OpeningSignal.id)).where(
+                OpeningSignal.place_name == "Отель Silk Road",
+                OpeningSignal.contact_id.is_(None),
+            )
+        )
+    assert count == 1

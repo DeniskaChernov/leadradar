@@ -116,16 +116,25 @@ class PlaceOpeningService:
                     raise ValueError(f"Lead not found: {lead_id}")
                 if contact_id is not None and lead.contact_id != contact_id:
                     raise ValueError("Lead does not belong to the opening-signal contact")
-            # Check for existing duplicate signal for this contact
-            if contact_id:
+            # Идемпотентность: при contact_id — unique constraint; без него — явный lookup.
+            if contact_id is not None:
                 existing = await session.scalar(
                     select(OpeningSignal).where(
                         OpeningSignal.contact_id == contact_id,
                         OpeningSignal.place_name == place_name,
                     )
                 )
-                if existing is not None:
-                    return existing
+            else:
+                existing = await session.scalar(
+                    select(OpeningSignal).where(
+                        OpeningSignal.contact_id.is_(None),
+                        OpeningSignal.place_name == place_name,
+                        OpeningSignal.city == city,
+                        OpeningSignal.review_status == "PENDING_REVIEW",
+                    )
+                )
+            if existing is not None:
+                return existing
 
             signal = OpeningSignal(
                 place_name=place_name,
@@ -146,13 +155,21 @@ class PlaceOpeningService:
             except IntegrityError:
                 await session.rollback()
                 if contact_id is None:
-                    raise
-                existing = await session.scalar(
-                    select(OpeningSignal).where(
-                        OpeningSignal.contact_id == contact_id,
-                        OpeningSignal.place_name == place_name,
+                    existing = await session.scalar(
+                        select(OpeningSignal).where(
+                            OpeningSignal.contact_id.is_(None),
+                            OpeningSignal.place_name == place_name,
+                            OpeningSignal.city == city,
+                            OpeningSignal.review_status == "PENDING_REVIEW",
+                        )
                     )
-                )
+                else:
+                    existing = await session.scalar(
+                        select(OpeningSignal).where(
+                            OpeningSignal.contact_id == contact_id,
+                            OpeningSignal.place_name == place_name,
+                        )
+                    )
                 if existing is None:
                     raise
                 return existing

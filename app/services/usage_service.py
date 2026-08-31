@@ -419,41 +419,6 @@ class ExternalUsageService:
                 f"Дневной лимит {service} исчерпан: {used + active_res}/{daily_limit}"
             )
 
-    async def record(
-        self,
-        service: str,
-        operation: str,
-        *,
-        units: int = 1,
-        success: bool = True,
-        details: dict | None = None,
-        provider: str | None = None,
-        cost_usd: Decimal | float | None = None,
-    ) -> None:
-        async with self.session_factory() as session:
-            session.add(
-                ExternalUsage(
-                    service=service,
-                    operation=operation,
-                    units=units,
-                    success=success,
-                    details_json=details or {},
-                )
-            )
-            event_key = f"legacy:{uuid4().hex}"
-            session.add(
-                CostEvent(
-                    idempotency_key=event_key,
-                    service=service,
-                    provider=(provider or str((details or {}).get("provider") or service)).lower(),
-                    operation=operation,
-                    units=units,
-                    cost_usd=(Decimal(str(cost_usd)) if cost_usd is not None else None),
-                    details_json=details or {},
-                )
-            )
-            await session.commit()
-
     @staticmethod
     async def _price_for(
         session: AsyncSession,

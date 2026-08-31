@@ -7,15 +7,15 @@
 - external_kill_switch: enabled
 - db_source_of_truth: lead_radar.db
 - alembic_head: d9e4b1c82a70
-- tests: 329 passed, 1 skipped; ruff clean
+- tests: 331 passed, 1 skipped; ruff clean
 - ui: 13.8.1-bug-hunt — analytics days filter, leftover credits, AI routing, mobile CSS, nav catalog/discovery
 - agent: sticky lead_id no longer intercepts audience/openings/lead-search; openings tokens specific
 - bot: /pending in BotCommand + reply keyboard; 0.0.0.0 → 127.0.0.1 dashboard URL
-- spend: billed parse-fail settles confirmed credits and clears leftover observations
-- next: commit 13.8.1-bug-hunt? then await pilot unlock
-- spend: ProviderCallUncertainError blocks fallback after call_started; AI→UNCERTAIN not finalize(1)
+- spend: billed parse-fail settles credits; AI claim-lost finalizes + parks result (no second paid call)
+- openings: null-contact store idempotent by place_name/city/PENDING_REVIEW
+- removed: unsafe ExternalUsageService.record()
+- next: commit 13.8.2? then await pilot unlock
 - ci_status: GREEN 2/2 (59a8e33, run 33380716448; prior 9bf6dff alembic fix)
 - note: local .env may still point at stale ci-test-fresh.db — use lead_radar.db for pilot
-- next: await explicit user unlock for 5-10 credit Radar pilot on @aiko.uz
 - meta_live: KEEP OFF
 - phase9: CI green done; real pilot still required

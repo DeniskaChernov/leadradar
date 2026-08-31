@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar, Protocol
 from uuid import uuid4
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -1263,15 +1263,28 @@ class BudgetedCachedOpenAIAnalyzer:
             ).scalar_one_or_none()
             await session.commit()
         if saved is None:
-            await self.usage.mark_reservation_uncertain(
+            # Ответ уже получен и оплачен: фиксируем ledger и паркуем результат,
+            # чтобы recovery не купил второй OpenAI-вызов.
+            await self.usage.finalize_reservation(
                 reservation_id,
-                reason="openai_result_claim_lost",
+                units=1,
+                success=True,
                 details={
                     "model": self.inner.model,
                     "fingerprint": fingerprint,
                     "billing_state": "DELIVERED_RESULT_CLAIM_LOST",
                 },
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                lead_id=context.lead_id,
+                vertical=Vertical(context.vertical),
             )
+            parked = await self._persist_delivered_result_after_claim_lost(
+                request_id,
+                request_values,
+            )
+            if parked:
+                return analysis
             raise AIAnalysisError("AI result lost its durable claim before persistence")
 
         await self.usage.finalize_reservation(
@@ -1286,6 +1299,37 @@ class BudgetedCachedOpenAIAnalyzer:
         )
 
         return analysis
+
+    async def _persist_delivered_result_after_claim_lost(
+        self,
+        request_id: int,
+        request_values: dict[str, Any],
+    ) -> bool:
+        """Сохраняет оплаченный результат, если claim уже снят и нет живого чужого lease."""
+        now = datetime.now(UTC)
+        async with self.session_factory() as session:
+            saved = (
+                await session.execute(
+                    update(AIRequest)
+                    .where(
+                        AIRequest.id == request_id,
+                        or_(
+                            AIRequest.status == AIRequestStatus.RETRYABLE,
+                            and_(
+                                AIRequest.status == AIRequestStatus.CLAIMED,
+                                or_(
+                                    AIRequest.claim_expires_at.is_(None),
+                                    AIRequest.claim_expires_at <= now,
+                                ),
+                            ),
+                        ),
+                    )
+                    .values(**request_values)
+                    .returning(AIRequest.id)
+                )
+            ).scalar_one_or_none()
+            await session.commit()
+        return saved is not None
 
     @staticmethod
     def _classify_failure(exc: Exception) -> tuple[AIRequestStatus, str]:

@@ -71,6 +71,12 @@ P0/P1 закрыты в коде:
 - CSS/JS cache `13.3.0-pilot-cockpit`;
 - полный offline gate: **316 passed, 1 skipped**; ruff clean; внешних вызовов: **0**.
 
+## Bug-hunt pass 13.8.2 (offline)
+
+- AI claim-lost после delivered OpenAI: finalize ledger + park SUCCEEDED, без второго paid call;
+- openings без `contact_id`: идемпотентный lookup по place_name/city/PENDING_REVIEW;
+- удалён мёртвый unsafe `ExternalUsageService.record()` (без reservation/idempotency).
+
 ## Bug-hunt pass 13.8.1 (offline)
 
 После 15+7 проходов по UI/AI/bot/spend:

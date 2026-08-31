@@ -390,3 +390,61 @@ async def test_stale_claim_takeover_reuses_ledger_row(session_factory):
         requests = (await session.scalars(select(AIRequest))).all()
     assert len(requests) == 1
     assert requests[0].attempt_count == 2
+
+
+@pytest.mark.asyncio
+async def test_claim_lost_after_delivery_finalizes_and_parks_result(session_factory):
+    from app.db.models import ExternalBudgetReservation, ReservationStatus
+
+    lead_id = await create_lead(session_factory)
+    usage = ExternalUsageService(session_factory)
+    inner = MagicMock(spec=OpenAILeadAnalyzer)
+    inner.model = "gpt-5-mini"
+    analyzer = BudgetedCachedOpenAIAnalyzer(
+        inner,
+        session_factory,
+        usage,
+        enabled=True,
+        daily_limit=10,
+        worker_id="claim-lost-worker",
+    )
+
+    async def deliver_then_steal_claim(_context):
+        async with session_factory() as session:
+            request = await session.scalar(select(AIRequest))
+            assert request is not None
+            request.status = AIRequestStatus.RETRYABLE
+            request.claim_token = None
+            request.claim_expires_at = None
+            request.worker_id = None
+            await session.commit()
+        return _sample_analysis()
+
+    inner.analyze = AsyncMock(side_effect=deliver_then_steal_claim)
+    context = LeadAnalysisContext(
+        competitor="aiko.uz",
+        post_caption="Плетёный диван",
+        comment="Цена?",
+        username="claim-lost-user",
+        previous_signals=[],
+        previous_interests=[],
+        lead_id=lead_id,
+    )
+
+    result = await analyzer.analyze(context)
+    assert result.lead_score == 85
+    assert analyzer.inner.analyze.await_count == 1
+
+    async with session_factory() as session:
+        request = await session.scalar(select(AIRequest))
+        reservation = await session.scalar(select(ExternalBudgetReservation))
+    assert request is not None
+    assert request.status == AIRequestStatus.SUCCEEDED
+    assert reservation is not None
+    assert reservation.status == ReservationStatus.FINALIZED
+    assert reservation.details_json.get("billing_state") == "DELIVERED_RESULT_CLAIM_LOST"
+
+    cached = await analyzer.analyze(context)
+    assert cached.lead_score == 85
+    assert analyzer.inner.analyze.await_count == 1
+    assert await usage.used_today("openai") == 1
