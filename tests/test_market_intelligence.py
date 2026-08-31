@@ -119,7 +119,7 @@ async def test_concurrent_candidate_promotion_creates_one_competitor(
 async def test_market_pages_render_and_candidate_promotion_api(session_factory):
     service = MarketIntelligenceService(session_factory)
     await service.sync_catalog()
-    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay")
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
     app = build_web_app(
         settings,
         WebQueryService(session_factory, hot_threshold=70),

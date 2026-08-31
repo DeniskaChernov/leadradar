@@ -192,7 +192,7 @@
           </td>
           <td>{{ intel.activity_score }}</td>
           <td><b>{{ intel.value_score }}</b></td>
-          <td><span class="tag {% if intel.export_eligibility.value=='FIRST_PARTY_ELIGIBLE' %}status-won{% else %}neutral{% endif %}">{{ export_eligibility_label(intel.export_eligibility) }}</span></td>
+          <td><span class="tag {% if intel.export_eligibility.name in ('FIRST_PARTY_ELIGIBLE', 'EXPORTED') %}status-won{% else %}neutral{% endif %}">{{ export_eligibility_label(intel.export_eligibility) }}</span></td>
         </tr>
         {% endfor %}
       </tbody>

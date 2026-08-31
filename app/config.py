@@ -125,6 +125,15 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
+    def apply_platform_port(self) -> Settings:
+        import os
+
+        port = os.environ.get("PORT", "").strip()
+        if port.isdigit():
+            self.web_port = int(port)
+        return self
+
+    @model_validator(mode="after")
     def validate_web_security_boundary(self) -> Settings:
         public_host = self.web_host.strip().lower() not in {
             "127.0.0.1",

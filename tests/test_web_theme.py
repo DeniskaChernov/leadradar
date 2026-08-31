@@ -237,6 +237,10 @@ def test_radar_budget_ui_uses_credit_presets_truthful_max_and_result_facts():
 def test_phase8_system_agent_export_and_telegram_workspaces():
     system = (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
     economics = (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    lead_detail = (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
+    contact_detail = (PROJECT_ROOT / "app/web/templates/contact_detail.html").read_text(
+        encoding="utf-8"
+    )
     audience_detail = (PROJECT_ROOT / "app/web/templates/audience_detail.html").read_text(
         encoding="utf-8"
     )
@@ -250,9 +254,19 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "Локальный режим без Telegram auth" in system
     assert "responsive-table" in economics
     assert "economics-table-wrap" in economics
+    assert 'data-label="Источник"' in economics
+    assert 'data-label="Провайдер"' in economics
+    assert 'data-label="Вертикаль"' in economics
+    assert "lead-agent-panel" in lead_detail
+    assert 'name="lead_id" value="{{ lead.id }}"' in lead_detail
+    assert "data-agent-query" in lead_detail
+    assert "lead-agent-panel" in contact_detail
+    assert "Контекст: @{{ contact.username }}" in contact_detail
+    assert "data-agent-query" in contact_detail
     assert "export_recipe" in audience_detail
     assert "disableVerticalSwipes" in javascript
     assert "formatAgentAnswer" in javascript
     assert "formatExportPreview" in javascript
     assert ".agent-workspace" in css
+    assert ".lead-agent-panel.compact" in css
     assert ".export-recipe-grid" in css

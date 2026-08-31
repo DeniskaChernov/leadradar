@@ -37,6 +37,20 @@ def _secured_settings() -> Settings:
     )
 
 
+def _dev_settings(*, web_manager_id: int = 0) -> Settings:
+    return Settings(_env_file=None, web_auth_enabled=False, web_manager_id=web_manager_id)
+
+
+def _build_test_app(settings: Settings, session_factory):
+    workflow = LeadWorkflowService(session_factory, hot_threshold=70)
+    return build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        workflow,
+        MonitorController(FakeMonitor()),  # type: ignore[arg-type]
+    )
+
+
 def _telegram_init_data(token: str, user_id: int, auth_date: int) -> str:
     fields = {
         "auth_date": str(auth_date),
@@ -194,3 +208,58 @@ async def test_session_role_csrf_and_revocation_are_enforced(session_factory):
     assert auth.validate_session(auth.create_session(101)) == 101
     settings.telegram_admin_chat_ids.clear()
     assert auth.validate_session(auth.create_session(101)) is None
+
+
+async def test_dev_mode_blocks_api_mutations_without_web_manager_id(session_factory, caplog):
+    app = _build_test_app(_dev_settings(), session_factory)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        health = await client.get("/health")
+        blocked = await client.post("/api/replay/reset", json={})
+
+    assert health.status_code == 200
+    assert blocked.status_code == 403
+    assert "WEB_MANAGER_ID" in blocked.json()["detail"]
+    assert any(
+        "WEB_MANAGER_ID is not set" in record.message
+        for record in caplog.records
+        if record.levelname == "WARNING"
+    )
+
+
+async def test_dev_mode_allows_api_mutations_with_web_manager_id(session_factory):
+    app = _build_test_app(_dev_settings(web_manager_id=42), session_factory)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/api/replay/reset", json={})
+
+    assert response.status_code == 409
+    assert "WEB_MANAGER_ID" not in response.json()["detail"]
+
+
+async def test_dev_mode_hides_api_docs_when_auth_disabled(session_factory):
+    app = _build_test_app(_dev_settings(), session_factory)
+    assert app.docs_url is None
+    assert app.openapi_url is None
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        docs = await client.get("/api/docs")
+        openapi = await client.get("/openapi.json")
+
+    assert docs.status_code == 404
+    assert openapi.status_code == 404
+
+
+def test_secured_mode_configures_api_docs(session_factory):
+    app = _build_test_app(_secured_settings(), session_factory)
+    assert app.docs_url == "/api/docs"
+    assert app.openapi_url == "/openapi.json"

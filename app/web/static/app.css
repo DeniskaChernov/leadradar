@@ -2332,6 +2332,13 @@ body::after { animation: ambient-drift-b 22s ease-in-out infinite alternate; }
 
 /* Phase 8 · system/agent/export workspaces */
 .agent-workspace .agent-query-form { margin-top: 8px; }
+.lead-agent-panel.compact { padding: 14px 16px; }
+.lead-agent-panel.compact .panel-head.compact { margin-bottom: 4px; }
+.lead-agent-panel.compact .panel-head.compact h2,
+.lead-agent-panel.compact h3 { font-size: 15px; margin: 0; }
+.lead-agent-panel.compact .agent-query-form { margin-top: 8px; gap: 10px; }
+.lead-agent-panel.compact .agent-query-form label { margin: 0; }
+.lead-agent-panel.compact .agent-result { margin-top: 10px; font-size: 11px; }
 .agent-result,
 .export-result {
   margin-top: 12px;

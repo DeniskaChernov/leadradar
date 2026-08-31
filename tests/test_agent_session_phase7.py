@@ -103,7 +103,7 @@ async def test_agent_session_service_is_grounded_without_fake_catalog(session_fa
 @pytest.mark.asyncio
 async def test_agent_query_endpoint_returns_grounded_payload(session_factory):
     await create_lead(session_factory)
-    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay")
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
     app = build_web_app(
         settings,
         WebQueryService(session_factory, hot_threshold=70),

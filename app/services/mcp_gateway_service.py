@@ -1,8 +1,8 @@
 """
 mcp_gateway_service.py — V6 Lead Radar Internal MCP Gateway & Tool Surface.
 
-Defines the controlled tool surface and least-privilege schemas for the OpenAI Agent:
-  - Read tools (lead.*, audience.*, competitor.*, rattan.*, google.*, catalog.*, analytics.*)
+Defines the controlled tool surface and least-privilege schemas for the grounded agent:
+  - Read tools (lead.*, audience.*, competitor.*, rattan.*, google.*)
   - Write tools (crm.*, meta.*) with mandatory Human-in-the-Loop approval gating
 """
 
@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, ClassVar
+
+from app.services.mcp_write_tool_service import WRITE_TOOL_NAMES
 
 READ_TOOL_NAMES = frozenset(
     {
@@ -61,7 +63,7 @@ class LeadRadarMCPGateway:
         ),
         "audience.dna": MCPToolDefinition(
             name="audience.dna",
-            namespace="lead",
+            namespace="audience",
             description="Извлечение профиля Audience DNA для группы контактов или сегмента.",
             requires_approval=False,
             parameters_schema={"type": "object", "properties": {"segment_slug": {"type": "string"}}},
@@ -109,15 +111,18 @@ class LeadRadarMCPGateway:
         ),
     }
 
-    def __init__(self, read_service: Any | None = None) -> None:
+    def __init__(self, read_service: Any | None = None, write_service: Any | None = None) -> None:
         self.read_service = read_service
+        self.write_service = write_service
 
     @classmethod
     def from_session_factory(cls, session_factory, *, hot_threshold: int) -> LeadRadarMCPGateway:
         from app.services.mcp_read_tool_service import MCPReadToolService
+        from app.services.mcp_write_tool_service import MCPWriteToolService
 
         return cls(
             MCPReadToolService(session_factory, hot_threshold=hot_threshold),
+            MCPWriteToolService(session_factory, hot_threshold=hot_threshold),
         )
 
     @classmethod
@@ -193,6 +198,28 @@ class LeadRadarMCPGateway:
                 return self._not_connected(tool_name, approval_granted, trace_id)
             try:
                 output = await self.read_service.dispatch(tool_name, arguments)
+            except (KeyError, ValueError, TypeError) as exc:
+                return ToolExecutionResult(
+                    tool_name=tool_name,
+                    success=False,
+                    output={"error": "INVALID_ARGUMENTS", "message": str(exc)},
+                    approval_granted=approval_granted,
+                    trace_id=trace_id,
+                )
+            success = not (isinstance(output, dict) and output.get("error"))
+            return ToolExecutionResult(
+                tool_name=tool_name,
+                success=success,
+                output=output,
+                approval_granted=approval_granted,
+                trace_id=trace_id,
+            )
+
+        if tool_name in WRITE_TOOL_NAMES:
+            if self.write_service is None:
+                return self._not_connected(tool_name, approval_granted, trace_id)
+            try:
+                output = await self.write_service.dispatch(tool_name, arguments)
             except (KeyError, ValueError, TypeError) as exc:
                 return ToolExecutionResult(
                     tool_name=tool_name,

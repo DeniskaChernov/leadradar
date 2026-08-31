@@ -154,7 +154,7 @@ async def test_openai_token_finalize_persists_usage_and_priced_cost(session_fact
 async def test_system_pricing_endpoint_creates_version_without_external_calls(session_factory):
     workflow = LeadWorkflowService(session_factory, hot_threshold=70)
     app = build_web_app(
-        Settings(_env_file=None),
+        Settings(_env_file=None, web_manager_id=1001),
         WebQueryService(session_factory, hot_threshold=70),
         workflow,
         MonitorController(_PricingMonitor()),  # type: ignore[arg-type]

@@ -67,7 +67,7 @@
   <section class="panel funnel-panel">
     <div class="panel-head"><div><h2>Воронка</h2><p>Где сейчас находятся лиды</p></div><a href="/leads">Открыть воронку →</a></div>
     <div class="funnel">
-      {% for status in ['NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON'] %}
+      {% for status in ['NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}
       <div class="funnel-step"><div><span>{{ lead_status_label(status) }}</span><strong>{{ funnel.get(status, 0) }}</strong></div><div class="funnel-bar"><i style="width: {{ [100, (funnel.get(status, 0) * 14)]|min }}%"></i></div></div>
       {% endfor %}
     </div>

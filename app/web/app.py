@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -17,6 +18,7 @@ from app.services.ai_service import HybridLeadAnalyzer, RuleBasedLeadAnalyzer
 from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.audience_service import AudienceEngine
 from app.services.crm_service import CRMService
+from app.services.deployment_readiness_service import inspect_offline_readiness
 from app.services.discovery_service import DiscoveryService
 from app.services.export_recipe_service import ExportRecipeService
 from app.services.fx_policy_service import FxPolicyService
@@ -62,6 +64,13 @@ from app.web.labels import (
 )
 from app.web.queries import WebQueryService
 
+logger = logging.getLogger(__name__)
+
+_DEV_MUTATION_FORBIDDEN_DETAIL = (
+    "Локальный режим без авторизации: задайте WEB_MANAGER_ID "
+    "для изменяющих запросов к API."
+)
+
 
 def build_web_app(
     settings: Settings,
@@ -73,7 +82,12 @@ def build_web_app(
     crm: CRMService | None = None,
     notification_worker_active: bool = False,
 ) -> FastAPI:
-    app = FastAPI(title="Lead Radar", docs_url="/api/docs", redoc_url=None)
+    app = FastAPI(
+        title="Lead Radar",
+        docs_url="/api/docs" if settings.web_auth_enabled else None,
+        redoc_url=None,
+        openapi_url="/openapi.json" if settings.web_auth_enabled else None,
+    )
     if settings.web_auth_enabled:
         configured_host = urlparse(settings.web_public_url).hostname
         allowed_hosts = {"127.0.0.1", "localhost", "testserver"}
@@ -161,11 +175,25 @@ def build_web_app(
 
     @app.middleware("http")
     async def protect_mini_app(request: Request, call_next):
-        public_paths = {"/auth", "/api/auth/telegram", "/health"}
+        public_paths = {"/auth", "/api/auth/telegram", "/health", "/ready"}
         if not settings.web_auth_enabled:
             request.state.manager_id = local_manager_id()
             request.state.web_role = WebRole.ADMIN
             request.state.csrf_token = ""
+            if (
+                request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+                and request.url.path.startswith("/api/")
+                and not settings.web_manager_id
+            ):
+                logger.warning(
+                    "Dev web: mutating %s %s rejected — WEB_MANAGER_ID is not set",
+                    request.method.upper(),
+                    request.url.path,
+                )
+                return JSONResponse(
+                    {"ok": False, "detail": _DEV_MUTATION_FORBIDDEN_DETAIL},
+                    status_code=403,
+                )
             return await call_next(request)
         if request.url.path.startswith("/static/") or request.url.path in public_paths:
             return await call_next(request)
@@ -714,8 +742,6 @@ def build_web_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return {
             "ok": True,
             "pricing_config_id": config.id,
@@ -1053,6 +1079,8 @@ def build_web_app(
             return {"ok": True, **res}
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/api/openings")
     async def list_openings_review_queue():
@@ -1385,6 +1413,19 @@ def build_web_app(
                 or not settings.instagram_live_enabled
             ),
         }
+
+    @app.get("/ready")
+    async def ready():
+        state = await inspect_offline_readiness(settings)
+        payload = {
+            "ok": state.ready,
+            "database_healthy": state.database_healthy,
+            "migration_at_head": state.migration_at_head,
+            "migration_drift_free": state.migration_drift_free,
+            "blocks": list(state.offline_blocks),
+        }
+        status_code = 200 if state.ready else 503
+        return JSONResponse(payload, status_code=status_code)
 
     return app
 

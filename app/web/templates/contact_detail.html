@@ -148,6 +148,18 @@
   </div>
 
   <aside class="contact-side">
+    <section class="panel lead-agent-panel compact action-form-card" aria-labelledby="contact-agent-title">
+      <span class="eyebrow">GROUNDED AGENT · OFFLINE</span>
+      <h3 id="contact-agent-title">Спросить по клиенту</h3>
+      <p class="muted">Контекст: @{{ contact.username }} · клиент #{{ contact.id }}{% if leads %} · lead_id={{ leads[0].id }}{% endif %}</p>
+      <form class="agent-query-form" data-agent-query>
+        {% if leads %}<input type="hidden" name="lead_id" value="{{ leads[0].id }}">{% endif %}
+        <label>Вопрос<input name="query" placeholder="Покажи лиды · объясни score" required autocomplete="off"></label>
+        <button class="btn primary btn-sm" type="submit">Спросить</button>
+      </form>
+      <pre class="agent-result" id="agent-query-result" hidden aria-live="polite"></pre>
+    </section>
+
     <section class="panel action-form-card quick-crm-card">
       <h3>Клиент ответил</h3>
       <p>Фиксируйте ответ, даже если сделка ещё не определилась. Это часть обучающей истории.</p>

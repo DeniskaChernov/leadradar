@@ -18,7 +18,13 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import select
 
-from app.db.models import Contact, ContactEvent, ContactIntelligence, ExportEligibility
+from app.db.models import (
+    Contact,
+    ContactEvent,
+    ContactEventType,
+    ContactIntelligence,
+    ExportEligibility,
+)
 from app.schemas.leads import BuyerRole, Intent, LeadAnalysis
 from app.services.audience_service import AudienceEngine
 from app.services.contact_service import ContactService
@@ -75,7 +81,7 @@ async def test_export_recipe_dry_run(session_factory):
     await engine.recalculate_contact(sig.contact_id)
 
     service = ExportRecipeService(session_factory)
-    res = await service.run_export_recipe("high_intent_dining", dry_run=True)
+    res = await service.run_export_recipe("high_intent_dining", dry_run=True, manager_id=42)
 
     assert res["dry_run"] is True
     assert res["total_matched"] >= 1
@@ -90,6 +96,16 @@ async def test_export_recipe_dry_run(session_factory):
         )
         assert intel is not None
         assert intel.export_eligibility == ExportEligibility.FIRST_PARTY_ELIGIBLE
+        preview_event = await session.scalar(
+            select(ContactEvent).where(
+                ContactEvent.contact_id == sig.contact_id,
+                ContactEvent.event_type == ContactEventType.AUDIENCE_EXPORT_PREVIEW,
+            )
+        )
+        assert preview_event is not None
+        assert preview_event.manager_telegram_id == 42
+        assert preview_event.payload_json["action"] == "AUDIENCE_EXPORT_PREVIEW"
+        assert preview_event.payload_json["recipe_slug"] == "high_intent_dining"
 
 
 async def test_export_recipe_confirmed_export_is_blocked_while_meta_not_connected(
@@ -114,7 +130,7 @@ async def test_export_recipe_confirmed_export_is_blocked_while_meta_not_connecte
     with pytest.raises(RuntimeError, match="NOT_CONNECTED"):
         await service.run_export_recipe("high_intent_dining", dry_run=False, manager_id=42)
 
-    # Verify DB state is mutated
+    # Verify DB state is unchanged while Meta export stays blocked
     async with session_factory() as session:
         intel = await session.scalar(
             select(ContactIntelligence).where(ContactIntelligence.contact_id == sig.contact_id)
@@ -129,6 +145,37 @@ async def test_export_recipe_confirmed_export_is_blocked_while_meta_not_connecte
         assert not any(
             e.payload_json and e.payload_json.get("action") == "AUDIENCE_EXPORT" for e in events
         )
+
+
+async def test_export_recipe_confirmed_export_returns_503_via_api(session_factory):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.config import Settings
+    from app.services.audience_service import AudienceEngine
+    from app.services.crm_service import CRMService
+    from app.services.lead_workflow_service import LeadWorkflowService
+    from app.services.monitor_controller import MonitorController
+    from app.web.app import build_web_app
+    from app.web.queries import WebQueryService
+
+    await AudienceEngine(session_factory, hot_threshold=70).sync_segments()
+
+    app = build_web_app(
+        settings=Settings(web_auth_enabled=False, web_manager_id=42),
+        queries=WebQueryService(session_factory, hot_threshold=70),
+        workflow=LeadWorkflowService(session_factory, hot_threshold=70),
+        controller=MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/audiences/export-recipes/high_intent_dining",
+            json={"dry_run": False},
+        )
+
+    assert response.status_code == 503
+    assert "NOT_CONNECTED" in response.json()["detail"]
 
 
 async def test_export_recipe_unknown_slug_raises(session_factory):
@@ -150,7 +197,7 @@ async def test_export_recipes_api_endpoints(session_factory):
 
     await AudienceEngine(session_factory, hot_threshold=70).sync_segments()
 
-    settings = Settings(web_auth_enabled=False)
+    settings = Settings(web_auth_enabled=False, web_manager_id=1)
     queries = WebQueryService(session_factory, hot_threshold=70)
     crm = CRMService(session_factory)
     workflow = LeadWorkflowService(session_factory, hot_threshold=70)

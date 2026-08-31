@@ -100,7 +100,7 @@ async def test_concurrent_repeated_import_creates_one_candidate(session_factory)
 
 
 async def test_discovery_page_import_and_review_workflow(session_factory):
-    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay")
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
     app = build_web_app(
         settings,
         WebQueryService(session_factory, hot_threshold=70),

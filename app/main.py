@@ -342,9 +342,19 @@ async def _register_bot_commands(bot: Bot) -> None:
 
 
 def configure_logging(settings: Settings) -> None:
+    import os
+
+    log_format = os.environ.get("LOG_FORMAT", "text").strip().lower()
+    if log_format == "json":
+        fmt = (
+            '{"time":"%(asctime)s","level":"%(levelname)s",'
+            '"logger":"%(name)s","message":"%(message)s"}'
+        )
+    else:
+        fmt = "%(asctime)s %(levelname)s %(name)s %(message)s"
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        format=fmt,
         force=True,
     )
 

@@ -80,6 +80,16 @@
   </div>
 
   <aside class="lead-side">
+    <section class="panel lead-agent-panel compact" aria-labelledby="lead-agent-title">
+      <div class="panel-head compact"><div><span class="eyebrow">GROUNDED AGENT · OFFLINE</span><h2 id="lead-agent-title">Спросить по этому лиду</h2><p>Ответ только из БД и evidence_ids. GPT не вызывается.</p></div><span class="tag status-contacted">DB-backed</span></div>
+      <form class="agent-query-form form-grid compact" data-agent-query>
+        <input type="hidden" name="lead_id" value="{{ lead.id }}">
+        <label class="wide">Вопрос<input name="query" placeholder="Объясни оценку · что предложить?" required autocomplete="off"></label>
+        <div><button class="btn primary btn-sm" type="submit">Спросить</button></div>
+      </form>
+      <pre class="agent-result" id="agent-query-result" hidden aria-live="polite"></pre>
+    </section>
+
     <section class="panel side-card">
       <div class="avatar large-avatar">{{ (contact.display_name or contact.username)[:1]|upper }}</div><h3>{{ contact.display_name or '@' ~ contact.username }}</h3><a target="_blank" rel="noopener" href="{{ contact.profile_url }}">@{{ contact.username }} ↗</a>
       <dl><dt>Первый сигнал</dt><dd>{{ contact.first_seen_at.strftime('%d.%m.%Y') }}</dd><dt>Последняя активность</dt><dd>{{ contact.last_seen_at.strftime('%d.%m.%Y %H:%M') }}</dd><dt>Лучшая оценка</dt><dd>{{ contact.current_lead_score }}/100</dd><dt>Ответственный</dt><dd>{% if lead.assigned_manager_telegram_id %}Telegram ID {{ lead.assigned_manager_telegram_id }}{% else %}Не назначен{% endif %}</dd></dl>

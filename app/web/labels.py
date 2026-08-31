@@ -127,6 +127,7 @@ EVENT_LABELS = {
     "QUALIFICATION_UPDATED": "Обновлена информация о клиенте",
     "LEAD_REOPENED": "Лид возвращён в работу",
     "SIGNIFICANT_CHANGE": "Лид стал горячее",
+    "AUDIENCE_EXPORT_PREVIEW": "Dry-run экспорта аудитории",
 }
 
 CHANGE_TYPE_LABELS = {

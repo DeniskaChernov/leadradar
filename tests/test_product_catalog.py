@@ -80,7 +80,7 @@ async def test_manager_can_confirm_category_stock_and_cogs(session_factory):
 async def test_catalog_page_and_agent_grounded_state(session_factory):
     service = ProductCatalogService(session_factory)
     await service.sync_confirmed_catalog()
-    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay")
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
     app = build_web_app(
         settings,
         WebQueryService(session_factory, hot_threshold=70),

@@ -49,6 +49,7 @@ async def test_live_scan_requires_server_side_confirmation(session_factory):
         external_kill_switch=False,
         instagram_max_units_per_scan=2,
         instagram_daily_request_limit=10,
+        web_manager_id=1001,
     )
     controller = MonitorController(FakeMonitor())  # type: ignore[arg-type]
     workflow = LeadWorkflowService(session_factory, hot_threshold=70)
@@ -91,6 +92,7 @@ async def test_safe_replay_scan_does_not_require_confirmation(session_factory):
         lead_search_enabled=True,
         web_enabled=True,
         instagram_provider="replay",
+        web_manager_id=1001,
     )
     controller = MonitorController(FakeMonitor())  # type: ignore[arg-type]
     workflow = LeadWorkflowService(session_factory, hot_threshold=70)

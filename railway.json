@@ -4,9 +4,10 @@
     "builder": "DOCKERFILE"
   },
   "deploy": {
-    "startCommand": "python -m app.main",
+    "startCommand": "python -m app.main --web-only",
+    "healthcheckPath": "/ready",
+    "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
 }
-

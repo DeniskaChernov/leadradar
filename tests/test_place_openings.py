@@ -150,7 +150,7 @@ async def test_place_openings_api_endpoints(session_factory):
     from app.web.app import build_web_app
     from app.web.queries import WebQueryService
 
-    settings = Settings(web_auth_enabled=False)
+    settings = Settings(web_auth_enabled=False, web_manager_id=1)
     queries = WebQueryService(session_factory, hot_threshold=70)
     crm = CRMService(session_factory)
     workflow = LeadWorkflowService(session_factory, hot_threshold=70)

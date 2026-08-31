@@ -18,9 +18,11 @@ from app.db.models import (
     AudienceMembership,
     AudienceSegment,
     Contact,
+    ContactEventType,
     ContactIntelligence,
     ExportEligibility,
 )
+from app.db.repositories.events import ContactEventRepository
 
 
 class CatalogMapper:
@@ -118,7 +120,6 @@ class ExportRecipeService:
         recipe = RECIPES.get(recipe_slug)
         if recipe is None:
             raise ValueError(f"Unknown export recipe: {recipe_slug}")
-        del manager_id
         if not dry_run:
             raise RuntimeError(
                 "NOT_CONNECTED · подтверждённый Meta export недоступен; используйте dry-run"
@@ -167,6 +168,26 @@ class ExportRecipeService:
                 self._hash(contact.phone or contact.username)
                 for contact, _intel in eligible_rows[:5]
             ]
+            audit_contact_id = None
+            if eligible_rows:
+                audit_contact_id = eligible_rows[0][0].id
+            elif rows:
+                audit_contact_id = rows[0][0].id
+            if audit_contact_id is not None:
+                await ContactEventRepository(session).add(
+                    audit_contact_id,
+                    ContactEventType.AUDIENCE_EXPORT_PREVIEW,
+                    manager_telegram_id=manager_id,
+                    payload={
+                        "action": "AUDIENCE_EXPORT_PREVIEW",
+                        "recipe_slug": recipe.slug,
+                        "dry_run": True,
+                        "total_matched": total_matched,
+                        "eligible_count": eligible_count,
+                        "meta_catalog_category": meta_category,
+                    },
+                )
+                await session.commit()
             return {
                 "recipe_slug": recipe.slug,
                 "recipe_name": recipe.name,
