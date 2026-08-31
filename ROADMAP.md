@@ -49,8 +49,8 @@ Lead Radar строится не как «парсер комментариев�
 - Phase 4 Economics — **ГОТОВО**;
 - Phase 5 Audience correctness — **ГОТОВО**;
 - Phase 6 Independent quality gates — **ГОТОВО**;
-- Phase 7 Grounded Agent — **СЛЕДУЮЩАЯ**;
-- Phase 8 UI final hardening — далее;
+- Phase 7 Grounded Agent — **ГОТОВО**;
+- Phase 8 UI final hardening — **СЛЕДУЮЩАЯ**;
 - Phase 9 Deployment — далее;
 - Phase 10 Controlled live pilot — только по отдельному разрешению.
 

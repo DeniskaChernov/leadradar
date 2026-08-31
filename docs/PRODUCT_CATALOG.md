@@ -47,6 +47,6 @@ and check availability before making an offer.
 ## Removed prototype behavior
 
 The old hardcoded agent returned fake score 91, fake evidence, fake catalog SKU, stock, 10% discount
-and 24-hour delivery. It has been removed. The /api/agent/query endpoint now returns
-503 NOT_CONNECTED. The internal MCP definitions remain as a future contract, but execution returns
-NOT_CONNECTED until individual tools are wired to real services.
+and 24-hour delivery. It has been removed. The /api/agent/query endpoint now runs
+`AgentSessionService` with DB-backed read tools and deterministic grounded synthesis.
+Write MCP tools still return NOT_CONNECTED until individually wired.

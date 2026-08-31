@@ -1,28 +1,28 @@
-# Lead Radar V6 — planned Agent/MCP contract (NOT_CONNECTED)
+# Lead Radar V6 — Grounded Agent & MCP Gateway
 
-Этот документ описывает целевой контракт, а не текущее подключение. В репозитории есть
-типизированные определения `LeadRadarMCPGateway`, но их выполнение возвращает `NOT_CONNECTED`;
-`AgentSessionAssistant` отсутствует, а `/api/agent/query` честно отвечает HTTP 503.
+Read tools подключены к SQLite через `MCPReadToolService`. Write tools (`crm.*`, `meta.*`)
+остаются за Human-in-the-Loop и пока возвращают `NOT_CONNECTED`.
 
-## 1. Target system overview
+## 1. System overview
 
 ```text
 User / Manager Query (Web UI or Telegram)
        ↓
-Grounded Agent service (planned)
+AgentSessionService (offline deterministic synthesis)
        ↓
-LeadRadarMCPGateway (app/services/mcp_gateway_service.py)
+LeadRadarMCPGateway.execute_tool_async
        ↓
-├── Read Tools (lead.*, audience.*, competitor.*, rattan.*, google.*) -> Auto-Execute
-└── Write Tools (crm.*, meta.*) -> Human Approval Check
+├── Read Tools (lead.*, audience.*, competitor.*, rattan.*, google.*) -> DB-backed auto execute
+└── Write Tools (crm.*, meta.*) -> approval check -> NOT_CONNECTED
        ↓
-Database + Evidence Graph + Catalog Facts
+Database + Evidence Graph
 ```
 
-До подключения реальных DB-backed tools этот контур нельзя считать реализованным или
-использовать как доказательство production readiness.
+`/api/agent/query` возвращает grounded ответ только из tool output и `evidence_ids`.
+GPT-слой не вызывается в offline-hardening режиме: синтез детерминированный.
 
 ## 2. Security & Factuality Principles
-1. **Facts First**: GPT is a reasoning layer, NOT a fact generator. All facts originate from `PublicSignal`, `Evidence`, and SQLite DB.
-2. **Approval Gating**: Any write action that changes CRM data or spends budget MUST be explicitly approved by a manager.
-3. **No Unrestricted Access**: The agent communicates exclusively through typed MCP tool schemas. No raw SQL or shell access.
+1. **Facts First**: все факты из `PublicSignal`, `Evidence`, SQLite. Agent не выдумывает SKU, stock, discount.
+2. **Approval Gating**: write tools требуют explicit approval менеджера.
+3. **Allowed Audiences**: `audience.dna` принимает только ACTIVE slugs из `AllowedAudienceRegistry`.
+4. **Membership Evidence**: `AudienceMembershipResolver` возвращает persisted evidence_ids.

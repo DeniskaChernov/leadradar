@@ -8,8 +8,20 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: 275 тестов, Ruff, compileall, data-integrity и `alembic check`
+Контрольная точка 2026-08-31: 284 тестов, Ruff, compileall, data-integrity и `alembic check`
 проходят. Рабочая БД на `c8f3a1d57b20`; schema drift отсутствует.
+
+## Master Phase 7 — Grounded Agent завершён
+
+- `MCPReadToolService` подключает read tools к SQLite:
+  `lead.search`, `lead.explain_score`, `audience.dna`, `competitor.opportunities`,
+  `rattan.company_analysis`, `google.openings`;
+- `AllowedAudienceRegistry` и `AudienceMembershipResolver` ограничивают audience facts
+  ACTIVE registry slugs и persisted evidence;
+- `AgentSessionService` выполняет deterministic offline synthesis без fake catalog/SKU/discount;
+- `/api/agent/query` возвращает grounded payload с `evidence_ids` и tool trace;
+- write tools (`crm.*`, `meta.*`) остаются NOT_CONNECTED даже после approval;
+- migration не потребовалась; полный offline gate: **284 tests passed**; внешних вызовов: **0**.
 
 ## Master Phase 6 — Independent quality gates завершён
 
@@ -194,7 +206,7 @@
 | Discovery Center / Diff Engine | OFFLINE · CSV/XLSX review queue implemented | Repository tests + migration + UI render | No | No |
 | Product Catalog / Next Best Action | OFFLINE · versioned confirmation, protected CSV diff/apply, grounded ranking and sale snapshots | 235 repository tests + fresh/repeated migration + UI render | No | No |
 | Premium UI / Telegram Bot | Web auth/RBAC/CSRF + UI hardening + durable outbox implemented | 229 offline tests; delivery dry-run only | Delivery not run | No |
-| Real Agent / MCP | NOT_CONNECTED · fake execution disabled | Honest 503/NOT_CONNECTED tests | No | No |
+| Real Agent / MCP | OFFLINE · read tools DB-backed; write tools NOT_CONNECTED | 284 offline tests; grounded /api/agent/query | No | No |
 | Meta / Google | Not connected | Offline prototype only | No | No |
 | Offline 500–1000 signal pilot | 600-case robustness replay passed | 60 curated roots × 10 variants; unseen corpus pending | No | No |
 | Controlled live pilot | Blocked | Missing gate evidence | No | No |
@@ -369,7 +381,7 @@
 - при отсутствии подтверждённого совпадения менеджер получает безопасное действие:
   уточнить модель/параметры и проверить наличие перед предложением;
 - удалён hardcoded AgentSessionAssistant с fake HOT 91, fake evidence и fake SKU;
-  /api/agent/query и MCP execution честно возвращают NOT_CONNECTED;
+  /api/agent/query теперь использует `AgentSessionService` с DB-backed read tools;
 - контракт и ограничения описаны в docs/PRODUCT_CATALOG.md;
 - полный offline gate: **205 tests passed**, Ruff и compileall чистые;
 - live/paid вызовы не выполнялись, maturity остаётся OFFLINE.

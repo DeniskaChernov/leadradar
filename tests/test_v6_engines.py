@@ -34,7 +34,7 @@ def test_targeting_recipes_generation():
     assert all(not recipe.interest_ids for recipe in recipes)
 
 
-def test_mcp_gateway_read_tool_is_honestly_not_connected():
+def test_mcp_gateway_read_tool_is_honestly_not_connected_without_service():
     result = LeadRadarMCPGateway.execute_tool(
         "lead.search",
         {"query": "dining set"},

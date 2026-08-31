@@ -77,7 +77,7 @@ async def test_manager_can_confirm_category_stock_and_cogs(session_factory):
     assert changes == 1
 
 
-async def test_catalog_page_and_agent_not_connected_state(session_factory):
+async def test_catalog_page_and_agent_grounded_state(session_factory):
     service = ProductCatalogService(session_factory)
     await service.sync_confirmed_catalog()
     settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay")
@@ -96,8 +96,11 @@ async def test_catalog_page_and_agent_not_connected_state(session_factory):
     assert "CORDA" in catalog.text
     assert "не подтверждён" in catalog.text
     assert "SKU-DINING-SET-6P" not in catalog.text
-    assert agent.status_code == 503
-    assert "не подключён" in agent.json()["detail"]
+    assert agent.status_code == 200
+    payload = agent.json()
+    assert payload["grounded"] is True
+    assert "SKU-DINING-SET-6P" not in payload["answer"]
+    assert "каталог" in payload["answer"].lower()
 
 
 async def test_catalog_count_is_stable_after_repeated_sync(session_factory):

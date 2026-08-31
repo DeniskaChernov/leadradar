@@ -1081,13 +1081,36 @@ def build_web_app(
 
     @app.post("/api/agent/query")
     async def agent_query_endpoint(request: Request):
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "AI Agent пока не подключён. Старый демонстрационный ответ отключён, "
-                "потому что он не был основан на данных Lead Radar."
-            ),
+        from app.services.agent_session_service import AgentSessionService
+
+        payload = await _json_or_form(request)
+        query = str(payload.get("query") or "").strip()
+        if not query:
+            raise HTTPException(status_code=400, detail="query is required")
+        service = AgentSessionService(
+            workflow.session_factory,
+            hot_threshold=settings.hot_lead_threshold,
         )
+        try:
+            result = await service.query(query, context=payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "query": result.query,
+            "answer": result.answer,
+            "evidence_ids": list(result.evidence_ids),
+            "grounded": result.grounded,
+            "synthesis_mode": result.synthesis_mode,
+            "tool_calls": [
+                {
+                    "tool_name": item.tool_name,
+                    "arguments": item.arguments,
+                    "success": item.result.success,
+                    "output": item.result.output,
+                }
+                for item in result.tool_calls
+            ],
+        }
 
     @app.post("/api/tasks/{task_id}/complete")
     async def complete_task(request: Request, task_id: int):
