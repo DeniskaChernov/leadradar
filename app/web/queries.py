@@ -43,6 +43,7 @@ from app.db.models import (
     Vertical,
 )
 from app.services.audience_facet_service import AudienceFacetQuery
+from app.services.audience_quality_service import AudienceQualityService
 from app.services.economics_page_service import EconomicsPageService
 from app.services.product_catalog_service import normalize_product_category
 
@@ -745,6 +746,8 @@ class WebQueryService:
             }
 
     async def audiences(self, vertical: str = "FURNITURE") -> list[dict]:
+        quality = await AudienceQualityService(self.session_factory).snapshot(vertical)
+        health_by_slug = {row.segment_slug: row for row in quality.health_rows}
         async with self.session_factory() as session:
             try:
                 selected_vertical = Vertical(vertical)
@@ -808,9 +811,14 @@ class WebQueryService:
                         if product_counts
                         else None,
                         "top_intent": intent_counts.most_common(1)[0][0] if intent_counts else None,
+                        "health": health_by_slug.get(segment.slug),
                     }
                 )
             return result
+
+    async def audience_quality(self, vertical: str = "FURNITURE") -> dict:
+        page = await AudienceQualityService(self.session_factory).snapshot(vertical)
+        return {"page": page}
 
     async def audience_detail(
         self, slug: str, facets: AudienceFacetQuery | None = None

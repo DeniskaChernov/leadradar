@@ -67,6 +67,54 @@ INTEREST_EVIDENCE_ACTIVE_SCORE_THRESHOLD = 20
 INTEREST_EVIDENCE_MIN_CONFIDENCE = 50
 INTEREST_ENGINE_VERSION = "3.0"
 
+# Соответствие registry-критериев ролям RattanTaxonomyService.
+RATTAN_ROLE_CRITERIA_MAP: dict[str, frozenset[str]] = {
+    "RAW_SELLER": frozenset({"RAW_RATTAN_RESELLER", "WHOLESALER"}),
+    "MANUFACTURER": frozenset({"MANUFACTURER"}),
+    "READY_FURNITURE_SELLER": frozenset({"FURNITURE_RESELLER"}),
+    "IMPORT_DISTRIBUTION": frozenset({"IMPORTER", "DISTRIBUTOR"}),
+}
+
+
+def calculate_membership_confidence(
+    observations: list[InterestEvidence],
+    evidence_ids: list[int],
+    *,
+    recency_days: int,
+    source_ids: set[int | None] | None = None,
+) -> int:
+    """Многофакторная уверенность: одно слабое evidence не даёт завышенный score."""
+    id_set = set(evidence_ids)
+    matched = [item for item in observations if item.evidence_id in id_set]
+    if not matched:
+        return 0
+
+    confidences = [item.confidence for item in matched]
+    strongest = max(confidences)
+    average_confidence = sum(confidences) / len(confidences)
+    spread_penalty = max(0.0, strongest - average_confidence) * 0.35
+
+    diversity = (
+        source_ids
+        if source_ids is not None
+        else {item.competitor_id for item in matched}
+    )
+    source_score = min(100, len(diversity) * 25)
+    count_score = min(100, 35 + len(matched) * 18)
+    recency_score = max(0, min(100, 100 - int(recency_days))) if recency_days <= 90 else 0
+
+    blended = (
+        strongest * 0.30
+        + average_confidence * 0.25
+        + source_score * 0.20
+        + count_score * 0.15
+        + recency_score * 0.10
+        - spread_penalty
+    )
+    if len(matched) == 1 and strongest < 75:
+        blended = min(blended, float(strongest))
+    return max(0, min(100, round(blended)))
+
 
 def calculate_decayed_interest_score(
     score: float,
@@ -851,6 +899,12 @@ class AudienceEngine:
                 for lead, _comment in commercial
                 if (lead.analysis_details or {}).get("rattan_taxonomy", {}).get("layer")
             }
+            rattan_roles = {
+                str((lead.analysis_details or {}).get("rattan_taxonomy", {}).get("role"))
+                for lead, _comment in commercial
+                if (lead.analysis_details or {}).get("rattan_taxonomy", {}).get("role")
+                not in (None, "UNKNOWN")
+            }
             similarity_vector: dict[str, Any] = {
                 "products": sorted(product_counts.keys()),
                 "intents": sorted(intent_counts.keys()),
@@ -927,20 +981,22 @@ class AudienceEngine:
                 "evaluated_at": now,
                 "vertical": observed_vertical,
                 "rattan_layers": rattan_layers,
+                "rattan_roles": rattan_roles,
             }
             for segment in segments:
                 active, reasons, evidence_ids, expires_at = self._evaluate(
                     segment.criteria_json, facts, last_seen
                 )
-                evidence_confidences = [
-                    item.confidence
+                matched_source_ids = {
+                    item.competitor_id
                     for item in effective_observations
                     if item.evidence_id in evidence_ids
-                ]
-                membership_confidence = (
-                    round(sum(evidence_confidences) / len(evidence_confidences))
-                    if evidence_confidences
-                    else 0
+                }
+                membership_confidence = calculate_membership_confidence(
+                    effective_observations,
+                    evidence_ids,
+                    recency_days=recency_days,
+                    source_ids=matched_source_ids,
                 )
                 active = bool(
                     active
@@ -1096,6 +1152,22 @@ class AudienceEngine:
         if layer := criteria.get("rattan_layer"):
             active &= layer in facts.get("rattan_layers", set())
             add_reason("RATTAN_LAYER", f"рынок: {layer}", facts["evidence_ids"])
+        if registry_role := criteria.get("rattan_role"):
+            accepted_roles = RATTAN_ROLE_CRITERIA_MAP.get(
+                registry_role,
+                frozenset({registry_role}),
+            )
+            matched_roles = sorted(facts.get("rattan_roles", set()) & accepted_roles)
+            active &= bool(matched_roles)
+            add_reason(
+                "RATTAN_ROLE",
+                (
+                    f"роль рынка: {registry_role} ({', '.join(matched_roles)})"
+                    if matched_roles
+                    else f"роль рынка: {registry_role}"
+                ),
+                facts["evidence_ids"],
+            )
         if days := criteria.get("days"):
             active &= int(facts["recency_days"]) < int(days)
             expires_at = last_seen + timedelta(days=int(days))

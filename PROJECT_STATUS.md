@@ -8,8 +8,20 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: 267 тестов, Ruff, compileall, data-integrity и `alembic check`
+Контрольная точка 2026-08-31: 272 тестов, Ruff, compileall, data-integrity и `alembic check`
 проходят. Рабочая БД на `c8f3a1d57b20`; schema drift отсутствует.
+
+## Master Phase 5 — Audience correctness завершён
+
+- `calculate_membership_confidence()` заменяет простое среднее evidence confidence;
+  одно слабое evidence не даёт завышенный score;
+- `rattan_role` в `AudienceEngine._evaluate()` с `RATTAN_ROLE_CRITERIA_MAP`
+  (RAW_SELLER, MANUFACTURER, READY_FURNITURE_SELLER, IMPORT_DISTRIBUTION);
+- `AudienceQualityService` считает `AudienceHealthSnapshot` (HEALTHY/LOW_DATA/STALE/NOISY/NEEDS_REVIEW/NOT_EXPORTABLE)
+  и Jaccard overlap по активным membership;
+- `/audiences/quality` — health table + overlap analytics; `/audiences` показывает health badge;
+- comparison decay (45d source window) уже был в Phase 1 — без изменений;
+- migration не потребовалась; полный offline gate: **272 tests passed**; внешних вызовов: **0**.
 
 ## Master Phase 4 — Economics завершён
 

@@ -47,12 +47,20 @@ Lead Radar строится не как «парсер комментариев�
 - Phase 2 Radar Credit Budget — **ГОТОВО**;
 - Phase 3 Adaptive Monitoring — **ГОТОВО**;
 - Phase 4 Economics — **ГОТОВО**;
-- Phase 5 Audience correctness — **СЛЕДУЮЩАЯ**;
-- Phase 6 Independent quality gates — далее;
+- Phase 5 Audience correctness — **ГОТОВО**;
+- Phase 6 Independent quality gates — **СЛЕДУЮЩАЯ**;
 - Phase 7 Grounded Agent — далее;
 - Phase 8 UI final hardening — далее;
 - Phase 9 Deployment — далее;
 - Phase 10 Controlled live pilot — только по отдельному разрешению.
+
+### Master Phase 5. Audience correctness — ГОТОВО
+
+- `calculate_membership_confidence()` — многофакторная формула (strongest, agreement, sources, count, recency);
+- `rattan_role` criteria в `_evaluate()` с mapping registry → taxonomy roles;
+- `AudienceQualityService` + `AudienceHealthSnapshot` (computed) + Jaccard overlap analytics;
+- `/audiences/quality` workspace; health badges на `/audiences`;
+- migration не потребовалась; полный offline gate: **272 tests passed**.
 
 ### Master Phase 4. Economics — ГОТОВО
 

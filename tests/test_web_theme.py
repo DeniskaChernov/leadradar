@@ -68,6 +68,7 @@ def test_audience_pages_explain_privacy_boundary_and_campaign_action():
 
     assert 'href="/audiences"' in base
     assert "Чувствительные признаки не собираются" in audiences
+    assert "quality workspace" in audiences
     assert "Instagram username не превращается" in audiences
     assert "CAMPAIGN BRIEF" in detail
     assert "АУДИТОРИЯ И ИНТЕРЕСЫ" in contact
@@ -175,8 +176,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.0.0-economics" in base
-    assert "13.0.0-economics" in auth
+    assert "13.1.0-audience-quality" in base
+    assert "13.1.0-audience-quality" in auth
     assert 'data-more-toggle aria-expanded="false"' in base
     assert 'aria-controls="more-navigation"' in base
     assert 'aria-label="Вертикаль бизнеса"' in base

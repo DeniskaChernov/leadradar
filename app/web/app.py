@@ -472,6 +472,15 @@ def build_web_app(
             context=base_context(request, rows=rows),
         )
 
+    @app.get("/audiences/quality", response_class=HTMLResponse)
+    async def audience_quality(request: Request, vertical: str = "FURNITURE"):
+        data = await queries.audience_quality(vertical=vertical)
+        return templates.TemplateResponse(
+            request=request,
+            name="audience_quality.html",
+            context=base_context(request, **data),
+        )
+
     @app.get("/audiences/{slug}", response_class=HTMLResponse)
     async def audience_detail(request: Request, slug: str):
         facets = AudienceFacetQuery.from_mapping(request.query_params)

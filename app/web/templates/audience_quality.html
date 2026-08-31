@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Качество аудиторий · Lead Radar{% endblock %}
+{% block heading %}Качество аудиторий{% endblock %}
+{% block subheading %}Health, overlap и уверенность membership — только из БД{% endblock %}
+{% block content %}
+<div class="page-help"><b>Read-only quality workspace</b><span>Метрики считаются из AudienceMembership и ContactIntelligence. Внешние вызовы не выполняются.</span></div>
+
+<form class="filters" method="get" aria-label="Вертикаль аудиторий">
+  <a class="btn {% if page.vertical != 'FURNITURE' %}ghost{% endif %}" href="/audiences/quality?vertical=FURNITURE" {% if page.vertical == 'FURNITURE' %}aria-current="page"{% endif %}>Мебель</a>
+  <a class="btn {% if page.vertical != 'ARTIFICIAL_RATTAN' %}ghost{% endif %}" href="/audiences/quality?vertical=ARTIFICIAL_RATTAN" {% if page.vertical == 'ARTIFICIAL_RATTAN' %}aria-current="page"{% endif %}>Ротанг</a>
+  <a class="btn ghost" href="/audiences?vertical={{ page.vertical }}">← К каталогу аудиторий</a>
+</form>
+
+<section class="panel audience-quality-summary" aria-labelledby="audience-quality-summary-title">
+  <div class="panel-head">
+    <div><span class="eyebrow">AUDIENCE HEALTH · V5</span><h2 id="audience-quality-summary-title">Сводка</h2><p>{{ page.health_rows|length }} активных сегментов · {{ page.total_active_members }} участников</p></div>
+    <div class="audience-quality-badges">
+      <span class="tag success">{{ page.healthy_count }} HEALTHY</span>
+      <span class="tag warning">{{ page.needs_review_count }} review</span>
+    </div>
+  </div>
+  <div class="metrics economics-metrics">
+    <div class="metric"><span>Активные участники</span><strong>{{ page.total_active_members }}</strong><small>все сегменты</small></div>
+    <div class="metric"><span>HEALTHY</span><strong>{{ page.healthy_count }}</strong><small>avg confidence ≥ 60</small></div>
+    <div class="metric"><span>Нужна проверка</span><strong>{{ page.needs_review_count }}</strong><small>NOISY / REVIEW / NOT_EXPORTABLE</small></div>
+    <div class="metric"><span>Пересечения</span><strong>{{ page.overlap_rows|length }}</strong><small>пары с Jaccard > 0</small></div>
+  </div>
+</section>
+
+<section class="panel audience-quality-section" aria-labelledby="audience-health-title">
+  <div class="panel-head"><div><span class="eyebrow">HEALTH SNAPSHOT</span><h2 id="audience-health-title">Здоровье сегментов</h2><p>Membership confidence, decay и exportability</p></div></div>
+  <div class="table-wrap embedded">
+    <table>
+      <thead>
+        <tr>
+          <th>Аудитория</th>
+          <th>Status</th>
+          <th>Участники</th>
+          <th>+7д</th>
+          <th>−7д</th>
+          <th>Conf</th>
+          <th>Intent</th>
+          <th>Evidence</th>
+          <th>Sources</th>
+          <th>Stale</th>
+          <th>Unknown</th>
+          <th>WON</th>
+          <th>Export</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in page.health_rows %}
+        <tr>
+          <td><a href="/audiences/{{ row.segment_slug }}"><b>{{ row.segment_name }}</b></a><small>{{ row.audience_level }}</small></td>
+          <td><span class="tag {% if row.status == 'HEALTHY' %}success{% elif row.status in ['LOW_DATA','STALE'] %}warning{% else %}danger{% endif %}">{{ row.status }}</span></td>
+          <td>{{ row.active_members }}</td>
+          <td>{{ row.new_members_7d }}</td>
+          <td>{{ row.expired_7d }}</td>
+          <td>{{ row.avg_confidence }}</td>
+          <td>{{ row.avg_intent_score }}</td>
+          <td>{{ row.avg_evidence_count }}</td>
+          <td>{{ row.avg_source_count }}</td>
+          <td>{{ row.stale_ratio }}%</td>
+          <td>{{ row.unknown_ratio }}%</td>
+          <td>{% if row.won_rate is not none %}{{ row.won_count }} ({{ row.won_rate }}%){% else %}—{% endif %}</td>
+          <td>{{ row.exportable_count }}</td>
+        </tr>
+        {% if row.issues %}
+        <tr class="audience-quality-issues"><td colspan="13">{% for issue in row.issues %}<span>{{ issue }}</span>{% endfor %}</td></tr>
+        {% endif %}
+        {% else %}
+        <tr><td colspan="13"><div class="empty compact">Нет активных сегментов для выбранной вертикали.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel audience-quality-section" aria-labelledby="audience-overlap-title">
+  <div class="panel-head"><div><span class="eyebrow">OVERLAP ANALYTICS</span><h2 id="audience-overlap-title">Пересечения аудиторий</h2><p>Jaccard по активным membership contact_id</p></div></div>
+  <div class="table-wrap embedded">
+    <table>
+      <thead><tr><th>Левая</th><th>Правая</th><th>Пересечение</th><th>Только слева</th><th>Только справа</th><th>Jaccard</th></tr></thead>
+      <tbody>
+        {% for row in page.overlap_rows %}
+        <tr>
+          <td><a href="/audiences/{{ row.left_slug }}">{{ row.left_name }}</a></td>
+          <td><a href="/audiences/{{ row.right_slug }}">{{ row.right_name }}</a></td>
+          <td><b>{{ row.intersection }}</b></td>
+          <td>{{ row.left_only }}</td>
+          <td>{{ row.right_only }}</td>
+          <td>{{ row.jaccard }}%</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6"><div class="empty compact">Пересечений между активными сегментами пока нет.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

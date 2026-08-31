@@ -14,7 +14,7 @@ from app.services.audience_registry import (
     AUDIENCE_DEFINITIONS,
     PROHIBITED_DEFINITION_CRITERIA,
 )
-from app.services.audience_service import AudienceEngine
+from app.services.audience_service import AudienceEngine, calculate_membership_confidence
 from app.services.contact_service import ContactService
 from app.services.lead_service import LeadService
 from tests.test_audience_dna import B2BLeadAnalyzer, make_b2b_comment, make_post_for
@@ -133,17 +133,32 @@ async def test_membership_confidence_is_evidence_based_not_value_score(session_f
                 AudienceSegment.slug == "furniture-b2b",
             )
         )
-        evidence_confidences = list(
+        evidence_rows = list(
             await session.scalars(
-                select(InterestEvidence.confidence).where(
+                select(InterestEvidence).where(
                     InterestEvidence.contact_id == signal.contact_id,
                     InterestEvidence.evidence_id.in_(membership.evidence_ids_json),
                 )
             )
         )
+        evidence_confidences = [item.confidence for item in evidence_rows]
 
     assert intelligence is not None and membership is not None
     assert membership.active is True
     assert evidence_confidences
-    assert membership.confidence == round(sum(evidence_confidences) / len(evidence_confidences))
+    expected_confidence = calculate_membership_confidence(
+        evidence_rows,
+        membership.evidence_ids_json,
+        recency_days=max(
+            0,
+            int(
+                (
+                    datetime.now(UTC)
+                    - AudienceEngine._aware(intelligence.last_seen_at)
+                ).total_seconds()
+                / 86400
+            ),
+        ),
+    )
+    assert membership.confidence == expected_confidence
     assert membership.confidence != intelligence.value_score
