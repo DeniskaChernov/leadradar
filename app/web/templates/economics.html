@@ -27,12 +27,12 @@
     <div><small>Прогноз месяца</small><b>~{{ page.provider.projected_monthly_burn|round|int }} credits</b><span>7д: {{ page.provider.average_daily_burn_7d }}/day · 30д: {{ page.provider.average_daily_burn_30d }}/day</span></div>
     <div><small>Хватит примерно</small><b>{% if page.provider.months_remaining is not none %}{{ page.provider.months_remaining }} мес.{% else %}—{% endif %}</b><span>Цель: ≥6 месяцев</span></div>
   </div>
-  <div class="table-wrap embedded">
-    <table>
+  <div class="table-wrap embedded economics-table-wrap">
+    <table class="responsive-table">
       <thead><tr><th>Операция</th><th>Credits месяц</th><th>Доля</th><th>План</th><th>Δ к плану</th></tr></thead>
       <tbody>
         {% for row in page.operation_rows %}
-        <tr><td><b>{{ row.label }}</b></td><td>{{ row.credits_month }}</td><td>{{ row.share_percent }}%</td><td>{{ row.planning_target }}</td><td>{% if row.delta_vs_target > 0 %}+{% endif %}{{ row.delta_vs_target }}</td></tr>
+        <tr><td data-label="Операция"><b>{{ row.label }}</b></td><td data-label="Credits">{{ row.credits_month }}</td><td data-label="Доля">{{ row.share_percent }}%</td><td data-label="План">{{ row.planning_target }}</td><td data-label="Δ">{% if row.delta_vs_target > 0 %}+{% endif %}{{ row.delta_vs_target }}</td></tr>
         {% endfor %}
       </tbody>
     </table>

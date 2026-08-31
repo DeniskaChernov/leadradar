@@ -490,10 +490,21 @@ def build_web_app(
         if data is None:
             raise HTTPException(status_code=404, detail="Аудитория не найдена")
         meta_readiness = await meta_audience_service.readiness(slug)
+        from app.services.export_recipe_service import RECIPES
+
+        export_recipe = next(
+            (recipe for recipe in RECIPES.values() if recipe.segment_slug == slug),
+            None,
+        )
         return templates.TemplateResponse(
             request=request,
             name="audience_detail.html",
-            context=base_context(request, meta_readiness=meta_readiness, **data),
+            context=base_context(
+                request,
+                meta_readiness=meta_readiness,
+                export_recipe=export_recipe,
+                **data,
+            ),
         )
 
     @app.get("/competitors", response_class=HTMLResponse)
@@ -613,6 +624,9 @@ def build_web_app(
         }
         notification_policy_info = notification_modes[settings.notification_policy]
         production_notifications = notification_readiness.controlled_pilot_ready
+        from app.services.export_recipe_service import RECIPES
+
+        export_recipes = list(RECIPES.values())
         integrations = {
             "Telegram": {
                 "configured": bool(settings.telegram_bot_token),
@@ -668,6 +682,7 @@ def build_web_app(
                 quality_gates=quality_gates,
                 pricing_configs=pricing_configs,
                 fx_policies=fx_policies,
+                export_recipes=export_recipes,
             ),
         )
 

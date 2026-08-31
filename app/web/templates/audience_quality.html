@@ -30,7 +30,7 @@
 <section class="panel audience-quality-section" aria-labelledby="audience-health-title">
   <div class="panel-head"><div><span class="eyebrow">HEALTH SNAPSHOT</span><h2 id="audience-health-title">Здоровье сегментов</h2><p>Membership confidence, decay и exportability</p></div></div>
   <div class="table-wrap embedded">
-    <table>
+    <table class="responsive-table audience-health-table">
       <thead>
         <tr>
           <th>Аудитория</th>
@@ -51,19 +51,19 @@
       <tbody>
         {% for row in page.health_rows %}
         <tr>
-          <td><a href="/audiences/{{ row.segment_slug }}"><b>{{ row.segment_name }}</b></a><small>{{ row.audience_level }}</small></td>
-          <td><span class="tag {% if row.status == 'HEALTHY' %}success{% elif row.status in ['LOW_DATA','STALE'] %}warning{% else %}danger{% endif %}">{{ row.status }}</span></td>
-          <td>{{ row.active_members }}</td>
-          <td>{{ row.new_members_7d }}</td>
-          <td>{{ row.expired_7d }}</td>
-          <td>{{ row.avg_confidence }}</td>
-          <td>{{ row.avg_intent_score }}</td>
-          <td>{{ row.avg_evidence_count }}</td>
-          <td>{{ row.avg_source_count }}</td>
-          <td>{{ row.stale_ratio }}%</td>
-          <td>{{ row.unknown_ratio }}%</td>
-          <td>{% if row.won_rate is not none %}{{ row.won_count }} ({{ row.won_rate }}%){% else %}—{% endif %}</td>
-          <td>{{ row.exportable_count }}</td>
+          <td data-label="Аудитория"><a href="/audiences/{{ row.segment_slug }}"><b>{{ row.segment_name }}</b></a><small>{{ row.audience_level }}</small></td>
+          <td data-label="Status"><span class="tag {% if row.status == 'HEALTHY' %}success{% elif row.status in ['LOW_DATA','STALE'] %}warning{% else %}danger{% endif %}">{{ row.status }}</span></td>
+          <td data-label="Участники">{{ row.active_members }}</td>
+          <td data-label="+7д">{{ row.new_members_7d }}</td>
+          <td data-label="−7д">{{ row.expired_7d }}</td>
+          <td data-label="Conf">{{ row.avg_confidence }}</td>
+          <td data-label="Intent">{{ row.avg_intent_score }}</td>
+          <td data-label="Evidence">{{ row.avg_evidence_count }}</td>
+          <td data-label="Sources">{{ row.avg_source_count }}</td>
+          <td data-label="Stale">{{ row.stale_ratio }}%</td>
+          <td data-label="Unknown">{{ row.unknown_ratio }}%</td>
+          <td data-label="WON">{% if row.won_rate is not none %}{{ row.won_count }} ({{ row.won_rate }}%){% else %}—{% endif %}</td>
+          <td data-label="Export">{{ row.exportable_count }}</td>
         </tr>
         {% if row.issues %}
         <tr class="audience-quality-issues"><td colspan="13">{% for issue in row.issues %}<span>{{ issue }}</span>{% endfor %}</td></tr>

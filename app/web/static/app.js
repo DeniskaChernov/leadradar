@@ -13,8 +13,35 @@
       tg.expand();
       document.documentElement.classList.add('inside-telegram');
       if (tg.colorScheme) document.documentElement.dataset.telegramTheme = tg.colorScheme;
+      if (typeof tg.disableVerticalSwipes === 'function') tg.disableVerticalSwipes();
+      if (typeof tg.setHeaderColor === 'function') tg.setHeaderColor('#f4f7ff');
+      if (typeof tg.setBackgroundColor === 'function') tg.setBackgroundColor('#f4f7ff');
+      const activePage = document.body.dataset.page || '/';
+      if (tg.BackButton && activePage !== '/') {
+        tg.BackButton.show();
+        tg.BackButton.onClick(() => {
+          if (window.history.length > 1) window.history.back();
+          else tg.close();
+        });
+      }
     } catch (_) {}
   }
+
+  const formatExportPreview = (data) => [
+    `Recipe: ${data.recipe_slug || '—'}`,
+    `Matched: ${data.total_matched ?? '—'} · eligible: ${data.eligible_count ?? '—'}`,
+    `Dry-run: ${data.dry_run ? 'yes' : 'no'}`,
+    `Privacy hashes: ${(data.sample_privacy_hashes || []).join(', ') || '—'}`,
+  ].join('\n');
+
+  const formatAgentAnswer = (data) => [
+    `grounded: ${data.grounded}`,
+    `mode: ${data.synthesis_mode}`,
+    `evidence_ids: ${(data.evidence_ids || []).join(', ') || '—'}`,
+    `tools: ${(data.tool_calls || []).map((item) => `${item.tool_name}:${item.success ? 'ok' : 'fail'}`).join(' · ') || '—'}`,
+    '',
+    data.answer || '—',
+  ].join('\n');
 
   const toast = (message, bad = false) => {
     const el = document.getElementById('toast');
@@ -236,6 +263,31 @@
   if (document.body.dataset.authPage === '1') authenticateTelegram();
 
   document.addEventListener('submit', async (event) => {
+    const agentForm = event.target.closest('[data-agent-query]');
+    if (agentForm) {
+      event.preventDefault();
+      const submit = agentForm.querySelector('[type="submit"]');
+      const output = document.getElementById('agent-query-result');
+      setLoading(submit, true);
+      try {
+        const payload = formPayload(agentForm, submit);
+        const data = await api('/api/agent/query', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        if (output) {
+          output.hidden = false;
+          output.textContent = formatAgentAnswer(data);
+        }
+        toast(data.grounded ? 'Ответ grounded' : 'Tool вернул ошибку', !data.grounded);
+      } catch (error) {
+        toast(error.message, true);
+      } finally {
+        setLoading(submit, false);
+      }
+      return;
+    }
+
     const form = event.target.closest('[data-api-form]');
     if (!form) return;
     event.preventDefault();
@@ -421,6 +473,16 @@
           method: 'POST',
           body: JSON.stringify(payload),
         });
+        if (action.dataset.resultTarget) {
+          const target = document.querySelector(action.dataset.resultTarget);
+          if (target) {
+            target.hidden = false;
+            target.textContent = formatExportPreview(data);
+          }
+          toast('Dry-run preview готов');
+          setLoading(action, false);
+          return;
+        }
         toast(data.message || 'Готово');
         if (action.dataset.reload === '1') reloadSoon();
         else setLoading(action, false);

@@ -50,7 +50,7 @@ Lead Radar строится не как «парсер комментариев�
 - Phase 5 Audience correctness — **ГОТОВО**;
 - Phase 6 Independent quality gates — **ГОТОВО**;
 - Phase 7 Grounded Agent — **ГОТОВО**;
-- Phase 8 UI final hardening — **СЛЕДУЮЩАЯ**;
+- Phase 8 UI final hardening — **В ПРОЦЕССЕ** (system/agent/export workspaces, mobile, Telegram);
 - Phase 9 Deployment — далее;
 - Phase 10 Controlled live pilot — только по отдельному разрешению.
 

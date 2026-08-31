@@ -52,6 +52,14 @@
   {% else %}<p>Blueprint будет создан при следующем локальном sync.</p>{% endif %}
 </section>
 
+{% if export_recipe %}
+<section class="panel export-recipes-workspace" aria-labelledby="audience-export-title">
+  <div class="panel-head"><div><span class="eyebrow">META EXPORT · DRY-RUN</span><h2 id="audience-export-title">Export preview для сегмента</h2><p>Recipe «{{ export_recipe.name }}» · только first-party eligible · без Meta API</p></div><span class="tag neutral">NOT_CONNECTED</span></div>
+  <button class="btn ghost btn-sm" type="button" data-api-action="/api/audiences/export-recipes/{{ export_recipe.slug }}" data-payload='{"dry_run": true}' data-result-target="#audience-export-result">Запустить dry-run</button>
+  <pre class="export-result" id="audience-export-result" hidden aria-live="polite"></pre>
+</section>
+{% endif %}
+
 <section class="panel campaign-brief">
   <div class="panel-head">
     <div>

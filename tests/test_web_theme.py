@@ -177,8 +177,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.1.0-audience-quality" in base
-    assert "13.1.0-audience-quality" in auth
+    assert "13.2.0-phase8-ui" in base
+    assert "13.2.0-phase8-ui" in auth
     assert 'data-more-toggle aria-expanded="false"' in base
     assert 'aria-controls="more-navigation"' in base
     assert 'aria-label="Вертикаль бизнеса"' in base
@@ -232,3 +232,27 @@ def test_radar_budget_ui_uses_credit_presets_truthful_max_and_result_facts():
     assert "Использовано за месяц" in javascript
     assert ".radar-budget-card" in css
     assert ".scan-result-grid" in css
+
+
+def test_phase8_system_agent_export_and_telegram_workspaces():
+    system = (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
+    economics = (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    audience_detail = (PROJECT_ROOT / "app/web/templates/audience_detail.html").read_text(
+        encoding="utf-8"
+    )
+    javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
+    css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
+
+    assert "GROUNDED AGENT · OFFLINE" in system
+    assert "data-agent-query" in system
+    assert "Export recipes preview" in system
+    assert "export-recipe-grid" in system
+    assert "Локальный режим без Telegram auth" in system
+    assert "responsive-table" in economics
+    assert "economics-table-wrap" in economics
+    assert "export_recipe" in audience_detail
+    assert "disableVerticalSwipes" in javascript
+    assert "formatAgentAnswer" in javascript
+    assert "formatExportPreview" in javascript
+    assert ".agent-workspace" in css
+    assert ".export-recipe-grid" in css

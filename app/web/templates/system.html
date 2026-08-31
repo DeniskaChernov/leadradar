@@ -3,6 +3,9 @@
 {% block heading %}Система{% endblock %}
 {% block subheading %}Контроль интеграций, расходов и качества мониторинга{% endblock %}
 {% block content %}
+{% if not settings.web_auth_enabled %}
+<section class="panel"><div class="alert warn"><b>Локальный режим без Telegram auth</b><span>Mutating POST выполняются от manager_id={{ request.state.manager_id }}. Не используйте на публичном хосте без WEB_AUTH_ENABLED.</span></div></section>
+{% endif %}
 <section class="cost-guard panel {% if safe_mode %}safe{% else %}live{% endif %}"><div><span class="eyebrow">КОНТРОЛЬ РАСХОДОВ</span><h2>{% if safe_mode %}Внешние Instagram-запросы заблокированы{% else %}Live-запросы разрешены{% endif %}</h2><p>{% if safe_mode %}Это намеренно. Тесты, интерфейс, база, локальный скоринг и CRM работают без списания бесплатных токенов. Чтобы сделать реальный контрольный скан, нужно явно включить live-настройку и второй предохранитель EXTERNAL_LIVE_UNLOCK. Одной случайной галочки недостаточно.{% else %}Каждая внешняя операция записывается в журнал и ограничивается дневным лимитом. Автоматические live-сканы могут быть отдельно отключены настройкой INSTAGRAM_MANUAL_LIVE_SCAN_ONLY.{% endif %}</p></div><div class="budget-box"><div><span>Instagram сегодня</span><b>{{ usage.get('instagram',0) }} / {{ settings.instagram_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('instagram',0) / (settings.instagram_daily_request_limit if settings.instagram_daily_request_limit else 1) * 100]|min }}%"></i></div><div><span>OpenAI сегодня</span><b>{{ usage.get('openai',0) }} / {{ settings.openai_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('openai',0) / (settings.openai_daily_request_limit if settings.openai_daily_request_limit else 1) * 100]|min }}%"></i></div></div></section>
 
 <section class="panel scan-plan">
@@ -151,6 +154,33 @@
 {% if usage_breakdown %}
 <section class="panel usage-breakdown"><div class="panel-head"><div><h2>Куда ушли Instagram-запросы сегодня</h2><p>Fallback считается отдельно, поэтому расход не прячется за одной операцией</p></div></div><div class="mini-metrics">{% for provider, units in usage_breakdown.items() %}<span><b>{{ units }}</b> {{ provider }}</span>{% endfor %}</div></section>
 {% endif %}
+
+<section class="panel agent-workspace" aria-labelledby="agent-workspace-title">
+  <div class="panel-head"><div><span class="eyebrow">GROUNDED AGENT · OFFLINE</span><h2 id="agent-workspace-title">Read-only ассистент</h2><p>Ответ только из MCP read tools и evidence_ids. GPT не вызывается; write tools остаются NOT_CONNECTED.</p></div><span class="tag status-contacted">DB-backed</span></div>
+  <form class="agent-query-form form-grid" data-agent-query>
+    <label class="wide">Вопрос<input name="query" placeholder="Покажи лиды · lead_id=1 · furniture-dining" required autocomplete="off"></label>
+    <label>lead_id<input name="lead_id" inputmode="numeric" placeholder="опционально"></label>
+    <label>competitor_id<input name="competitor_id" inputmode="numeric" placeholder="для спроса конкурента"></label>
+    <label>segment_slug<input name="segment_slug" placeholder="audience slug"></label>
+    <div><button class="btn primary" type="submit">Спросить</button></div>
+  </form>
+  <pre class="agent-result" id="agent-query-result" hidden aria-live="polite"></pre>
+</section>
+
+<section class="panel export-recipes-workspace" aria-labelledby="export-recipes-title">
+  <div class="panel-head"><div><span class="eyebrow">META EXPORT · DRY-RUN</span><h2 id="export-recipes-title">Export recipes preview</h2><p>Privacy-safe preview: SHA-256 hashes, без мутаций и без Meta API. Сегмент должен быть synced в БД.</p></div><span class="tag neutral">NOT_CONNECTED export</span></div>
+  <div class="export-recipe-grid">
+    {% for recipe in export_recipes %}
+    <article class="export-recipe-card panel compact">
+      <b>{{ recipe.name }}</b>
+      <p>{{ recipe.description }}</p>
+      <small>{{ recipe.segment_slug or 'без segment filter' }} · min value {{ recipe.min_value_score }}</small>
+      <button class="btn ghost btn-sm" type="button" data-api-action="/api/audiences/export-recipes/{{ recipe.slug }}" data-payload='{"dry_run": true}' data-result-target="#export-result-{{ recipe.slug }}">Dry-run preview</button>
+      <pre class="export-result" id="export-result-{{ recipe.slug }}" hidden aria-live="polite"></pre>
+    </article>
+    {% endfor %}
+  </div>
+</section>
 
 <div class="integration-grid">{% for name, item in integrations.items() %}<div class="integration"><span class="pulse {% if item.enabled %}{% elif item.configured %}busy{% else %}bad{% endif %}"></span><div><b>{{ name }}</b><small>{% if item.enabled %}работает{% elif item.configured %}настроен, но расход выключен{% else %}не настроен{% endif %}</small><p>{{ item.detail }}</p></div></div>{% endfor %}</div>
 

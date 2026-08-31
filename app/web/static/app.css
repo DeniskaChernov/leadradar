@@ -2329,3 +2329,33 @@ body::after { animation: ambient-drift-b 22s ease-in-out infinite alternate; }
   .knowledge-grid > div { padding: 11px; }
   .edit-knowledge { margin: 0 12px 12px; }
 }
+
+/* Phase 8 · system/agent/export workspaces */
+.agent-workspace .agent-query-form { margin-top: 8px; }
+.agent-result,
+.export-result {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line-soft);
+  background: rgba(248, 251, 255, .92);
+  color: var(--text);
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.export-recipe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.export-recipe-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+.export-recipe-card p,
+.export-recipe-card small { color: var(--muted); }
+.inside-telegram .topbar { padding-top: max(8px, env(safe-area-inset-top)); }
+.economics-table-wrap { overflow-x: auto; }
+.audience-health-table td::before { white-space: nowrap; }
