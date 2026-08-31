@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import socket
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar, Protocol
@@ -1134,11 +1135,13 @@ class BudgetedCachedOpenAIAnalyzer:
         analysis_version: str = "3.0",
         lease_seconds: int = 180,
         max_attempts: int = 3,
+        live_gate: Callable[[], bool] | None = None,
     ) -> None:
         self.inner = inner
         self.session_factory = session_factory
         self.usage = usage
-        self.enabled = enabled
+        self._master_enabled = enabled
+        self._live_gate = live_gate
         self.daily_limit = daily_limit
         self.analysis_version = analysis_version
         self.lease_seconds = lease_seconds
@@ -1154,6 +1157,14 @@ class BudgetedCachedOpenAIAnalyzer:
             prompt_version=self.PROMPT_VERSION,
             schema_version=self.SCHEMA_VERSION,
         )
+
+    @property
+    def enabled(self) -> bool:
+        if not self._master_enabled:
+            return False
+        if self._live_gate is not None:
+            return bool(self._live_gate())
+        return True
 
     def context_fingerprint(self, context: LeadAnalysisContext) -> str:
         return self.fingerprint_service.fingerprint(context)

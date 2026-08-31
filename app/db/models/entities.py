@@ -1262,6 +1262,29 @@ class ExternalUsage(Base):
     )
 
 
+class OperationalControl(Base):
+    """Один ряд операционных тумблеров UI. Master-arm (kill/unlock/provider) остаётся в .env."""
+
+    __tablename__ = "operational_controls"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="singleton"),
+        CheckConstraint(
+            "default_scan_credits > 0 AND default_scan_credits <= 50",
+            name="default_scan_credits_range",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    radar_live_armed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    openai_live_armed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    default_scan_credits: Mapped[int] = mapped_column(Integer, default=5)
+    updated_by: Mapped[int | None] = mapped_column(BigInteger)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ProviderBudgetPolicy(Base):
     __tablename__ = "provider_budget_policies"
     __table_args__ = (

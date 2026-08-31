@@ -42,6 +42,7 @@ from app.services.meta_audience_service import MetaAudiencePlanningService
 from app.services.monitor_controller import MonitorController
 from app.services.monitor_run_service import MonitorRunService
 from app.services.notification_service import NullLeadNotifier
+from app.services.operational_control_service import OperationalControlService
 from app.services.product_catalog_service import ProductCatalogService
 from app.services.rattan_vertical_service import RattanVerticalService
 from app.services.significant_change_service import SignificantChangeDetector
@@ -109,7 +110,13 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         max_ai_attempts=settings.ai_request_max_attempts,
     ).recover()
     logger.info("external_safety_recovery_completed stats=%s", recovery_stats)
-    provider = create_instagram_provider(settings, usage_service)
+    ops_control = OperationalControlService(session_factory)
+    await ops_control.load()
+    provider = create_instagram_provider(
+        settings,
+        usage_service,
+        live_gate=ops_control.radar_live_armed,
+    )
     rules = RuleBasedLeadAnalyzer()
     openai_analyzer = None
     if settings.openai_api_key:
@@ -122,6 +129,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             analysis_version=settings.lead_analysis_version,
             lease_seconds=settings.ai_request_lease_seconds,
             max_attempts=settings.ai_request_max_attempts,
+            live_gate=ops_control.openai_live_armed,
         )
     analyzer = (
         HybridLeadAnalyzer(rules, openai_analyzer, mode=settings.ai_mode)
@@ -155,6 +163,14 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             await provider.aclose()
             await engine.dispose()
             return 2
+        if (
+            settings.instagram_provider not in {"mock", "replay"}
+            and not ops_control.radar_live_armed()
+        ):
+            logger.warning("radar_live_disarmed trigger=once")
+            await provider.aclose()
+            await engine.dispose()
+            return 2
         monitor = InstagramMonitor(
             session_factory=session_factory,
             provider=provider,
@@ -173,7 +189,18 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             retry_pending_batch_size=settings.ai_pending_retry_batch_size,
             retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
         )
-        stats = await monitor.run_cycle(force=True)
+        run_service = MonitorRunService(session_factory, provider.name)
+        run_id = await run_service.start(
+            "once",
+            requested_credit_budget=settings.instagram_max_units_per_scan,
+            effective_credit_budget=settings.instagram_max_units_per_scan,
+        )
+        try:
+            stats = await monitor.run_cycle(force=True)
+            await run_service.finish_success(run_id, stats)
+        except Exception as exc:
+            await run_service.finish_failure(run_id, exc)
+            raise
         logger.info("one_shot_cycle_complete stats=%s", stats)
         await provider.aclose()
         await engine.dispose()
@@ -210,6 +237,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             workflow,
             controller,
             usage_service,
+            ops_control=ops_control,
         )
         web_server = uvicorn.Server(
             uvicorn.Config(
@@ -256,7 +284,10 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         max_attempts=settings.telegram_notification_max_attempts,
         lease_seconds=settings.telegram_notification_lease_seconds,
         notification_policy=NotificationPolicy(settings.notification_policy),
-        delivery_enabled=settings.instagram_provider not in {"mock", "replay"},
+        delivery_enabled=(
+            settings.instagram_provider not in {"mock", "replay"}
+            or ops_control.radar_live_armed()
+        ),
         web_public_url=settings.web_public_url or "",
     )
     monitor = InstagramMonitor(
@@ -299,6 +330,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             controller,
             usage_service,
             notification_worker_active=True,
+            ops_control=ops_control,
         )
         web_config = uvicorn.Config(
             web_app,

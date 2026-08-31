@@ -7,6 +7,7 @@ from app.db.models import ProviderBudgetPolicy
 from app.services.instagram_monitor import CycleStats
 from app.services.lead_workflow_service import LeadWorkflowService
 from app.services.monitor_controller import MonitorController
+from app.services.operational_control_service import OperationalControlService
 from app.services.usage_service import ExternalUsageService
 from app.web.app import build_web_app
 from app.web.queries import WebQueryService
@@ -51,6 +52,9 @@ async def test_live_scan_requires_server_side_confirmation(session_factory):
         instagram_daily_request_limit=10,
         web_manager_id=1001,
     )
+    ops = OperationalControlService(session_factory)
+    await ops.load()
+    await ops.set_radar_live(True, manager_id=1001)
     controller = MonitorController(FakeMonitor())  # type: ignore[arg-type]
     workflow = LeadWorkflowService(session_factory, hot_threshold=70)
     app = build_web_app(
@@ -59,11 +63,12 @@ async def test_live_scan_requires_server_side_confirmation(session_factory):
         workflow,
         controller,
         ExternalUsageService(session_factory),
+        ops_control=ops,
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         radar = await client.get("/radar")
-        preview = await client.get("/api/scan/preview")
+        preview = await client.get("/api/scan/preview?max_credits=10")
         blocked = await client.post("/api/scan", json={"max_credits": 5})
         confirmed = await client.post(
             "/api/scan",
@@ -76,6 +81,7 @@ async def test_live_scan_requires_server_side_confirmation(session_factory):
     preview_data = preview.json()
     assert preview_data["is_live"] is True
     assert preview_data["requires_confirmation"] is True
+    assert preview_data["radar_live_armed"] is True
     assert preview_data["effective_max_credits"] == 10
     assert preview_data["monthly_hard_limit"] == 3800
     assert blocked.status_code == 428

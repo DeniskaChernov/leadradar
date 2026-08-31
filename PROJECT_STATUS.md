@@ -2,13 +2,19 @@
 
 ## Текущая версия
 
-**CORE HARDENING · CI GREEN · CONTROLLED PILOT NEXT**
+**OPS UI · LIVE GATED BY DB TOGGLES · FULL APP RUNNING**
+
+Контрольная точка 2026-08-31 (вечер): master unlock в `.env` + тумблеры
+`radar_live_armed` / `openai_live_armed` в БД (`operational_controls`, Alembic
+`e4f7a1c93b20`). UI: Radar/System «Включить Live Radar» / «OpenAI». Spend только
+когда тумблер armed. Полный `python -m app.main` (web+bot+notifications).
+Meta live OFF. Расписание выкл (`INSTAGRAM_MANUAL_LIVE_SCAN_ONLY`).
 
 Текущая программа: offline hardening закрыт по P0 CI/spend; следующий milestone —
 controlled Radar pilot (5–10 ScrapeCreators credits). Старые заявления «100% complete»
 и «Production Ready» не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: **314+ тестов**, Ruff clean, **CI matrix GREEN 2/2**
+Контрольная точка ранее 2026-08-31: **314+ тестов**, Ruff clean, **CI matrix GREEN 2/2**
 (sqlite + postgres, commit `9bf6dff`, Alembic head `d9e4b1c82a70`).
 Postgres concurrency gate: `tests/test_postgres_budget_concurrency.py` (CI postgres only).
 Preflight: `python -m scripts.prepare_controlled_pilot` (без live calls).

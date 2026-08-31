@@ -146,6 +146,7 @@ _ADMIN_PATH_PREFIXES = (
     "/api/pricing",
     "/api/replay/",
     "/api/scan",
+    "/api/ops/",
     "/api/history/",
     "/api/audiences/export-recipes/",
     "/api/competitors",

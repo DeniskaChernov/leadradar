@@ -21,6 +21,7 @@
 </section>
 
 <nav class="system-toc panel" aria-label="Разделы системной страницы">
+  <a href="#ops-arm">Live тумблеры</a>
   <a href="#cost-guard">Расходы</a>
   <a href="#scan-plan">План проверки</a>
   <a href="#notifications">Уведомления</a>
@@ -30,7 +31,29 @@
   <a href="/roadmap">Roadmap</a>
 </nav>
 
-<section class="cost-guard panel {% if safe_mode %}safe{% else %}live{% endif %}" id="cost-guard"><div><span class="eyebrow">КОНТРОЛЬ РАСХОДОВ</span><h2>{% if safe_mode %}Внешние Instagram-запросы заблокированы{% else %}Live-запросы разрешены{% endif %}</h2><p>{% if safe_mode %}Это намеренно. Тесты, интерфейс, база, локальный скоринг и CRM работают без списания бесплатных токенов. Чтобы сделать реальный контрольный скан, нужно явно включить live-настройку и второй предохранитель EXTERNAL_LIVE_UNLOCK. Одной случайной галочки недостаточно.{% else %}Каждая внешняя операция записывается в журнал и ограничивается дневным лимитом. Автоматические live-сканы могут быть отдельно отключены настройкой INSTAGRAM_MANUAL_LIVE_SCAN_ONLY.{% endif %}</p></div><div class="budget-box"><div><span>Instagram сегодня</span><b>{{ usage.get('instagram',0) }} / {{ settings.instagram_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('instagram',0) / (settings.instagram_daily_request_limit if settings.instagram_daily_request_limit else 1) * 100]|min }}%"></i></div><div><span>OpenAI сегодня</span><b>{{ usage.get('openai',0) }} / {{ settings.openai_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('openai',0) / (settings.openai_daily_request_limit if settings.openai_daily_request_limit else 1) * 100]|min }}%"></i></div></div></section>
+<section class="panel" id="ops-arm">
+  <div class="panel-head"><div><h2>Live Radar и OpenAI</h2><p>Включение из интерфейса. Состояние хранится в БД</p></div>
+    <span class="tag {% if ops.radar_live_armed %}success{% else %}muted-tag{% endif %}">{% if ops.radar_live_armed %}Radar ON{% else %}Radar OFF{% endif %}</span>
+  </div>
+  {% if not master_live_ready %}
+  <div class="alert warn"><b>Master unlock не готов</b><span>Нужны scrapecreators + INSTAGRAM_LIVE_CALLS_ENABLED + EXTERNAL_LIVE_UNLOCK в .env.</span></div>
+  {% else %}
+  <div class="form-row">
+    <form data-api-form action="/api/ops/radar-live" data-reload="1">
+      <input type="hidden" name="armed" value="{{ 'false' if ops.radar_live_armed else 'true' }}">
+      <input type="hidden" name="default_scan_credits" value="{{ ops.default_scan_credits }}">
+      <button class="btn {% if ops.radar_live_armed %}ghost{% else %}success{% endif %}" type="submit">{% if ops.radar_live_armed %}Выключить Live Radar{% else %}Включить Live Radar{% endif %}</button>
+    </form>
+    <form data-api-form action="/api/ops/openai-live" data-reload="1">
+      <input type="hidden" name="armed" value="{{ 'false' if ops.openai_live_armed else 'true' }}">
+      <button class="btn {% if ops.openai_live_armed %}ghost{% else %}primary{% endif %}" type="submit" {% if not settings.openai_live_enabled %}disabled{% endif %}>{% if ops.openai_live_armed %}Выключить OpenAI{% else %}Включить OpenAI анализ{% endif %}</button>
+    </form>
+  </div>
+  {% endif %}
+  <div class="explain-line"><span>OpenAI hybrid: правила → при неоднозначности GPT пишет разбор в карточку лида. Telegram-уведомления требуют полного запуска <code>python -m app.main</code> (не web-only).</span></div>
+</section>
+
+<section class="cost-guard panel {% if safe_mode %}safe{% else %}live{% endif %}" id="cost-guard"><div><span class="eyebrow">КОНТРОЛЬ РАСХОДОВ</span><h2>{% if safe_mode %}Внешние Instagram-запросы заблокированы{% else %}Live-запросы разрешены{% endif %}</h2><p>{% if safe_mode %}Master unlock + тумблер Live Radar на этой странице. Без обоих режимов credits не списываются.{% else %}Каждая внешняя операция в журнале. Расписание может быть отдельно ограничено INSTAGRAM_MANUAL_LIVE_SCAN_ONLY.{% endif %}</p></div><div class="budget-box"><div><span>Instagram сегодня</span><b>{{ usage.get('instagram',0) }} / {{ settings.instagram_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('instagram',0) / (settings.instagram_daily_request_limit if settings.instagram_daily_request_limit else 1) * 100]|min }}%"></i></div><div><span>OpenAI сегодня</span><b>{{ usage.get('openai',0) }} / {{ settings.openai_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('openai',0) / (settings.openai_daily_request_limit if settings.openai_daily_request_limit else 1) * 100]|min }}%"></i></div></div></section>
 
 <section class="panel scan-plan" id="scan-plan">
   <div class="panel-head"><div><h2>План следующей проверки</h2><p>Расчёт строится только по нашей базе и сам по себе ничего не тратит</p></div><span class="tag {% if scan_plan.live_enabled %}status-contacted{% else %}neutral{% endif %}">{% if scan_plan.live_enabled %}live разрешён{% else %}без внешних запросов{% endif %}</span></div>

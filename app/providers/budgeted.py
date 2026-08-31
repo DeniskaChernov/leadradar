@@ -19,6 +19,7 @@ from app.services.provider_credit_budget_service import ProviderCreditBudgetServ
 from app.services.usage_service import ExternalBudgetExceeded, ExternalUsageService
 
 T = TypeVar("T")
+LiveGate = Callable[[], bool]
 
 
 class LiveCallsDisabledError(ProviderUsageBlockedError):
@@ -104,14 +105,24 @@ class BudgetedInstagramProvider(InstagramProvider):
         enabled: bool,
         daily_limit: int,
         scan_budget: ScanBudget | None = None,
+        live_gate: LiveGate | None = None,
     ) -> None:
         self.inner = inner
         self.usage = usage
-        self.enabled = enabled
+        self._master_enabled = enabled
+        self._live_gate = live_gate
         self.daily_limit = daily_limit
         self.scan_budget = scan_budget
         self.name = inner.name
         self.credit_budget = ProviderCreditBudgetService(usage.session_factory)
+
+    @property
+    def enabled(self) -> bool:
+        if not self._master_enabled:
+            return False
+        if self._live_gate is not None:
+            return bool(self._live_gate())
+        return True
 
     def begin_cycle(self) -> None:
         if self.scan_budget is not None:

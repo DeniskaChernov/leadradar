@@ -30,6 +30,7 @@ from app.services.market_intelligence_service import MarketIntelligenceService
 from app.services.meta_audience_service import MetaAudiencePlanningService
 from app.services.monitor_controller import MonitorController
 from app.services.notification_readiness_service import NotificationReadinessService
+from app.services.operational_control_service import OperationalControlService
 from app.services.pricing_config_service import PricingConfigService
 from app.services.product_catalog_service import (
     ALLOWED_PRODUCT_CATEGORIES,
@@ -80,6 +81,7 @@ def build_web_app(
     usage_service: ExternalUsageService | None = None,
     crm: CRMService | None = None,
     notification_worker_active: bool = False,
+    ops_control: OperationalControlService | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Lead Radar",
@@ -102,6 +104,7 @@ def build_web_app(
     usage_service = usage_service or ExternalUsageService(workflow.session_factory)
     provider_budget_service = ProviderCreditBudgetService(workflow.session_factory)
     crm = crm or CRMService(workflow.session_factory)
+    ops_control = ops_control or OperationalControlService(workflow.session_factory)
     # The Mini App button "Разобрать сохранённые сигналы" is intentionally local-only.
     # Even if production OpenAI is unlocked elsewhere, this service has no network analyzer, so
     # an ambiguous signal becomes AI_PENDING instead of silently spending tokens.
@@ -132,6 +135,19 @@ def build_web_app(
         delivery_allowed_by_config=delivery_allowed_by_config,
         worker_active=notification_worker_active,
     )
+
+    def master_live_ready() -> bool:
+        return (
+            settings.instagram_provider not in {"mock", "replay"}
+            and settings.instagram_live_enabled
+            and settings.external_spend_unlocked
+        )
+
+    def radar_spend_allowed() -> bool:
+        return master_live_ready() and ops_control.radar_live_armed()
+
+    def openai_spend_allowed() -> bool:
+        return settings.openai_live_enabled and ops_control.openai_live_armed()
     pricing_service = PricingConfigService(workflow.session_factory)
     fx_policy_service = FxPolicyService(workflow.session_factory)
     intelligence_challenge = LeadIntelligenceChallenge()
@@ -279,11 +295,15 @@ def build_web_app(
             "manager_id": getattr(request.state, "manager_id", local_manager_id()),
             "web_role": getattr(request.state, "web_role", WebRole.ADMIN).name,
             "csrf_token": getattr(request.state, "csrf_token", ""),
-            "safe_mode": (
-                settings.instagram_provider in {"mock", "replay"}
-                or not settings.instagram_live_enabled
+            "safe_mode": not radar_spend_allowed(),
+            "search_paused": not settings.lead_search_enabled
+            or (
+                settings.instagram_provider not in {"mock", "replay"}
+                and not ops_control.radar_live_armed()
             ),
-            "search_paused": not settings.lead_search_enabled,
+            "ops": ops_control.snapshot(),
+            "master_live_ready": master_live_ready(),
+            "openai_spend_allowed": openai_spend_allowed(),
             "telegram_manager_count": len(settings.telegram_admin_chat_ids),
             "selected_vertical": selected_vertical,
             **kwargs,
@@ -809,6 +829,8 @@ def build_web_app(
         requested = (
             requested_credits
             if requested_credits is not None
+            else ops_control.snapshot().default_scan_credits
+            if ops_control.snapshot().default_scan_credits
             else policy.default_scan_budget_units
             if policy is not None
             else settings.instagram_max_units_per_scan
@@ -823,23 +845,36 @@ def build_web_app(
         plan = await queries.scan_plan(
             max_units_per_scan=effective,
             daily_remaining=daily.remaining,
-            live_enabled=settings.instagram_live_enabled,
+            live_enabled=radar_spend_allowed(),
         )
         budget = await provider_budget_service.snapshot(settings.instagram_provider)
         blocking_reasons = list(availability.blocking_reasons) if is_live else []
         if not settings.lead_search_enabled:
             blocking_reasons.append("Поиск лидов приостановлен.")
         if is_live and not settings.instagram_live_enabled:
-            blocking_reasons.append("Live-вызовы Instagram отключены.")
+            blocking_reasons.append("Live-вызовы Instagram отключены в .env (master).")
+        if is_live and not settings.external_spend_unlocked:
+            blocking_reasons.append(
+                "Master unlock не активен: EXTERNAL_KILL_SWITCH / EXTERNAL_LIVE_UNLOCK."
+            )
+        if is_live and not ops_control.radar_live_armed():
+            blocking_reasons.append(
+                "Live Radar выключен в системе. Включите тумблер на странице System или Radar."
+            )
         return {
             "ok": True,
-            "search_enabled": settings.lead_search_enabled,
+            "search_enabled": settings.lead_search_enabled and (
+                not is_live or ops_control.radar_live_armed()
+            ),
             "is_live": is_live,
             "provider": settings.instagram_provider,
-            "live_enabled": settings.instagram_live_enabled,
+            "live_enabled": radar_spend_allowed(),
+            "radar_live_armed": ops_control.radar_live_armed(),
+            "openai_live_armed": ops_control.openai_live_armed(),
+            "master_live_ready": master_live_ready(),
             "requires_confirmation": is_live,
             "requested_credits": requested,
-            "effective_max_credits": effective,
+            "effective_max_credits": effective if radar_spend_allowed() else 0,
             "credits_remaining": availability.provider_balance,
             "credits_remaining_source": availability.provider_balance_source,
             "used_today": daily.used_today,
@@ -854,7 +889,11 @@ def build_web_app(
             ),
             "monthly_remaining": availability.monthly_remaining,
             "default_scan_budget": (
-                policy.default_scan_budget_units if policy is not None else None
+                ops_control.snapshot().default_scan_credits
+                if ops_control.snapshot().default_scan_credits
+                else (
+                    policy.default_scan_budget_units if policy is not None else None
+                )
             ),
             "maximum_manual_scan_budget": (
                 policy.maximum_manual_scan_budget_units if policy is not None else None
@@ -910,10 +949,13 @@ def build_web_app(
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=400, detail="max_credits должен быть целым") from exc
         is_live = settings.instagram_provider not in {"mock", "replay"}
-        if is_live and not settings.instagram_live_enabled:
+        if is_live and not radar_spend_allowed():
             raise HTTPException(
                 status_code=409,
-                detail="Реальные Instagram-запросы выключены, поэтому ScrapeCreators credits не будут потрачены. Включайте их только перед контрольным тестом.",
+                detail=(
+                    "Live Radar выключен. Включите тумблер в системе "
+                    "(и убедитесь, что master unlock в .env активен)."
+                ),
             )
         if is_live and payload.get("confirm_live") is not True:
             raise HTTPException(
@@ -939,6 +981,69 @@ def build_web_app(
                 "effective_max_credits": preview["effective_max_credits"],
             }
         )
+
+    @app.post("/api/ops/radar-live")
+    async def set_radar_live(request: Request):
+        if not master_live_ready():
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Master unlock не готов: нужен INSTAGRAM_PROVIDER=scrapecreators, "
+                    "INSTAGRAM_LIVE_CALLS_ENABLED=true, EXTERNAL_KILL_SWITCH=false, "
+                    "EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS."
+                ),
+            )
+        payload = await _json_or_form(request)
+        armed = str(payload.get("armed", "")).lower() in {"1", "true", "yes", "on"}
+        credits = payload.get("default_scan_credits")
+        try:
+            default_credits = int(credits) if credits not in (None, "") else None
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400, detail="default_scan_credits должен быть целым"
+            ) from exc
+        snap = await ops_control.set_radar_live(
+            armed,
+            manager_id=manager_id(request),
+            default_scan_credits=default_credits,
+        )
+        return {
+            "ok": True,
+            "radar_live_armed": snap.radar_live_armed,
+            "openai_live_armed": snap.openai_live_armed,
+            "default_scan_credits": snap.default_scan_credits,
+            "message": (
+                "Live Radar включён. Можно запускать проверку с лимитом credits."
+                if snap.radar_live_armed
+                else "Live Radar выключен. Внешние Instagram-запросы заблокированы."
+            ),
+        }
+
+    @app.post("/api/ops/openai-live")
+    async def set_openai_live(request: Request):
+        if not settings.openai_live_enabled:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "OpenAI master выключен в .env (OPENAI_LIVE_CALLS_ENABLED / unlock). "
+                    "Сначала включите master, затем тумблер в системе."
+                ),
+            )
+        if not settings.openai_api_key:
+            raise HTTPException(status_code=409, detail="OPENAI_API_KEY не задан.")
+        payload = await _json_or_form(request)
+        armed = str(payload.get("armed", "")).lower() in {"1", "true", "yes", "on"}
+        snap = await ops_control.set_openai_live(armed, manager_id=manager_id(request))
+        return {
+            "ok": True,
+            "openai_live_armed": snap.openai_live_armed,
+            "radar_live_armed": snap.radar_live_armed,
+            "message": (
+                "OpenAI анализ включён для неоднозначных лидов (hybrid)."
+                if snap.openai_live_armed
+                else "OpenAI анализ выключен. Работают только локальные правила."
+            ),
+        }
 
     @app.post("/api/history/analyze-local")
     async def analyze_history_local(request: Request):
@@ -1428,14 +1533,14 @@ def build_web_app(
     async def health():
         snapshot = controller.snapshot()
         return {
+            "safe_mode": not radar_spend_allowed(),
             "ok": True,
             "cycle_running": snapshot.cycle_running,
             "cycles_completed": snapshot.cycles_completed,
             "last_error": snapshot.last_error,
-            "safe_mode": (
-                settings.instagram_provider in {"mock", "replay"}
-                or not settings.instagram_live_enabled
-            ),
+            "radar_live_armed": ops_control.radar_live_armed(),
+            "openai_live_armed": ops_control.openai_live_armed(),
+            "master_live_ready": master_live_ready(),
         }
 
     @app.get("/ready")

@@ -300,8 +300,7 @@ def build_router(
             f"✅ Продажи WON: <b>{value.won_deals}</b>\n"
             f"❌ Проиграны: <b>{value.lost_deals}</b>\n"
             f"🤖 Ожидают AI: <b>{value.ai_pending}</b>\n"
-            f"📨 Уведомления в очереди: <b>{value.notification_backlog}</b>\n"
-            f"💰 Выручка: <b>{value.revenue_uzs:,.0f} сум</b>\n\n"
+            f"📨 Уведомления в очереди: <b>{value.notification_backlog}</b>\n\n"
             f"🌐 Подробнее: {_dashboard_url(settings)}",
             reply_markup=main_menu(),
         )

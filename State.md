@@ -2,21 +2,14 @@
 
 - updated: 2026-08-31
 - branch: codex/phase-c-budget-ledger-hardening
-- mode: offline-hardening → pilot-prep
-- live_calls: forbidden until explicit unlock
-- external_kill_switch: enabled
+- mode: ops-ui-gated-live
+- live_calls: master unlock ON; spend gated by DB radar_live_armed / openai_live_armed
 - db_source_of_truth: lead_radar.db
-- alembic_head: d9e4b1c82a70
-- tests: 331 passed, 1 skipped; ruff clean
-- ui: 13.8.1-bug-hunt — analytics days filter, leftover credits, AI routing, mobile CSS, nav catalog/discovery
-- agent: sticky lead_id no longer intercepts audience/openings/lead-search; openings tokens specific
-- bot: /pending in BotCommand + reply keyboard; 0.0.0.0 → 127.0.0.1 dashboard URL
-- spend: billed parse-fail settles credits; AI claim-lost finalizes + parks result (no second paid call)
-- openings: null-contact store idempotent by place_name/city/PENDING_REVIEW
-- removed: unsafe ExternalUsageService.record()
-- next: await next pilot instructions (env re-locked after aiko 5-credit run)
-- ci_status: GREEN 2/2 (59a8e33, run 33380716448; prior 9bf6dff alembic fix)
-- pilot_run: 2026-08-31 aiko.uz live scrapecreators --once cap=5; budget_stop 5/5; reels=12; comments_created=10; leads=10; hot scores 78/78/81/85; OpenAI OFF
-- env_now: kill=true; provider=replay; live OFF; daily/scan=0; WEB_MANAGER_ID set to admin
-- competitors_db: only aiko.uz active
+- alembic_head: e4f7a1c93b20
+- ops: OperationalControl singleton; UI toggles on Radar/System
+- env_master: scrapecreators + EXTERNAL unlock; schedule OFF; manual only; AI hybrid; OpenAI master ON
+- runtime: full app.main (web+bot+notifications) — not web-only
+- notify: Telegram delivery when provider live; prior --once used NullNotifier
+- pilot_note: aiko 5cr leads 29-38 in DB; MonitorRun missing for that run; next UI scan writes run
 - meta_live: KEEP OFF
+- tests_focus: test_operational_controls + test_live_scan_guard passed
