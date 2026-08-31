@@ -8,39 +8,18 @@
 - db_source_of_truth: lead_radar.db
 - db_backup: .backups/lead_radar-20260830-225522-370547.db
 - alembic_head: c8f3a1d57b20
-- tests: 292 passed
-- ruff: passed
-- compileall: passed
-- integrity: passed
-- schema_check: passed
-- schema_drift: none
-- premium_glass_ui: complete; responsive shell, accessible motion, feedback states
-- contact_detail_ui: explicit knowledge/intelligence grids; responsive qualification layout
-- master_completed_phases: 1,2,3,4,5,6,7
-- master_active_phase: 8
-- agent_grounded: /api/agent/query; MCP read tools DB-backed; offline deterministic synthesis
-- allowed_audience_registry: ACTIVE slugs gate for audience.dna
-- audience_membership_resolver: persisted evidence for agent explain_score
-- active_stage: master-phase-8
-- next: UI final hardening (mobile, Telegram Mini App, system/economics workspaces)
-- p0_ai_history: Evidence+InterestEvidence validated structured context v3.1
-- p0_audience_decay: per-InterestEvidence score/confidence + 45d source window
-- p0_external_uncertain: started ambiguous calls parked and budget-counted
-- provider_budget: scrapecreators target=3000 soft=3500 hard=3800 default_scan=10 manual_max=50
-- provider_wallet: DB-backed; balance UNKNOWN until API_RESPONSE/BALANCE_ENDPOINT/MANUAL fact
-- scan_budget: server-clamped daily+monthly+manual+confirmed-balance; actual charge reconciled
-- radar_budget_ui: presets 5/10/20/40/custom; truthful max; MonitorRun actual result
-- adaptive_monitoring: deterministic ACTIVE/WARM/COLD/DORMANT; persisted due state and rank
-- radar_scan: discovery-first then globally ranked comment refresh under one scan budget
-- adaptive_savings: unchanged/zero/pagination/not-due/deferred/avoided metrics persisted per run
-- completed_stages: 0,1,2,3,4,5
-- economics_page: /economics; provider wallet/burn/months; credits-per-outcome; OpenAI tokens
-- analytics_split: /analytics market-only; money metrics on /economics
-- audience_quality: /audiences/quality; health snapshots; Jaccard overlap; membership confidence v2
-- audience_rattan_role: registry rattan_role criteria wired to taxonomy roles
-- active_stage: master-phase-8
-- next: UI final hardening (mobile, Telegram Mini App, system/economics workspaces)
+- tests: 306 passed
+- ruff: clean
+- master_completed_phases: 1,2,3,4,5,6,7,8
+- master_active_phase: 9
+- active_stage: master-phase-9-deployment
+- next: PostgreSQL CI matrix; SIGTERM full-stack graceful shutdown
+- agent_grounded: /api/agent/query; MCP read tools DB-backed; crm.assign_lead write tool wired
+- auth_hardening: dev POST /api/* 403 без web_manager_id; /api/docs скрыт при web_auth_enabled=false
+- phase8_ui_done: lead/contact agent panels; economics responsive tables; dashboard LOST funnel
+- phase9_deployment: /ready; PORT env; railway healthcheck; Dockerfile HEALTHCHECK; docs/DEPLOYMENT.md; LOG_FORMAT=json
+- meta_write: meta.create_campaign_draft via write service (NOT_CONNECTED until Meta adapter)
+- bug_hunt_pass: grounded flag; export segment guard; invalid filters fail-closed
+- bug_hunt_pass2: export dry-run audit manager_id; pricing 503; audience.dna namespace
 - p0_readiness: offline-ready; live-blocked fail-closed
-- independent_quality_gates: lead/rattan/audience unseen on /system; precision/recall/F1/confusion
-- phase8_ui: system agent workspace; export dry-run UI; mobile economics/audience tables; Telegram Mini App hardening
-- bug_hunt_pass: grounded flag; export segment guard; competitor_id required; invalid filters fail-closed; system/agent UI truth
+- blocked_live: Instagram, OpenAI, Telegram delivery, Meta, Google

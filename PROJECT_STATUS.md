@@ -8,17 +8,37 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: 292 тестов, Ruff, compileall, data-integrity и `alembic check`
+Контрольная точка 2026-08-31: **306 тестов**, Ruff, compileall, data-integrity и `alembic check`
 проходят. Рабочая БД на `c8f3a1d57b20`; schema drift отсутствует.
 
-## Master Phase 8 — UI final hardening (в процессе)
+## Master Phase 9 — Deployment readiness (offline, в процессе)
+
+- `GET /ready` — readiness probe: DB ping + Alembic head + drift check (`503` при блокерах);
+- `GET /health` — liveness без DB check (как раньше);
+- `PORT` env переопределяет `WEB_PORT` (Railway);
+- `LOG_FORMAT=json` — structured logs в production;
+- `DeploymentReadinessService` — общая логика для `/ready` и `live_readiness_check.py`;
+- `railway.json`: `--web-only`, `healthcheckPath=/ready`;
+- `Dockerfile`: `HEALTHCHECK`, default `--web-only`;
+- `docs/DEPLOYMENT.md` — runbook env/probes/rollback;
+- `meta.create_campaign_draft` — routed через write service, явный `NOT_CONNECTED`;
+- полный offline gate: **306 tests passed**; внешних вызовов: **0**.
+- backlog: PostgreSQL CI matrix, SIGTERM для full-stack mode.
+
+## Master Phase 8 — UI final hardening (завершён offline)
 
 - `/system`: grounded agent workspace (`data-agent-query` → `/api/agent/query`) и export recipes dry-run UI;
 - `/audiences/{slug}`: segment-bound export dry-run preview;
-- mobile: responsive economics/audience-quality tables, Telegram BackButton + safe-area;
-- dev auth warning на `/system` когда `web_auth_enabled=false`;
+- `/leads/{id}`, `/contacts/{id}`: agent panels с preset queries;
+- `/economics`: responsive tables (sources/providers/verticals);
+- `/dashboard`: LOST funnel badge;
+- mobile: Telegram BackButton + safe-area;
+- **auth fail-closed**: mutating `POST /api/*` возвращает 403 без `WEB_MANAGER_ID` в dev;
+  `/api/docs` и `/openapi.json` скрыты когда `web_auth_enabled=false`;
+- `MCPWriteToolService`: `crm.assign_lead` через `LeadWorkflowService.assign_manager` (approval-gated);
+- bug-hunt pass 2: export dry-run audit `manager_id`, pricing dead code, audience.dna namespace;
 - CSS/JS cache `13.2.0-phase8-ui`;
-- полный offline gate: **292 tests passed**; внешних вызовов: **0**.
+- полный offline gate: **303 tests passed**; внешних вызовов: **0**.
 
 ## Master Phase 7 — Grounded Agent завершён
 
@@ -29,7 +49,7 @@
   ACTIVE registry slugs и persisted evidence;
 - `AgentSessionService` выполняет deterministic offline synthesis без fake catalog/SKU/discount;
 - `/api/agent/query` возвращает grounded payload с `evidence_ids` и tool trace;
-- write tools (`crm.*`, `meta.*`) остаются NOT_CONNECTED даже после approval;
+- write tools: `crm.assign_lead` wired через approval gate; `meta.*` остаются NOT_CONNECTED;
 - migration не потребовалась; полный offline gate: **284 tests passed**; внешних вызовов: **0**.
 
 ## Master Phase 6 — Independent quality gates завершён
