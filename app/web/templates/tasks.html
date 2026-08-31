@@ -3,8 +3,27 @@
 {% block heading %}Задачи менеджера{% endblock %}
 {% block subheading %}Кому и когда нужно написать, позвонить или вернуться с предложением{% endblock %}
 {% block content %}
-<div class="page-help"><b>Не теряйте тёплых клиентов</b><span>Следующее действие ставится прямо из карточки лида или клиента. Просроченные задачи всегда поднимаются наверх.</span></div>
-<form class="filters" method="get">
+{% set ns = namespace(open=0, overdue=0) %}
+{% for task, contact, lead in rows %}
+  {% if task.status.value == 'OPEN' %}
+    {% set ns.open = ns.open + 1 %}
+    {% if task.due_at < now %}{% set ns.overdue = ns.overdue + 1 %}{% endif %}
+  {% endif %}
+{% endfor %}
+
+<section class="hero-status {% if ns.overdue %}warn{% else %}live{% endif %} tasks-hero">
+  <div>
+    <span class="eyebrow">FOLLOW-UP QUEUE</span>
+    <h2>{{ rows|length }} задач · {{ ns.open }} открытых</h2>
+    <p>{% if ns.overdue %}{{ ns.overdue }} просрочено — начните с них.{% else %}Просроченных задач нет. Следующие контакты видны ниже.{% endif %}</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn primary" href="/tasks?view=overdue">Просроченные</a>
+    <a class="btn ghost" href="/tasks?view=today">На 24 часа</a>
+  </div>
+</section>
+
+<form class="filters tasks-filters" method="get">
   <input name="q" value="{{ q }}" aria-label="Поиск задач" placeholder="Клиент или текст задачи">
   <select name="view" aria-label="Состояние задач">
     <option value="open" {% if view=='open' %}selected{% endif %}>Все открытые</option>
@@ -12,8 +31,10 @@
     <option value="today" {% if view=='today' %}selected{% endif %}>На ближайшие 24 часа</option>
     <option value="done" {% if view=='done' %}selected{% endif %}>Выполненные</option>
   </select>
-  <button class="btn">Показать</button><a class="btn ghost" href="/tasks">Сбросить</a>
+  <button class="btn">Показать</button>
+  <a class="btn ghost" href="/tasks">Сбросить</a>
 </form>
+
 <div class="task-list-page">
 {% for task, contact, lead in rows %}
 <article class="panel task-card {% if task.status.value == 'OPEN' and task.due_at < now %}overdue{% endif %}">
@@ -32,7 +53,7 @@
 <div class="empty-state panel">
   <span class="empty-icon">📋</span>
   <h3>Задач пока нет</h3>
-  <p>Задачи создаются прямо из карточки клиента или лида, когда менеджеру нужно запланировать контакт.</p>
+  <p>Задачи создаются из карточки клиента или лида, когда нужно запланировать следующий контакт.</p>
   <a class="btn ghost btn-sm" href="/leads">Перейти к лидам →</a>
 </div>
 {% endfor %}

@@ -3,15 +3,99 @@
 {% block heading %}Аналитика{% endblock %}
 {% block subheading %}Спрос рынка: воронка, намерения, товары и причины проигрыша{% endblock %}
 {% block content %}
-<div class="page-help"><b>Market intelligence, не деньги</b><span>Экономика провайдеров, credits и ROI вынесены на отдельную страницу <a href="/economics">Экономика</a>.</span></div>
+<section class="hero-status live analytics-hero">
+  <div>
+    <span class="eyebrow">MARKET INTELLIGENCE · {{ days }} дн.</span>
+    <h2>Спрос, воронка и причины проигрыша</h2>
+    <p>Market intelligence без credits и ROI — экономика и бюджет на <a href="/economics?days={{ days }}">/economics</a>.</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn ghost" href="/economics?days={{ days }}">Экономика</a>
+    <a class="btn ghost" href="/dashboard">Dashboard</a>
+  </div>
+</section>
+
+<form class="filters segmented-control analytics-period" method="get" aria-label="Период аналитики">
+  <a class="chip {% if days == 1 %}active{% endif %}" href="/analytics?days=1">1 день</a>
+  <a class="chip {% if days == 7 %}active{% endif %}" href="/analytics?days=7">7 дней</a>
+  <a class="chip {% if days == 30 %}active{% endif %}" href="/analytics?days=30">30 дней</a>
+</form>
 
 <div class="analytics-grid">
   {% set funnel_peak = [1, funnel.get('NEW',0), funnel.get('TAKEN',0), funnel.get('CONTACTED',0), funnel.get('QUALIFIED',0), funnel.get('OFFER_SENT',0), funnel.get('NEGOTIATION',0), funnel.get('WON',0), funnel.get('LOST',0)]|max %}
-  <section class="panel"><div class="panel-head"><div><h2>Воронка лидов</h2><p>Где теряются люди</p></div></div><div class="funnel analytics-funnel">{% for status in ['NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}{% set stage_count = funnel.get(status,0) %}<div class="funnel-step"><div><span>{{ lead_status_label(status) }}</span><strong>{{ stage_count }}</strong></div><div class="funnel-bar" role="img" aria-label="{{ lead_status_label(status) }}: {{ stage_count }} из {{ funnel_peak }}"><i style="width: {{ (stage_count * 100 / funnel_peak)|round(1) }}%"></i></div></div>{% endfor %}</div></section>
-  <section class="panel"><div class="panel-head"><div><h2>Что спрашивают</h2><p>Тип покупательского намерения</p></div></div><div class="rank-list">{% for intent, count in intents %}<div><span>{{ intent_label(intent) }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Пока данных мало.</div>{% endfor %}</div></section>
-  <section class="panel"><div class="panel-head"><div><h2>Какие товары интересуют</h2><p>По распознанным лидам</p></div></div><div class="rank-list">{% for product, count in products %}<div><span>{{ product_label(product) }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Пока данных мало.</div>{% endfor %}</div></section>
-  <section class="panel"><div class="panel-head"><div><h2>Почему не покупают</h2><p>Причины проигранных сделок</p></div></div><div class="rank-list">{% for reason, count in lost_reasons %}<div><span>{{ reason }}</span><b>{{ count }}</b></div>{% else %}<div class="empty compact">Причины ещё не накоплены.</div>{% endfor %}</div></section>
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>Воронка лидов</h2>
+        <p>Где теряются люди</p>
+      </div>
+    </div>
+    <div class="funnel analytics-funnel">
+      {% for status in ['NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}
+      {% set stage_count = funnel.get(status,0) %}
+      <div class="funnel-step">
+        <div><span>{{ lead_status_label(status) }}</span><strong>{{ stage_count }}</strong></div>
+        <div class="funnel-bar" role="img" aria-label="{{ lead_status_label(status) }}: {{ stage_count }} из {{ funnel_peak }}"><i style="width: {{ (stage_count * 100 / funnel_peak)|round(1) }}%"></i></div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>Что спрашивают</h2>
+        <p>Тип покупательского намерения</p>
+      </div>
+    </div>
+    <div class="rank-list">
+      {% for intent, count in intents %}
+      <div><span>{{ intent_label(intent) }}</span><b>{{ count }}</b></div>
+      {% else %}
+      <div class="empty compact">Пока данных мало.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>Какие товары интересуют</h2>
+        <p>По распознанным лидам</p>
+      </div>
+    </div>
+    <div class="rank-list">
+      {% for product, count in products %}
+      <div><span>{{ product_label(product) }}</span><b>{{ count }}</b></div>
+      {% else %}
+      <div class="empty compact">Пока данных мало.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>Почему не покупают</h2>
+        <p>Причины проигранных сделок</p>
+      </div>
+    </div>
+    <div class="rank-list">
+      {% for reason, count in lost_reasons %}
+      <div><span>{{ reason }}</span><b>{{ count }}</b></div>
+      {% else %}
+      <div class="empty compact">Причины ещё не накоплены.</div>
+      {% endfor %}
+    </div>
+  </section>
 </div>
 
-<section class="learning-card panel"><div><span class="eyebrow">ДАННЫЕ ДЛЯ ОБУЧЕНИЯ</span><h2>{{ feedback_total }} размеченных примеров</h2><p>Из них {{ feedback_sales }} закончились продажей. Пока система накапливает фактические исходы и не меняет модель автоматически. Это защищает скоринг от случайного «самообучения» на ошибках менеджеров.</p></div><a class="btn" href="/system">Контроль AI →</a></section>
+<section class="learning-card panel">
+  <div>
+    <span class="eyebrow">ДАННЫЕ ДЛЯ ОБУЧЕНИЯ</span>
+    <h2>{{ feedback_total }} размеченных примеров</h2>
+    <p>Из них {{ feedback_sales }} закончились продажей. Пока система накапливает фактические исходы и не меняет модель автоматически. Это защищает скоринг от случайного «самообучения» на ошибках менеджеров.</p>
+  </div>
+  <a class="btn" href="/system">Контроль AI →</a>
+</section>
 {% endblock %}

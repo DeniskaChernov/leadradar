@@ -120,6 +120,8 @@ async def test_web_dashboard_and_contacts_render(session_factory):
         contacts = await client.get("/contacts")
 
     assert dashboard.status_code == 200
-    assert "Что система нашла" in dashboard.text
+    assert "dashboard-metrics" in dashboard.text
+    assert "Кабина пилота" in dashboard.text or "OFFLINE READY" in dashboard.text
     assert contacts.status_code == 200
+    assert "CLIENT BASE" in contacts.text
     assert "Единая база людей" in contacts.text

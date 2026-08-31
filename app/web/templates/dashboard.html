@@ -33,8 +33,6 @@
   <button class="btn tiny" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %}>Scan сейчас</button>
 </section>
 
-<div class="page-help"><b>Что система нашла</b><span>Только данные из нашей базы: клиенты, сигналы, горячие лиды, задачи и продажи.</span></div>
-
 <div class="metrics dashboard-metrics">
   <a class="metric" href="/contacts"><span>Клиенты</span><strong>{{ counts.contacts }}</strong><small>уникальных профилей</small></a>
   <a class="metric" href="/radar"><span>Сигналы</span><strong>{{ counts.comments }}</strong><small>+{{ counts.new_comments_24h }} за 24ч</small></a>

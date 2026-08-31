@@ -7,13 +7,12 @@
 {% macro credits(value) -%}{% if value is not none %}{{ value }} credits{% else %}—{% endif %}{%- endmacro %}
 {% macro ratio(value) -%}{% if value is not none %}{{ '%.2f'|format(value) }}{% else %}—{% endif %}{%- endmacro %}
 {% set credit_accuracy = safe_attr(page.credits, 'confirmed_coverage_percent') %}
-<div class="page-help"><b>Деньги и credits только из ledger</b><span>Страница не делает внешних вызовов. Неполные факты показываются как «—», а не как ноль.</span></div>
 
 <section class="hero-status economics-hero {% if page.provider and page.provider.budget_status == 'HEALTHY' %}live{% elif page.provider %}warn{% else %}safe{% endif %}">
   <div>
     <span class="eyebrow">UNIT ECONOMICS · {{ page.days }} дн.</span>
     <h2>{% if page.provider %}ScrapeCreators {{ page.provider.used_this_month }}/{{ page.provider.monthly_hard_limit }} credits{% else %}Экономика без live wallet{% endif %}</h2>
-    <p>{% if page.provider and page.provider.credits_remaining is not none %}Остаток пакета: {{ '{:,}'.format(page.provider.credits_remaining).replace(',', ' ') }} credits · {% endif %}HOT: {{ economics.hot_count }} · WON: {{ economics.won_count }} · AI ops: {{ page.openai.events }}</p>
+    <p>{% if page.provider and page.provider.credits_remaining is not none %}Остаток пакета: {{ '{:,}'.format(page.provider.credits_remaining).replace(',', ' ') }} credits · {% endif %}HOT: {{ economics.hot_count }} · WON: {{ economics.won_count }} · AI ops: {{ page.openai.events }}. Только ledger — без внешних вызовов.</p>
   </div>
   <div class="hero-actions">
     <a class="btn" href="/radar">Radar</a>

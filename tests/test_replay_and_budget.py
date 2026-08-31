@@ -191,4 +191,5 @@ async def test_tasks_page_renders_in_russian(session_factory):
         response = await client.get("/tasks")
     assert response.status_code == 200
     assert "Задачи менеджера" in response.text
-    assert "Не теряйте тёплых клиентов" in response.text
+    assert "FOLLOW-UP QUEUE" in response.text
+    assert "tasks-hero" in response.text

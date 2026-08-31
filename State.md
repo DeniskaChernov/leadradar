@@ -8,7 +8,7 @@
 - db_source_of_truth: lead_radar.db
 - alembic_head: d9e4b1c82a70
 - tests: 321 passed, 1 skipped; ruff clean
-- ui: 13.6.0-system-pass — AI routing catalog.recommend, system cockpit, rattan-metrics, retry AI_PENDING
+- ui: 13.8.0-ui-polish — airy V3.5 + openings/analytics heroes, nav links, system responsive tables
 - agent: intent-first routing; catalog.recommend read tool; human synthesis
 - bot: /pending, WebApp deep link «🌐 Карточка», help sync
 - spend: ProviderCallUncertainError blocks fallback after call_started; AI→UNCERTAIN not finalize(1)

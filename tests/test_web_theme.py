@@ -142,6 +142,8 @@ def test_interface_hardening_keeps_dense_views_accessible():
     assert 'aria-describedby="confirm-text"' in base
     assert 'aria-current="page"' in economics
     assert "stage_count * 100 / funnel_peak" in analytics
+    assert "analytics-hero" in analytics
+    assert "analytics-period" in analytics
     assert "table-scroll-hint" in css
     assert "more-navigation-open" in javascript
     assert "enhanceClickableRows" in javascript
@@ -164,6 +166,8 @@ def test_mobile_rattan_cards_and_opening_review_use_shared_safe_actions():
     assert 'data-api-action="/api/openings/' in openings
     assert 'data-payload=\'{"decision":"VERIFIED"}\'' in openings
     assert 'data-confirm="Подтвердить этот публичный сигнал' in openings
+    assert 'class="responsive-table openings-table"' in openings
+    assert 'data-label="Заведение"' in openings
     assert "reviewOpening(" not in openings
     assert "<script>" not in openings
 
@@ -203,8 +207,9 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.6.0-system-pass" in base
-    assert "13.6.0-system-pass" in auth
+    assert "13.8.0-ui-polish" in base
+    assert "13.8.0-ui-polish" in auth
+    assert "fonts.googleapis.com" in base
     assert 'id="agent-quick"' in base
     assert "data-agent-open" in base
     assert 'data-more-toggle aria-expanded="false"' in base
@@ -280,6 +285,8 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "system-hero" in system
     assert "system-toc" in system
     assert "retry-pending" in system
+    assert "responsive-table system-table" in system
+    assert "system-run-history" in system
     assert "/api/leads/retry-pending" in radar
     assert "rattan-metrics" in (PROJECT_ROOT / "app/web/templates/rattan.html").read_text(encoding="utf-8")
     assert ".rattan-metrics" in css
@@ -302,6 +309,10 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "radar-metrics" in radar
     assert ".radar-metrics" in css
     assert "leads-hero" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "contacts-hero" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
+    assert "tasks-hero" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")
+    assert "deals-hero" in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
+    assert "V3.5 · unified airy rhythm" in css
     assert "data-agent-query" in lead_detail
     assert "lead-agent-panel" in contact_detail
     assert "@{{ contact.username }}" in contact_detail

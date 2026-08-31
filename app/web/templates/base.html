@@ -9,9 +9,12 @@
   <title>{% block title %}Lead Radar{% endblock %}</title>
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
-  <link rel="stylesheet" href="/static/app.css?v=13.6.0-system-pass">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css?v=13.8.0-ui-polish">
   <script defer src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
-  <script defer src="/static/app.js?v=13.6.0-system-pass"></script>
+  <script defer src="/static/app.js?v=13.8.0-ui-polish"></script>
 </head>
 <body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}" data-page="{{ active_path }}">
 <a class="skip-link" href="#main-content">Перейти к содержимому</a>
@@ -45,6 +48,8 @@
       <button class="nav nav-more" type="button" data-more-toggle aria-expanded="false" aria-controls="more-navigation"><span aria-hidden="true"><i data-lucide="grid-2x2"></i></span><b>Ещё</b></button>
       <div class="nav-secondary" id="more-navigation" aria-label="Дополнительная навигация">
       <a class="nav {% if active_path.startswith('/economics') %}active{% endif %}" href="/economics" {% if active_path.startswith('/economics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="wallet"></i></span><b>Экономика</b></a>
+      <a class="nav {% if active_path.startswith('/analytics') %}active{% endif %}" href="/analytics" {% if active_path.startswith('/analytics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="bar-chart-3"></i></span><b>Аналитика</b></a>
+      <a class="nav {% if active_path.startswith('/openings') %}active{% endif %}" href="/openings" {% if active_path.startswith('/openings') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="store"></i></span><b>Открытия</b></a>
       <a class="nav {% if active_path.startswith('/deals') %}active{% endif %}" href="/deals" {% if active_path.startswith('/deals') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="handshake"></i></span><b>Сделки</b></a>
       <a class="nav {% if active_path.startswith('/audiences') %}active{% endif %}" href="/audiences" {% if active_path.startswith('/audiences') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="target"></i></span><b>Аудитории</b></a>
       <a class="nav {% if active_path.startswith('/competitors') %}active{% endif %}" href="/competitors" {% if active_path.startswith('/competitors') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="building-2"></i></span><b>Конкуренты</b></a>
