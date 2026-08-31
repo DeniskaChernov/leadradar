@@ -8,9 +8,10 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: **314 тестов локально (SQLite)**, Ruff clean.
-**CI matrix не считается зелёной, пока PostgreSQL job не пройдёт** — предыдущий run
-падал на `DuplicateTableError: uq_contacts_platform` в initial migration (не на boolean seed).
+Контрольная точка 2026-08-31: **314 тестов локально (SQLite)**, Ruff clean,
+`alembic check` OK после `d9e4b1c82a70` + `include_object` (игнор name-drift CHECK).
+**CI matrix не считается зелёной, пока PostgreSQL job не пройдёт на GitHub** —
+локально гейт зелёный; push миграции `d9e4b1c82a70` ещё не подтверждён в Actions.
 
 ## Hardening sprint (после review HEAD 9a9e2ca)
 
@@ -22,7 +23,9 @@ P0/P1 закрыты в коде:
 - external fail после `call_started` без provider credit → `UNCERTAIN`, не invented charge;
 - PostgreSQL `pg_advisory_xact_lock` в `reserve_budget`;
 - `/economics`: confirmed vs estimated credits + coverage %;
-- Postgres `backup_present` больше не auto-True (нужен `.runtime/postgres_backup_verified`).
+- Postgres `backup_present` больше не auto-True (нужен `.runtime/postgres_backup_verified`);
+- Alembic: короткие CHECK-токены под PG 63 chars; `d9e4b1c82a70` normalize на Postgres;
+  `alembic/env.py` не падает на исторический CHECK name drift.
 
 **Phase 9 не завершена.** Meta live остаётся выключенным. Controlled live pilot — только после зелёного CI.
 

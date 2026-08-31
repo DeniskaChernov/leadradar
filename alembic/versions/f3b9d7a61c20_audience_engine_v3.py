@@ -93,11 +93,11 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint(
             "confidence >= 0 AND confidence <= 100",
-            name="ck_contact_interest_profiles_confidence",
+            name="confidence",
         ),
         sa.CheckConstraint(
             "current_score >= 0 AND current_score <= 100",
-            name="ck_contact_interest_profiles_current_score",
+            name="current_score",
         ),
         sa.ForeignKeyConstraint(["contact_id"], ["contacts.id"]),
         sa.PrimaryKeyConstraint("id"),

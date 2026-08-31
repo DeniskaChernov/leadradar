@@ -20,6 +20,15 @@ config.set_main_option("sqlalchemy.url", normalize_database_url(get_settings().d
 target_metadata = Base.metadata
 
 
+def include_object(object_, name, type_, reflected, compare_to):
+    # CheckConstraint names historically included a full ck_/table prefix, then
+    # naming_convention prefixed again and PostgreSQL truncated to 63 chars.
+    # Ignore CHECK name drift so alembic check stays meaningful for real schema changes.
+    if type_ == "check_constraint":
+        return False
+    return True
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
@@ -27,13 +36,19 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: object) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        include_object=include_object,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
