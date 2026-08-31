@@ -168,6 +168,23 @@ def test_mobile_rattan_cards_and_opening_review_use_shared_safe_actions():
     assert "<script>" not in openings
 
 
+def test_pilot_cockpit_quick_actions_and_scan_modal():
+    base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    dashboard = (PROJECT_ROOT / "app/web/templates/dashboard.html").read_text(
+        encoding="utf-8"
+    )
+    javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
+    css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
+
+    assert 'id="scan-quick"' in base
+    assert "scan_budget_quick" in base
+    assert "quick-actions" in dashboard
+    assert "Кабина пилота" in dashboard
+    assert "openScanQuickModal" in javascript
+    assert "runScan" in javascript
+    assert ".quick-actions" in css
+
+
 def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
     auth = (PROJECT_ROOT / "app/web/templates/auth.html").read_text(encoding="utf-8")
@@ -177,8 +194,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.2.0-phase8-ui" in base
-    assert "13.2.0-phase8-ui" in auth
+    assert "13.3.0-pilot-cockpit" in base
+    assert "13.3.0-pilot-cockpit" in auth
     assert 'data-more-toggle aria-expanded="false"' in base
     assert 'aria-controls="more-navigation"' in base
     assert 'aria-label="Вертикаль бизнеса"' in base

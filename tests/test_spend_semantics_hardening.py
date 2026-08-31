@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from app.db.models import ExternalBudgetReservation, ReservationStatus
+from app.providers.base import ProviderCallUncertainError
 from app.providers.budgeted import BudgetedInstagramProvider, ScanBudget
 from app.schemas.instagram import InstagramProfile
 from app.services.usage_service import ExternalUsageService
@@ -66,7 +67,7 @@ async def test_started_external_failure_marks_reservation_uncertain(session_fact
         scan_budget=ScanBudget(default_limit=10),
     )
 
-    with pytest.raises(RuntimeError, match="network down"):
+    with pytest.raises(ProviderCallUncertainError):
         await provider.get_profile("aiko.uz")
 
     async with session_factory() as session:

@@ -13,7 +13,7 @@ from app.db.models import (
     Lead,
     ProviderCreditSnapshot,
 )
-from app.providers.base import InstagramProvider, ProviderError
+from app.providers.base import InstagramProvider, ProviderCallUncertainError, ProviderError
 from app.providers.budgeted import BudgetedInstagramProvider, ScanBudgetExceededError
 from app.providers.fallback import FallbackInstagramProvider
 from app.providers.replay import ReplayInstagramProvider
@@ -111,7 +111,7 @@ class CreditAwareProfileProvider(StubProfileProvider):
 
 
 @pytest.mark.asyncio
-async def test_fallback_spend_counts_each_provider_operation(session_factory):
+async def test_fallback_blocked_after_uncertain_primary_call(session_factory):
     from sqlalchemy import select
 
     from app.db.models import ExternalBudgetReservation, ReservationStatus
@@ -125,14 +125,14 @@ async def test_fallback_spend_counts_each_provider_operation(session_factory):
     )
     provider = FallbackInstagramProvider(primary, fallback)
 
-    result = await provider.get_profile("aiko.uz")
+    with pytest.raises(ProviderCallUncertainError):
+        await provider.get_profile("aiko.uz")
 
-    assert result.username == "aiko.uz"
-    # Primary fail after call_started → UNCERTAIN (no invented charge). Fallback success → 1 usage.
-    assert await usage.used_today("instagram") == 1
+    # Primary fail after call_started → UNCERTAIN. Fallback must not run (no double spend).
+    assert await usage.used_today("instagram") == 0
     assert await usage.active_reservations_today("instagram") == 1
     breakdown = await usage.breakdown_today("instagram")
-    assert breakdown == {"brightdata": 1}
+    assert breakdown == {}
     async with session_factory() as session:
         uncertain = list(
             await session.scalars(

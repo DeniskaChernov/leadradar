@@ -1216,20 +1216,16 @@ class BudgetedCachedOpenAIAnalyzer:
                 self.inner, "last_token_usage", (None, None)
             )
         except Exception as exc:
-            # Once delivery has started, provider billing is ambiguous. Count the reserved
-            # unit conservatively; retries can never make the daily ledger under-report.
-            await self.usage.finalize_reservation(
+            # После call_started списание неизвестно — не придумываем charge.
+            await self.usage.mark_reservation_uncertain(
                 reservation_id,
-                units=1,
-                success=False,
+                reason="openai_call_failed_without_usage_proof",
                 details={
                     "model": self.inner.model,
                     "fingerprint": fingerprint,
                     "billing_state": "UNKNOWN",
                     "error_type": type(exc).__name__,
                 },
-                lead_id=context.lead_id,
-                vertical=Vertical(context.vertical),
             )
             failure_status, failure_type = self._classify_failure(exc)
             await self._release_request_claim(
@@ -1267,17 +1263,14 @@ class BudgetedCachedOpenAIAnalyzer:
             ).scalar_one_or_none()
             await session.commit()
         if saved is None:
-            await self.usage.finalize_reservation(
+            await self.usage.mark_reservation_uncertain(
                 reservation_id,
-                units=1,
-                success=False,
+                reason="openai_result_claim_lost",
                 details={
                     "model": self.inner.model,
                     "fingerprint": fingerprint,
                     "billing_state": "DELIVERED_RESULT_CLAIM_LOST",
                 },
-                lead_id=context.lead_id,
-                vertical=Vertical(context.vertical),
             )
             raise AIAnalysisError("AI result lost its durable claim before persistence")
 

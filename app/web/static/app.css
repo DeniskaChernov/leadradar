@@ -2366,3 +2366,91 @@ body::after { animation: ambient-drift-b 22s ease-in-out infinite alternate; }
 .inside-telegram .topbar { padding-top: max(8px, env(safe-area-inset-top)); }
 .economics-table-wrap { overflow-x: auto; }
 .audience-health-table td::before { white-space: nowrap; }
+
+/* Pilot cockpit — quick actions + scan modal */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.quick-action {
+  display: grid;
+  gap: 4px;
+  padding: 14px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--text);
+  transition: transform var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out);
+  min-height: 88px;
+}
+
+.quick-action:hover {
+  color: var(--text);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(90, 70, 50, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.quick-action b { font-size: 14px; letter-spacing: -.01em; }
+.quick-action small { color: var(--muted); font-size: 11px; font-weight: 500; }
+
+.quick-action-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(248, 250, 255, 0.95);
+  border: 1px solid var(--line-soft);
+  color: #475569;
+}
+
+.quick-action-icon.hot { color: #be123c; background: rgba(255, 228, 230, 0.75); }
+.quick-action-icon.warn { color: #b45309; background: rgba(254, 243, 199, 0.75); }
+
+.scan-quick-modal { max-width: 420px; width: min(100%, 420px); }
+.scan-quick-modal .scan-budget-picker.compact { margin: 12px 0; }
+.scan-quick-meta {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(248, 250, 255, 0.9);
+  border: 1px solid var(--line-soft);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dashboard-metrics .metric {
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.58));
+}
+
+.dashboard-metrics .metric:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 32px rgba(90, 70, 50, 0.11);
+}
+
+@media (max-width: 1100px) {
+  .quick-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .quick-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+

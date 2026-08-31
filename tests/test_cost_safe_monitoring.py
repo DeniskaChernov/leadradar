@@ -7,8 +7,8 @@ import pytest
 from sqlalchemy import select
 
 from app.db.models import CoverageStatus, Post
-from app.providers.base import InstagramProvider
-from app.providers.budgeted import BudgetedInstagramProvider, ScanBudget, ScanBudgetExceededError
+from app.providers.base import InstagramProvider, ProviderCallUncertainError
+from app.providers.budgeted import BudgetedInstagramProvider, ScanBudget
 from app.providers.fallback import FallbackInstagramProvider
 from app.providers.mock import MockInstagramProvider
 from app.providers.scrapecreators import ScrapeCreatorsProvider
@@ -259,7 +259,7 @@ async def test_fallback_cannot_bypass_one_unit_scan_budget(session_factory):
     provider = FallbackInstagramProvider(primary, fallback)
     provider.begin_cycle()
 
-    with pytest.raises(ScanBudgetExceededError):
+    with pytest.raises(ProviderCallUncertainError):
         await provider.get_profile("aiko.uz")
 
     assert primary_inner.calls == 1

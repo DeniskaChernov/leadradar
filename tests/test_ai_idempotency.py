@@ -259,6 +259,50 @@ async def test_five_ai_workers_make_at_most_one_external_call(file_session_facto
 
 
 @pytest.mark.asyncio
+async def test_openai_failure_after_call_started_marks_reservation_uncertain(session_factory):
+    from sqlalchemy import select
+
+    from app.db.models import ExternalBudgetReservation, ExternalUsage, ReservationStatus
+    from app.services.ai_service import BudgetedCachedOpenAIAnalyzer
+
+    lead_id = await create_lead(session_factory)
+    inner = MagicMock(spec=OpenAILeadAnalyzer)
+    inner.model = "gpt-5-mini"
+    inner.analyze = AsyncMock(side_effect=RuntimeError("provider timeout"))
+    usage = ExternalUsageService(session_factory)
+    analyzer = BudgetedCachedOpenAIAnalyzer(
+        inner,
+        session_factory,
+        usage,
+        enabled=True,
+        daily_limit=10,
+        worker_id="uncertain-worker",
+    )
+    context = LeadAnalysisContext(
+        competitor="aiko.uz",
+        post_caption="Диван",
+        comment="Цена?",
+        username="uncertain-user",
+        previous_signals=[],
+        previous_interests=[],
+        lead_id=lead_id,
+    )
+
+    with pytest.raises(RuntimeError, match="provider timeout"):
+        await analyzer.analyze(context)
+
+    assert await usage.used_today("openai") == 0
+    assert await usage.active_reservations_today("openai") == 1
+    async with session_factory() as session:
+        reservation = await session.scalar(select(ExternalBudgetReservation))
+        usage_rows = list(await session.scalars(select(ExternalUsage)))
+    assert reservation is not None
+    assert reservation.status == ReservationStatus.UNCERTAIN
+    assert reservation.provider == "openai"
+    assert usage_rows == []
+
+
+@pytest.mark.asyncio
 async def test_max_attempts_blocks_fourth_paid_call(session_factory):
     lead_id = await create_lead(session_factory)
     inner = MagicMock(spec=OpenAILeadAnalyzer)

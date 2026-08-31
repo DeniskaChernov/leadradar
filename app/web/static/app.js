@@ -232,6 +232,132 @@
     element.setAttribute('aria-busy', String(loading));
   };
 
+  const readScanBudgetSelection = (root = document) => {
+    const selected = root.querySelector('input[name="scan_budget"]:checked')
+      || root.querySelector('input[name="scan_budget_quick"]:checked');
+    if (!selected) return null;
+    if (selected.value === 'custom') {
+      const custom = root.querySelector('[data-custom-scan-budget]')
+        || root.querySelector('[data-custom-scan-budget-quick]');
+      return custom?.value || null;
+    }
+    return selected.value;
+  };
+
+  const openScanQuickModal = () => new Promise((resolve) => {
+    const root = document.getElementById('scan-quick');
+    if (!root) return resolve(null);
+    const meta = root.querySelector('[data-scan-quick-meta]');
+    const cancel = root.querySelector('[data-scan-quick-cancel]');
+    const go = root.querySelector('[data-scan-quick-go]');
+    const previouslyFocused = document.activeElement;
+    root.hidden = false;
+    requestAnimationFrame(() => root.classList.add('is-open'));
+    api('/api/scan/preview?max_credits=10', { method: 'GET' })
+      .then((preview) => {
+        if (!meta) return;
+        if (!preview.is_live) {
+          meta.textContent = 'Offline-режим: credits не расходуются.';
+          meta.hidden = false;
+          return;
+        }
+        meta.textContent = `Макс. на scan: ${preview.effective_max_credits} credits · `
+          + `месяц: ${preview.used_this_month}/${preview.monthly_hard_limit} · `
+          + `сегодня: ${preview.daily_remaining}`;
+        meta.hidden = false;
+      })
+      .catch(() => {
+        if (meta) meta.hidden = true;
+      });
+    const close = (value) => {
+      root.classList.remove('is-open');
+      cancel.onclick = null;
+      go.onclick = null;
+      document.removeEventListener('keydown', onKeydown);
+      setTimeout(() => {
+        root.hidden = true;
+        if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+        resolve(value);
+      }, 180);
+    };
+    const onKeydown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close(null);
+      }
+    };
+    cancel.onclick = () => close(null);
+    go.onclick = () => close(readScanBudgetSelection(root));
+    document.addEventListener('keydown', onKeydown);
+    requestAnimationFrame(() => cancel.focus());
+  });
+
+  const runScan = async (triggerButton, requestedCredits = null) => {
+    const old = triggerButton?.textContent || 'Проверить сейчас';
+    if (triggerButton) {
+      triggerButton.disabled = true;
+      triggerButton.textContent = 'Проверяю лимиты…';
+    }
+    try {
+      let credits = requestedCredits;
+      if (credits == null) credits = readScanBudgetSelection(document);
+      const previewUrl = credits
+        ? `/api/scan/preview?max_credits=${encodeURIComponent(credits)}`
+        : '/api/scan/preview';
+      const preview = await api(previewUrl, { method: 'GET' });
+      if (!preview.search_enabled) {
+        throw new Error('Поиск лидов временно приостановлен. Credits не расходуются.');
+      }
+      let confirmLive = false;
+      if (preview.is_live) {
+        if (!preview.live_enabled) {
+          throw new Error('Live-запросы выключены. Credits не будут потрачены.');
+        }
+        if (!preview.can_start) {
+          throw new Error((preview.blocking_reasons || []).join(' ') || 'Бюджет проверки недоступен.');
+        }
+        const hardCap = Number(preview.effective_max_credits || 0);
+        const monthlyUsed = Number(preview.used_this_month || 0);
+        const monthlyHard = Number(preview.monthly_hard_limit || 0);
+        const balance = preview.credits_remaining == null
+          ? 'не подтверждён'
+          : `${Number(preview.credits_remaining).toLocaleString('ru-RU')} credits`;
+        const months = preview.package_months_remaining_estimate == null
+          ? 'неизвестен'
+          : `~${preview.package_months_remaining_estimate} месяца`;
+        const proceed = await confirmAction(
+          'Запустить Radar?',
+          `ScrapeCreators. Максимум: ${hardCap} credits. `
+          + `Использовано за месяц: ${monthlyUsed}/${monthlyHard}. Остаток: ${balance}. Запас: ${months}.`
+        );
+        if (!proceed) return;
+        confirmLive = true;
+        credits = Number(preview.requested_credits);
+      }
+      if (triggerButton) triggerButton.textContent = 'Запускаю…';
+      const data = await api('/api/scan', {
+        method: 'POST',
+        body: JSON.stringify({
+          confirm_live: confirmLive,
+          max_credits: credits ? Number(credits) : 0,
+        }),
+      });
+      toast(data.message || 'Проверка запущена');
+      if (data.ok) {
+        const onRadar = (document.body.dataset.page || '').startsWith('/radar');
+        if (onRadar) reloadSoon(1800);
+        else setTimeout(() => { window.location.href = '/radar'; }, 1200);
+      }
+    } catch (error) {
+      toast(error.message, true);
+    } finally {
+      if (triggerButton) {
+        triggerButton.disabled = false;
+        triggerButton.textContent = old;
+      }
+    }
+  };
+
   const formPayload = (form, submitter) => {
     const result = {};
     for (const [key, value] of new FormData(form).entries()) result[key] = value;
@@ -398,65 +524,16 @@
 
     const scan = event.target.closest('[data-scan]');
     if (scan) {
-      const old = scan.textContent;
-      scan.disabled = true;
-      scan.textContent = 'Проверяю лимиты…';
-      try {
-        const selectedBudget = document.querySelector('input[name="scan_budget"]:checked');
-        let requestedCredits = selectedBudget?.value;
-        if (requestedCredits === 'custom') {
-          requestedCredits = document.querySelector('[data-custom-scan-budget]')?.value;
-        }
-        const previewUrl = requestedCredits
-          ? `/api/scan/preview?max_credits=${encodeURIComponent(requestedCredits)}`
-          : '/api/scan/preview';
-        const preview = await api(previewUrl, { method: 'GET' });
-        if (!preview.search_enabled) {
-          throw new Error('Поиск лидов временно приостановлен. Credits не расходуются.');
-        }
-        let confirmLive = false;
-        if (preview.is_live) {
-          if (!preview.live_enabled) {
-            throw new Error('Live-запросы выключены. Credits не будут потрачены.');
-          }
-          if (!preview.can_start) {
-            throw new Error((preview.blocking_reasons || []).join(' ') || 'Бюджет проверки недоступен.');
-          }
-          const hardCap = Number(preview.effective_max_credits || 0);
-          const monthlyUsed = Number(preview.used_this_month || 0);
-          const monthlyHard = Number(preview.monthly_hard_limit || 0);
-          const balance = preview.credits_remaining == null
-            ? 'не подтверждён'
-            : `${Number(preview.credits_remaining).toLocaleString('ru-RU')} credits`;
-          const months = preview.package_months_remaining_estimate == null
-            ? 'неизвестен'
-            : `~${preview.package_months_remaining_estimate} месяца`;
-          const proceed = await confirmAction(
-            'Запустить Radar?',
-            `Provider: ScrapeCreators. Максимум: ${hardCap} credits. ` +
-            `Использовано за месяц: ${monthlyUsed} / ${monthlyHard}. Остаток: ${balance}. ` +
-            `Прогноз запаса после запуска: ${months}.`
-          );
-          if (!proceed) return;
-          confirmLive = true;
-          requestedCredits = Number(preview.requested_credits);
-        }
-        scan.textContent = 'Запускаю…';
-        const data = await api('/api/scan', {
-          method: 'POST',
-          body: JSON.stringify({
-            confirm_live: confirmLive,
-            max_credits: requestedCredits ? Number(requestedCredits) : 0,
-          }),
+      event.preventDefault();
+      const hasPicker = document.querySelector('input[name="scan_budget"]');
+      if (!hasPicker) {
+        openScanQuickModal().then((picked) => {
+          if (picked == null) return;
+          runScan(scan, picked);
         });
-        toast(data.message || 'Проверка запущена');
-        if (data.ok) reloadSoon(1800);
-      } catch (error) {
-        toast(error.message, true);
-      } finally {
-        scan.disabled = false;
-        scan.textContent = old;
+        return;
       }
+      runScan(scan);
       return;
     }
 

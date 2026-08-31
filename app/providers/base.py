@@ -38,6 +38,13 @@ class ProviderUsageBlockedError(ProviderError):
     """
 
 
+class ProviderCallUncertainError(ProviderError):
+    """Вызов ушёл во внешний API, но списание не подтверждено.
+
+    Fallback запрещён — иначе возможен double spend на двух провайдерах.
+    """
+
+
 class InstagramProvider(ABC):
     name: str
 

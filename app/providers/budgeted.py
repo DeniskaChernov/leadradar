@@ -6,6 +6,7 @@ from typing import TypeVar
 
 from app.providers.base import (
     InstagramProvider,
+    ProviderCallUncertainError,
     ProviderUsageBlockedError,
 )
 from app.schemas.instagram import (
@@ -177,14 +178,16 @@ class BudgetedInstagramProvider(InstagramProvider):
             details["source_account"] = source_account.strip().lower().lstrip("@")
         try:
             result = await call()
-        except Exception:
+        except Exception as exc:
             # Call already left the process: without provider credit proof we must not invent a charge.
             await self.usage.mark_reservation_uncertain(
                 reservation_id,
                 reason="external_call_failed_without_provider_credit_observation",
                 details=details,
             )
-            raise
+            raise ProviderCallUncertainError(
+                "External call failed after delivery started without provider credit proof"
+            ) from exc
         confirmed_units = await self._persist_credit_observations()
         actual_units = confirmed_units if confirmed_units is not None else 1
         if self.scan_budget is not None and actual_units == 0:
@@ -257,7 +260,7 @@ class BudgetedInstagramProvider(InstagramProvider):
                 known_comment_ids=known_comment_ids,
                 max_pages=effective_pages,
             )
-        except Exception:
+        except Exception as exc:
             await self.usage.mark_reservation_uncertain(
                 reservation_id,
                 reason="comment_batch_failed_without_provider_credit_observation",
@@ -267,7 +270,9 @@ class BudgetedInstagramProvider(InstagramProvider):
                     "source_account": post.competitor.strip().lower().lstrip("@"),
                 },
             )
-            raise
+            raise ProviderCallUncertainError(
+                "Comment batch failed after delivery started without provider credit proof"
+            ) from exc
 
         confirmed_units = await self._persist_credit_observations()
         units = (

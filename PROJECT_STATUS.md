@@ -61,6 +61,16 @@ P0/P1 закрыты в коде:
 - CSS/JS cache `13.2.0-phase8-ui`;
 - полный offline gate: **303 tests passed**; внешних вызовов: **0**.
 
+## Pilot Cockpit UI + spend hardening (offline)
+
+- навигация упрощена: 5 primary + 5 в «Ещё»; topbar «Проверить сейчас» с любой страницы;
+- `/` dashboard: «Кабина пилота», quick-actions (Radar, HOT, задачи, экономика, конкуренты, диагностика);
+- модалка `#scan-quick`: выбор 5 / 10 / 20 / custom credits перед запуском Radar;
+- `ProviderCallUncertainError`: fallback не активируется после `call_started` без credit proof (P0 double-spend fix);
+- OpenAI после `call_started` → `mark_reservation_uncertain`, не `finalize(units=1)` (P1);
+- CSS/JS cache `13.3.0-pilot-cockpit`;
+- полный offline gate: **316 passed, 1 skipped**; ruff clean; внешних вызовов: **0**.
+
 ## Master Phase 7 — Grounded Agent завершён
 
 - `MCPReadToolService` подключает read tools к SQLite:

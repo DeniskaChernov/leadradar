@@ -4,7 +4,12 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
-from app.providers.base import InstagramProvider, ProviderError, ProviderUsageBlockedError
+from app.providers.base import (
+    InstagramProvider,
+    ProviderCallUncertainError,
+    ProviderError,
+    ProviderUsageBlockedError,
+)
 from app.schemas.instagram import (
     CommentFetchResult,
     InstagramComment,
@@ -49,6 +54,9 @@ class FallbackInstagramProvider(InstagramProvider):
             return await primary_call()
         except ProviderUsageBlockedError:
             # Safety/budget blocks are intentional. Never bypass them by trying another paid API.
+            raise
+        except ProviderCallUncertainError:
+            # Billing ambiguous after call_started — fallback would risk double spend.
             raise
         except ProviderError as exc:
             logger.warning(
