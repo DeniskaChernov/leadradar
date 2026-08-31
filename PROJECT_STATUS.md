@@ -2,9 +2,16 @@
 
 ## Текущая версия
 
-**OPS UI · LIVE GATED BY DB TOGGLES · FULL APP RUNNING**
+**RATTAN PORTFOLIO · EXPLICIT ENROLLMENT · OPS UI GATED LIVE**
 
-Контрольная точка 2026-08-31 (вечер): master unlock в `.env` + тумблеры
+Контрольная точка 2026-08-31 (ночь): ротанг — отдельный портфель источников.
+`Competitor.vertical` = enrollment (FURNITURE / ARTIFICIAL_RATTAN); таксономия
+размечает signal/lead, но не auto-enroll. Stub `rattan_classifier_service` и
+калибровочные classifier-тесты удалены. Alembic `f1a8c3e74b90` сбрасывает
+ошибочный auto-promote портфеля. `/rattan` пуст, пока оператор не выберет
+вертикаль «Ротанг» у конкурента. Offline gate: **318 passed, 1 skipped**.
+
+Ранее вечером 2026-08-31: master unlock в `.env` + тумблеры
 `radar_live_armed` / `openai_live_armed` в БД (`operational_controls`, Alembic
 `e4f7a1c93b20`). UI: Radar/System «Включить Live Radar» / «OpenAI». Spend только
 когда тумблер armed. Полный `python -m app.main` (web+bot+notifications).

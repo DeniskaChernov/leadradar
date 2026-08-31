@@ -1378,6 +1378,7 @@ def build_web_app(
                 category=str(payload.get("category") or "DIRECT"),
                 tier=str(payload.get("tier") or "A"),
                 notes=str(payload.get("notes") or ""),
+                vertical=str(payload.get("vertical") or "FURNITURE"),
             )
             return {
                 "ok": True,
@@ -1509,6 +1510,7 @@ def build_web_app(
                 active=active,
                 tier=str(payload.get("tier")) if payload.get("tier") else None,
                 category=str(payload.get("category")) if payload.get("category") else None,
+                vertical=str(payload.get("vertical")) if payload.get("vertical") else None,
                 notification_policy=(
                     str(payload.get("notification_policy"))
                     if payload.get("notification_policy")
@@ -1519,6 +1521,7 @@ def build_web_app(
                 "ok": True,
                 "active": competitor.active,
                 "tier": competitor.tier,
+                "vertical": competitor.vertical.value,
                 "notification_policy": (
                     competitor.notification_policy.value
                     if competitor.notification_policy

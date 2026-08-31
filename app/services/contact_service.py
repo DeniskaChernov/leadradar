@@ -100,8 +100,8 @@ class ContactService:
                     f"{post_data.caption}\n{comment_data.text}"
                 )
                 competitor = await CompetitorRepository(session).get_or_create(post_data.competitor)
-                if taxonomy.is_rattan:
-                    competitor.vertical = Vertical.ARTIFICIAL_RATTAN
+                # Портфель ротанга только через explicit enrollment (Competitor.vertical в UI/CRM).
+                # Таксономия размечает сигнал/evidence/lead, но не переводит источник.
                 post, _, _ = await PostRepository(session).upsert(competitor, post_data)
                 contact, contact_created = await ContactRepository(session).upsert_from_comment(
                     comment_data

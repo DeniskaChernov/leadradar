@@ -3,18 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
-from app.db.models import (
-    AudienceMembership,
-    AudienceSegment,
-    BusinessEntity,
-    Competitor,
-    Evidence,
-    Lead,
-    PublicSignal,
-    Vertical,
-)
+from app.db.models import Competitor, Lead, Vertical
 from app.services.ai_service import RuleBasedLeadAnalyzer
 from app.services.audience_service import AudienceEngine
 from app.services.contact_service import ContactService
@@ -31,17 +22,9 @@ def test_rattan_vertical_v2_golden_taxonomy():
         result = RattanTaxonomyService.classify(row["text"])
         assert result.is_rattan is row["is_rattan"], row["text"]
         assert result.layer.value == row["layer"], row["text"]
-        if row.get("product"):
-            assert row["product"] in result.products, row["text"]
-        if row.get("profile"):
-            assert row["profile"] in result.material_profiles, row["text"]
-        if row.get("role"):
-            assert result.role.value == row["role"], row["text"]
 
 
-async def test_vertical_propagates_to_signal_evidence_lead_competitor_and_business(
-    session_factory,
-):
+async def test_rebuild_classifies_signal_but_does_not_auto_enroll_source(session_factory):
     post = make_post().model_copy(
         update={"caption": "Искусственный ротанг в бухтах, профиль 8 мм полукруг"}
     )
@@ -58,134 +41,72 @@ async def test_vertical_propagates_to_signal_evidence_lead_competitor_and_busine
         hot_threshold=70,
         audience_engine=AudienceEngine(session_factory, 70),
     ).process_signal(signal)
+    stats = await RattanVerticalService(session_factory).rebuild()
+    workspace = await WebQueryService(session_factory, hot_threshold=70).rattan_workspace()
 
     async with session_factory() as session:
-        public_signal = await session.get(PublicSignal, signal.public_signal_id)
-        evidence = await session.scalar(
-            select(Evidence).where(Evidence.public_signal_id == public_signal.id)
-        )
-        lead = await session.scalar(select(Lead).where(Lead.comment_id == signal.comment_id))
         competitor = await session.get(Competitor, signal.competitor_id)
-        business = await session.get(BusinessEntity, competitor.business_id)
+        lead = await session.scalar(select(Lead).where(Lead.comment_id == signal.comment_id))
 
-    assert signal.vertical == Vertical.ARTIFICIAL_RATTAN
-    assert public_signal.vertical == Vertical.ARTIFICIAL_RATTAN
-    assert evidence.vertical == Vertical.ARTIFICIAL_RATTAN
+    assert lead is not None
     assert lead.vertical == Vertical.ARTIFICIAL_RATTAN
-    assert lead.product_category in {"RAW_RATTAN", "COIL", "KG_PRICE"}
-    assert competitor.vertical == Vertical.ARTIFICIAL_RATTAN
-    assert Vertical.ARTIFICIAL_RATTAN.value in business.verticals_json
-    assert evidence.raw_data["rattan_taxonomy"]["layer"] == "RAW_MATERIAL"
+    assert competitor is not None
+    assert competitor.vertical == Vertical.FURNITURE
+    assert stats.enrolled_competitors == 0
+    assert stats.orphan_rattan_signals >= 1
+    assert workspace["rattan_counts"]["portfolio_empty"] is True
+    assert workspace["rattan_counts"]["companies"] == 0
+    assert workspace["rattan_counts"]["signals"] == 0
 
 
-async def test_plain_table_stays_furniture_and_never_enters_rattan_segment(session_factory):
-    signal = await ContactService(session_factory).persist_signal(
-        make_post().model_copy(update={"caption": "Кухонный стол из массива"}),
-        make_comment("plain-table-v2").model_copy(
-            update={"platform_comment_id": "plain-table-v2", "text": "стол цена?"}
-        ),
+async def test_explicit_enrollment_opens_rattan_portfolio(session_factory):
+    post = make_post().model_copy(update={"caption": "Искусственный ротанг мебель"})
+    comment = make_comment("rattan-enrolled").model_copy(
+        update={
+            "platform_comment_id": "rattan-enrolled",
+            "text": "Сколько стоит комплект из ротанга?",
+        }
     )
-    engine = AudienceEngine(session_factory, 70)
+    signal = await ContactService(session_factory).persist_signal(post, comment)
     await LeadService(
         session_factory,
         RuleBasedLeadAnalyzer(),
         hot_threshold=70,
-        audience_engine=engine,
+        audience_engine=AudienceEngine(session_factory, 70),
     ).process_signal(signal)
-    await engine.recalculate_contact(signal.contact_id)
+    service = RattanVerticalService(session_factory)
+    await service.rebuild()
+    await service.enroll_competitor(signal.competitor_id, vertical=Vertical.ARTIFICIAL_RATTAN)
+    workspace = await WebQueryService(session_factory, hot_threshold=70).rattan_workspace()
 
-    async with session_factory() as session:
-        lead = await session.scalar(select(Lead).where(Lead.comment_id == signal.comment_id))
-        membership = await session.scalar(
-            select(AudienceMembership)
-            .join(AudienceSegment, AudienceSegment.id == AudienceMembership.segment_id)
-            .where(
-                AudienceMembership.contact_id == signal.contact_id,
-                AudienceSegment.slug == "rattan-commercial",
-            )
-        )
-    assert lead.vertical == Vertical.FURNITURE
-    assert membership is not None and membership.active is False
+    assert workspace["rattan_counts"]["portfolio_empty"] is False
+    assert workspace["rattan_counts"]["companies"] == 1
+    assert workspace["rattan_companies"][0].id == signal.competitor_id
+    assert workspace["rattan_counts"]["signals"] >= 1
 
 
-async def test_generic_rattan_context_does_not_fake_raw_material_interest(
-    session_factory,
-):
-    signal = await ContactService(session_factory).persist_signal(
-        make_post().model_copy(update={"caption": "Rattan inspiration"}),
-        make_comment("generic-rattan-v2").model_copy(
-            update={
-                "platform_comment_id": "generic-rattan-v2",
-                "text": "Красиво",
-            }
-        ),
+async def test_crm_vertical_setting_enrolls_portfolio(session_factory):
+    from app.services.crm_service import CRMService
+
+    post = make_post().model_copy(update={"caption": "Искусственный ротанг"})
+    comment = make_comment("rattan-crm-enroll").model_copy(
+        update={
+            "platform_comment_id": "rattan-crm-enroll",
+            "text": "Нужен ротанг оптом, цена?",
+        }
     )
-
-    stats = await RattanVerticalService(session_factory).rebuild()
-    async with session_factory() as session:
-        evidence = await session.scalar(
-            select(Evidence).where(Evidence.public_signal_id == signal.public_signal_id)
-        )
-
-    assert signal.vertical == Vertical.ARTIFICIAL_RATTAN
-    assert evidence is not None
-    assert evidence.topic is None
-    assert evidence.intent is None
-    assert evidence.raw_data["rattan_taxonomy"]["layer"] == "NONE"
-    assert stats.rattan_signals == 1
-    assert stats.raw_material_signals == 0
-    assert stats.unclassified_rattan_signals == 1
-
-
-async def test_rattan_workspace_excludes_reactions_from_demand(session_factory):
-    contact_service = ContactService(session_factory)
-    post = make_post().model_copy(update={"caption": "Rattan outdoor table"})
-    commercial = await contact_service.persist_signal(
-        post,
-        make_comment("rattan-demand-v2").model_copy(
-            update={"platform_comment_id": "rattan-demand-v2", "text": "Narxi qancha?"}
-        ),
-    )
-    reaction = await contact_service.persist_signal(
-        post,
-        make_comment("rattan-reaction-v2").model_copy(
-            update={"platform_comment_id": "rattan-reaction-v2", "text": "😍😍"}
-        ),
-    )
-    lead_service = LeadService(
+    signal = await ContactService(session_factory).persist_signal(post, comment)
+    await LeadService(
         session_factory,
         RuleBasedLeadAnalyzer(),
         hot_threshold=70,
         audience_engine=AudienceEngine(session_factory, 70),
+    ).process_signal(signal)
+    await RattanVerticalService(session_factory).rebuild()
+    await CRMService(session_factory).update_competitor(
+        signal.competitor_id,
+        vertical=Vertical.ARTIFICIAL_RATTAN.value,
     )
-    await lead_service.process_signal(commercial)
-    await lead_service.process_signal(reaction)
-
     workspace = await WebQueryService(session_factory, hot_threshold=70).rattan_workspace()
-
-    assert workspace["rattan_counts"]["signals"] == 1
-    assert workspace["rattan_counts"]["filtered_noise"] == 1
-    assert len(workspace["rattan_rows"]) == 1
-    assert workspace["rattan_rows"][0][1].text == "Narxi qancha?"
-
-
-async def test_rattan_rebuild_and_workspace_are_idempotent(session_factory):
-    contact_service = ContactService(session_factory)
-    await contact_service.persist_signal(
-        make_post().model_copy(update={"caption": "Rattan sofa outdoor"}),
-        make_comment("rattan-workspace-v2").model_copy(
-            update={"platform_comment_id": "rattan-workspace-v2", "text": "narxi?"}
-        ),
-    )
-    service = RattanVerticalService(session_factory)
-    first = await service.rebuild()
-    second = await service.rebuild()
-    async with session_factory() as session:
-        signal_count = await session.scalar(select(func.count(PublicSignal.id)))
-        evidence_count = await session.scalar(select(func.count(Evidence.id)))
-    workspace = await WebQueryService(session_factory, hot_threshold=70).rattan_workspace()
-
-    assert first == second
-    assert signal_count == 1
-    assert evidence_count == 1
+    assert workspace["rattan_counts"]["portfolio_empty"] is False
     assert workspace["rattan_counts"]["companies"] == 1

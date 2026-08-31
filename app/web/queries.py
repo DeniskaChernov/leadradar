@@ -116,45 +116,66 @@ class WebQueryService:
             return int(await session.scalar(select(func.count(column))) or 0)
 
     async def rattan_workspace(self) -> dict:
-        """Return persisted rattan demand without reactions or unfinished analysis."""
+        """Rattan portfolio: only sources with explicit Competitor.vertical enrollment."""
         async with self.session_factory() as session:
-            context_signal_count = int(
-                await session.scalar(
-                    select(func.count(Lead.id)).where(Lead.vertical == Vertical.ARTIFICIAL_RATTAN)
-                )
-                or 0
-            )
-            commercial_signal_count = int(
-                await session.scalar(
-                    select(func.count(Lead.id)).where(
-                        Lead.vertical == Vertical.ARTIFICIAL_RATTAN,
-                        Lead.status.in_(CONFIRMED_LEAD_STATUSES),
-                    )
-                )
-                or 0
-            )
-            rows = (
-                await session.execute(
-                    select(Lead, Comment, Contact, Competitor, PublicSignal, Evidence)
-                    .join(Comment, Comment.id == Lead.comment_id)
-                    .join(Contact, Contact.id == Lead.contact_id)
-                    .join(Competitor, Competitor.id == Lead.competitor_id)
-                    .join(PublicSignal, PublicSignal.comment_id == Comment.id)
-                    .join(Evidence, Evidence.public_signal_id == PublicSignal.id)
-                    .where(
-                        Lead.vertical == Vertical.ARTIFICIAL_RATTAN,
-                        Lead.status.in_(CONFIRMED_LEAD_STATUSES),
-                    )
-                    .order_by(desc(Comment.discovered_at))
-                    .limit(100)
-                )
-            ).all()
-            companies = list(
+            enrolled = list(
                 await session.scalars(
                     select(Competitor)
                     .where(Competitor.vertical == Vertical.ARTIFICIAL_RATTAN)
                     .order_by(Competitor.normalized_handle)
                 )
+            )
+            enrolled_ids = [item.id for item in enrolled]
+            context_signal_count = 0
+            commercial_signal_count = 0
+            rows: list = []
+            if enrolled_ids:
+                context_signal_count = int(
+                    await session.scalar(
+                        select(func.count(Lead.id)).where(
+                            Lead.vertical == Vertical.ARTIFICIAL_RATTAN,
+                            Lead.competitor_id.in_(enrolled_ids),
+                        )
+                    )
+                    or 0
+                )
+                commercial_signal_count = int(
+                    await session.scalar(
+                        select(func.count(Lead.id)).where(
+                            Lead.vertical == Vertical.ARTIFICIAL_RATTAN,
+                            Lead.competitor_id.in_(enrolled_ids),
+                            Lead.status.in_(CONFIRMED_LEAD_STATUSES),
+                        )
+                    )
+                    or 0
+                )
+                rows = (
+                    await session.execute(
+                        select(Lead, Comment, Contact, Competitor, PublicSignal, Evidence)
+                        .join(Comment, Comment.id == Lead.comment_id)
+                        .join(Contact, Contact.id == Lead.contact_id)
+                        .join(Competitor, Competitor.id == Lead.competitor_id)
+                        .join(PublicSignal, PublicSignal.comment_id == Comment.id)
+                        .join(Evidence, Evidence.public_signal_id == PublicSignal.id)
+                        .where(
+                            Lead.vertical == Vertical.ARTIFICIAL_RATTAN,
+                            Lead.competitor_id.in_(enrolled_ids),
+                            Lead.status.in_(CONFIRMED_LEAD_STATUSES),
+                        )
+                        .order_by(desc(Comment.discovered_at))
+                        .limit(100)
+                    )
+                ).all()
+            orphan_rattan_signals = int(
+                await session.scalar(
+                    select(func.count(Lead.id))
+                    .join(Competitor, Competitor.id == Lead.competitor_id)
+                    .where(
+                        Lead.vertical == Vertical.ARTIFICIAL_RATTAN,
+                        Competitor.vertical != Vertical.ARTIFICIAL_RATTAN,
+                    )
+                )
+                or 0
             )
         layers: Counter[str] = Counter()
         roles: Counter[str] = Counter()
@@ -168,16 +189,18 @@ class WebQueryService:
             products.update(str(item) for item in taxonomy.get("products") or [])
         return {
             "rattan_rows": rows,
-            "rattan_companies": companies,
+            "rattan_companies": enrolled,
             "rattan_layers": layers,
             "rattan_roles": roles.most_common(),
             "rattan_products": products.most_common(),
             "rattan_counts": {
                 "signals": commercial_signal_count,
-                "filtered_noise": context_signal_count - commercial_signal_count,
-                "companies": len(companies),
+                "filtered_noise": max(0, context_signal_count - commercial_signal_count),
+                "companies": len(enrolled),
                 "raw": layers.get("RAW_MATERIAL", 0),
                 "ready": layers.get("READY_FURNITURE", 0),
+                "orphan_rattan_signals": orphan_rattan_signals,
+                "portfolio_empty": len(enrolled) == 0,
             },
         }
 

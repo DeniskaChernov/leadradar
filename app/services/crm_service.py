@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import normalize_instagram_handle
 from app.db.models import (
     AIFeedback,
+    BusinessEntity,
     Competitor,
     Contact,
     ContactEventType,
@@ -19,9 +20,11 @@ from app.db.models import (
     LeadStatus,
     NotificationPolicy,
     TaskStatus,
+    Vertical,
 )
 from app.db.repositories.events import ContactEventRepository
 from app.services.lead_workflow_service import LeadAlreadyAssignedError, LeadWorkflowError
+from app.services.rattan_vertical_service import sync_business_vertical_enrollment
 
 ALLOWED_STAGE_TRANSITIONS: dict[LeadStatus, set[LeadStatus]] = {
     LeadStatus.ANALYZING: {LeadStatus.TAKEN, LeadStatus.NOT_LEAD},
@@ -400,6 +403,7 @@ class CRMService:
         category: str = "DIRECT",
         tier: str = "A",
         notes: str = "",
+        vertical: str = "FURNITURE",
     ) -> Competitor:
         normalized = normalize_instagram_handle(handle)
         if not normalized:
@@ -408,6 +412,17 @@ class CRMService:
         if tier not in {"A", "B", "C"}:
             raise LeadWorkflowError("Приоритет должен быть A, B или C")
         interval = {"A": 180, "B": 600, "C": 1800}[tier]
+        normalized_vertical = vertical.strip().upper()
+        try:
+            enrolled_vertical = Vertical(normalized_vertical)
+        except ValueError as exc:
+            raise LeadWorkflowError(
+                "Вертикаль должна быть FURNITURE или ARTIFICIAL_RATTAN"
+            ) from exc
+        if enrolled_vertical not in {Vertical.FURNITURE, Vertical.ARTIFICIAL_RATTAN}:
+            raise LeadWorkflowError(
+                "Вертикаль должна быть FURNITURE или ARTIFICIAL_RATTAN"
+            )
         async with self.session_factory() as session:
             competitor = await session.scalar(
                 select(Competitor).where(Competitor.normalized_handle == normalized)
@@ -422,6 +437,7 @@ class CRMService:
                     poll_interval_seconds=interval,
                     notes=notes.strip() or None,
                     active=True,
+                    vertical=enrolled_vertical,
                 )
                 session.add(competitor)
             else:
@@ -430,9 +446,13 @@ class CRMService:
                 competitor.tier = tier
                 competitor.poll_interval_seconds = interval
                 competitor.notes = notes.strip() or competitor.notes
+                competitor.vertical = enrolled_vertical
+            await session.flush()
+            if competitor.business_id:
+                business = await session.get(BusinessEntity, competitor.business_id)
+                sync_business_vertical_enrollment(business, vertical=enrolled_vertical)
             await session.commit()
             return competitor
-
 
     async def update_competitor(
         self,
@@ -442,6 +462,7 @@ class CRMService:
         tier: str | None = None,
         category: str | None = None,
         notification_policy: str | None = None,
+        vertical: str | None = None,
     ) -> Competitor:
         async with self.session_factory() as session:
             competitor = await session.get(Competitor, competitor_id)
@@ -457,6 +478,24 @@ class CRMService:
                 competitor.poll_interval_seconds = {"A": 180, "B": 600, "C": 1800}[normalized_tier]
             if category is not None:
                 competitor.category = category.upper()
+            if vertical is not None:
+                normalized_vertical = vertical.strip().upper()
+                try:
+                    enrolled_vertical = Vertical(normalized_vertical)
+                except ValueError as exc:
+                    raise LeadWorkflowError(
+                        "Вертикаль должна быть FURNITURE или ARTIFICIAL_RATTAN"
+                    ) from exc
+                if enrolled_vertical not in {Vertical.FURNITURE, Vertical.ARTIFICIAL_RATTAN}:
+                    raise LeadWorkflowError(
+                        "Вертикаль должна быть FURNITURE или ARTIFICIAL_RATTAN"
+                    )
+                competitor.vertical = enrolled_vertical
+                if competitor.business_id:
+                    business = await session.get(BusinessEntity, competitor.business_id)
+                    sync_business_vertical_enrollment(
+                        business, vertical=enrolled_vertical
+                    )
             if notification_policy is not None:
                 normalized_policy = notification_policy.strip().upper()
                 if normalized_policy == "INHERIT":

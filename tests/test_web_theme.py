@@ -162,7 +162,7 @@ def test_mobile_rattan_cards_and_opening_review_use_shared_safe_actions():
 
     assert 'class="rattan-table"' in rattan
     assert 'data-label="Сигнал"' in rattan
-    assert "реакций и незавершённых разборов исключено" in rattan
+    assert "Портфель пуст" in rattan or "источников enrollment" in rattan
     assert "Коммерческие rattan-сигналы" in rattan
     assert ".rattan-table thead { display: none; }" in css
     assert 'data-api-action="/api/openings/' in openings
@@ -262,7 +262,7 @@ def test_radar_budget_ui_uses_credit_presets_truthful_max_and_result_facts():
     assert "Сколько разрешить на эту проверку?" in radar
     assert "Максимальный расход" in radar
     assert "Потрачено" in radar
-    assert "Не израсходовано" in radar
+    assert "ПОСЛЕДНИЙ ЗАПУСК" in radar
     for preset in ("Эконом", "Обычно", "Расширенно", "Глубоко"):
         assert preset in radar
     assert "max_credits" in javascript

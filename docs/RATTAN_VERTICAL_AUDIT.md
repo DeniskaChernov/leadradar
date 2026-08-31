@@ -1,11 +1,10 @@
 # Artificial Rattan Vertical Audit
 
-## CURRENT BEHAVIOR (Phase E verified)
-- Rattan is a persisted vertical on PublicSignal, Evidence, Lead, AudienceSegment and Competitor.
-- `RattanTaxonomyService` requires explicit rattan context before assigning the vertical.
-- Raw materials, finished furniture and observable market roles are classified separately.
-- `/rattan` is a separate DB-backed workspace; it does not inject demo companies.
-- The offline rebuild is idempotent and propagates taxonomy through existing evidence.
+## CURRENT BEHAVIOR
+- Rattan portfolio membership is explicit: `Competitor.vertical == ARTIFICIAL_RATTAN`.
+- Taxonomy may label signals/leads as rattan; it must not auto-enroll furniture sources.
+- `/rattan` shows only enrolled sources and their commercial rattan leads; orphans are counted separately.
+- Stub `rattan_classifier_service` and calibration-only tests removed; taxonomy + portfolio enrollment remain.
 
 ## EXPECTED BEHAVIOR
 - Two completely separate workspaces: Furniture (`FURNITURE`) vs Artificial Rattan (`ARTIFICIAL_RATTAN`).
