@@ -1944,6 +1944,83 @@ body::after { animation: ambient-drift-b 22s ease-in-out infinite alternate; }
 }
 .economics-burn-reasons p { margin: 0; color: var(--muted); font-size: 14px; }
 .economics-provider-card .panel-head p a { color: var(--primary); }
+.economics-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  background: linear-gradient(135deg, rgba(239,245,255,.92), rgba(255,255,255,.88));
+}
+.economics-hero h2 { margin: 6px 0 8px; font-size: clamp(20px, 2.4vw, 26px); }
+.segmented-control {
+  display: inline-flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 16px;
+  background: rgba(239,245,255,.75);
+  border: 1px solid rgba(148,163,184,.18);
+  margin-bottom: 16px;
+}
+.segmented-control .btn { min-width: 96px; justify-content: center; }
+.segmented-control .btn:not(.ghost) {
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(59,130,246,.18);
+}
+.top-actions .btn i, .top-actions .btn svg { width: 16px; height: 16px; }
+.top-actions .btn[data-agent-open] { display: inline-flex; align-items: center; gap: 6px; }
+.agent-quick-modal { max-width: 560px; }
+.agent-presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.agent-presets.inline { margin-top: 0; margin-bottom: 12px; }
+.agent-preset {
+  border: 1px solid rgba(148,163,184,.28);
+  background: rgba(255,255,255,.82);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--motion-base), background var(--motion-base);
+}
+.agent-preset:hover { border-color: rgba(59,130,246,.45); background: rgba(239,245,255,.95); }
+.agent-result-rich {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(248,250,252,.88);
+  border: 1px solid rgba(148,163,184,.18);
+}
+.agent-result-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.agent-result-body { white-space: pre-wrap; line-height: 1.55; font-size: 14px; }
+.agent-result-meta {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(148,163,184,.28);
+  color: var(--muted);
+  font-size: 12px;
+}
+.modal-actions.inline { justify-content: flex-end; margin-top: 4px; }
+.page-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  background: linear-gradient(135deg, rgba(239,245,255,.92), rgba(255,255,255,.88));
+}
+.page-hero h2 { margin: 6px 0 8px; font-size: clamp(20px, 2.4vw, 26px); }
+.page-hero p { margin: 0; color: var(--muted); font-size: 14px; }
+.radar-hero.live, .leads-hero.live { border-color: rgba(59,130,246,.22); }
+.radar-summary.metrics { margin-bottom: 14px; }
+.radar-summary .metric.hot strong { color: var(--hot); }
+.metric.muted-metric { pointer-events: none; opacity: .88; }
+.leads-view-toggle { margin-bottom: 16px; }
+.leads-filters, .radar-filters { margin-bottom: 10px; }
+.lead-agent-panel .agent-result-rich { margin-top: 10px; }
 .audience-quality-link { margin-top: 10px; }
 .audience-quality-link a { color: var(--primary); font-weight: 700; font-size: 13px; }
 .audience-card-metrics { display: flex; align-items: center; gap: 8px; }

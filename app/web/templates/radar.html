@@ -3,7 +3,18 @@
 {% block heading %}Радар сигналов{% endblock %}
 {% block subheading %}Каждый комментарий: кто написал, где нашли и что он означает{% endblock %}
 {% block content %}
-<div class="page-help"><b>Что здесь происходит?</b><span>Радар показывает все сохранённые комментарии, даже если они не являются лидами. Так всегда видно, откуда система взяла человека и почему дала ему конкретную оценку.</span></div>
+<section class="page-hero radar-hero panel {% if scan_budget.is_live %}live{% else %}safe{% endif %}">
+  <div>
+    <span class="eyebrow">SIGNAL RADAR</span>
+    <h2>{{ overview.total }} сигналов · {{ overview.hot }} HOT</h2>
+    <p>{{ overview.unprocessed + overview.pending }} ждут разбора · {{ overview.qualified }} в воронке лидов</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn primary" href="/leads">Лиды ({{ overview.qualified }})</a>
+    <a class="btn" href="/radar?kind=pending">Очередь разбора</a>
+    <button class="btn ghost" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Scan</button>
+  </div>
+</section>
 <section class="panel radar-budget-card" aria-labelledby="radar-budget-title">
   <div class="radar-budget-head">
     <div><span class="eyebrow">SCRAPECREATORS CREDITS</span><h2 id="radar-budget-title">Бюджет проверки</h2></div>
@@ -54,14 +65,14 @@
   </div>
 </section>
 {% endif %}
-<div class="radar-summary">
-  <a href="/radar"><span>Все сигналы</span><b>{{ overview.total }}</b></a>
-  <a href="/radar?kind=pending"><span>Не разобраны</span><b>{{ overview.unprocessed + overview.pending }}</b></a>
-  <a href="/leads"><span>Лиды</span><b>{{ overview.qualified }}</b></a>
-  <a href="/radar?kind=hot" class="hot"><span>HOT</span><b>{{ overview.hot }}</b></a>
-  <div><span>Отсеяно</span><b>{{ overview.rejected }}</b></div>
+<div class="radar-summary metrics dashboard-metrics">
+  <a class="metric" href="/radar"><span>Все сигналы</span><strong>{{ overview.total }}</strong><small>в базе</small></a>
+  <a class="metric warn" href="/radar?kind=pending"><span>Не разобраны</span><strong>{{ overview.unprocessed + overview.pending }}</strong><small>очередь + AI</small></a>
+  <a class="metric" href="/leads"><span>Лиды</span><strong>{{ overview.qualified }}</strong><small>воронка</small></a>
+  <a class="metric accent hot" href="/radar?kind=hot"><span>HOT</span><strong>{{ overview.hot }}</strong><small>от {{ settings.hot_lead_threshold }}/100</small></a>
+  <div class="metric muted-metric"><span>Отсеяно</span><strong>{{ overview.rejected }}</strong><small>NOT_LEAD</small></div>
 </div>
-<form class="filters" method="get">
+<form class="filters radar-filters" method="get">
   <input name="q" value="{{ q }}" aria-label="Поиск по радару" placeholder="Имя, username, комментарий или товар">
   <select name="competitor" aria-label="Фильтр по конкуренту"><option value="">Все конкуренты</option>{% for item in competitors %}<option value="{{ item.competitor.normalized_handle }}" {% if competitor_filter == item.competitor.normalized_handle %}selected{% endif %}>@{{ item.competitor.normalized_handle }}</option>{% endfor %}</select>
   <select name="kind" aria-label="Тип сигнала">

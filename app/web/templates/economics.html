@@ -6,9 +6,22 @@
 {% macro usd(value) -%}{% if value is not none %}${{ '%.6f'|format(value) }}{% else %}—{% endif %}{%- endmacro %}
 {% macro credits(value) -%}{% if value is not none %}{{ value }} credits{% else %}—{% endif %}{%- endmacro %}
 {% macro ratio(value) -%}{% if value is not none %}{{ '%.2f'|format(value) }}{% else %}—{% endif %}{%- endmacro %}
+{% set credit_accuracy = safe_attr(page.credits, 'confirmed_coverage_percent') %}
 <div class="page-help"><b>Деньги и credits только из ledger</b><span>Страница не делает внешних вызовов. Неполные факты показываются как «—», а не как ноль.</span></div>
 
-<form class="filters" method="get" aria-label="Период экономики">
+<section class="economics-hero panel {% if page.provider and page.provider.budget_status == 'HEALTHY' %}live{% elif page.provider %}warn{% else %}safe{% endif %}">
+  <div>
+    <span class="eyebrow">UNIT ECONOMICS · {{ page.days }} дн.</span>
+    <h2>{% if page.provider %}ScrapeCreators {{ page.provider.used_this_month }}/{{ page.provider.monthly_hard_limit }} credits{% else %}Экономика без live wallet{% endif %}</h2>
+    <p>{% if page.provider and page.provider.credits_remaining is not none %}Остаток пакета: {{ '{:,}'.format(page.provider.credits_remaining).replace(',', ' ') }} credits · {% endif %}HOT: {{ economics.hot_count }} · WON: {{ economics.won_count }} · AI ops: {{ page.openai.events }}</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn" href="/radar">Radar</a>
+    <button class="btn ghost" type="button" data-agent-open>AI сводка</button>
+  </div>
+</section>
+
+<form class="filters segmented-control" method="get" aria-label="Период экономики">
   <a class="btn {% if page.days != 1 %}ghost{% endif %}" href="/economics?days=1" {% if page.days == 1 %}aria-current="page"{% endif %}>24 часа</a>
   <a class="btn {% if page.days != 7 %}ghost{% endif %}" href="/economics?days=7" {% if page.days == 7 %}aria-current="page"{% endif %}>7 дней</a>
   <a class="btn {% if page.days != 30 %}ghost{% endif %}" href="/economics?days=30" {% if page.days == 30 %}aria-current="page"{% endif %}>30 дней</a>
@@ -63,11 +76,11 @@
     <div class="metric"><span>ScrapeCreators credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.known_credits }}{% else %}—{% endif %}</strong><small>{{ page.credits.credit_events }} cost events</small></div>
     <div class="metric"><span>Confirmed credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.confirmed_credits }}{% else %}—{% endif %}</strong><small>PROVIDER_CONFIRMED</small></div>
     <div class="metric"><span>Estimated credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.estimated_credits }}{% else %}—{% endif %}</strong><small>без ответа провайдера</small></div>
-    <div class="metric"><span>Credit accuracy</span><strong>{% if page.credits.confirmed_coverage_percent is not none %}{{ page.credits.confirmed_coverage_percent }}%{% else %}—{% endif %}</strong><small>доля confirmed</small></div>
+    <div class="metric"><span>Credit accuracy</span><strong>{% if credit_accuracy is not none %}{{ credit_accuracy }}%{% else %}—{% endif %}</strong><small>доля confirmed</small></div>
     <div class="metric"><span>credits / сигнал</span><strong>{{ ratio(page.credits.credits_per_signal) }}</strong><small>{{ economics.signals_count }} сигналов</small></div>
     <div class="metric"><span>credits / коммерч.</span><strong>{{ ratio(page.credits.credits_per_commercial_signal) }}</strong><small>{{ economics.commercial_leads_count }} коммерч.</small></div>
     <div class="metric"><span>credits / лид</span><strong>{{ ratio(page.credits.credits_per_lead) }}</strong><small>{{ economics.leads_count }} лидов</small></div>
-    <div class="metric"><span>credits / HOT</span><strong>{{ ratio(page.credits.credits_per_hot) }}</strong><small>{{ economics.hot_count }} HOT{% if page.credits.confirmed_coverage_percent is not none and page.credits.confirmed_coverage_percent < 100 %} · ⚠ {{ (100 - page.credits.confirmed_coverage_percent)|round(1) }}% estimated{% endif %}</small></div>
+    <div class="metric"><span>credits / HOT</span><strong>{{ ratio(page.credits.credits_per_hot) }}</strong><small>{{ economics.hot_count }} HOT{% if credit_accuracy is not none and credit_accuracy < 100 %} · ⚠ {{ (100 - credit_accuracy)|round(1) }}% estimated{% endif %}</small></div>
     <div class="metric"><span>credits / B2B</span><strong>{{ ratio(page.credits.credits_per_b2b) }}</strong><small>{{ economics.b2b_count }} B2B</small></div>
     <div class="metric"><span>credits / WON</span><strong>{{ ratio(page.credits.credits_per_won) }}</strong><small>{{ economics.won_count }} WON</small></div>
     <div class="metric"><span>HOT / 1 000 credits</span><strong>{{ ratio(page.credits.hot_per_1000_credits) }}</strong><small>эффективность Radar</small></div>

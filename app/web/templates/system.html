@@ -157,7 +157,12 @@
 
 <section class="panel agent-workspace" aria-labelledby="agent-workspace-title">
   <div class="panel-head"><div><span class="eyebrow">GROUNDED AGENT · OFFLINE</span><h2 id="agent-workspace-title">Read-only ассистент</h2><p>Ответ только из MCP read tools и evidence_ids. GPT не вызывается; write tools остаются NOT_CONNECTED.</p></div><span class="tag status-contacted">DB-backed</span></div>
-  <form class="agent-query-form form-grid" data-agent-query>
+  <div class="agent-presets inline" role="group" aria-label="Примеры вопросов">
+    <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи quality gates"}'>Quality gates</button>
+    <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи горячие лиды"}'>HOT лиды</button>
+    <button class="agent-preset" type="button" data-agent-preset='{"query":"lead_id=1"}'>Лид #1</button>
+  </div>
+  <form class="agent-query-form form-grid" data-agent-query data-agent-target="#agent-query-result">
     <label class="wide">Вопрос<input name="query" placeholder="Покажи лиды · lead_id=1 · furniture-dining" required autocomplete="off"></label>
     <label>lead_id<input name="lead_id" inputmode="numeric" placeholder="опционально"></label>
     <label>competitor_id<input name="competitor_id" inputmode="numeric" placeholder="для спроса конкурента"></label>

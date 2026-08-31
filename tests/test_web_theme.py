@@ -185,6 +185,15 @@ def test_pilot_cockpit_quick_actions_and_scan_modal():
     assert ".quick-actions" in css
 
 
+def test_economics_page_has_hero_and_safe_credit_accuracy():
+    economics = (PROJECT_ROOT / "app/web/templates/economics.html").read_text(
+        encoding="utf-8"
+    )
+    assert "economics-hero" in economics
+    assert "safe_attr(page.credits, 'confirmed_coverage_percent')" in economics
+    assert "segmented-control" in economics
+
+
 def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
     auth = (PROJECT_ROOT / "app/web/templates/auth.html").read_text(encoding="utf-8")
@@ -194,8 +203,10 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.3.0-pilot-cockpit" in base
-    assert "13.3.0-pilot-cockpit" in auth
+    assert "13.5.0-radar-leads-agent" in base
+    assert "13.5.0-radar-leads-agent" in auth
+    assert 'id="agent-quick"' in base
+    assert "data-agent-open" in base
     assert 'data-more-toggle aria-expanded="false"' in base
     assert 'aria-controls="more-navigation"' in base
     assert 'aria-label="Вертикаль бизнеса"' in base
@@ -253,6 +264,7 @@ def test_radar_budget_ui_uses_credit_presets_truthful_max_and_result_facts():
 
 def test_phase8_system_agent_export_and_telegram_workspaces():
     system = (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
+    radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
     economics = (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
     lead_detail = (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
     contact_detail = (PROJECT_ROOT / "app/web/templates/contact_detail.html").read_text(
@@ -276,13 +288,18 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert 'data-label="Вертикаль"' in economics
     assert "lead-agent-panel" in lead_detail
     assert 'name="lead_id" value="{{ lead.id }}"' in lead_detail
+    assert "lead-agent-result" in lead_detail
+    assert "agent-preset" in lead_detail
+    assert "contact-agent-result" in contact_detail
+    assert "page-hero" in radar
+    assert "leads-hero" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
     assert "data-agent-query" in lead_detail
     assert "lead-agent-panel" in contact_detail
-    assert "Контекст: @{{ contact.username }}" in contact_detail
+    assert "@{{ contact.username }}" in contact_detail
     assert "data-agent-query" in contact_detail
     assert "export_recipe" in audience_detail
     assert "disableVerticalSwipes" in javascript
-    assert "formatAgentAnswer" in javascript
+    assert "renderAgentAnswer" in javascript
     assert "formatExportPreview" in javascript
     assert ".agent-workspace" in css
     assert ".lead-agent-panel.compact" in css

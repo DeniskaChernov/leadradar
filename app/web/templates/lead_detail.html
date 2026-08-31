@@ -81,13 +81,18 @@
 
   <aside class="lead-side">
     <section class="panel lead-agent-panel compact" aria-labelledby="lead-agent-title">
-      <div class="panel-head compact"><div><span class="eyebrow">GROUNDED AGENT · OFFLINE</span><h2 id="lead-agent-title">Спросить по этому лиду</h2><p>Ответ только из БД и evidence_ids. GPT не вызывается.</p></div><span class="tag status-contacted">DB-backed</span></div>
-      <form class="agent-query-form form-grid compact" data-agent-query>
+      <div class="panel-head compact"><div><span class="eyebrow">AI · GROUNDED</span><h2 id="lead-agent-title">Ассистент по лиду</h2><p>Ответ из БД и evidence_ids без GPT.</p></div><span class="tag status-contacted">offline</span></div>
+      <div class="agent-presets inline" role="group" aria-label="Быстрые вопросы по лиду">
+        <button class="agent-preset" type="button" data-agent-preset='{"query":"Объясни оценку лида","lead_id":"{{ lead.id }}"}'>Оценка</button>
+        <button class="agent-preset" type="button" data-agent-preset='{"query":"Что предложить клиенту","lead_id":"{{ lead.id }}"}'>Что предложить</button>
+        <button class="agent-preset" type="button" data-agent-preset='{"query":"lead.explain_score","lead_id":"{{ lead.id }}"}'>Score breakdown</button>
+      </div>
+      <form class="agent-query-form form-grid compact" data-agent-query data-agent-target="#lead-agent-result">
         <input type="hidden" name="lead_id" value="{{ lead.id }}">
         <label class="wide">Вопрос<input name="query" placeholder="Объясни оценку · что предложить?" required autocomplete="off"></label>
         <div><button class="btn primary btn-sm" type="submit">Спросить</button></div>
       </form>
-      <pre class="agent-result" id="agent-query-result" hidden aria-live="polite"></pre>
+      <div class="agent-result-rich" id="lead-agent-result" hidden aria-live="polite"></div>
     </section>
 
     <section class="panel side-card">

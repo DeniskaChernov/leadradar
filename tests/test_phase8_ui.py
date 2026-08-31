@@ -91,8 +91,9 @@ async def test_contact_detail_renders_grounded_agent_panel(session_factory):
 
     assert response.status_code == 200
     assert "lead-agent-panel" in response.text
-    assert f"lead_id={lead_id}" in response.text
-    assert "Контекст: @user-1" in response.text
+    assert f'value="{lead_id}"' in response.text
+    assert "@user-1" in response.text
+    assert "contact-agent-result" in response.text
     assert "data-agent-query" in response.text
     assert agent.status_code == 200
     assert agent.json()["grounded"] is True

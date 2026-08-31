@@ -149,15 +149,20 @@
 
   <aside class="contact-side">
     <section class="panel lead-agent-panel compact action-form-card" aria-labelledby="contact-agent-title">
-      <span class="eyebrow">GROUNDED AGENT · OFFLINE</span>
-      <h3 id="contact-agent-title">Спросить по клиенту</h3>
-      <p class="muted">Контекст: @{{ contact.username }} · клиент #{{ contact.id }}{% if leads %} · lead_id={{ leads[0].id }}{% endif %}</p>
-      <form class="agent-query-form" data-agent-query>
+      <span class="eyebrow">AI · GROUNDED</span>
+      <h3 id="contact-agent-title">Ассистент по клиенту</h3>
+      <p class="muted">@{{ contact.username }} · клиент #{{ contact.id }}{% if leads %} · lead #{{ leads[0].id }}{% endif %}</p>
+      <div class="agent-presets inline" role="group" aria-label="Быстрые вопросы по клиенту">
+        {% if leads %}<button class="agent-preset" type="button" data-agent-preset='{"query":"Объясни оценку лида","lead_id":"{{ leads[0].id }}"}'>Оценка лида</button>{% endif %}
+        <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи лиды клиента"{% if leads %},"lead_id":"{{ leads[0].id }}"{% endif %}}'>Лиды клиента</button>
+        <button class="agent-preset" type="button" data-agent-preset='{"query":"История сигналов"{% if leads %},"lead_id":"{{ leads[0].id }}"{% endif %}}'>Сигналы</button>
+      </div>
+      <form class="agent-query-form" data-agent-query data-agent-target="#contact-agent-result">
         {% if leads %}<input type="hidden" name="lead_id" value="{{ leads[0].id }}">{% endif %}
         <label>Вопрос<input name="query" placeholder="Покажи лиды · объясни score" required autocomplete="off"></label>
         <button class="btn primary btn-sm" type="submit">Спросить</button>
       </form>
-      <pre class="agent-result" id="agent-query-result" hidden aria-live="polite"></pre>
+      <div class="agent-result-rich" id="contact-agent-result" hidden aria-live="polite"></div>
     </section>
 
     <section class="panel action-form-card quick-crm-card">

@@ -43,6 +43,80 @@
     data.answer || '—',
   ].join('\n');
 
+  const renderAgentAnswer = (container, data) => {
+    if (!container) return;
+    container.hidden = false;
+    container.innerHTML = '';
+    const grounded = Boolean(data.grounded);
+    const head = document.createElement('div');
+    head.className = `agent-result-head ${grounded ? 'ok' : 'warn'}`;
+    head.innerHTML = `<span class="tag ${grounded ? 'success' : 'neutral'}">${grounded ? 'Grounded' : 'Не grounded'}</span><small>${data.synthesis_mode || 'offline'}</small>`;
+    container.appendChild(head);
+    const body = document.createElement('div');
+    body.className = 'agent-result-body';
+    body.textContent = data.answer || '—';
+    container.appendChild(body);
+    const meta = document.createElement('div');
+    meta.className = 'agent-result-meta';
+    const tools = (data.tool_calls || [])
+      .map((item) => `${item.tool_name}:${item.success ? 'ok' : 'fail'}`)
+      .join(' · ') || '—';
+    meta.innerHTML = `<span><b>Tools</b> ${tools}</span><span><b>Evidence</b> ${(data.evidence_ids || []).join(', ') || '—'}</span>`;
+    container.appendChild(meta);
+  };
+
+  const runAgentQuery = async (form, submitButton) => {
+    const targetSelector = form.dataset.agentTarget || '#agent-query-result';
+    const output = document.querySelector(targetSelector);
+    const plainOutput = output?.matches('pre.agent-result') ? output : null;
+    setLoading(submitButton, true);
+    try {
+      const payload = formPayload(form, submitButton);
+      const data = await api('/api/agent/query', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (output?.classList.contains('agent-result-rich')) {
+        renderAgentAnswer(output, data);
+      } else if (plainOutput) {
+        plainOutput.hidden = false;
+        plainOutput.textContent = formatAgentAnswer(data);
+      }
+      toast(data.grounded ? 'Ответ grounded' : 'Tool вернул ошибку', !data.grounded);
+      return data;
+    } finally {
+      setLoading(submitButton, false);
+    }
+  };
+
+  const openAgentQuickModal = () => {
+    const root = document.getElementById('agent-quick');
+    if (!root) return;
+    const cancel = root.querySelector('[data-agent-quick-cancel]');
+    const previouslyFocused = document.activeElement;
+    root.hidden = false;
+    requestAnimationFrame(() => root.classList.add('is-open'));
+    const close = () => {
+      root.classList.remove('is-open');
+      document.removeEventListener('keydown', onKeydown);
+      cancel.onclick = null;
+      setTimeout(() => {
+        root.hidden = true;
+        if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+      }, 180);
+    };
+    const onKeydown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close();
+      }
+    };
+    cancel.onclick = close;
+    document.addEventListener('keydown', onKeydown);
+    const input = root.querySelector('input[name="query"]');
+    if (input instanceof HTMLInputElement) input.focus();
+  };
+
   const toast = (message, bad = false) => {
     const el = document.getElementById('toast');
     if (!el) return;
@@ -393,23 +467,10 @@
     if (agentForm) {
       event.preventDefault();
       const submit = agentForm.querySelector('[type="submit"]');
-      const output = document.getElementById('agent-query-result');
-      setLoading(submit, true);
       try {
-        const payload = formPayload(agentForm, submit);
-        const data = await api('/api/agent/query', {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        });
-        if (output) {
-          output.hidden = false;
-          output.textContent = formatAgentAnswer(data);
-        }
-        toast(data.grounded ? 'Ответ grounded' : 'Tool вернул ошибку', !data.grounded);
+        await runAgentQuery(agentForm, submit);
       } catch (error) {
         toast(error.message, true);
-      } finally {
-        setLoading(submit, false);
       }
       return;
     }
@@ -519,6 +580,34 @@
     const retryAuth = event.target.closest('[data-auth-retry]');
     if (retryAuth) {
       authenticateTelegram();
+      return;
+    }
+
+    const agentOpen = event.target.closest('[data-agent-open]');
+    if (agentOpen) {
+      event.preventDefault();
+      openAgentQuickModal();
+      return;
+    }
+
+    const agentPreset = event.target.closest('[data-agent-preset]');
+    if (agentPreset) {
+      event.preventDefault();
+      let payload = {};
+      try {
+        payload = JSON.parse(agentPreset.dataset.agentPreset || '{}');
+      } catch (_) {
+        return;
+      }
+      const form = agentPreset.closest('[data-agent-query]')
+        || document.querySelector('#agent-quick [data-agent-query]');
+      if (!form) return;
+      Object.entries(payload).forEach(([key, value]) => {
+        const field = form.querySelector(`[name="${key}"]`);
+        if (field instanceof HTMLInputElement) field.value = String(value);
+      });
+      const submit = form.querySelector('[type="submit"]');
+      runAgentQuery(form, submit).catch((error) => toast(error.message, true));
       return;
     }
 

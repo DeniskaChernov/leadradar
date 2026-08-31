@@ -17,6 +17,7 @@ from aiogram.types import (
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
+    WebAppInfo,
 )
 
 from app.bot.states import DealLostForm, DealWonForm
@@ -45,6 +46,37 @@ LOST_REASONS = {
 }
 
 
+def _dashboard_url(settings: Settings) -> str:
+    return settings.web_public_url or f"http://{settings.web_host}:{settings.web_port}"
+
+
+def build_main_menu(settings: Settings) -> ReplyKeyboardMarkup:
+    """Reply keyboard with optional Telegram WebApp button when HTTPS URL is configured."""
+    dashboard_url = _dashboard_url(settings)
+    third_row: list[KeyboardButton]
+    if dashboard_url.startswith("https://"):
+        third_row = [
+            KeyboardButton(text="🌐 Кабина", web_app=WebAppInfo(url=dashboard_url)),
+            KeyboardButton(text="/competitors"),
+        ]
+    else:
+        third_row = [
+            KeyboardButton(text="/competitors"),
+            KeyboardButton(text="/web"),
+        ]
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="/status"), KeyboardButton(text="/stats")],
+            [KeyboardButton(text="/hot"), KeyboardButton(text="/scan")],
+            third_row,
+            [KeyboardButton(text="/help")],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Команда или 🌐 Кабина",
+    )
+
+
 def build_router(
     settings: Settings,
     workflow: LeadWorkflowService,
@@ -52,6 +84,8 @@ def build_router(
     controller: MonitorController,
 ) -> Router:
     router = Router(name="lead-radar")
+    def main_menu() -> ReplyKeyboardMarkup:
+        return build_main_menu(settings)
 
     def authorized(event: Message | CallbackQuery) -> bool:
         if event.from_user is None:
@@ -82,7 +116,7 @@ def build_router(
             if has_access
             else "⛔ Доступ пока не настроен.\n"
         )
-        dashboard_url = settings.web_public_url or f"http://{settings.web_host}:{settings.web_port}"
+        dashboard_url = _dashboard_url(settings)
         next_step = (
             f"Основная работа теперь в веб-интерфейсе: {dashboard_url}\n"
             "Telegram оставляем для HOT-уведомлений и быстрых действий."
@@ -92,7 +126,9 @@ def build_router(
         await message.answer(
             f"📡 <b>Lead Radar</b>\n\n{access_text}"
             f"Chat ID: <code>{message.chat.id}</code>\n"
-            f"User ID: <code>{user_id}</code>\n\n{next_step}",
+            f"User ID: <code>{user_id}</code>\n\n"
+            f"🌐 <b>Веб-кабина:</b> {dashboard_url}\n"
+            f"⚡ <b>Telegram:</b> HOT-уведомления и быстрые действия\n\n{next_step}",
             reply_markup=main_menu() if has_access else None,
         )
 
@@ -222,15 +258,18 @@ def build_router(
             return await reject(message)
         value = await workflow.get_stats()
         await message.answer(
-            "📊 <b>Статистика</b>\n\n"
-            f"Контакты: {value.contacts}\n"
-            f"Комментарии: {value.comments}\n"
-            f"HOT-лиды: {value.hot_leads}\n"
-            f"Открытые лиды: {value.open_leads}\n"
-            f"Продажи: {value.won_deals}\n"
-            f"Проиграны: {value.lost_deals}\n"
-            f"Ожидают AI: {value.ai_pending}\n"
-            f"Уведомления в очереди: {value.notification_backlog}"
+            "📊 <b>Сводка Lead Radar</b>\n\n"
+            f"👥 Контакты: <b>{value.contacts}</b>\n"
+            f"💬 Комментарии: <b>{value.comments}</b>\n"
+            f"🔥 HOT-лиды: <b>{value.hot_leads}</b>\n"
+            f"📂 Открытые лиды: <b>{value.open_leads}</b>\n"
+            f"✅ Продажи WON: <b>{value.won_deals}</b>\n"
+            f"❌ Проиграны: <b>{value.lost_deals}</b>\n"
+            f"🤖 Ожидают AI: <b>{value.ai_pending}</b>\n"
+            f"📨 Уведомления в очереди: <b>{value.notification_backlog}</b>\n"
+            f"💰 Выручка: <b>{value.revenue_uzs:,.0f} сум</b>\n\n"
+            f"🌐 Подробнее: {_dashboard_url(settings)}",
+            reply_markup=main_menu(),
         )
 
     @router.message(Command("hot"))
@@ -269,12 +308,16 @@ def build_router(
     async def web(message: Message) -> None:
         if not authorized(message):
             return await reject(message)
-        url = settings.web_public_url or f"http://{settings.web_host}:{settings.web_port}"
+        url = _dashboard_url(settings)
+        webapp_hint = (
+            "Кнопка «🌐 Кабина» открывает Mini App прямо в Telegram."
+            if url.startswith("https://")
+            else "Для Mini App нужен HTTPS public URL в WEB_PUBLIC_URL."
+        )
         await message.answer(
             "🌐 <b>Lead Radar Web</b>\n\n"
             f"{escape(url)}\n\n"
-            "Локально открывайте ссылку на том же компьютере, где запущен бот. "
-            "После Railway сюда поставим публичный HTTPS URL и подключим как Telegram Mini App."
+            f"{webapp_hint}"
         )
 
     @router.message(Command("cancel"))
@@ -477,20 +520,6 @@ def _callback_id(callback: CallbackQuery) -> int:
         return int(callback.data.rsplit(":", maxsplit=1)[1])
     except (IndexError, ValueError) as exc:
         raise LeadWorkflowError("Invalid callback data") from exc
-
-
-def main_menu() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="/status"), KeyboardButton(text="/stats")],
-            [KeyboardButton(text="/hot"), KeyboardButton(text="/scan")],
-            [KeyboardButton(text="/competitors"), KeyboardButton(text="/web")],
-            [KeyboardButton(text="/help")],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-        input_field_placeholder="Выберите команду",
-    )
 
 
 def lost_reason_keyboard(deal_id: int) -> InlineKeyboardMarkup:

@@ -9,9 +9,9 @@
   <title>{% block title %}Lead Radar{% endblock %}</title>
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
-  <link rel="stylesheet" href="/static/app.css?v=13.3.0-pilot-cockpit">
+  <link rel="stylesheet" href="/static/app.css?v=13.5.0-radar-leads-agent">
   <script defer src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
-  <script defer src="/static/app.js?v=13.3.0-pilot-cockpit"></script>
+  <script defer src="/static/app.js?v=13.5.0-radar-leads-agent"></script>
 </head>
 <body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}" data-page="{{ active_path }}">
 <a class="skip-link" href="#main-content">Перейти к содержимому</a>
@@ -87,6 +87,7 @@
       </nav>
 
       <div class="top-actions">
+        <button class="btn ghost" type="button" data-agent-open aria-label="Открыть AI-ассистента"><i data-lucide="bot"></i><span>AI</span></button>
         {% if settings.web_auth_enabled %}
         <span class="status-pill safe">{{ web_role }}</span>
         <button class="btn ghost" type="button" data-logout>Выйти</button>
@@ -135,6 +136,27 @@
       <button class="btn ghost" type="button" data-scan-quick-cancel>Отмена</button>
       <button class="btn primary" type="button" data-scan-quick-go>Запустить</button>
     </div>
+  </div>
+</div>
+<div id="agent-quick" class="modal-backdrop" hidden>
+  <div class="modal agent-quick-modal" role="dialog" aria-modal="true" aria-labelledby="agent-quick-title">
+    <h3 id="agent-quick-title">AI-ассистент</h3>
+    <p class="muted">Ответ только из базы Lead Radar: evidence_ids, без GPT и без write tools.</p>
+    <div class="agent-presets" role="group" aria-label="Быстрые вопросы">
+      <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи горячие лиды"}'>HOT лиды</button>
+      <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи задачи на сегодня"}'>Задачи</button>
+      <button class="agent-preset" type="button" data-agent-preset='{"query":"Сводка экономики credits"}'>Credits</button>
+      <button class="agent-preset" type="button" data-agent-preset='{"query":"lead_id=1"}'>Лид #1</button>
+    </div>
+    <form class="agent-query-form form-grid compact" data-agent-query data-agent-target="#agent-quick-result">
+      <label class="wide">Вопрос<input name="query" placeholder="Покажи лиды · lead_id=1 · furniture-dining" required autocomplete="off"></label>
+      <label>lead_id<input name="lead_id" inputmode="numeric" placeholder="опционально"></label>
+      <div class="modal-actions inline">
+        <button class="btn ghost" type="button" data-agent-quick-cancel>Закрыть</button>
+        <button class="btn primary" type="submit">Спросить</button>
+      </div>
+    </form>
+    <div class="agent-result-rich" id="agent-quick-result" hidden aria-live="polite"></div>
   </div>
 </div>
 </body>

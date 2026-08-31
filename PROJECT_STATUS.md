@@ -71,6 +71,16 @@ P0/P1 закрыты в коде:
 - CSS/JS cache `13.3.0-pilot-cockpit`;
 - полный offline gate: **316 passed, 1 skipped**; ruff clean; внешних вызовов: **0**.
 
+## Economics + Radar/Leads UI pass (offline)
+
+- `/economics`: hero KPI, `safe_attr` для credit accuracy, segmented period control; fix 500 от stale server;
+- global AI modal `#agent-quick` + кнопка AI в topbar; rich `renderAgentAnswer`;
+- `/radar`: hero + metrics summary; `/leads`: hero, quick filters, kanban polish;
+- lead/contact detail: AI presets + rich result panels (`#lead-agent-result`, `#contact-agent-result`);
+- Telegram bot: `build_main_menu()` с WebApp «🌐 Кабина» при HTTPS `WEB_PUBLIC_URL`;
+- CSS/JS cache `13.5.0-radar-leads-agent`;
+- полный offline gate: **319 passed, 1 skipped**; ruff clean; внешних вызовов: **0**.
+
 ## Master Phase 7 — Grounded Agent завершён
 
 - `MCPReadToolService` подключает read tools к SQLite:

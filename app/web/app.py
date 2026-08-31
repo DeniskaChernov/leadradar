@@ -163,6 +163,7 @@ def build_web_app(
             str(value) if value else "UNKNOWN", "❓"
         ),
         money=lambda value: f"{float(value or 0):,.0f}".replace(",", " "),
+        safe_attr=lambda obj, name, default=None: getattr(obj, name, default),
     )
 
     def local_manager_id() -> int:
