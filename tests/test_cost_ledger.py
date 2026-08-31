@@ -115,6 +115,42 @@ async def test_missing_price_is_recorded_as_unknown_not_fake_zero(session_factor
 
 
 @pytest.mark.asyncio
+async def test_openai_token_finalize_persists_usage_and_priced_cost(session_factory):
+    pricing = PricingConfigService(session_factory)
+    await pricing.set_price(
+        provider="openai",
+        operation="lead_analysis",
+        model_name="gpt-test",
+        pricing_basis="TOKENS",
+        input_price=Decimal("0.000001"),
+        output_price=Decimal("0.000002"),
+    )
+    usage = ExternalUsageService(session_factory)
+    reservation_id = await usage.reserve_budget(
+        "openai",
+        "lead_analysis",
+        10,
+        provider="openai",
+    )
+    await usage.mark_call_started(reservation_id)
+    await usage.finalize_reservation(
+        reservation_id,
+        units=1,
+        success=True,
+        details={"model": "gpt-test"},
+        input_tokens=1000,
+        output_tokens=250,
+    )
+
+    async with session_factory() as session:
+        event = await session.scalar(select(CostEvent))
+    assert event is not None
+    assert event.input_tokens == 1000
+    assert event.output_tokens == 250
+    assert event.cost_usd == Decimal("0.001500")
+
+
+@pytest.mark.asyncio
 async def test_system_pricing_endpoint_creates_version_without_external_calls(session_factory):
     workflow = LeadWorkflowService(session_factory, hot_threshold=70)
     app = build_web_app(

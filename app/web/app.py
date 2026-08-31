@@ -452,6 +452,17 @@ def build_web_app(
             context=base_context(request, **data),
         )
 
+    @app.get("/economics", response_class=HTMLResponse)
+    async def economics(request: Request, days: int = 30):
+        if days not in {1, 7, 30}:
+            days = 30
+        data = await queries.economics(days=days)
+        return templates.TemplateResponse(
+            request=request,
+            name="economics.html",
+            context=base_context(request, **data),
+        )
+
     @app.get("/audiences", response_class=HTMLResponse)
     async def audiences(request: Request, vertical: str = "FURNITURE"):
         rows = await queries.audiences(vertical=vertical)

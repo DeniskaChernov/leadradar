@@ -43,8 +43,8 @@ from app.db.models import (
     Vertical,
 )
 from app.services.audience_facet_service import AudienceFacetQuery
+from app.services.economics_page_service import EconomicsPageService
 from app.services.product_catalog_service import normalize_product_category
-from app.services.unit_economics_service import UnitEconomicsEngine
 
 OPEN_LEAD_STATUSES = [
     LeadStatus.ANALYZING,
@@ -1627,10 +1627,14 @@ class WebQueryService:
                 )
             return (await session.execute(stmt)).all()
 
+    async def economics(self, days: int = 30) -> dict:
+        page = await EconomicsPageService(
+            self.session_factory,
+            self.hot_threshold,
+        ).snapshot(days)
+        return {"page": page, "economics": page.usd}
+
     async def analytics(self, days: int = 30) -> dict:
-        economics = await UnitEconomicsEngine(self.session_factory, self.hot_threshold).snapshot(
-            days
-        )
         async with self.session_factory() as session:
             funnel_rows = (
                 await session.execute(
@@ -1669,7 +1673,7 @@ class WebQueryService:
                 or 0
             )
         return {
-            "economics": economics,
+            "days": days,
             "funnel": {getattr(key, "value", str(key)): value for key, value in funnel_rows},
             "intents": intent_rows,
             "products": product_rows,

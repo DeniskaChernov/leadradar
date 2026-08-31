@@ -255,15 +255,18 @@ async def test_fx_policy_is_versioned_and_idempotent(session_factory):
         quote_currency="UZS",
         rate=Decimal("12500"),
         manager_id=202,
+        effective_from=datetime.now(UTC) + timedelta(seconds=1),
     )
 
     assert repeated.id == first.id
     assert changed.id != first.id
-    assert await service.rate_at("USD", "UZS", datetime.now(UTC)) == Decimal("12500")
+    assert await service.rate_at(
+        "USD", "UZS", datetime.now(UTC) + timedelta(seconds=2)
+    ) == Decimal("12500")
     assert len(await service.list_active()) == 1
 
 
-async def test_analytics_page_renders_honest_unit_economics(session_factory):
+async def test_economics_page_renders_honest_unit_economics(session_factory):
     app = build_web_app(
         Settings(_env_file=None),
         WebQueryService(session_factory, hot_threshold=70),
@@ -275,9 +278,9 @@ async def test_analytics_page_renders_honest_unit_economics(session_factory):
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
-        response = await client.get("/analytics?days=7")
+        response = await client.get("/economics?days=7")
 
     assert response.status_code == 200
-    assert "Стоимость лида" in response.text
+    assert "USD / лид" in response.text
     assert "ROI не подменяется догадкой" in response.text
     assert "7 дней" in response.text

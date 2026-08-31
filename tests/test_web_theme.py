@@ -127,6 +127,9 @@ def test_audit_fixes_navigation_alignment_and_accessible_filters():
 
 def test_interface_hardening_keeps_dense_views_accessible():
     base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    economics = (PROJECT_ROOT / "app/web/templates/economics.html").read_text(
+        encoding="utf-8"
+    )
     analytics = (PROJECT_ROOT / "app/web/templates/analytics.html").read_text(
         encoding="utf-8"
     )
@@ -135,7 +138,7 @@ def test_interface_hardening_keeps_dense_views_accessible():
 
     assert 'role="dialog" aria-modal="true"' in base
     assert 'aria-describedby="confirm-text"' in base
-    assert 'aria-current="page"' in analytics
+    assert 'aria-current="page"' in economics
     assert "stage_count * 100 / funnel_peak" in analytics
     assert "table-scroll-hint" in css
     assert "more-navigation-open" in javascript
@@ -172,8 +175,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "12.0.0-radar-budget" in base
-    assert "12.0.0-radar-budget" in auth
+    assert "13.0.0-economics" in base
+    assert "13.0.0-economics" in auth
     assert 'data-more-toggle aria-expanded="false"' in base
     assert 'aria-controls="more-navigation"' in base
     assert 'aria-label="Вертикаль бизнеса"' in base

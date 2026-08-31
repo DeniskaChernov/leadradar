@@ -9,7 +9,7 @@
   <title>{% block title %}Lead Radar{% endblock %}</title>
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
-  <link rel="stylesheet" href="/static/app.css?v=12.0.0-radar-budget">
+  <link rel="stylesheet" href="/static/app.css?v=13.0.0-economics">
   <script defer src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
   <script defer src="/static/app.js?v=6.0.0-radar-budget"></script>
 </head>
@@ -46,6 +46,7 @@
       <a class="nav {% if active_path.startswith('/audiences') %}active{% endif %}" href="/audiences" {% if active_path.startswith('/audiences') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="target">◉</i></span>Аудитории</a>
       <a class="nav {% if active_path.startswith('/tasks') %}active{% endif %}" href="/tasks" {% if active_path.startswith('/tasks') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="circle-check-big">✓</i></span>Задачи</a>
       <a class="nav {% if active_path.startswith('/deals') %}active{% endif %}" href="/deals" {% if active_path.startswith('/deals') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="handshake">₽</i></span>Сделки</a>
+      <a class="nav {% if active_path.startswith('/economics') %}active{% endif %}" href="/economics" {% if active_path.startswith('/economics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="wallet">$</i></span>Экономика</a>
       <a class="nav {% if active_path.startswith('/analytics') %}active{% endif %}" href="/analytics" {% if active_path.startswith('/analytics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="chart-no-axes-combined">◒</i></span>Аналитика</a>
       <a class="nav {% if active_path.startswith('/discovery') %}active{% endif %}" href="/discovery" {% if active_path.startswith('/discovery') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="telescope">⌕</i></span>Разведка</a>
       <a class="nav {% if active_path.startswith('/competitors') %}active{% endif %}" href="/competitors" {% if active_path.startswith('/competitors') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="building-2">◫</i></span>Конкуренты</a>

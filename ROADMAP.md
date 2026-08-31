@@ -46,13 +46,21 @@ Lead Radar строится не как «парсер комментариев�
 - Phase 1 Remaining P0 correctness — **ГОТОВО**;
 - Phase 2 Radar Credit Budget — **ГОТОВО**;
 - Phase 3 Adaptive Monitoring — **ГОТОВО**;
-- Phase 4 Economics — **СЛЕДУЮЩАЯ**;
-- Phase 5 Audience correctness — далее;
+- Phase 4 Economics — **ГОТОВО**;
+- Phase 5 Audience correctness — **СЛЕДУЮЩАЯ**;
 - Phase 6 Independent quality gates — далее;
 - Phase 7 Grounded Agent — далее;
 - Phase 8 UI final hardening — далее;
 - Phase 9 Deployment — далее;
 - Phase 10 Controlled live pilot — только по отдельному разрешению.
+
+### Master Phase 4. Economics — ГОТОВО
+
+- `/economics` как analytical money home: ScrapeCreators wallet, AI costs, funnel cost,
+  revenue/margin, source/vertical efficiency;
+- credits-per-outcome и per-1 000-credits метрики из immutable ledger;
+- OpenAI actual token usage persisted в cost ledger;
+- `/analytics` очищен от money panels.
 
 ### Master Phase 3. Adaptive Monitoring — ГОТОВО
 

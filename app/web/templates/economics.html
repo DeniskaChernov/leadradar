@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Экономика · Lead Radar{% endblock %}
+{% block heading %}Экономика{% endblock %}
+{% block subheading %}Расходы провайдеров, AI, воронка и результат в деньгах и credits{% endblock %}
+{% block content %}
+{% macro usd(value) -%}{% if value is not none %}${{ '%.6f'|format(value) }}{% else %}—{% endif %}{%- endmacro %}
+{% macro credits(value) -%}{% if value is not none %}{{ value }} credits{% else %}—{% endif %}{%- endmacro %}
+{% macro ratio(value) -%}{% if value is not none %}{{ '%.2f'|format(value) }}{% else %}—{% endif %}{%- endmacro %}
+<div class="page-help"><b>Деньги и credits только из ledger</b><span>Страница не делает внешних вызовов. Неполные факты показываются как «—», а не как ноль.</span></div>
+
+<form class="filters" method="get" aria-label="Период экономики">
+  <a class="btn {% if page.days != 1 %}ghost{% endif %}" href="/economics?days=1" {% if page.days == 1 %}aria-current="page"{% endif %}>24 часа</a>
+  <a class="btn {% if page.days != 7 %}ghost{% endif %}" href="/economics?days=7" {% if page.days == 7 %}aria-current="page"{% endif %}>7 дней</a>
+  <a class="btn {% if page.days != 30 %}ghost{% endif %}" href="/economics?days=30" {% if page.days == 30 %}aria-current="page"{% endif %}>30 дней</a>
+</form>
+
+<section class="panel economics-provider-card" aria-labelledby="economics-provider-title">
+  <div class="panel-head">
+    <div><span class="eyebrow">КРЕДИТНЫЙ БЮДЖЕТ ПРОВАЙДЕРОВ</span><h2 id="economics-provider-title">ScrapeCreators</h2><p>Операционный wallet и месячные пределы. Для запуска Radar используйте <a href="/radar">страницу Радара</a>.</p></div>
+    {% if page.provider %}<span class="tag {% if page.provider.budget_status == 'HEALTHY' %}success{% elif page.provider.budget_status in ['WATCH','UNKNOWN'] %}warning{% else %}danger{% endif %}">{{ page.provider.budget_status }}</span>{% else %}<span class="tag neutral">NOT_CONFIGURED</span>{% endif %}
+  </div>
+  {% if page.provider %}
+  <div class="radar-budget-metrics economics-wallet-metrics">
+    <div><small>Баланс</small><b>{% if page.provider.credits_remaining is not none %}{{ '{:,}'.format(page.provider.credits_remaining).replace(',', ' ') }} credits{% else %}Не подтверждён{% endif %}</b><span>{{ page.provider.credits_remaining_source }}</span></div>
+    <div><small>Этот месяц</small><b>{{ page.provider.used_this_month }} / {{ page.provider.monthly_hard_limit }}</b><span>Рабочая цель: {{ page.provider.monthly_target }}</span></div>
+    <div><small>Soft</small><b>{{ page.provider.monthly_soft_limit }}</b><span>Осталось: {{ page.provider.monthly_remaining }}</span></div>
+    <div><small>Прогноз месяца</small><b>~{{ page.provider.projected_monthly_burn|round|int }} credits</b><span>7д: {{ page.provider.average_daily_burn_7d }}/day · 30д: {{ page.provider.average_daily_burn_30d }}/day</span></div>
+    <div><small>Хватит примерно</small><b>{% if page.provider.months_remaining is not none %}{{ page.provider.months_remaining }} мес.{% else %}—{% endif %}</b><span>Цель: ≥6 месяцев</span></div>
+  </div>
+  <div class="table-wrap embedded">
+    <table>
+      <thead><tr><th>Операция</th><th>Credits месяц</th><th>Доля</th><th>План</th><th>Δ к плану</th></tr></thead>
+      <tbody>
+        {% for row in page.operation_rows %}
+        <tr><td><b>{{ row.label }}</b></td><td>{{ row.credits_month }}</td><td>{{ row.share_percent }}%</td><td>{{ row.planning_target }}</td><td>{% if row.delta_vs_target > 0 %}+{% endif %}{{ row.delta_vs_target }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.burn_reasons %}
+  <div class="economics-burn-reasons">
+    {% for reason in page.burn_reasons %}<p>{{ reason }}</p>{% endfor %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="empty compact">Политика ScrapeCreators не настроена.</div>
+  {% endif %}
+</section>
+
+<section class="panel economics-section" aria-labelledby="economics-ai-title">
+  <div class="panel-head"><div><span class="eyebrow">DATA COLLECTION</span><h2 id="economics-ai-title">AI Costs · OpenAI</h2><p>Фактические tokens и USD из immutable cost ledger</p></div></div>
+  <div class="metrics economics-metrics">
+    <div class="metric"><span>Операции</span><strong>{{ page.openai.events }}</strong><small>за {{ page.days }} дн.</small></div>
+    <div class="metric"><span>Input tokens</span><strong>{% if page.openai.events and page.openai.input_tokens == 0 and page.openai.unpriced_events == page.openai.events %}—{% else %}{{ page.openai.input_tokens }}{% endif %}</strong><small>из response.usage</small></div>
+    <div class="metric"><span>Output tokens</span><strong>{% if page.openai.events and page.openai.output_tokens == 0 and page.openai.unpriced_events == page.openai.events %}—{% else %}{{ page.openai.output_tokens }}{% endif %}</strong><small>из response.usage</small></div>
+    <div class="metric"><span>Известно USD</span><strong>{{ usd(page.openai.known_spend_usd) if page.openai.events else '—' }}</strong><small>{{ page.openai.unpriced_events }} без тарифа</small></div>
+  </div>
+</section>
+
+<section class="panel economics-section" aria-labelledby="economics-funnel-title">
+  <div class="panel-head"><div><span class="eyebrow">FUNNEL COST</span><h2 id="economics-funnel-title">Стоимость воронки</h2><p>USD и ScrapeCreators credits на исход за {{ page.days }} дн.</p></div></div>
+  <div class="metrics economics-metrics">
+    <div class="metric"><span>ScrapeCreators credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.known_credits }}{% else %}—{% endif %}</strong><small>{{ page.credits.credit_events }} cost events</small></div>
+    <div class="metric"><span>credits / сигнал</span><strong>{{ ratio(page.credits.credits_per_signal) }}</strong><small>{{ economics.signals_count }} сигналов</small></div>
+    <div class="metric"><span>credits / коммерч.</span><strong>{{ ratio(page.credits.credits_per_commercial_signal) }}</strong><small>{{ economics.commercial_leads_count }} коммерч.</small></div>
+    <div class="metric"><span>credits / лид</span><strong>{{ ratio(page.credits.credits_per_lead) }}</strong><small>{{ economics.leads_count }} лидов</small></div>
+    <div class="metric"><span>credits / HOT</span><strong>{{ ratio(page.credits.credits_per_hot) }}</strong><small>{{ economics.hot_count }} HOT</small></div>
+    <div class="metric"><span>credits / B2B</span><strong>{{ ratio(page.credits.credits_per_b2b) }}</strong><small>{{ economics.b2b_count }} B2B</small></div>
+    <div class="metric"><span>credits / WON</span><strong>{{ ratio(page.credits.credits_per_won) }}</strong><small>{{ economics.won_count }} WON</small></div>
+    <div class="metric"><span>HOT / 1 000 credits</span><strong>{{ ratio(page.credits.hot_per_1000_credits) }}</strong><small>эффективность Radar</small></div>
+    <div class="metric"><span>B2B / 1 000 credits</span><strong>{{ ratio(page.credits.b2b_per_1000_credits) }}</strong><small>эффективность Radar</small></div>
+    <div class="metric"><span>WON / 1 000 credits</span><strong>{{ ratio(page.credits.won_per_1000_credits) }}</strong><small>эффективность Radar</small></div>
+  </div>
+  <div class="metrics economics-metrics">
+    <div class="metric"><span>Известные расходы USD</span><strong>{% if economics.cost_events %}{{ usd(economics.known_spend_usd) }}{% else %}—{% endif %}</strong><small>{{ economics.cost_events }} events · {{ economics.cost_coverage_percent }}%</small></div>
+    <div class="metric"><span>USD / сигнал</span><strong>{{ usd(economics.cost_per_signal_usd) }}</strong><small>direct ledger</small></div>
+    <div class="metric"><span>USD / лид</span><strong>{{ usd(economics.cost_per_lead_usd) }}</strong><small>CPL</small></div>
+    <div class="metric"><span>USD / HOT</span><strong>{{ usd(economics.cost_per_hot_usd) }}</strong><small>CPH</small></div>
+    <div class="metric"><span>USD / B2B</span><strong>{{ usd(economics.cost_per_b2b_usd) }}</strong><small>CPB2B</small></div>
+    <div class="metric"><span>USD / WON</span><strong>{{ usd(economics.cost_per_won_usd) }}</strong><small>CPW</small></div>
+  </div>
+</section>
+
+<section class="panel economics-section" aria-labelledby="economics-revenue-title">
+  <div class="panel-head"><div><span class="eyebrow">BUSINESS RESULT</span><h2 id="economics-revenue-title">Выручка и маржа</h2><p>Только при полном immutable sale snapshot, COGS и FX</p></div></div>
+  <div class="metrics economics-metrics">
+    <div class="metric success"><span>Выручка snapshot</span><strong>{% if economics.revenue_uzs is not none %}{{ money(economics.revenue_uzs) }}{% else %}—{% endif %}</strong><small>{{ economics.sale_snapshot_missing_deals }} WON без snapshot</small></div>
+    <div class="metric"><span>Gross profit</span><strong>{% if economics.gross_profit_uzs is not none %}{{ money(economics.gross_profit_uzs) }}{% else %}—{% endif %}</strong><small>{% if economics.gross_margin_ratio is not none %}margin {{ '%.2f'|format(economics.gross_margin_ratio * 100) }}%{% else %}нет полного набора фактов{% endif %}</small></div>
+    <div class="metric"><span>ROI</span><strong>{% if economics.roi_ratio is not none %}{{ '%.2f'|format(economics.roi_ratio * 100) }}%{% else %}—{% endif %}</strong><small>direct lead costs · historical FX</small></div>
+    <div class="metric"><span>Выручка / 1 000 credits</span><strong>{% if page.credits.revenue_uzs_per_1000_credits is not none %}{{ money(page.credits.revenue_uzs_per_1000_credits) }}{% else %}—{% endif %}</strong><small>UZS</small></div>
+    <div class="metric"><span>Gross profit / 1 000 credits</span><strong>{% if page.credits.gross_profit_uzs_per_1000_credits is not none %}{{ money(page.credits.gross_profit_uzs_per_1000_credits) }}{% else %}—{% endif %}</strong><small>UZS</small></div>
+  </div>
+  <div class="alert {% if economics.roi_ratio is none %}warning{% else %}info{% endif %}"><b>ROI не подменяется догадкой</b><span>{{ economics.roi_status }} Не хватает фактов: снимки продаж — {{ economics.sale_snapshot_missing_deals }}, себестоимость — {{ economics.cogs_missing_deals }}, FX-курсы — {{ economics.fx_missing_facts }}.</span></div>
+</section>
+
+<section class="panel economics-section" aria-labelledby="economics-sources-title">
+  <div class="panel-head"><div><h2 id="economics-sources-title">Эффективность источников</h2><p>Расходы атрибутируются напрямую, через lead или source account</p></div></div>
+  <div class="table-wrap embedded"><table><thead><tr><th>Источник</th><th>Сигналы</th><th>Коммерч.</th><th>Лиды</th><th>HOT</th><th>B2B</th><th>WON</th><th>USD</th><th>CPL</th><th>Выручка UZS</th></tr></thead><tbody>{% for item in economics.sources %}<tr><td><b>{{ item.source_name }}</b></td><td>{{ item.signals_count }}</td><td>{{ item.commercial_leads_count }}</td><td>{{ item.leads_count }}</td><td>{{ item.hot_count }}</td><td>{{ item.b2b_count }}</td><td>{{ item.won_count }}</td><td>{% if item.cost_events %}{{ usd(item.known_spend_usd) }}{% else %}—{% endif %}{% if item.unpriced_events %}<small>{{ item.unpriced_events }} без тарифа</small>{% endif %}</td><td>{{ usd(item.cost_per_lead_usd) }}</td><td><strong>{% if item.revenue_uzs is not none %}{{ money(item.revenue_uzs) }}{% else %}—{% endif %}</strong></td></tr>{% else %}<tr><td colspan="10" class="empty">Недостаточно данных.</td></tr>{% endfor %}</tbody></table></div>
+</section>
+
+<div class="analytics-grid">
+  <section class="panel economics-section"><div class="panel-head"><div><h2>Расходы по провайдерам</h2><p>USD ledger за {{ page.days }} дн.</p></div></div><div class="table-wrap embedded"><table><thead><tr><th>Провайдер</th><th>Операции</th><th>Единицы</th><th>Известно USD</th><th>Без тарифа</th></tr></thead><tbody>{% for item in economics.providers %}<tr><td><b>{{ item.key }}</b></td><td>{{ item.events }}</td><td>{{ item.units }}</td><td>{{ usd(item.known_spend_usd) }}</td><td>{{ item.unpriced_events }}</td></tr>{% else %}<tr><td colspan="5" class="empty">За период cost events не записаны.</td></tr>{% endfor %}</tbody></table></div></section>
+  <section class="panel economics-section"><div class="panel-head"><div><h2>Экономика по вертикалям</h2><p>Мебель, ротанг и неатрибутированные операции</p></div></div><div class="table-wrap embedded"><table><thead><tr><th>Вертикаль</th><th>Операции</th><th>Единицы</th><th>Известно USD</th><th>Без тарифа</th></tr></thead><tbody>{% for item in economics.verticals %}<tr><td><b>{{ item.label }}</b></td><td>{{ item.events }}</td><td>{{ item.units }}</td><td>{{ usd(item.known_spend_usd) }}</td><td>{{ item.unpriced_events }}</td></tr>{% else %}<tr><td colspan="5" class="empty">Нет данных для атрибуции.</td></tr>{% endfor %}</tbody></table></div></section>
+</div>
+
+<section class="panel economics-section" aria-labelledby="economics-infra-title">
+  <div class="panel-head"><div><span class="eyebrow">INFRASTRUCTURE</span><h2 id="economics-infra-title">Bright Data и инфраструктура</h2><p>Только записанные cost events</p></div></div>
+  <div class="metrics economics-metrics">
+    <div class="metric"><span>Bright Data</span><strong>{% if page.brightdata.events %}{{ usd(page.brightdata.known_spend_usd) }}{% else %}—{% endif %}</strong><small>{{ page.brightdata.events }} events · {{ page.brightdata.units }} units</small></div>
+    <div class="metric"><span>Infrastructure</span><strong>{% if page.infrastructure.events %}{{ usd(page.infrastructure.known_spend_usd) }}{% else %}—{% endif %}</strong><small>{{ page.infrastructure.events }} events</small></div>
+  </div>
+</section>
+{% endblock %}

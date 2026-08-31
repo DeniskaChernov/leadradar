@@ -1017,6 +1017,7 @@ class RuleBasedLeadAnalyzer:
 class OpenAILeadAnalyzer:
     def __init__(self, api_key: str, model: str, client: Any | None = None) -> None:
         self.model = model
+        self.last_token_usage: tuple[int | None, int | None] = (None, None)
         if client is not None:
             self.client = client
         else:
@@ -1077,6 +1078,7 @@ class OpenAILeadAnalyzer:
             parsed = response.output_parsed
             if parsed is None:
                 raise AIAnalysisError("OpenAI returned no parsed lead analysis")
+            self.last_token_usage = self._extract_token_usage(response)
             analysis = (
                 parsed
                 if isinstance(parsed, LeadAnalysis)
@@ -1103,6 +1105,17 @@ class OpenAILeadAnalyzer:
         except Exception as exc:
             logger.exception("ai_analysis_failed error_type=%s", type(exc).__name__)
             raise AIAnalysisError("OpenAI lead analysis failed") from exc
+
+    @staticmethod
+    def _extract_token_usage(response: Any) -> tuple[int | None, int | None]:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return None, None
+        input_tokens = getattr(usage, "input_tokens", None)
+        output_tokens = getattr(usage, "output_tokens", None)
+        if input_tokens is None and output_tokens is None:
+            return None, None
+        return input_tokens, output_tokens
 
 
 class BudgetedCachedOpenAIAnalyzer:
@@ -1196,8 +1209,12 @@ class BudgetedCachedOpenAIAnalyzer:
             raise
 
         await self.usage.mark_call_started(reservation_id)
+        input_tokens, output_tokens = None, None
         try:
             analysis = await self.inner.analyze(context)
+            input_tokens, output_tokens = getattr(
+                self.inner, "last_token_usage", (None, None)
+            )
         except Exception as exc:
             # Once delivery has started, provider billing is ambiguous. Count the reserved
             # unit conservatively; retries can never make the daily ledger under-report.
@@ -1220,6 +1237,21 @@ class BudgetedCachedOpenAIAnalyzer:
             )
             raise
 
+        request_values: dict[str, Any] = {
+            "status": AIRequestStatus.SUCCEEDED,
+            "result_json": analysis.model_dump(mode="json"),
+            "error": None,
+            "error_type": None,
+            "error_message": None,
+            "completed_at": datetime.now(UTC),
+            "claim_expires_at": None,
+            "claim_token": None,
+            "worker_id": None,
+        }
+        if input_tokens is not None:
+            request_values["input_tokens"] = input_tokens
+        if output_tokens is not None:
+            request_values["output_tokens"] = output_tokens
         async with self.session_factory() as session:
             saved = (
                 await session.execute(
@@ -1229,17 +1261,7 @@ class BudgetedCachedOpenAIAnalyzer:
                         AIRequest.status == AIRequestStatus.CLAIMED,
                         AIRequest.claim_token == claim_token,
                     )
-                    .values(
-                        status=AIRequestStatus.SUCCEEDED,
-                        result_json=analysis.model_dump(mode="json"),
-                        error=None,
-                        error_type=None,
-                        error_message=None,
-                        completed_at=datetime.now(UTC),
-                        claim_expires_at=None,
-                        claim_token=None,
-                        worker_id=None,
-                    )
+                    .values(**request_values)
                     .returning(AIRequest.id)
                 )
             ).scalar_one_or_none()
@@ -1264,6 +1286,8 @@ class BudgetedCachedOpenAIAnalyzer:
             units=1,
             success=True,
             details={"model": self.inner.model, "fingerprint": fingerprint},
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             lead_id=context.lead_id,
             vertical=Vertical(context.vertical),
         )

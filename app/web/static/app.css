@@ -1933,6 +1933,17 @@ body::after { animation: ambient-drift-b 22s ease-in-out infinite alternate; }
 }
 .intelligence-summary { display: grid; gap: 10px; padding: 16px; border-radius: 16px; background: rgba(239,245,255,.70); }
 .economics-metrics { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.economics-wallet-metrics { margin-bottom: 16px; }
+.economics-burn-reasons {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(239,245,255,.65);
+}
+.economics-burn-reasons p { margin: 0; color: var(--muted); font-size: 14px; }
+.economics-provider-card .panel-head p a { color: var(--primary); }
 .interest-meter { display: grid; gap: 6px; margin: 10px 0; }
 .interest-meter > div { display: flex; justify-content: space-between; gap: 12px; }
 .interest-meter > i { display: block; height: 7px; border-radius: 99px; background: linear-gradient(90deg,var(--brand),var(--brand-2)); transform-origin: left; animation: meter-grow .8s var(--ease-out) both; }

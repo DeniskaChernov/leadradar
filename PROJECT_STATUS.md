@@ -8,9 +8,20 @@
 до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
 и «Production Ready» считаются историческими и не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: 256 тестов, Ruff, compileall, data-integrity и `alembic check`
-проходят. Рабочая БД после backup обновлена до `c8f3a1d57b20`; fresh, downgrade/re-upgrade
-и повторный schema check также проходят.
+Контрольная точка 2026-08-31: 267 тестов, Ruff, compileall, data-integrity и `alembic check`
+проходят. Рабочая БД на `c8f3a1d57b20`; schema drift отсутствует.
+
+## Master Phase 4 — Economics завершён
+
+- отдельная страница `/economics` с nav «Экономика»; `/analytics` оставлен только для market intelligence;
+- `EconomicsPageService` собирает wallet/burn/months из `ProviderCreditBudgetService`, USD funnel из
+  `UnitEconomicsEngine` и credits-per-outcome из `CostEvent.units` для ScrapeCreators;
+- operation breakdown сравнивает Comments/Discovery/Profiles/Fallback с planning targets policy;
+- HOT/B2B/WON и revenue/GP per 1 000 credits считаются fail-closed (`None` без фактов);
+- OpenAI `response.usage` извлекается в `OpenAILeadAnalyzer` и пишется в `CostEvent`/`AIRequest`
+  через `finalize_reservation(input_tokens, output_tokens)`;
+- Bright Data / Infrastructure показываются только при наличии cost events;
+- migration не потребовалась; полный offline gate: **267 tests passed**; внешних вызовов: **0**.
 
 ## Master Phase 3 — Adaptive Monitoring завершён
 
