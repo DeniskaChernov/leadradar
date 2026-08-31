@@ -54,7 +54,8 @@ async def test_budget_reservation_concurrent_race(file_session_factory):
         *[try_reserve(first if index % 2 else second) for index in range(20)]
     )
     successful = [r for r in results if r is not None]
-    assert len(successful) <= 10
+    # BEGIN IMMEDIATE must serialize check+reserve: ровно limit успехов.
+    assert len(successful) == limit
 
 
 @pytest.mark.asyncio

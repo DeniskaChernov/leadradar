@@ -2,16 +2,16 @@
 
 ## Текущая версия
 
-**CORE HARDENING IN PROGRESS · NOT READY FOR LIVE PILOT**
+**CORE HARDENING · CI GREEN · CONTROLLED PILOT NEXT**
 
-Текущая программа: последовательный offline hardening от схемы данных и security boundary
-до каталога, quality gates, Agent/MCP и deployment readiness. Старые заявления «100% complete»
-и «Production Ready» считаются историческими и не являются доказательством готовности.
+Текущая программа: offline hardening закрыт по P0 CI/spend; следующий milestone —
+controlled Radar pilot (5–10 ScrapeCreators credits). Старые заявления «100% complete»
+и «Production Ready» не являются доказательством готовности.
 
-Контрольная точка 2026-08-31: **314 тестов локально (SQLite)**, Ruff clean,
-`alembic check` OK после `d9e4b1c82a70` + `include_object` (игнор name-drift CHECK).
-**CI matrix не считается зелёной, пока PostgreSQL job не пройдёт на GitHub** —
-локально гейт зелёный; push миграции `d9e4b1c82a70` ещё не подтверждён в Actions.
+Контрольная точка 2026-08-31: **314+ тестов**, Ruff clean, **CI matrix GREEN 2/2**
+(sqlite + postgres, commit `9bf6dff`, Alembic head `d9e4b1c82a70`).
+Postgres concurrency gate: `tests/test_postgres_budget_concurrency.py` (CI postgres only).
+Preflight: `python -m scripts.prepare_controlled_pilot` (без live calls).
 
 ## Hardening sprint (после review HEAD 9a9e2ca)
 
@@ -21,13 +21,13 @@ P0/P1 закрыты в коде:
 - provider budget seed через SQLAlchemy `active=True` (dialect-safe);
 - `ScanBudget.default_limit` + `current_cycle_limit`; manual Deep scan не протекает в scheduler;
 - external fail после `call_started` без provider credit → `UNCERTAIN`, не invented charge;
-- PostgreSQL `pg_advisory_xact_lock` в `reserve_budget`;
+- PostgreSQL `pg_advisory_xact_lock` в `reserve_budget` + concurrent monthly cap test;
 - `/economics`: confirmed vs estimated credits + coverage %;
 - Postgres `backup_present` больше не auto-True (нужен `.runtime/postgres_backup_verified`);
 - Alembic: короткие CHECK-токены под PG 63 chars; `d9e4b1c82a70` normalize на Postgres;
   `alembic/env.py` не падает на исторический CHECK name drift.
 
-**Phase 9 не завершена.** Meta live остаётся выключенным. Controlled live pilot — только после зелёного CI.
+**Phase 9 не завершена.** Meta live OFF. Live pilot — только по явному разрешению.
 
 ## Master Phase 9 — Deployment readiness (offline, в процессе)
 
@@ -259,7 +259,7 @@ P0/P1 закрыты в коде:
 | Real Agent / MCP | OFFLINE · read tools DB-backed; write tools NOT_CONNECTED | 284 offline tests; grounded /api/agent/query | No | No |
 | Meta / Google | Not connected | Offline prototype only | No | No |
 | Offline 500–1000 signal pilot | 600-case robustness replay passed | 60 curated roots × 10 variants; unseen corpus pending | No | No |
-| Controlled live pilot | Blocked | Missing gate evidence | No | No |
+| Controlled live pilot | Ready to schedule | CI green; preflight script; awaiting explicit unlock + 5–10 credit cap | No | No |
 
 ## Audience Intelligence V4.1 — facets and Meta activation boundary
 
