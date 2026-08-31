@@ -28,11 +28,17 @@ def test_lead_detail_and_radar_expose_deep_responsive_analysis():
     )
     radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
 
-    assert "ГЛУБОКИЙ AI-РАЗБОР" in lead_detail
-    assert "recommended_action" not in lead_detail
+    assert "AI-РАЗБОР СИГНАЛА" in lead_detail
+    assert "recommended_action" in lead_detail
+    assert "next_best_action" in lead_detail
+    assert "ai_source_label(lead.ai_source)" in lead_detail
+    assert "РЕКОМЕНДАЦИЯ ИЗ КАТАЛОГА" in lead_detail
     assert "catalog_recommendation.match_reasons" in lead_detail
     assert "risk_flags" in lead_detail
+    assert 'data-lucide="circle-help"' in lead_detail
     assert 'data-label="AI-оценка"' in radar
+    assert "РАДАР СИГНАЛОВ" in radar
+    assert "Повторить очередь AI" in radar
 
 
 def test_v41_signal_first_states_and_notification_modes_are_manager_readable():
@@ -44,7 +50,7 @@ def test_v41_signal_first_states_and_notification_modes_are_manager_readable():
 
     assert "УВЕДОМЛЕНИЯ МЕНЕДЖЕРУ" in system
     assert "Готовность Telegram-уведомлений" in system
-    assert "DRY-RUN · БЕЗ ОТПРАВКИ" in system
+    assert "ПРОВЕРКА · БЕЗ ОТПРАВКИ" in system
     assert "OFFLINE CHALLENGE" in system
     assert "Качество локального интеллекта" in system
     assert "production accuracy" in system
@@ -210,8 +216,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.8.3-local-polish" in base
-    assert "13.8.3-local-polish" in auth
+    assert "13.8.4-gpt-ui" in base
+    assert "13.8.4-gpt-ui" in auth
     assert "fonts.googleapis.com" in base
     assert 'href="/catalog"' in base
     assert 'href="/discovery"' in base
@@ -286,7 +292,7 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
 
-    assert "GROUNDED AGENT · OFFLINE" in system
+    assert "АССИСТЕНТ · ТОЛЬКО БАЗА" in system
     assert "system-hero" in system
     assert "system-toc" in system
     assert "retry-pending" in system
@@ -306,6 +312,8 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert 'data-label="Провайдер"' in economics
     assert 'data-label="Вертикаль"' in economics
     assert "lead-agent-panel" in lead_detail
+    assert "/api/leads/{{ lead.id }}/analyze" in lead_detail
+    assert "ai-intelligence" in lead_detail
     assert "data-agent-query" in lead_detail
     assert 'name="lead_id" value="{{ lead.id }}"' in lead_detail
     assert "lead-agent-result" in lead_detail

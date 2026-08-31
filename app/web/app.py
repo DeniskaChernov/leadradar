@@ -14,7 +14,12 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import Settings
 from app.db.models import LeadStatus, NotificationPolicy
-from app.services.ai_service import HybridLeadAnalyzer, RuleBasedLeadAnalyzer
+from app.services.ai_service import (
+    BudgetedCachedOpenAIAnalyzer,
+    HybridLeadAnalyzer,
+    OpenAILeadAnalyzer,
+    RuleBasedLeadAnalyzer,
+)
 from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.audience_service import AudienceEngine
 from app.services.crm_service import CRMService
@@ -109,22 +114,43 @@ def build_web_app(
     provider_budget_service = ProviderCreditBudgetService(workflow.session_factory)
     crm = crm or CRMService(workflow.session_factory)
     ops_control = ops_control or OperationalControlService(workflow.session_factory)
-    # The Mini App button "Разобрать сохранённые сигналы" is intentionally local-only.
-    # Even if production OpenAI is unlocked elsewhere, this service has no network analyzer, so
-    # an ambiguous signal becomes AI_PENDING instead of silently spending tokens.
+    # analyze-local stays rules-only. retry-pending uses hybrid with live_gate.
     market_service = MarketIntelligenceService(workflow.session_factory)
     meta_audience_service = MetaAudiencePlanningService(workflow.session_factory)
     discovery_service = DiscoveryService(workflow.session_factory)
     product_catalog_service = ProductCatalogService(workflow.session_factory)
     local_audience_engine = AudienceEngine(workflow.session_factory, settings.hot_lead_threshold)
+    change_detector = SignificantChangeDetector(
+        workflow.session_factory, hot_threshold=settings.hot_lead_threshold
+    )
     local_lead_service = LeadService(
         workflow.session_factory,
         HybridLeadAnalyzer(RuleBasedLeadAnalyzer(), None, mode="hybrid"),
         settings.hot_lead_threshold,
         audience_engine=local_audience_engine,
-        change_detector=SignificantChangeDetector(
-            workflow.session_factory, hot_threshold=settings.hot_lead_threshold
-        ),
+        change_detector=change_detector,
+    )
+    openai_analyzer = None
+    if settings.openai_api_key:
+        openai_analyzer = BudgetedCachedOpenAIAnalyzer(
+            OpenAILeadAnalyzer(settings.openai_api_key, settings.openai_model),
+            workflow.session_factory,
+            usage_service,
+            enabled=settings.openai_live_enabled,
+            daily_limit=settings.openai_daily_request_limit,
+            analysis_version=settings.lead_analysis_version,
+            lease_seconds=settings.ai_request_lease_seconds,
+            max_attempts=settings.ai_request_max_attempts,
+            live_gate=ops_control.openai_live_armed,
+            worker_id="web-hybrid",
+        )
+    hybrid_mode = settings.ai_mode if settings.ai_mode in {"rules", "hybrid", "openai"} else "hybrid"
+    hybrid_lead_service = LeadService(
+        workflow.session_factory,
+        HybridLeadAnalyzer(RuleBasedLeadAnalyzer(), openai_analyzer, mode=hybrid_mode),
+        settings.hot_lead_threshold,
+        audience_engine=local_audience_engine,
+        change_detector=change_detector,
     )
     delivery_allowed_by_config = bool(settings.telegram_bot_token) and (
         settings.instagram_provider not in {"mock", "replay"}
@@ -1136,16 +1162,49 @@ def build_web_app(
     async def retry_pending_leads(request: Request):
         payload = await _json_or_form(request)
         limit = max(1, min(int(payload.get("limit") or 10), 50))
-        results = await local_lead_service.retry_pending(limit, cooldown_seconds=0)
+        use_openai = openai_spend_allowed()
+        service = hybrid_lead_service if use_openai else local_lead_service
+        results = await service.retry_pending(limit, cooldown_seconds=0)
         still_pending = sum(item.status == LeadStatus.AI_PENDING for item in results)
+        if use_openai:
+            message = (
+                f"Hybrid/OpenAI: разобрано {len(results)}. "
+                f"Осталось AI_PENDING: {still_pending}."
+            )
+        else:
+            message = (
+                f"Локальные правила: разобрано {len(results)}. "
+                f"Осталось AI_PENDING: {still_pending}. "
+                "OpenAI выключен — включите тумблер OpenAI для GPT-разбора."
+            )
         return {
             "ok": True,
             "processed": len(results),
             "still_pending": still_pending,
+            "openai_used": use_openai,
+            "message": message,
+        }
+
+    @app.post("/api/leads/{lead_id}/analyze")
+    async def analyze_lead_now(request: Request, lead_id: int):
+        """Повторный разбор одного лида: hybrid+OpenAI если armed, иначе только правила."""
+        use_openai = openai_spend_allowed()
+        service = hybrid_lead_service if use_openai else local_lead_service
+        result = await service.retry_pending_lead(lead_id)
+        if result is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Лид не найден или не в очереди AI_PENDING/ANALYZING",
+            )
+        return {
+            "ok": True,
+            "lead_id": result.lead_id,
+            "status": result.status.value,
+            "score": result.score,
+            "openai_used": use_openai,
             "message": (
-                f"Повторно разобрано лидов: {len(results)}. "
-                f"Осталось AI_PENDING: {still_pending}. "
-                "Используется только локальный analyzer без OpenAI."
+                f"Разбор завершён · {result.status.value} · {result.score}/100"
+                + (" · OpenAI/hybrid" if use_openai else " · только локальные правила")
             ),
         }
 

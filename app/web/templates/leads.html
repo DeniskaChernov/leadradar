@@ -13,7 +13,7 @@
 
 <section class="hero-status leads-hero {% if safe_mode %}safe{% else %}live{% endif %}">
   <div>
-    <span class="eyebrow">LEAD PIPELINE</span>
+    <span class="eyebrow">ВОРОНКА ЛИДОВ</span>
     <h2>{{ ns.total }} лидов · {{ ns.hot }} HOT</h2>
     <p>{{ ns.new }} новых · {{ ns.active }} в активной работе</p>
   </div>
@@ -37,10 +37,10 @@
 </form>
 
 <div class="filters segmented-control leads-view-toggle" aria-label="Быстрый фильтр">
-  <a class="btn {% if not status_filter %}ghost{% endif %}" href="/leads{% if q %}?q={{ q|urlencode }}{% endif %}" {% if not status_filter %}aria-current="page"{% endif %}>Kanban</a>
-  <a class="btn {% if status_filter != 'NEW' %}ghost{% endif %}" href="/leads?status=NEW{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'NEW' %}aria-current="page"{% endif %}>NEW</a>
+  <a class="btn {% if not status_filter %}ghost{% endif %}" href="/leads{% if q %}?q={{ q|urlencode }}{% endif %}" {% if not status_filter %}aria-current="page"{% endif %}>Доска</a>
+  <a class="btn {% if status_filter != 'NEW' %}ghost{% endif %}" href="/leads?status=NEW{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'NEW' %}aria-current="page"{% endif %}>Новые</a>
   <a class="btn {% if status_filter != 'NEGOTIATION' %}ghost{% endif %}" href="/leads?status=NEGOTIATION{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'NEGOTIATION' %}aria-current="page"{% endif %}>Переговоры</a>
-  <a class="btn {% if status_filter != 'WON' %}ghost{% endif %}" href="/leads?status=WON{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'WON' %}aria-current="page"{% endif %}>WON</a>
+  <a class="btn {% if status_filter != 'WON' %}ghost{% endif %}" href="/leads?status=WON{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'WON' %}aria-current="page"{% endif %}>Продажа</a>
 </div>
 
 {% if status_filter %}

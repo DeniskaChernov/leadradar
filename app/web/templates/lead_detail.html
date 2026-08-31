@@ -15,27 +15,44 @@
   <div class="lead-hero-actions"><a class="btn" target="_blank" rel="noopener" href="{{ contact.profile_url }}">Профиль Instagram ↗</a><a class="btn ghost" target="_blank" rel="noopener" href="{{ post.url }}">Открыть Reel ↗</a></div>
 </div>
 
-{% if ai %}
+{% if ai or lead.status.value == 'AI_PENDING' %}
 <section class="ai-intelligence panel">
   <div class="ai-intelligence-head">
-    <div><span class="eyebrow">ГЛУБОКИЙ AI-РАЗБОР</span><h2>Почему этот сигнал важен</h2><p>Не просто оценка, а решение для следующего действия менеджера.</p></div>
-    <div class="confidence-orb"><strong>{{ ai.get('confidence', 50) }}%</strong><span>уверенность</span></div>
+    <div><span class="eyebrow">AI-РАЗБОР СИГНАЛА</span><h2>Почему этот сигнал важен</h2><p>Не просто оценка, а решение для следующего действия менеджера.</p></div>
+    {% if ai %}<div class="confidence-orb"><strong>{{ ai.get('confidence', 50) }}%</strong><span>уверенность</span></div>{% endif %}
   </div>
+  {% if ai %}
   <div class="intelligence-grid">
     <div><span>Стадия покупки</span><b>{{ funnel_stage_label(ai.get('funnel_stage')) }}</b></div>
     <div><span>Срочность</span><b class="urgency-{{ ai.get('urgency', 'LOW')|lower }}">{{ urgency_label(ai.get('urgency')) }}</b></div>
     <div><span>Горизонт</span><b>{{ purchase_horizon_label(ai.get('purchase_horizon')) }}</b></div>
     <div><span>Язык</span><b>{{ lead.language or 'Не определён' }}</b></div>
   </div>
+  <div class="intelligence-grid ai-decision-grid">
+    <div><span>Источник AI</span><b>{{ ai_source_label(lead.ai_source) }}</b></div>
+    {% if ai.get('buyer_role') %}<div><span>Роль покупателя</span><b>{{ buyer_role_label(ai.get('buyer_role')) }}</b></div>{% endif %}
+    {% if ai.get('recommended_action') %}<div class="wide"><span>Рекомендуемое действие</span><b>{{ ai.get('recommended_action') }}</b></div>{% endif %}
+    {% if ai.get('next_best_action') %}<div class="wide"><span>Следующий лучший шаг</span><b>{{ ai.get('next_best_action') }}</b></div>{% endif %}
+    {% if ai.get('short_reason') %}<div class="wide"><span>Краткий вывод</span><b>{{ ai.get('short_reason') }}</b></div>{% endif %}
+  </div>
   <div class="ai-evidence-grid">
     <div><h3>На чём основано решение</h3>{% for item in ai.get('evidence', []) %}<p><span class="evidence-check">✓</span>{{ item }}</p>{% else %}<p class="muted">Дополнительные признаки не сохранены.</p>{% endfor %}</div>
     <div><h3>Риски и неопределённость</h3>{% for item in ai.get('risk_flags', []) %}<p><span class="risk-mark">!</span>{{ item }}</p>{% else %}<p><span class="evidence-check">✓</span>Существенных рисков классификации не найдено.</p>{% endfor %}</div>
   </div>
+  {% endif %}
+  {% if lead.status.value == 'AI_PENDING' %}
+  <div class="empty-box">
+    <span class="empty-icon" aria-hidden="true"><i data-lucide="circle-help"></i></span>
+    <b>Нужна дополнительная проверка</b>
+    <span>Сигнал остаётся рабочим. Hybrid: правила, затем GPT если OpenAI live включён.</span>
+    <button class="btn primary" type="button" data-api-action="/api/leads/{{ lead.id }}/analyze" data-payload='{}' data-reload="1">Прогнать hybrid-разбор</button>
+  </div>
+  {% endif %}
 </section>
 {% endif %}
 
 <section class="panel catalog-action-card">
-  <div><span class="eyebrow">GROUNDED NEXT BEST ACTION</span><h2>{{ catalog_recommendation.title }}</h2><p>{{ catalog_recommendation.description }}</p>
+  <div><span class="eyebrow">РЕКОМЕНДАЦИЯ ИЗ КАТАЛОГА</span><h2>{{ catalog_recommendation.title }}</h2><p>{{ catalog_recommendation.description }}</p>
   {% if catalog_recommendation.match_reasons %}<div class="evidence-list">{% for reason in catalog_recommendation.match_reasons %}<span class="tag success">✓ {{ reason }}</span>{% endfor %}</div>{% endif %}</div>
   {% if catalog_recommendation.recommended_product_id %}<a class="btn primary" href="/catalog#product-{{ catalog_recommendation.recommended_product_id }}">Открыть товар</a>{% else %}<a class="btn ghost" href="/catalog">Проверить каталог</a>{% endif %}
 </section>
@@ -70,7 +87,7 @@
         <div class="mini-history-row"><span>{{ h_comment.discovered_at.strftime('%d.%m.%Y') }}</span><div><b>@{{ h_competitor.normalized_handle }}</b><p>{{ h_comment.text }}</p></div><div>{% if h_lead %}<strong>{{ h_lead.lead_score }}</strong><small>{{ intent_label(h_lead.intent) }}</small>{% else %}<small>не разобран</small>{% endif %}</div></div>
         {% else %}
         <div class="empty-box">
-          <span class="empty-icon">💬</span>
+          <span class="empty-icon" aria-hidden="true"><i data-lucide="message-circle"></i></span>
           <b>Это первое обращение клиента</b>
           <span>Предыдущих комментариев от этого аккаунта в базе не зафиксировано.</span>
         </div>
@@ -81,11 +98,11 @@
 
   <aside class="lead-side">
     <section class="panel lead-agent-panel compact" aria-labelledby="lead-agent-title">
-      <div class="panel-head compact"><div><span class="eyebrow">AI · GROUNDED</span><h2 id="lead-agent-title">Ассистент по лиду</h2><p>Ответ из БД и evidence_ids без GPT.</p></div><span class="tag status-contacted">offline</span></div>
+      <div class="panel-head compact"><div><span class="eyebrow">АССИСТЕНТ · БАЗА</span><h2 id="lead-agent-title">Ассистент по лиду</h2><p>Ответ из БД и evidence_ids без GPT.</p></div><span class="tag status-contacted">без GPT</span></div>
       <div class="agent-presets inline" role="group" aria-label="Быстрые вопросы по лиду">
         <button class="agent-preset" type="button" data-agent-preset='{"query":"Объясни оценку лида","lead_id":"{{ lead.id }}"}'>Оценка</button>
         <button class="agent-preset" type="button" data-agent-preset='{"query":"Что предложить клиенту","lead_id":"{{ lead.id }}"}'>Что предложить</button>
-        <button class="agent-preset" type="button" data-agent-preset='{"query":"Почему такой score","lead_id":"{{ lead.id }}"}'>Почему score</button>
+        <button class="agent-preset" type="button" data-agent-preset='{"query":"Почему такой score","lead_id":"{{ lead.id }}"}'>Почему оценка</button>
       </div>
       <form class="agent-query-form form-grid compact" data-agent-query data-agent-target="#lead-agent-result">
         <input type="hidden" name="lead_id" value="{{ lead.id }}">

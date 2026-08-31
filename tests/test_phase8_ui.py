@@ -33,7 +33,7 @@ async def test_system_page_renders_agent_and_export_workspaces(session_factory):
         )
 
     assert response.status_code == 200
-    assert "GROUNDED AGENT · OFFLINE" in response.text
+    assert "АССИСТЕНТ · ТОЛЬКО БАЗА" in response.text
     assert "Export recipes preview" in response.text
     assert 'id="uncertain-notifications"' in response.text
     assert 'id="quality-gates"' in response.text

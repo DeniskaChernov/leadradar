@@ -4,18 +4,18 @@
 {% block subheading %}Контроль интеграций, расходов и качества мониторинга{% endblock %}
 {% block content %}
 {% if not settings.web_auth_enabled %}
-<section class="panel"><div class="alert warn"><b>Локальный режим без Telegram auth</b><span>Mutating POST выполняются от manager_id={{ request.state.manager_id }}. Не используйте на публичном хосте без WEB_AUTH_ENABLED.</span></div></section>
+<section class="panel"><div class="alert warn"><b>Локальный режим без Telegram auth</b><span>Изменяющие запросы выполняются от manager_id={{ request.state.manager_id }}. Не используйте на публичном хосте без WEB_AUTH_ENABLED.</span></div></section>
 {% endif %}
 
 <section class="hero-status system-hero safe">
   <div>
     <span class="eyebrow">КАБИНА СИСТЕМЫ</span>
     <h2>Диагностика, AI и расходы</h2>
-    <p>Локальный разбор без OpenAI · retry AI_PENDING · quality gates · уведомления</p>
+    <p>Локальный разбор · hybrid retry AI_PENDING · OpenAI live · quality gates</p>
   </div>
   <div class="hero-actions">
     <button class="btn primary" type="button" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Локальный разбор</button>
-    <button class="btn" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-reload="1">Retry AI_PENDING</button>
+    <button class="btn" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-reload="1">Повторить очередь AI</button>
     <a class="btn ghost" href="/radar?kind=pending">Очередь</a>
   </div>
 </section>
@@ -45,13 +45,15 @@
       <input type="hidden" name="default_scan_credits" value="{{ ops.default_scan_credits }}">
       <button class="btn {% if ops.radar_live_armed %}ghost{% else %}success{% endif %}" type="submit">{% if ops.radar_live_armed %}Выключить Live Radar{% else %}Включить Live Radar{% endif %}</button>
     </form>
+  </div>
+  {% endif %}
+  <div class="form-row">
     <form data-api-form action="/api/ops/openai-live" data-reload="1">
       <input type="hidden" name="armed" value="{{ 'false' if ops.openai_live_armed else 'true' }}">
       <button class="btn {% if ops.openai_live_armed %}ghost{% else %}primary{% endif %}" type="submit" {% if not settings.openai_live_enabled %}disabled{% endif %}>{% if ops.openai_live_armed %}Выключить OpenAI{% else %}Включить OpenAI анализ{% endif %}</button>
     </form>
   </div>
-  {% endif %}
-  <div class="explain-line"><span>OpenAI hybrid: правила → при неоднозначности GPT пишет разбор в карточку лида. Telegram-уведомления требуют полного запуска <code>python -m app.main</code> (не web-only).</span></div>
+  <div class="explain-line"><span>Hybrid: правила → при неоднозначности GPT пишет разбор в карточку лида. Расход OpenAI сейчас: {% if openai_spend_allowed %}разрешён{% else %}заблокирован{% endif %}. Telegram-уведомления требуют полного запуска <code>python -m app.main</code> (не web-only).</span></div>
 </section>
 
 <section class="cost-guard panel {% if safe_mode %}safe{% else %}live{% endif %}" id="cost-guard"><div><span class="eyebrow">КОНТРОЛЬ РАСХОДОВ</span><h2>{% if safe_mode %}Внешние Instagram-запросы заблокированы{% else %}Live-запросы разрешены{% endif %}</h2><p>{% if safe_mode %}Master unlock + тумблер Live Radar на этой странице. Без обоих режимов credits не списываются.{% else %}Каждая внешняя операция в журнале. Расписание может быть отдельно ограничено INSTAGRAM_MANUAL_LIVE_SCAN_ONLY.{% endif %}</p></div><div class="budget-box"><div><span>Instagram сегодня</span><b>{{ usage.get('instagram',0) }} / {{ settings.instagram_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('instagram',0) / (settings.instagram_daily_request_limit if settings.instagram_daily_request_limit else 1) * 100]|min }}%"></i></div><div><span>OpenAI сегодня</span><b>{{ usage.get('openai',0) }} / {{ settings.openai_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('openai',0) / (settings.openai_daily_request_limit if settings.openai_daily_request_limit else 1) * 100]|min }}%"></i></div></div></section>
@@ -77,7 +79,7 @@
 </section>
 
 <section class="panel notification-readiness">
-  <div class="panel-head"><div><span class="eyebrow">DRY-RUN · БЕЗ ОТПРАВКИ</span><h2>Готовность Telegram-уведомлений</h2><p>Read-only preview применяет реальные политики и проверяет outbox, но ничего не записывает и не отправляет.</p></div><span class="tag {% if notification_readiness.controlled_pilot_ready %}status-contacted{% else %}neutral{% endif %}">{% if notification_readiness.controlled_pilot_ready %}worker активен{% else %}pilot заблокирован{% endif %}</span></div>
+  <div class="panel-head"><div><span class="eyebrow">ПРОВЕРКА · БЕЗ ОТПРАВКИ</span><h2>Готовность Telegram-уведомлений</h2><p>Read-only preview применяет реальные политики и проверяет outbox, но ничего не записывает и не отправляет.</p></div><span class="tag {% if notification_readiness.controlled_pilot_ready %}status-contacted{% else %}neutral{% endif %}">{% if notification_readiness.controlled_pilot_ready %}worker активен{% else %}pilot заблокирован{% endif %}</span></div>
   <div class="mini-metrics">
     <span><b>{% if settings.external_kill_switch %}ВКЛ{% else %}ВЫКЛ{% endif %}</b> глобальный стоп</span>
     <span><b>{{ usage.get('openai', 0) }}</b> AI-запросов сегодня</span>
@@ -244,7 +246,7 @@
 {% endif %}
 
 <section class="panel agent-workspace" id="agent-workspace" aria-labelledby="agent-workspace-title">
-  <div class="panel-head"><div><span class="eyebrow">GROUNDED AGENT · OFFLINE</span><h2 id="agent-workspace-title">Read-only ассистент</h2><p>Ответ только из MCP read tools и evidence_ids. GPT не вызывается; write tools остаются NOT_CONNECTED.</p></div><span class="tag status-contacted">DB-backed</span></div>
+  <div class="panel-head"><div><span class="eyebrow">АССИСТЕНТ · ТОЛЬКО БАЗА</span><h2 id="agent-workspace-title">Read-only ассистент</h2><p>Ответ только из MCP read tools и evidence_ids. GPT не вызывается; write tools остаются NOT_CONNECTED.</p></div><span class="tag status-contacted">DB-backed</span></div>
   <div class="agent-presets inline" role="group" aria-label="Примеры вопросов">
     <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи quality gates"}'>Quality gates</button>
     <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи горячие лиды"}'>HOT лиды</button>

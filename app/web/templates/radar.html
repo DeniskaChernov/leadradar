@@ -5,7 +5,7 @@
 {% block content %}
 <section class="hero-status radar-hero {% if scan_budget.live_enabled %}live{% else %}safe{% endif %}">
   <div>
-    <span class="eyebrow">SIGNAL RADAR</span>
+    <span class="eyebrow">РАДАР СИГНАЛОВ</span>
     <h2>{{ overview.total }} сигналов · {{ overview.hot }} HOT</h2>
     <p>{{ overview.unprocessed + overview.pending }} ждут разбора · {{ overview.qualified }} в воронке лидов</p>
   </div>
@@ -13,7 +13,7 @@
     <a class="btn primary" href="/leads">Лиды ({{ overview.qualified }})</a>
     <a class="btn" href="/radar?kind=hot">HOT</a>
     <a class="btn" href="/radar?kind=new">Новые</a>
-    <button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-reload="1">Повторить AI</button>
+    <button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-reload="1">Повторить очередь AI</button>
     <button class="btn ghost" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Проверить</button>
   </div>
 </section>
@@ -22,7 +22,7 @@
     <span class="tag {% if ops.radar_live_armed %}success{% else %}muted-tag{% endif %}">{% if ops.radar_live_armed %}Radar включён{% else %}Radar выключен{% endif %}</span>
   </div>
   {% if not master_live_ready %}
-  <div class="alert warn"><b>Master unlock не готов</b><span>В .env нужны scrapecreators + live flags + EXTERNAL_LIVE_UNLOCK. Без этого тумблер не включится.</span></div>
+  <div class="alert warn"><b>Master unlock не готов</b><span>В .env нужны scrapecreators + live flags + EXTERNAL_LIVE_UNLOCK. Без этого тумблер Radar не включится.</span></div>
   {% else %}
   <div class="form-row">
     <form data-api-form action="/api/ops/radar-live" data-reload="1">
@@ -30,13 +30,15 @@
       <input type="hidden" name="default_scan_credits" value="{{ ops.default_scan_credits }}">
       <button class="btn {% if ops.radar_live_armed %}ghost{% else %}success{% endif %}" type="submit">{% if ops.radar_live_armed %}Выключить Live Radar{% else %}Включить Live Radar{% endif %}</button>
     </form>
+  </div>
+  {% endif %}
+  <div class="form-row">
     <form data-api-form action="/api/ops/openai-live" data-reload="1">
       <input type="hidden" name="armed" value="{{ 'false' if ops.openai_live_armed else 'true' }}">
       <button class="btn {% if ops.openai_live_armed %}ghost{% else %}primary{% endif %}" type="submit" {% if not settings.openai_live_enabled %}disabled{% endif %}>{% if ops.openai_live_armed %}Выключить OpenAI{% else %}Включить OpenAI анализ{% endif %}</button>
     </form>
   </div>
-  <p class="muted">OpenAI (hybrid): сначала локальные правила; неоднозначные лиды — GPT с разбором в карточке. Сейчас: {% if openai_spend_allowed %}активен{% else %}выключен{% endif %}.</p>
-  {% endif %}
+  <p class="muted">Hybrid: сначала локальные правила; GPT только для неоднозначных сигналов и только если OpenAI live разрешён. Расход OpenAI сейчас: {% if openai_spend_allowed %}разрешён{% else %}заблокирован{% endif %}.</p>
 </section>
 <section class="panel radar-budget-card" aria-labelledby="radar-budget-title">
   <div class="radar-budget-head">

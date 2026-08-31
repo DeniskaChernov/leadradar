@@ -394,6 +394,10 @@ class LeadService:
                 results.append(result)
         return results
 
+    async def retry_pending_lead(self, lead_id: int) -> ProcessedLead | None:
+        """Повторный разбор одного AI_PENDING/ANALYZING лида тем же analyzer, что и batch retry."""
+        return await self._retry_pending_one(lead_id)
+
     async def _retry_pending_one(self, lead_id: int) -> ProcessedLead | None:
         async with self.session_factory() as session:
             lead = await session.get(Lead, lead_id)
