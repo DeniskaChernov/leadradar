@@ -9,7 +9,7 @@
 {% set credit_accuracy = safe_attr(page.credits, 'confirmed_coverage_percent') %}
 <div class="page-help"><b>Деньги и credits только из ledger</b><span>Страница не делает внешних вызовов. Неполные факты показываются как «—», а не как ноль.</span></div>
 
-<section class="economics-hero panel {% if page.provider and page.provider.budget_status == 'HEALTHY' %}live{% elif page.provider %}warn{% else %}safe{% endif %}">
+<section class="hero-status economics-hero {% if page.provider and page.provider.budget_status == 'HEALTHY' %}live{% elif page.provider %}warn{% else %}safe{% endif %}">
   <div>
     <span class="eyebrow">UNIT ECONOMICS · {{ page.days }} дн.</span>
     <h2>{% if page.provider %}ScrapeCreators {{ page.provider.used_this_month }}/{{ page.provider.monthly_hard_limit }} credits{% else %}Экономика без live wallet{% endif %}</h2>

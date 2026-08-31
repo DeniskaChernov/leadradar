@@ -3,7 +3,7 @@
 {% block heading %}Радар сигналов{% endblock %}
 {% block subheading %}Каждый комментарий: кто написал, где нашли и что он означает{% endblock %}
 {% block content %}
-<section class="page-hero radar-hero panel {% if scan_budget.is_live %}live{% else %}safe{% endif %}">
+<section class="hero-status radar-hero {% if scan_budget.is_live %}live{% else %}safe{% endif %}">
   <div>
     <span class="eyebrow">SIGNAL RADAR</span>
     <h2>{{ overview.total }} сигналов · {{ overview.hot }} HOT</h2>
@@ -65,11 +65,11 @@
   </div>
 </section>
 {% endif %}
-<div class="radar-summary metrics dashboard-metrics">
+<div class="metrics radar-metrics">
   <a class="metric" href="/radar"><span>Все сигналы</span><strong>{{ overview.total }}</strong><small>в базе</small></a>
   <a class="metric warn" href="/radar?kind=pending"><span>Не разобраны</span><strong>{{ overview.unprocessed + overview.pending }}</strong><small>очередь + AI</small></a>
   <a class="metric" href="/leads"><span>Лиды</span><strong>{{ overview.qualified }}</strong><small>воронка</small></a>
-  <a class="metric accent hot" href="/radar?kind=hot"><span>HOT</span><strong>{{ overview.hot }}</strong><small>от {{ settings.hot_lead_threshold }}/100</small></a>
+  <a class="metric accent" href="/radar?kind=hot"><span>HOT</span><strong>{{ overview.hot }}</strong><small>от {{ settings.hot_lead_threshold }}/100</small></a>
   <div class="metric muted-metric"><span>Отсеяно</span><strong>{{ overview.rejected }}</strong><small>NOT_LEAD</small></div>
 </div>
 <form class="filters radar-filters" method="get">

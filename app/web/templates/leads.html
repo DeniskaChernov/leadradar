@@ -11,7 +11,7 @@
   {% if lead.status.value in ['TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION'] %}{% set ns.active = ns.active + 1 %}{% endif %}
 {% endfor %}
 
-<section class="page-hero leads-hero panel live">
+<section class="hero-status leads-hero live">
   <div>
     <span class="eyebrow">LEAD PIPELINE</span>
     <h2>{{ ns.total }} лидов · {{ ns.hot }} HOT</h2>
