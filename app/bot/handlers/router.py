@@ -47,7 +47,12 @@ LOST_REASONS = {
 
 
 def _dashboard_url(settings: Settings) -> str:
-    return settings.web_public_url or f"http://{settings.web_host}:{settings.web_port}"
+    if settings.web_public_url:
+        return settings.web_public_url
+    host = settings.web_host
+    if host in {"0.0.0.0", "::"}:
+        host = "127.0.0.1"
+    return f"http://{host}:{settings.web_port}"
 
 
 def build_main_menu(settings: Settings) -> ReplyKeyboardMarkup:
@@ -67,7 +72,7 @@ def build_main_menu(settings: Settings) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="/status"), KeyboardButton(text="/stats")],
-            [KeyboardButton(text="/hot"), KeyboardButton(text="/scan")],
+            [KeyboardButton(text="/hot"), KeyboardButton(text="/pending"), KeyboardButton(text="/scan")],
             third_row,
             [KeyboardButton(text="/help")],
         ],

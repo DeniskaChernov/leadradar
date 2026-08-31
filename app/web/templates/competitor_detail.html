@@ -129,7 +129,7 @@
     </div>
     <h3>Покрытие подтверждённым каталогом</h3>
     {% if demand_gap.catalog_coverage_percent is not none %}<p><b>{{ demand_gap.catalog_coverage_percent }}%</b> категоризированного спроса имеет хотя бы один активный подтверждённый товар.</p>{% else %}<p class="muted">Покрытие нельзя посчитать: нет подтверждённых категорий каталога или категоризированного спроса.</p>{% endif %}
-    {% for item in demand_gap.catalog_coverage %}<div class="rank-row"><span>{{ product_label(item.category) }} · {{ item.lead_count }} сигналов{% if item.evidence_ids %} · evidence {{ item.evidence_ids|join(', ') }}{% endif %}</span><b class="tag {% if item.covered %}success{% else %}warn{% endif %}">{% if item.covered %}{{ item.product_count }} товаров{% else %}Нет подтверждённого оффера{% endif %}</b></div>{% endfor %}
+    {% for item in demand_gap.catalog_coverage %}<div class="rank-row"><span>{{ product_label(item.category) }} · {{ item.lead_count }} сигналов{% if item.evidence_ids %} · evidence {{ item.evidence_ids|join(', ') }}{% endif %}</span><b class="tag {% if item.covered %}success{% else %}warning{% endif %}">{% if item.covered %}{{ item.product_count }} товаров{% else %}Нет подтверждённого оффера{% endif %}</b></div>{% endfor %}
     <div class="truth-note"><b>Граница данных</b><span>{{ demand_gap.boundary_note }}</span></div>
   </section>
   {% endif %}
@@ -184,7 +184,7 @@
   </div>
   {% if post_performance %}
   <div class="table-wrap">
-    <table>
+    <table class="responsive-table">
       <thead>
         <tr>
           <th>Публикация</th>
@@ -201,18 +201,18 @@
       <tbody>
         {% for item in post_performance %}
         <tr>
-          <td class="context">
+          <td data-label="Публикация" class="context">
             <a href="{{ item.post.url }}" target="_blank" rel="noopener">{{ item.post.caption[:100] or item.post.platform_post_id }}{% if item.post.caption|length > 100 %}…{% endif %} ↗</a>
             <small>{{ coverage_label(item.post.coverage_status) }}</small>
           </td>
-          <td>{{ item.observed_comments }}</td>
-          <td><b>{{ item.commercial_comments }}</b></td>
-          <td>{{ item.commercial_per_100 }}</td>
-          <td>{{ item.unique_buyers }}</td>
-          <td>{{ item.price }}</td>
-          <td>{{ item.availability }}</td>
-          <td>{{ item.delivery }}</td>
-          <td>{{ item.quantity }}</td>
+          <td data-label="Наблюдалось">{{ item.observed_comments }}</td>
+          <td data-label="Коммерческих"><b>{{ item.commercial_comments }}</b></td>
+          <td data-label="На 100">{{ item.commercial_per_100 }}</td>
+          <td data-label="Покупателей">{{ item.unique_buyers }}</td>
+          <td data-label="Цена">{{ item.price }}</td>
+          <td data-label="Наличие">{{ item.availability }}</td>
+          <td data-label="Доставка">{{ item.delivery }}</td>
+          <td data-label="Количество">{{ item.quantity }}</td>
         </tr>
         {% endfor %}
       </tbody>

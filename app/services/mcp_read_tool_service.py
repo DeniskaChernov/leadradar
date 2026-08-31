@@ -277,7 +277,7 @@ class MCPReadToolService:
                     "place_name": item.place_name,
                     "place_type": item.place_type,
                     "city": item.city,
-                    "timeline": item.opening_timeline,
+                    "opening_timeline": item.opening_timeline,
                     "confidence": item.confidence,
                     "review_status": item.review_status,
                     "contact_id": item.contact_id,
@@ -285,7 +285,7 @@ class MCPReadToolService:
                 }
                 for item in rows
             ],
-            "evidence_ids": [item.id for item in rows],
+            "evidence_ids": [],
         }
 
     async def _evidence_ids_for_comment(self, comment_id: int) -> list[int]:

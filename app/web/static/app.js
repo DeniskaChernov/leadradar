@@ -43,6 +43,12 @@
     data.answer || '—',
   ].join('\n');
 
+  const escapeHtml = (value) => String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+
   const renderAgentAnswer = (container, data) => {
     if (!container) return;
     container.hidden = false;
@@ -92,7 +98,7 @@
       const message = error instanceof Error ? error.message : 'Ошибка запроса';
       if (output?.classList.contains('agent-result-rich')) {
         output.hidden = false;
-        output.innerHTML = `<div class="agent-result-head warn"><span class="tag neutral">Ошибка</span></div><div class="agent-result-body">${message}</div>`;
+        output.innerHTML = `<div class="agent-result-head warn"><span class="tag neutral">Ошибка</span></div><div class="agent-result-body">${escapeHtml(message)}</div>`;
       } else if (plainOutput) {
         plainOutput.hidden = false;
         plainOutput.textContent = message;
@@ -489,8 +495,8 @@
       const submit = agentForm.querySelector('[type="submit"]');
       try {
         await runAgentQuery(agentForm, submit);
-      } catch (error) {
-        toast(error.message, true);
+      } catch (_) {
+        /* toast уже показан в runAgentQuery */
       }
       return;
     }
@@ -627,7 +633,7 @@
         if (field instanceof HTMLInputElement) field.value = String(value);
       });
       const submit = form.querySelector('[type="submit"]');
-      runAgentQuery(form, submit).catch((error) => toast(error.message, true));
+      runAgentQuery(form, submit).catch(() => {});
       return;
     }
 

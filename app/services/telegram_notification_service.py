@@ -872,7 +872,7 @@ def render_lead_card(card: LeadCard) -> str:
         f"🎯 <b>Intent:</b> {escape(card.intent)}\n"
         f"🪑 <b>Интерес:</b> {escape(card.product_category or 'не определён')}\n\n"
         f"📹 <b>Reel:</b>\n{escape(card.post_caption[:350])}\n\n"
-        f"🧠 <b>Почему HOT:</b>\n{escape(card.ai_reason)}\n\n"
+        f"🧠 <b>Почему так:</b>\n{escape(card.ai_reason)}\n\n"
         f"📚 <b>История:</b> {history}\n"
         f"📌 <b>Статус:</b> {card.status.value}"
         f"{manager}"

@@ -4,7 +4,7 @@
 {% block subheading %}Кто входит в сегмент и какое маркетинговое решение следует принять{% endblock %}
 {% block content %}
 <div class="detail-back-bar">
-  <a class="btn ghost btn-sm" href="/audiences">← Назад ко всем аудиториям</a>
+  <a class="btn ghost btn-sm" href="/audiences{% if selected_vertical %}?vertical={{ selected_vertical }}{% endif %}">← Назад ко всем аудиториям</a>
   <span class="pill primary">{{ segment.audience_family }} · {{ segment.audience_level }}</span>
 </div>
 
@@ -163,7 +163,7 @@
   </div>
   {% if members %}
   <div class="table-wrap embedded">
-    <table>
+    <table class="responsive-table">
       <thead>
         <tr>
           <th>Контакт</th>
@@ -179,20 +179,20 @@
       <tbody>
         {% for membership, contact, intel in members %}
         <tr>
-          <td><a class="user" href="/contacts/{{ contact.id }}"><b>@{{ contact.username }}</b><small>{{ contact.display_name or '' }}</small></a></td>
-          <td>{{ commercial_stage_label(intel.commercial_stage) }}</td>
-          <td>{{ intel.signal_count }}</td>
-          <td>{{ intel.source_count }}</td>
-          <td class="membership-reasons">
+          <td data-label="Контакт"><a class="user" href="/contacts/{{ contact.id }}"><b>@{{ contact.username }}</b><small>{{ contact.display_name or '' }}</small></a></td>
+          <td data-label="Стадия">{{ commercial_stage_label(intel.commercial_stage) }}</td>
+          <td data-label="Сигналов">{{ intel.signal_count }}</td>
+          <td data-label="Источников">{{ intel.source_count }}</td>
+          <td data-label="Почему контакт здесь" class="membership-reasons">
             {% for reason in membership.reasons_json %}
               <span><b>✓</b> {{ reason.text }}{% if reason.evidence_ids %}<small>Evidence: {{ reason.evidence_ids | join(', ') }}</small>{% endif %}</span>
             {% else %}
               <span class="muted">Объяснение будет построено при следующем пересчёте.</span>
             {% endfor %}
           </td>
-          <td>{{ intel.activity_score }}</td>
-          <td><b>{{ intel.value_score }}</b></td>
-          <td><span class="tag {% if intel.export_eligibility.name in ('FIRST_PARTY_ELIGIBLE', 'EXPORTED') %}status-won{% else %}neutral{% endif %}">{{ export_eligibility_label(intel.export_eligibility) }}</span></td>
+          <td data-label="Активность">{{ intel.activity_score }}</td>
+          <td data-label="Ценность"><b>{{ intel.value_score }}</b></td>
+          <td data-label="Экспорт"><span class="tag {% if intel.export_eligibility.name in ('FIRST_PARTY_ELIGIBLE', 'EXPORTED') %}status-won{% else %}neutral{% endif %}">{{ export_eligibility_label(intel.export_eligibility) }}</span></td>
         </tr>
         {% endfor %}
       </tbody>

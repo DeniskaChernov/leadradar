@@ -27,6 +27,7 @@
   <a href="#ai-safety">AI safety</a>
   <a href="#quality-gates">Quality gates</a>
   <a href="#agent-workspace">Agent</a>
+  <a href="/roadmap">Roadmap</a>
 </nav>
 
 <section class="cost-guard panel {% if safe_mode %}safe{% else %}live{% endif %}" id="cost-guard"><div><span class="eyebrow">КОНТРОЛЬ РАСХОДОВ</span><h2>{% if safe_mode %}Внешние Instagram-запросы заблокированы{% else %}Live-запросы разрешены{% endif %}</h2><p>{% if safe_mode %}Это намеренно. Тесты, интерфейс, база, локальный скоринг и CRM работают без списания бесплатных токенов. Чтобы сделать реальный контрольный скан, нужно явно включить live-настройку и второй предохранитель EXTERNAL_LIVE_UNLOCK. Одной случайной галочки недостаточно.{% else %}Каждая внешняя операция записывается в журнал и ограничивается дневным лимитом. Автоматические live-сканы могут быть отдельно отключены настройкой INSTAGRAM_MANUAL_LIVE_SCAN_ONLY.{% endif %}</p></div><div class="budget-box"><div><span>Instagram сегодня</span><b>{{ usage.get('instagram',0) }} / {{ settings.instagram_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('instagram',0) / (settings.instagram_daily_request_limit if settings.instagram_daily_request_limit else 1) * 100]|min }}%"></i></div><div><span>OpenAI сегодня</span><b>{{ usage.get('openai',0) }} / {{ settings.openai_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('openai',0) / (settings.openai_daily_request_limit if settings.openai_daily_request_limit else 1) * 100]|min }}%"></i></div></div></section>
@@ -66,7 +67,7 @@
     <span><b>{{ notification_readiness.uncertain }}</b> требуют сверки</span>
   </div>
   <div class="alert {% if notification_readiness.controlled_pilot_ready %}good{% else %}warn{% endif %}"><b>{% if notification_readiness.controlled_pilot_ready %}Конфигурация готова к контролируемому pilot{% else %}Реальная отправка сейчас не выполняется{% endif %}</b><span>Token: {% if notification_readiness.token_configured %}настроен{% else %}не настроен{% endif %} · admin targets: {{ notification_readiness.admin_target_count }} · delivery config: {% if notification_readiness.delivery_allowed_by_config %}разрешён{% else %}заблокирован{% endif %} · worker: {% if notification_readiness.worker_active %}активен{% else %}не запущен (web-only){% endif %}</span></div>
-  <p class="table-scroll-hint">На узком экране таблица прокручивается горизонтально.</p>
+  <p class="table-scroll-hint">На узком экране строки сворачиваются в карточки.</p>
   <div class="table-wrap embedded system-table-wrap">
     <table class="responsive-table system-table notification-preview-table">
       <thead><tr><th>Лид</th><th>Сигнал</th><th>Policy</th><th>Решение</th><th>Почему</th><th>Получатели</th></tr></thead>
@@ -100,7 +101,7 @@
     <span><b>{{ '%.1f'|format(intelligence_quality.buyer_role_accuracy * 100) }}%</b> role accuracy</span>
     <span><b>{{ '%.1f'|format(intelligence_quality.hot_false_positive_rate * 100) }}%</b> false HOT</span>
   </div>
-  <p class="table-scroll-hint">На узком экране таблица прокручивается горизонтально.</p>
+  <p class="table-scroll-hint">На узком экране строки сворачиваются в карточки.</p>
   <div class="table-wrap embedded system-table-wrap"><table class="responsive-table system-table"><thead><tr><th>Язык</th><th>Сценариев</th><th>Lead accuracy</th><th>Intent accuracy</th><th>Role accuracy</th></tr></thead><tbody>
     {% for item in intelligence_quality.language_scores %}<tr><td data-label="Язык"><code>{{ item.language }}</code></td><td data-label="Сценариев">{{ item.cases }}</td><td data-label="Lead accuracy">{{ '%.1f'|format(item.lead_accuracy * 100) }}%</td><td data-label="Intent accuracy">{{ '%.1f'|format(item.intent_accuracy * 100) }}%</td><td data-label="Role accuracy">{{ '%.1f'|format(item.role_accuracy * 100) }}%</td></tr>{% endfor %}
   </tbody></table></div>
@@ -146,7 +147,7 @@
     <label>Цена output token, USD<input name="output_price" inputmode="decimal" placeholder="0.000002"></label>
     <div class="wide"><button class="btn primary" type="submit">Сохранить новую версию цены</button></div>
   </form>
-  <p class="table-scroll-hint">На узком экране таблица прокручивается горизонтально.</p>
+  <p class="table-scroll-hint">На узком экране строки сворачиваются в карточки.</p>
   <div class="table-wrap embedded system-table-wrap"><table class="responsive-table system-table"><thead><tr><th>Provider</th><th>Операция / модель</th><th>Основа</th><th>Текущая цена</th><th>Действует с</th></tr></thead><tbody>
     {% for price in pricing_configs %}<tr><td data-label="Provider">{{ price.provider }}</td><td data-label="Операция">{{ price.operation }}{% if price.model_name %}<br><small>{{ price.model_name }}</small>{% endif %}</td><td data-label="Основа">{{ price.pricing_basis }}</td><td data-label="Цена">{% if price.pricing_basis == 'TOKENS' %}input {{ price.input_price or '—' }} · output {{ price.output_price or '—' }}{% else %}{{ price.unit_price or '—' }} USD{% endif %}</td><td data-label="Действует с">{{ price.effective_from.strftime('%d.%m.%Y %H:%M') }}</td></tr>{% else %}<tr><td colspan="5" class="empty">Тарифы ещё не внесены. Расходы учитываются в единицах, стоимость USD остаётся неизвестной.</td></tr>{% endfor %}
   </tbody></table></div>

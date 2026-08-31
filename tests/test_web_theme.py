@@ -144,6 +144,8 @@ def test_interface_hardening_keeps_dense_views_accessible():
     assert "stage_count * 100 / funnel_peak" in analytics
     assert "analytics-hero" in analytics
     assert "analytics-period" in analytics
+    assert 'href="/dashboard"' not in analytics
+    assert 'href="/"' in analytics
     assert "table-scroll-hint" in css
     assert "more-navigation-open" in javascript
     assert "enhanceClickableRows" in javascript
@@ -207,9 +209,11 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.8.0-ui-polish" in base
-    assert "13.8.0-ui-polish" in auth
+    assert "13.8.1-bug-hunt" in base
+    assert "13.8.1-bug-hunt" in auth
     assert "fonts.googleapis.com" in base
+    assert 'href="/catalog"' in base
+    assert 'href="/discovery"' in base
     assert 'id="agent-quick"' in base
     assert "data-agent-open" in base
     assert 'data-more-toggle aria-expanded="false"' in base
@@ -301,6 +305,7 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert 'data-label="Провайдер"' in economics
     assert 'data-label="Вертикаль"' in economics
     assert "lead-agent-panel" in lead_detail
+    assert "data-agent-query" in lead_detail
     assert 'name="lead_id" value="{{ lead.id }}"' in lead_detail
     assert "lead-agent-result" in lead_detail
     assert "agent-preset" in lead_detail
@@ -313,7 +318,8 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "tasks-hero" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")
     assert "deals-hero" in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
     assert "V3.5 · unified airy rhythm" in css
-    assert "data-agent-query" in lead_detail
+    assert "--space-8: 40px" in css
+    assert "audience-quality-hero" in (PROJECT_ROOT / "app/web/templates/audience_quality.html").read_text(encoding="utf-8")
     assert "lead-agent-panel" in contact_detail
     assert "@{{ contact.username }}" in contact_detail
     assert "data-agent-query" in contact_detail

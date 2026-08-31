@@ -168,3 +168,44 @@ async def test_mcp_gateway_write_tool_stays_not_connected_even_with_approval(ses
     )
     assert result.success is False
     assert result.output["error"] == "NOT_CONNECTED"
+
+
+def test_agent_plan_does_not_treat_open_leads_as_openings(session_factory):
+    service = AgentSessionService(session_factory, hot_threshold=70)
+
+    planned = service._plan_tools("покажи открытые лиды", {"lead_id": 12})
+
+    assert planned[0][0] == "lead.search"
+
+
+def test_agent_plan_sticky_lead_id_does_not_block_audience_slug(session_factory):
+    slug = AllowedAudienceRegistry.list_active()[0].slug
+    service = AgentSessionService(session_factory, hot_threshold=70)
+
+    planned = service._plan_tools(slug, {"lead_id": 12})
+
+    assert planned[0] == ("audience.dna", {"segment_slug": slug})
+
+
+def test_agent_plan_routes_specific_openings_query(session_factory):
+    service = AgentSessionService(session_factory, hot_threshold=70)
+
+    planned = service._plan_tools("покажи открытия заведений", {})
+
+    assert planned[0][0] == "google.openings"
+
+
+def test_agent_plan_lead_search_beats_rattan_when_query_asks_for_leads(session_factory):
+    service = AgentSessionService(session_factory, hot_threshold=70)
+
+    planned = service._plan_tools("лиды по ротангу", {})
+
+    assert planned[0][0] == "lead.search"
+
+
+def test_agent_plan_explain_wins_when_catalog_and_score_tokens_both_present(session_factory):
+    service = AgentSessionService(session_factory, hot_threshold=70)
+
+    planned = service._plan_tools("объясни оценку и каталог", {"lead_id": 12})
+
+    assert planned[0] == ("lead.explain_score", {"lead_id": 12})

@@ -71,6 +71,24 @@ P0/P1 закрыты в коде:
 - CSS/JS cache `13.3.0-pilot-cockpit`;
 - полный offline gate: **316 passed, 1 skipped**; ruff clean; внешних вызовов: **0**.
 
+## Bug-hunt pass 13.8.1 (offline)
+
+После 15+7 проходов по UI/AI/bot/spend:
+
+- `/analytics?days=` реально режет `Lead.created_at` / deals / feedback; ссылка Dashboard → `/`;
+- leftover ScrapeCreators credits после parse-fail больше не приписываются следующему вызову;
+- AI routing: sticky `lead_id` не перехватывает audience/openings/lead-search; «открытые лиды» ≠ `google.openings`;
+- retry AI_PENDING поднимает stale `ANALYZING` (>15 мин);
+- CSS: `--space-8`, валидный `rgba()`, mobile shell `padding: 0`, `.tag.warn`;
+- nav: Каталог и Поиск в furniture «Ещё»; bot `/pending` в commands и reply-keyboard;
+- cache `13.8.1-bug-hunt`.
+
+## Airy UI V3.5 + page polish (offline)
+
+- единый spacing rhythm, Inter, heroes contacts/tasks/deals/openings/analytics;
+- `/openings` и `/system` responsive tables; analytics period chips;
+- CSS/JS cache `13.8.0-ui-polish` (commit `658cd37`).
+
 ## System pass UI + AI routing (offline)
 
 - `catalog.recommend` read tool: «Что предложить» с `lead_id` больше не уходит в `lead.explain_score`;

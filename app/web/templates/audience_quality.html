@@ -3,7 +3,16 @@
 {% block heading %}Качество аудиторий{% endblock %}
 {% block subheading %}Health, overlap и уверенность membership — только из БД{% endblock %}
 {% block content %}
-<div class="page-help"><b>Read-only quality workspace</b><span>Метрики считаются из AudienceMembership и ContactIntelligence. Внешние вызовы не выполняются.</span></div>
+<section class="hero-status live audience-quality-hero">
+  <div>
+    <span class="eyebrow">AUDIENCE QUALITY · READ-ONLY</span>
+    <h2>Health, overlap и уверенность membership</h2>
+    <p>Метрики считаются из AudienceMembership и ContactIntelligence. Внешние вызовы не выполняются.</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn ghost" href="/audiences?vertical={{ page.vertical }}">К каталогу аудиторий</a>
+  </div>
+</section>
 
 <form class="filters" method="get" aria-label="Вертикаль аудиторий">
   <a class="btn {% if page.vertical != 'FURNITURE' %}ghost{% endif %}" href="/audiences/quality?vertical=FURNITURE" {% if page.vertical == 'FURNITURE' %}aria-current="page"{% endif %}>Мебель</a>
@@ -79,17 +88,17 @@
 <section class="panel audience-quality-section" aria-labelledby="audience-overlap-title">
   <div class="panel-head"><div><span class="eyebrow">OVERLAP ANALYTICS</span><h2 id="audience-overlap-title">Пересечения аудиторий</h2><p>Jaccard по активным membership contact_id</p></div></div>
   <div class="table-wrap embedded">
-    <table>
+    <table class="responsive-table">
       <thead><tr><th>Левая</th><th>Правая</th><th>Пересечение</th><th>Только слева</th><th>Только справа</th><th>Jaccard</th></tr></thead>
       <tbody>
         {% for row in page.overlap_rows %}
         <tr>
-          <td><a href="/audiences/{{ row.left_slug }}">{{ row.left_name }}</a></td>
-          <td><a href="/audiences/{{ row.right_slug }}">{{ row.right_name }}</a></td>
-          <td><b>{{ row.intersection }}</b></td>
-          <td>{{ row.left_only }}</td>
-          <td>{{ row.right_only }}</td>
-          <td>{{ row.jaccard }}%</td>
+          <td data-label="Левая"><a href="/audiences/{{ row.left_slug }}">{{ row.left_name }}</a></td>
+          <td data-label="Правая"><a href="/audiences/{{ row.right_slug }}">{{ row.right_name }}</a></td>
+          <td data-label="Пересечение"><b>{{ row.intersection }}</b></td>
+          <td data-label="Только слева">{{ row.left_only }}</td>
+          <td data-label="Только справа">{{ row.right_only }}</td>
+          <td data-label="Jaccard">{{ row.jaccard }}%</td>
         </tr>
         {% else %}
         <tr><td colspan="6"><div class="empty compact">Пересечений между активными сегментами пока нет.</div></td></tr>

@@ -9,7 +9,7 @@
     <h2>Отдельный доказательный workspace</h2>
     <p>Обычный стол или кресло сюда не попадёт. Нужен явный контекст ротанга; сырьё, профиль и готовая мебель классифицируются отдельно.</p>
   </div>
-  <span class="tag neutral">OFFLINE · источник поиска выключен</span>
+  <span class="tag {% if search_paused %}warning{% elif safe_mode %}neutral{% else %}success{% endif %}">{% if search_paused %}поиск на паузе{% elif safe_mode %}OFFLINE · без внешних запросов{% else %}LIVE{% endif %}</span>
 </section>
 
 <div class="metrics rattan-metrics">

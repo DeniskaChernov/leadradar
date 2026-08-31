@@ -385,6 +385,7 @@ async def _register_bot_commands(bot: Bot) -> None:
             BotCommand(command="status", description="Состояние мониторинга"),
             BotCommand(command="stats", description="Статистика базы и сделок"),
             BotCommand(command="hot", description="Открытые HOT-лиды"),
+            BotCommand(command="pending", description="Очередь AI_PENDING"),
             BotCommand(command="lead", description="Карточка лида по ID"),
             BotCommand(command="scan", description="Проверить Instagram сейчас"),
             BotCommand(command="competitors", description="Список конкурентов"),

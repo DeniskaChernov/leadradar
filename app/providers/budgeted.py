@@ -179,11 +179,11 @@ class BudgetedInstagramProvider(InstagramProvider):
         try:
             result = await call()
         except Exception as exc:
-            # Call already left the process: without provider credit proof we must not invent a charge.
-            await self.usage.mark_reservation_uncertain(
+            await self._settle_failed_call(
                 reservation_id,
-                reason="external_call_failed_without_provider_credit_observation",
+                reserved_units=1,
                 details=details,
+                uncertain_reason="external_call_failed_without_provider_credit_observation",
             )
             raise ProviderCallUncertainError(
                 "External call failed after delivery started without provider credit proof"
@@ -261,14 +261,15 @@ class BudgetedInstagramProvider(InstagramProvider):
                 max_pages=effective_pages,
             )
         except Exception as exc:
-            await self.usage.mark_reservation_uncertain(
+            await self._settle_failed_call(
                 reservation_id,
-                reason="comment_batch_failed_without_provider_credit_observation",
+                reserved_units=effective_pages,
                 details={
                     "provider": self.inner.name,
                     "reserved_pages": effective_pages,
                     "source_account": post.competitor.strip().lower().lstrip("@"),
                 },
+                uncertain_reason="comment_batch_failed_without_provider_credit_observation",
             )
             raise ProviderCallUncertainError(
                 "Comment batch failed after delivery started without provider credit proof"
@@ -317,6 +318,36 @@ class BudgetedInstagramProvider(InstagramProvider):
             ),
         )
         return result
+
+    async def _settle_failed_call(
+        self,
+        reservation_id: int,
+        *,
+        reserved_units: int,
+        details: dict,
+        uncertain_reason: str,
+    ) -> None:
+        """Списать подтверждённые credits и очистить leftover observations.
+
+        Без credit proof резервация остаётся UNCERTAIN — charge не выдумывается.
+        """
+        confirmed_units = await self._persist_credit_observations()
+        if confirmed_units is None:
+            await self.usage.mark_reservation_uncertain(
+                reservation_id,
+                reason=uncertain_reason,
+                details=details,
+            )
+            return
+        if self.scan_budget is not None and confirmed_units < reserved_units:
+            self.scan_budget.refund(reserved_units - confirmed_units)
+        await self.usage.finalize_reservation(
+            reservation_id,
+            units=confirmed_units,
+            success=False,
+            details={**details, "failed_after_provider_credit": True},
+            unit_source="PROVIDER_CONFIRMED",
+        )
 
     async def _persist_credit_observations(self) -> int | None:
         observations = self.inner.pop_credit_observations()

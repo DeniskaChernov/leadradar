@@ -1646,16 +1646,19 @@ class WebQueryService:
         return {"page": page, "economics": page.usd}
 
     async def analytics(self, days: int = 30) -> dict:
+        started_at = datetime.now(UTC) - timedelta(days=days)
         async with self.session_factory() as session:
             funnel_rows = (
                 await session.execute(
-                    select(Lead.status, func.count(Lead.id)).group_by(Lead.status)
+                    select(Lead.status, func.count(Lead.id))
+                    .where(Lead.created_at >= started_at)
+                    .group_by(Lead.status)
                 )
             ).all()
             intent_rows = (
                 await session.execute(
                     select(Lead.intent, func.count(Lead.id))
-                    .where(Lead.status != LeadStatus.NOT_LEAD)
+                    .where(Lead.status != LeadStatus.NOT_LEAD, Lead.created_at >= started_at)
                     .group_by(Lead.intent)
                     .order_by(desc(func.count(Lead.id)))
                 )
@@ -1663,7 +1666,11 @@ class WebQueryService:
             product_rows = (
                 await session.execute(
                     select(Lead.product_category, func.count(Lead.id))
-                    .where(Lead.product_category.is_not(None), Lead.status != LeadStatus.NOT_LEAD)
+                    .where(
+                        Lead.product_category.is_not(None),
+                        Lead.status != LeadStatus.NOT_LEAD,
+                        Lead.created_at >= started_at,
+                    )
                     .group_by(Lead.product_category)
                     .order_by(desc(func.count(Lead.id)))
                 )
@@ -1671,15 +1678,27 @@ class WebQueryService:
             lost_rows = (
                 await session.execute(
                     select(Deal.lost_reason, func.count(Deal.id))
-                    .where(Deal.status == DealStatus.LOST, Deal.lost_reason.is_not(None))
+                    .where(
+                        Deal.status == DealStatus.LOST,
+                        Deal.lost_reason.is_not(None),
+                        func.coalesce(Deal.lost_at, Deal.updated_at) >= started_at,
+                    )
                     .group_by(Deal.lost_reason)
                     .order_by(desc(func.count(Deal.id)))
                 )
             ).all()
-            feedback_total = int(await session.scalar(select(func.count(AIFeedback.id))) or 0)
+            feedback_total = int(
+                await session.scalar(
+                    select(func.count(AIFeedback.id)).where(AIFeedback.created_at >= started_at)
+                )
+                or 0
+            )
             feedback_sales = int(
                 await session.scalar(
-                    select(func.count(AIFeedback.id)).where(AIFeedback.deal_won.is_(True))
+                    select(func.count(AIFeedback.id)).where(
+                        AIFeedback.deal_won.is_(True),
+                        AIFeedback.created_at >= started_at,
+                    )
                 )
                 or 0
             )

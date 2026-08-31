@@ -24,20 +24,24 @@ READ_TOOL_NAMES = frozenset(
     }
 )
 
-_CATALOG_QUERY_TOKENS = (
+_CATALOG_STRONG_TOKENS = (
     "что предложить",
     "next action",
-    "каталог",
-    "recommend",
     "предложить клиент",
 )
-_EXPLAIN_QUERY_TOKENS = (
+_CATALOG_WEAK_TOKENS = (
+    "каталог",
+    "recommend",
+)
+_EXPLAIN_STRONG_TOKENS = (
     "объясни",
     "explain",
-    "оценк",
-    "score",
     "почему",
     "breakdown",
+)
+_EXPLAIN_WEAK_TOKENS = (
+    "оценк",
+    "score",
 )
 _CONTACT_LEADS_QUERY_TOKENS = (
     "лиды клиента",
@@ -46,6 +50,21 @@ _CONTACT_LEADS_QUERY_TOKENS = (
     "list lead",
     "show lead",
     "список лид",
+)
+_LEAD_SEARCH_TOKENS = (
+    "покажи лид",
+    "показать лид",
+    "найди лид",
+    "список лид",
+    "show lead",
+    "list lead",
+)
+_OPENINGS_TOKENS = (
+    "открытия",
+    "opening",
+    "venue",
+    "заведен",
+    "google.openings",
 )
 
 
@@ -141,10 +160,20 @@ class AgentSessionService:
             lowered
         )
         company_name = str(context.get("company_name") or "").strip()
-        if not company_name and any(token in lowered for token in ("ротанг", "rattan", "компан")):
+        lead_list_query = "лид" in lowered
+        if (
+            not company_name
+            and not lead_list_query
+            and any(token in lowered for token in ("ротанг", "rattan", "компан"))
+        ):
             company_name = self._extract_company_hint(query)
 
-        if lead_id is not None and self._matches_intent(lowered, _CATALOG_QUERY_TOKENS):
+        catalog_strong = self._matches_intent(lowered, _CATALOG_STRONG_TOKENS)
+        catalog_weak = self._matches_intent(lowered, _CATALOG_WEAK_TOKENS)
+        explain_strong = self._matches_intent(lowered, _EXPLAIN_STRONG_TOKENS)
+        explain_weak = self._matches_intent(lowered, _EXPLAIN_WEAK_TOKENS)
+
+        if lead_id is not None and (catalog_strong or (catalog_weak and not explain_strong)):
             return [("catalog.recommend", {"lead_id": lead_id})]
 
         if contact_id is not None and self._matches_intent(
@@ -152,10 +181,7 @@ class AgentSessionService:
         ):
             return [("lead.search", {"query": "", "contact_id": contact_id})]
 
-        if lead_id is not None and self._matches_intent(lowered, _EXPLAIN_QUERY_TOKENS):
-            return [("lead.explain_score", {"lead_id": lead_id})]
-
-        if lead_id is not None:
+        if lead_id is not None and (explain_strong or (explain_weak and not catalog_strong)):
             return [("lead.explain_score", {"lead_id": lead_id})]
 
         if segment_slug:
@@ -169,26 +195,23 @@ class AgentSessionService:
                 raise ValueError("competitor_id is required for competitor opportunity queries")
             return [("competitor.opportunities", {"competitor_id": competitor_id})]
 
-        if company_name or any(token in lowered for token in ("ротанг", "rattan")):
+        if not lead_list_query and (
+            company_name or any(token in lowered for token in ("ротанг", "rattan"))
+        ):
             return [("rattan.company_analysis", {"company_name": company_name})]
 
-        if any(token in lowered for token in ("открыт", "opening", "venue", "заведен")):
+        if self._matches_intent(lowered, _OPENINGS_TOKENS) and not lead_list_query:
             status = str(context.get("status") or "PENDING_REVIEW")
             return [("google.openings", {"status": status})]
 
-        if any(
-            token in lowered
-            for token in (
-                "что предложить",
-                "покажи лид",
-                "показать лид",
-                "найди лид",
-                "список лид",
-                "show lead",
-                "list lead",
-            )
-        ):
+        if catalog_strong or self._matches_intent(lowered, _LEAD_SEARCH_TOKENS):
             return [("lead.search", {"query": ""})]
+
+        if lead_list_query:
+            return [("lead.search", {"query": query})]
+
+        if lead_id is not None:
+            return [("lead.explain_score", {"lead_id": lead_id})]
 
         return [("lead.search", {"query": query})]
 

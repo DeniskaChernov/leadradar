@@ -12,9 +12,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=13.8.0-ui-polish">
+  <link rel="stylesheet" href="/static/app.css?v=13.8.1-bug-hunt">
   <script defer src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
-  <script defer src="/static/app.js?v=13.8.0-ui-polish"></script>
+  <script defer src="/static/app.js?v=13.8.1-bug-hunt"></script>
 </head>
 <body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}" data-page="{{ active_path }}">
 <a class="skip-link" href="#main-content">Перейти к содержимому</a>
@@ -52,7 +52,9 @@
       <a class="nav {% if active_path.startswith('/openings') %}active{% endif %}" href="/openings" {% if active_path.startswith('/openings') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="store"></i></span><b>Открытия</b></a>
       <a class="nav {% if active_path.startswith('/deals') %}active{% endif %}" href="/deals" {% if active_path.startswith('/deals') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="handshake"></i></span><b>Сделки</b></a>
       <a class="nav {% if active_path.startswith('/audiences') %}active{% endif %}" href="/audiences" {% if active_path.startswith('/audiences') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="target"></i></span><b>Аудитории</b></a>
+      <a class="nav {% if active_path.startswith('/catalog') %}active{% endif %}" href="/catalog" {% if active_path.startswith('/catalog') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="notebook-tabs"></i></span><b>Каталог</b></a>
       <a class="nav {% if active_path.startswith('/competitors') %}active{% endif %}" href="/competitors" {% if active_path.startswith('/competitors') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="building-2"></i></span><b>Конкуренты</b></a>
+      <a class="nav {% if active_path.startswith('/discovery') %}active{% endif %}" href="/discovery" {% if active_path.startswith('/discovery') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="search"></i></span><b>Поиск</b></a>
       <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system" {% if active_path.startswith('/system') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="settings-2"></i></span><b>Система</b></a>
       </div>
       {% endif %}

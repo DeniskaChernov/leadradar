@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -42,6 +42,8 @@ if TYPE_CHECKING:
         IntelligenceSnapshot,
         SignificantChangeDetector,
     )
+
+_STALE_ANALYZING_SECONDS = 15 * 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -358,13 +360,28 @@ class LeadService:
         if limit <= 0:
             return []
         cutoff = datetime.now(UTC) - timedelta(seconds=cooldown_seconds)
+        stale_analyzing = datetime.now(UTC) - timedelta(seconds=max(cooldown_seconds, _STALE_ANALYZING_SECONDS))
         async with self.session_factory() as session:
             lead_ids = (
                 await session.scalars(
                     select(Lead.id)
                     .where(
-                        Lead.status == LeadStatus.AI_PENDING,
-                        (Lead.ai_last_attempt_at.is_(None) | (Lead.ai_last_attempt_at <= cutoff)),
+                        or_(
+                            (
+                                (Lead.status == LeadStatus.AI_PENDING)
+                                & (
+                                    Lead.ai_last_attempt_at.is_(None)
+                                    | (Lead.ai_last_attempt_at <= cutoff)
+                                )
+                            ),
+                            (
+                                (Lead.status == LeadStatus.ANALYZING)
+                                & (
+                                    Lead.ai_last_attempt_at.is_(None)
+                                    | (Lead.ai_last_attempt_at <= stale_analyzing)
+                                )
+                            ),
+                        )
                     )
                     .order_by(Lead.created_at)
                     .limit(limit)
@@ -380,7 +397,7 @@ class LeadService:
     async def _retry_pending_one(self, lead_id: int) -> ProcessedLead | None:
         async with self.session_factory() as session:
             lead = await session.get(Lead, lead_id)
-            if lead is None or lead.status != LeadStatus.AI_PENDING:
+            if lead is None or lead.status not in {LeadStatus.AI_PENDING, LeadStatus.ANALYZING}:
                 return None
         result = await self.analyze_lead(lead_id)
         return ProcessedLead(

@@ -265,3 +265,26 @@ async def test_analytics_page_excludes_money_metrics(session_factory):
     assert "ROI не подменяется догадкой" not in response.text
     assert "Market intelligence" in response.text
     assert "Воронка лидов" in response.text
+
+
+async def test_analytics_days_filter_excludes_old_leads(session_factory):
+    from datetime import UTC, datetime, timedelta
+
+    from app.db.models import Lead
+    from tests.test_lead_workflow import create_lead
+
+    await create_lead(session_factory, comment_id="analytics-new", user_id="analytics-new")
+    old_id = await create_lead(session_factory, comment_id="analytics-old", user_id="analytics-old")
+    async with session_factory() as session:
+        old = await session.get(Lead, old_id)
+        assert old is not None
+        old.created_at = datetime.now(UTC) - timedelta(days=10)
+        await session.commit()
+
+    queries = WebQueryService(session_factory, hot_threshold=70)
+    day1 = await queries.analytics(days=1)
+    day30 = await queries.analytics(days=30)
+    total_1 = sum(day1["funnel"].values())
+    total_30 = sum(day30["funnel"].values())
+    assert total_1 >= 1
+    assert total_30 >= total_1 + 1

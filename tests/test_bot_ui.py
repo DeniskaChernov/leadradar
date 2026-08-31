@@ -10,7 +10,7 @@ def test_main_menu_exposes_primary_commands():
         for button in row
     }
 
-    assert {"/status", "/stats", "/hot", "/scan", "/competitors", "/help"} <= labels
+    assert {"/status", "/stats", "/hot", "/pending", "/scan", "/competitors", "/help"} <= labels
 
 
 def test_main_menu_adds_webapp_button_for_https_public_url():
@@ -66,4 +66,4 @@ async def test_telegram_command_menu_contains_operational_commands():
     await _register_bot_commands(bot)  # type: ignore[arg-type]
 
     names = {item.command for item in bot.commands}
-    assert {"status", "stats", "hot", "lead", "scan", "help", "cancel"} <= names
+    assert {"status", "stats", "hot", "pending", "lead", "scan", "help", "cancel"} <= names
