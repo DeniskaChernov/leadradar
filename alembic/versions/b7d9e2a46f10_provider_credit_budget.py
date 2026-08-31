@@ -95,21 +95,21 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "monthly_target_units >= 0 AND monthly_soft_limit_units >= monthly_target_units "
             "AND monthly_hard_limit_units >= monthly_soft_limit_units",
-            name="ck_provider_budget_policy_monthly_limits",
+            name="ck_provider_budget_policies_monthly_limits",
         ),
         sa.CheckConstraint(
             "default_scan_budget_units > 0 "
             "AND maximum_manual_scan_budget_units >= default_scan_budget_units",
-            name="ck_provider_budget_policy_scan_limits",
+            name="ck_provider_budget_policies_scan_limits",
         ),
         sa.CheckConstraint(
             "comments_target_units >= 0 AND discovery_target_units >= 0 "
             "AND enrichment_target_units >= 0 AND reserve_target_units >= 0",
-            name="ck_provider_budget_policy_allocations",
+            name="ck_provider_budget_policies_allocations",
         ),
         sa.CheckConstraint(
             "target_minimum_months > 0",
-            name="ck_provider_budget_policy_minimum_months",
+            name="ck_provider_budget_policies_minimum_months",
         ),
     )
     op.create_index(
@@ -155,11 +155,11 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(
             "credits_remaining IS NULL OR credits_remaining >= 0",
-            name="ck_provider_credit_snapshot_remaining",
+            name="ck_provider_credit_snapshots_remaining",
         ),
         sa.CheckConstraint(
             "credits_charged IS NULL OR credits_charged >= 0",
-            name="ck_provider_credit_snapshot_charged",
+            name="ck_provider_credit_snapshots_charged",
         ),
     )
     op.create_index(
