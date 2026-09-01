@@ -8,16 +8,16 @@
   <span class="pill primary">Аналитика игрока рынка</span>
 </div>
 
-<section class="panel competitor-intel-hero">
+<section class="panel competitor-intel-hero" data-motion-root>
   <div>
-    <span class="eyebrow">COMPETITOR INTELLIGENCE V2</span>
+    <span class="eyebrow">РАЗВЕДКА КОНКУРЕНТА V2</span>
     <h2>@{{ competitor.normalized_handle }}</h2>
     <p>{{ competitor.notes or 'Наблюдаемый игрок мебельного рынка.' }}</p>
     <div class="source-boundary">Только сохранённые публичные комментарии. Ответы в Direct и скрытая активность системе неизвестны.</div>
   </div>
   <div class="competitor-intel-score">
     <strong>{{ commercial_rate }}%</strong>
-    <span>commercial intent rate</span>
+    <span>доля коммерческого интереса</span>
     <small>{{ commercial }} из {{ comments }} комментариев</small>
   </div>
 </section>
@@ -136,7 +136,7 @@
 
   {% if heatmap %}
   <section class="panel demand-heatmap-panel">
-    <div class="panel-head"><div><span class="eyebrow">DEMAND HEATMAP (30 ДНЕЙ)</span><h2>Динамика и популярность товаров</h2><p>Распределение спроса за 30 дней.</p></div></div>
+    <div class="panel-head"><div><span class="eyebrow">ТЕПЛОКАРТА СПРОСА (30 ДНЕЙ)</span><h2>Динамика и популярность товаров</h2><p>Распределение спроса за 30 дней.</p></div></div>
     <div class="split-ranks">
       <div>
         <h3>Топ категорий</h3>

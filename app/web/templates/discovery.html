@@ -3,9 +3,9 @@
 {% block heading %}Разведка{% endblock %}
 {% block subheading %}Новые компании и изменения — сначала проверка, потом бесплатное добавление на паузу{% endblock %}
 {% block content %}
-<section class="discovery-hero panel">
+<section class="discovery-hero panel" data-motion-root>
   <div>
-    <span class="eyebrow">DISCOVERY CENTER</span>
+    <span class="eyebrow">ЦЕНТР РАЗВЕДКИ</span>
     <h2>Один вход для рыночных находок</h2>
     <p>Импортируйте результаты Parser Club, таблицы или ручную выгрузку. Файл обрабатывается локально: внешний поиск и AI не запускаются. Повторная загрузка не создаёт дубли — система сопоставляет Instagram, сайт и нормализованное название.</p>
   </div>
@@ -49,7 +49,7 @@
   </div>
 
   <aside>
-    <div class="section-title-row"><div><span class="eyebrow">DIFF ENGINE</span><h2>Что изменилось</h2><p>Только новые версии. Повтор одинакового файла не создаёт событий.</p></div></div>
+    <div class="section-title-row"><div><span class="eyebrow">ДВИЖОК ИЗМЕНЕНИЙ</span><h2>Что изменилось</h2><p>Только новые версии. Повтор одинакового файла не создаёт событий.</p></div></div>
     <div class="discovery-changes">
     {% for diff, candidate in changes %}
       <article class="panel discovery-change">

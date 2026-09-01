@@ -3,7 +3,7 @@
 {% block heading %}@{{ contact.username }}{% endblock %}
 {% block subheading %}Вся история клиента, интерес, задачи и сделки в одном месте{% endblock %}
 {% block content %}
-<div class="contact-header panel">
+<div class="contact-header panel" data-motion-root>
   <div class="profile-avatar">{{ (contact.display_name or contact.username)[:1]|upper }}</div>
   <div>
     <span class="eyebrow">КЛИЕНТ #{{ contact.id }}</span>
@@ -149,7 +149,7 @@
 
   <aside class="contact-side">
     <section class="panel lead-agent-panel compact action-form-card" aria-labelledby="contact-agent-title">
-      <span class="eyebrow">AI · GROUNDED</span>
+      <span class="eyebrow">AI · ОБОСНОВАННО</span>
       <h3 id="contact-agent-title">Ассистент по клиенту</h3>
       <p class="muted">@{{ contact.username }} · клиент #{{ contact.id }}{% if leads %} · lead #{{ leads[0].id }}{% endif %}</p>
       <div class="agent-presets inline" role="group" aria-label="Быстрые вопросы по клиенту">

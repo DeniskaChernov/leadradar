@@ -3,7 +3,7 @@
 {% block heading %}Искусственный ротанг{% endblock %}
 {% block subheading %}Отдельный портфель источников. Не наследует мебельный Radar автоматически.{% endblock %}
 {% block content %}
-<section class="hero-status safe rattan-hero">
+<section class="hero-status safe rattan-hero" data-motion-root>
   <div>
     <span class="eyebrow">ПОРТФЕЛЬ РОТАНГА</span>
     <h2>{% if rattan_counts.portfolio_empty %}Портфель пуст{% else %}{{ rattan_counts.companies }} источников · {{ rattan_counts.signals }} сигналов{% endif %}</h2>

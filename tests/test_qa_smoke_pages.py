@@ -50,6 +50,8 @@ def _app(session_factory):
         "/openings",
         "/audiences",
         "/roadmap",
+        "/rattan",
+        "/audiences/quality",
     ],
 )
 async def test_public_pages_render_200(session_factory, path: str):
@@ -100,3 +102,42 @@ async def test_lead_funnel_api_chain(session_factory):
     assert taken.status_code == 200
     assert contacted.status_code == 200
     assert bad.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "path,marker",
+    [
+        ("/discovery", "ЦЕНТР РАЗВЕДКИ"),
+        ("/analytics?days=7", "РЫНОЧНАЯ АНАЛИТИКА"),
+        ("/catalog", "ИСТОЧНИК ИСТИНЫ"),
+        ("/audiences", "ИНТЕЛЛЕКТ АУДИТОРИЙ"),
+        ("/openings", "B2B ОТКРЫТИЯ"),
+        ("/agent", "ОБОСНОВАННО"),
+    ],
+)
+async def test_admin_pages_show_russian_eyebrows(session_factory, path: str, marker: str):
+    app = _app(session_factory)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(path)
+    assert response.status_code == 200
+    assert marker in response.text
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/discovery",
+        "/analytics?days=7",
+        "/catalog",
+        "/audiences",
+        "/openings",
+        "/roadmap",
+        "/rattan",
+    ],
+)
+async def test_secondary_pages_have_motion_root(session_factory, path: str):
+    app = _app(session_factory)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(path)
+    assert response.status_code == 200
+    assert "data-motion-root" in response.text

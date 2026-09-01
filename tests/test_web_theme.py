@@ -51,10 +51,10 @@ def test_v41_signal_first_states_and_notification_modes_are_manager_readable():
     assert "УВЕДОМЛЕНИЯ МЕНЕДЖЕРУ" in system
     assert "Готовность Telegram-уведомлений" in system
     assert "ПРОВЕРКА · БЕЗ ОТПРАВКИ" in system
-    assert "OFFLINE CHALLENGE" in system
+    assert "OFFLINE CHALLENGE" in system or "ОФЛАЙН-ПРОВЕРКА" in system
     assert "Качество локального интеллекта" in system
     assert "production accuracy" in system
-    assert "INDEPENDENT QUALITY GATES" in system
+    assert "INDEPENDENT QUALITY GATES" in system or "НЕЗАВИСИМЫЕ GATES" in system
     assert "Каждый новый комментарий" in competitors
     assert "Только покупательский интерес" in competitors
     assert "Только горячие лиды" in competitors
@@ -75,9 +75,9 @@ def test_audience_pages_explain_privacy_boundary_and_campaign_action():
 
     assert 'href="/audiences"' in base
     assert "Чувствительные признаки не собираются" in audiences
-    assert "quality workspace" in audiences
+    assert "quality workspace" in audiences or "рабочее пространство качества" in audiences
     assert "Instagram username не превращается" in audiences
-    assert "CAMPAIGN BRIEF" in detail
+    assert "CAMPAIGN BRIEF" in detail or "БРИФ КАМПАНИИ" in detail
     assert "АУДИТОРИЯ И ИНТЕРЕСЫ" in contact
 
 
@@ -313,7 +313,7 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert ".rattan-metrics" in css
     assert 'name="contact_id"' in contact_detail
     assert "data-agent-query" in system
-    assert "Export recipes preview" in system
+    assert "Export recipes preview" in system or "Предпросмотр export recipes" in system
     assert "export-recipe-grid" in system
     assert "Локальный режим без Telegram auth" in system
     assert "responsive-table" in economics

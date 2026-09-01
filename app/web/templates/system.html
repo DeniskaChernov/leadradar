@@ -144,7 +144,7 @@
 </section>
 
 <section class="panel" id="ai-safety">
-  <div class="panel-head"><div><span class="eyebrow">PHASE B · БЕЗОПАСНОСТЬ AI</span><h2>AI-запросы и бюджетные lease</h2><p>Диагностика читает только локальную БД и не вызывает внешние сервисы.</p></div><span class="tag {% if ai_safety.stale_ai_leases or ai_safety.uncertain_reservations %}neutral{% else %}status-contacted{% endif %}">{% if ai_safety.stale_ai_leases or ai_safety.uncertain_reservations %}нужна сверка{% else %}контур чист{% endif %}</span></div>
+  <div class="panel-head"><div><span class="eyebrow">ФАЗА B · БЕЗОПАСНОСТЬ AI</span><h2>AI-запросы и бюджетные lease</h2><p>Диагностика читает только локальную БД и не вызывает внешние сервисы.</p></div><span class="tag {% if ai_safety.stale_ai_leases or ai_safety.uncertain_reservations %}neutral{% else %}status-contacted{% endif %}">{% if ai_safety.stale_ai_leases or ai_safety.uncertain_reservations %}нужна сверка{% else %}контур чист{% endif %}</span></div>
   <div class="mini-metrics">
     <span><b>{{ ai_safety.statuses.get('CLAIMED', 0) }}</b> AI выполняются</span>
     <span><b>{{ ai_safety.statuses.get('SUCCEEDED', 0) }}</b> из кэша/успешно</span>
@@ -184,7 +184,7 @@
 </section>
 
 <section class="panel intelligence-quality">
-  <div class="panel-head"><div><span class="eyebrow">OFFLINE CHALLENGE · {{ intelligence_quality.dataset_version }}</span><h2>Качество локального интеллекта</h2><p>Фиксированный RU / UZ Latin / UZ Cyrillic набор работает без базы, сети и AI-токенов. Это проверка регрессий, а не заявление о production accuracy.</p></div><span class="tag {% if intelligence_quality.passed %}status-contacted{% else %}neutral{% endif %}">{% if intelligence_quality.passed %}внутренний gate пройден{% else %}gate заблокирован{% endif %}</span></div>
+  <div class="panel-head"><div><span class="eyebrow">ОФЛАЙН-ПРОВЕРКА · {{ intelligence_quality.dataset_version }}</span><h2>Качество локального интеллекта</h2><p>Фиксированный RU / UZ Latin / UZ Cyrillic набор работает без базы, сети и AI-токенов. Это проверка регрессий, а не заявление о production accuracy.</p></div><span class="tag {% if intelligence_quality.passed %}status-contacted{% else %}neutral{% endif %}">{% if intelligence_quality.passed %}внутренний gate пройден{% else %}gate заблокирован{% endif %}</span></div>
   <div class="mini-metrics">
     <span><b>{{ intelligence_quality.scenario_count }}</b> сложных сценариев</span>
     <span><b>{{ '%.1f'|format(intelligence_quality.lead_precision * 100) }}%</b> precision</span>
@@ -201,7 +201,7 @@
 </section>
 
 <section class="panel intelligence-quality" id="quality-gates" aria-labelledby="quality-gates-title">
-  <div class="panel-head"><div><span class="eyebrow">INDEPENDENT QUALITY GATES · UNSEEN</span><h2 id="quality-gates-title">Независимые offline gates</h2><p>Отдельные unseen-наборы для lead, audience membership и rattan. Calibration/challenge/robustness остаются в других фикстурах и не смешиваются с unseen.</p></div><span class="tag {% if quality_gates.passed %}status-contacted{% else %}neutral{% endif %}">{% if quality_gates.passed %}unseen gates пройдены{% else %}unseen gates заблокированы{% endif %}</span></div>
+  <div class="panel-head"><div><span class="eyebrow">НЕЗАВИСИМЫЕ GATES · UNSEEN</span><h2 id="quality-gates-title">Независимые offline gates</h2><p>Отдельные unseen-наборы для lead, audience membership и rattan. Calibration/challenge/robustness остаются в других фикстурах и не смешиваются с unseen.</p></div><span class="tag {% if quality_gates.passed %}status-contacted{% else %}neutral{% endif %}">{% if quality_gates.passed %}unseen gates пройдены{% else %}unseen gates заблокированы{% endif %}</span></div>
   <div class="mini-metrics">
     <span><b>{{ quality_gates.calibration_cases }}</b> calibration roots</span>
     <span><b>{{ quality_gates.challenge_cases }}</b> challenge cases</span>
@@ -295,7 +295,7 @@
 </section>
 
 <section class="panel export-recipes-workspace" aria-labelledby="export-recipes-title">
-  <div class="panel-head"><div><span class="eyebrow">META EXPORT · DRY-RUN</span><h2 id="export-recipes-title">Export recipes preview</h2><p>Privacy-safe preview: SHA-256 hashes, без мутаций и без Meta API. Сегмент должен быть synced в БД.</p></div><span class="tag neutral">NOT_CONNECTED export</span></div>
+  <div class="panel-head"><div><span class="eyebrow">META ЭКСПОРТ · DRY-RUN</span><h2 id="export-recipes-title">Предпросмотр export recipes</h2><p>Privacy-safe preview: SHA-256 hashes, без мутаций и без Meta API. Сегмент должен быть synced в БД.</p></div><span class="tag neutral">NOT_CONNECTED export</span></div>
   <div class="export-recipe-grid">
     {% for recipe in export_recipes %}
     <article class="export-recipe-card panel compact">
