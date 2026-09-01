@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Качество аудиторий · Lead Radar{% endblock %}
 {% block heading %}Качество аудиторий{% endblock %}
-{% block subheading %}Health, overlap и уверенность membership — только из БД{% endblock %}
+{% block subheading %}Здоровье сегментов, пересечения и уверенность membership — только из БД{% endblock %}
 {% block content %}
 <section class="hero-status live audience-quality-hero" data-motion-root>
   <div>
     <span class="eyebrow">КАЧЕСТВО АУДИТОРИЙ · ТОЛЬКО ЧТЕНИЕ</span>
-    <h2>Health, overlap и уверенность membership</h2>
+    <h2>Здоровье, пересечения и уверенность membership</h2>
     <p>Метрики считаются из AudienceMembership и ContactIntelligence. Внешние вызовы не выполняются.</p>
   </div>
   <div class="hero-actions">
@@ -24,13 +24,13 @@
   <div class="panel-head">
     <div><span class="eyebrow">ЗДОРОВЬЕ АУДИТОРИЙ · V5</span><h2 id="audience-quality-summary-title">Сводка</h2><p>{{ page.health_rows|length }} активных сегментов · {{ page.total_active_members }} участников</p></div>
     <div class="audience-quality-badges">
-      <span class="tag success">{{ page.healthy_count }} HEALTHY</span>
-      <span class="tag warning">{{ page.needs_review_count }} review</span>
+      <span class="tag success">{{ page.healthy_count }} здоровых</span>
+      <span class="tag warning">{{ page.needs_review_count }} на проверке</span>
     </div>
   </div>
   <div class="metrics economics-metrics">
     <div class="metric"><span>Активные участники</span><strong>{{ page.total_active_members }}</strong><small>все сегменты</small></div>
-    <div class="metric"><span>HEALTHY</span><strong>{{ page.healthy_count }}</strong><small>avg confidence ≥ 60</small></div>
+    <div class="metric"><span>Здоровые</span><strong>{{ page.healthy_count }}</strong><small>avg confidence ≥ 60</small></div>
     <div class="metric"><span>Нужна проверка</span><strong>{{ page.needs_review_count }}</strong><small>NOISY / REVIEW / NOT_EXPORTABLE</small></div>
     <div class="metric"><span>Пересечения</span><strong>{{ page.overlap_rows|length }}</strong><small>пары с Jaccard > 0</small></div>
   </div>
@@ -43,36 +43,36 @@
       <thead>
         <tr>
           <th>Аудитория</th>
-          <th>Status</th>
+          <th>Статус</th>
           <th>Участники</th>
           <th>+7д</th>
           <th>−7д</th>
-          <th>Conf</th>
-          <th>Intent</th>
-          <th>Evidence</th>
-          <th>Sources</th>
-          <th>Stale</th>
-          <th>Unknown</th>
+          <th>Увер.</th>
+          <th>Интент</th>
+          <th>Доказ.</th>
+          <th>Источники</th>
+          <th>Устар.</th>
+          <th>Неизв.</th>
           <th>WON</th>
-          <th>Export</th>
+          <th>Экспорт</th>
         </tr>
       </thead>
       <tbody>
         {% for row in page.health_rows %}
         <tr>
           <td data-label="Аудитория"><a href="/audiences/{{ row.segment_slug }}"><b>{{ row.segment_name }}</b></a><small>{{ row.audience_level }}</small></td>
-          <td data-label="Status"><span class="tag {% if row.status == 'HEALTHY' %}success{% elif row.status in ['LOW_DATA','STALE'] %}warning{% else %}danger{% endif %}">{{ row.status }}</span></td>
+          <td data-label="Статус"><span class="tag {% if row.status == 'HEALTHY' %}success{% elif row.status in ['LOW_DATA','STALE'] %}warning{% else %}danger{% endif %}">{{ row.status }}</span></td>
           <td data-label="Участники">{{ row.active_members }}</td>
           <td data-label="+7д">{{ row.new_members_7d }}</td>
           <td data-label="−7д">{{ row.expired_7d }}</td>
-          <td data-label="Conf">{{ row.avg_confidence }}</td>
-          <td data-label="Intent">{{ row.avg_intent_score }}</td>
-          <td data-label="Evidence">{{ row.avg_evidence_count }}</td>
-          <td data-label="Sources">{{ row.avg_source_count }}</td>
-          <td data-label="Stale">{{ row.stale_ratio }}%</td>
-          <td data-label="Unknown">{{ row.unknown_ratio }}%</td>
+          <td data-label="Увер.">{{ row.avg_confidence }}</td>
+          <td data-label="Интент">{{ row.avg_intent_score }}</td>
+          <td data-label="Доказ.">{{ row.avg_evidence_count }}</td>
+          <td data-label="Источники">{{ row.avg_source_count }}</td>
+          <td data-label="Устар.">{{ row.stale_ratio }}%</td>
+          <td data-label="Неизв.">{{ row.unknown_ratio }}%</td>
           <td data-label="WON">{% if row.won_rate is not none %}{{ row.won_count }} ({{ row.won_rate }}%){% else %}—{% endif %}</td>
-          <td data-label="Export">{{ row.exportable_count }}</td>
+          <td data-label="Экспорт">{{ row.exportable_count }}</td>
         </tr>
         {% if row.issues %}
         <tr class="audience-quality-issues"><td colspan="13">{% for issue in row.issues %}<span>{{ issue }}</span>{% endfor %}</td></tr>

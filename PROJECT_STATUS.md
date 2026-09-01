@@ -4,7 +4,11 @@
 
 **PERSISTENT AI CHAT · FUNNEL UX · QA 55 · LIVE PILOT READY**
 
-Контрольная точка 2026-09-01 (вечер, QA2): русификация admin-страниц (discovery,
+Контрольная точка 2026-09-01 (QA3): economics split test (30 confirmed + 10
+estimated = 75%), smoke competitor/audience detail по реальным ID, русификация
+audience_quality таблиц, mobile responsive-table audit. **383 passed, 1 skipped**.
+
+Контрольная точка 2026-09-01 (QA2): русификация admin-страниц (discovery,
 analytics, catalog, audiences, openings, competitor/audience detail), motion на всех
 hero-секциях, +15 smoke-тестов. Offline gate: **377 passed, 1 skipped**.
 

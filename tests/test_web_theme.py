@@ -219,6 +219,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
 
     assert "13.11.2-crm-pages" in base
     assert "13.11.2-crm-pages" in auth
+    assert "data-motion-root" in auth
+    assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
     assert 'href="/catalog"' in base
     assert 'href="/discovery"' in base
@@ -244,6 +246,26 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     assert "sessionStorage.setItem('lr:scroll-y'" in javascript
     assert "setLoading" in javascript
     assert "prefers-reduced-motion: reduce" in javascript
+
+
+def test_mobile_responsive_tables_and_economics_wrap_at_720px():
+    css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
+    economics = (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    audience_quality = (PROJECT_ROOT / "app/web/templates/audience_quality.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "@media (max-width: 720px)" in css
+    assert ".responsive-table thead { display: none; }" in css
+    assert ".responsive-table td::before" in css
+    assert "content: attr(data-label)" in css
+    assert ".economics-table-wrap" in css
+    assert "economics-table-wrap" in economics
+    assert 'class="responsive-table audience-health-table"' in audience_quality
+    assert 'data-label="Статус"' in audience_quality
+    assert 'data-label="Увер."' in audience_quality
+    assert "body.more-navigation-open .mobile-nav-backdrop" in css
+    assert ".nav-primary { grid-template-columns: repeat(4,minmax(0,1fr))" in css
 
 
 def test_contact_qualification_and_intelligence_sections_have_explicit_layouts():
