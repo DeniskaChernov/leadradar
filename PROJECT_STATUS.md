@@ -2,13 +2,17 @@
 
 ## Текущая версия
 
-**PERSISTENT AI CHAT · FUNNEL UX · LIVE PILOT READY**
+**PERSISTENT AI CHAT · FUNNEL UX · QA 55 · LIVE PILOT READY**
+
+Контрольная точка 2026-09-01 (вечер): QA-план 55 действий закрыт — economics
+русифицирован (confirmed/estimated credits), smoke-тесты всех страниц и funnel API chain,
+motion на economics/competitors/system. Offline gate: **362 passed, 1 skipped**. Live
+readiness: **READY FOR LIVE PILOT**, UNCERTAIN=0.
 
 Контрольная точка 2026-09-01 (день): persistent `/agent` (сессии в БД, approval-gated
 write tools), исправлен критический баг `app.js` (дублирующий `escapeHtml` ломал воронку
 лидов), UI polish v13.11 (motion, funnel track, typing indicator). 4 UNCERTAIN OpenAI
-reservations reconciled (`spent=false`). Offline gate: **341 passed, 1 skipped**. CI GREEN
-run `33499039391` (sqlite + postgres). Live readiness: **READY FOR LIVE PILOT**.
+reservations reconciled (`spent=false`). CI GREEN run `33499039391` (sqlite + postgres).
 
 Контрольная точка 2026-09-01: фоновая очередь `LeadAnalysisPipeline` (concurrency 1–10 в
 `operational_controls`, Alembic `a2b3c4d5e6f7`) — Instagram-scan не блокируется OpenAI.

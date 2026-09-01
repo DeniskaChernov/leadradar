@@ -237,7 +237,7 @@ async def test_economics_page_renders_sections_and_honest_unknowns(session_facto
 
     assert response.status_code == 200
     assert "КРЕДИТНЫЙ БЮДЖЕТ ПРОВАЙДЕРОВ" in response.text
-    assert "AI Costs" in response.text
+    assert "Расходы AI" in response.text
     assert "Стоимость воронки" in response.text
     assert "Выручка и маржа" in response.text
     assert "Эффективность источников" in response.text
