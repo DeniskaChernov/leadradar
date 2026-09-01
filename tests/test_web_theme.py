@@ -192,6 +192,7 @@ def test_pilot_cockpit_quick_actions_and_scan_modal():
     assert 'id="scan-quick"' in base
     assert "scan_budget_quick" in base
     assert "quick-actions" in dashboard
+    assert 'href="/agent"' in dashboard
     assert "Кабина пилота" in dashboard
     assert "openScanQuickModal" in javascript
     assert "runScan" in javascript
@@ -216,8 +217,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.11.0-ui-polish" in base
-    assert "13.11.0-ui-polish" in auth
+    assert "13.11.1-dashboard" in base
+    assert "13.11.1-dashboard" in auth
     assert "fonts.googleapis.com" in base
     assert 'href="/catalog"' in base
     assert 'href="/discovery"' in base

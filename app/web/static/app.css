@@ -2615,7 +2615,7 @@ body::after { animation: ambient-drift-b 22s ease-in-out infinite alternate; }
 
 .quick-actions {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 10px;
   padding: 14px;
   margin-bottom: 14px;

@@ -2,7 +2,13 @@
 
 ## Текущая версия
 
-**ASYNC OPENAI PIPELINE · RADAR FEED · CONTROLLED PILOT READY**
+**PERSISTENT AI CHAT · FUNNEL UX · LIVE PILOT READY**
+
+Контрольная точка 2026-09-01 (день): persistent `/agent` (сессии в БД, approval-gated
+write tools), исправлен критический баг `app.js` (дублирующий `escapeHtml` ломал воронку
+лидов), UI polish v13.11 (motion, funnel track, typing indicator). 4 UNCERTAIN OpenAI
+reservations reconciled (`spent=false`). Offline gate: **341 passed, 1 skipped**. CI GREEN
+run `33499039391` (sqlite + postgres). Live readiness: **READY FOR LIVE PILOT**.
 
 Контрольная точка 2026-09-01: фоновая очередь `LeadAnalysisPipeline` (concurrency 1–10 в
 `operational_controls`, Alembic `a2b3c4d5e6f7`) — Instagram-scan не блокируется OpenAI.

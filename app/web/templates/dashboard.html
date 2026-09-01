@@ -3,7 +3,7 @@
 {% block heading %}Обзор{% endblock %}
 {% block subheading %}Кабина пилота — лиды, задачи и Radar в одном месте{% endblock %}
 {% block content %}
-<section class="hero-status {% if safe_mode %}safe{% else %}live{% endif %}">
+<section class="hero-status {% if safe_mode %}safe{% else %}live{% endif %}" data-motion-root>
   <div>
     <span class="eyebrow">{% if safe_mode %}БЕЗ LIVE · ГОТОВО{% else %}ПОДГОТОВКА LIVE{% endif %}</span>
     <h2>{% if safe_mode %}База и CRM работают без расхода credits{% else %}Готовим контролируемый пилот радара{% endif %}</h2>
@@ -18,8 +18,9 @@
 
 <section class="alert info compact-help"><b>Разбор сигналов</b><span>«Разобрать локально» — только правила, без OpenAI. «Повторить очередь AI» — hybrid/GPT, если OpenAI live включён на /system или /radar; иначе снова только правила.</span></section>
 
-<section class="quick-actions panel" aria-label="Быстрые действия">
+<section class="quick-actions panel" aria-label="Быстрые действия" data-motion-root>
   <a class="quick-action" href="/radar"><span class="quick-action-icon"><i data-lucide="radar"></i></span><b>Radar</b><small>Бюджет и запуск проверки</small></a>
+  <a class="quick-action" href="/agent"><span class="quick-action-icon"><i data-lucide="bot"></i></span><b>AI-чат</b><small>Grounded ответы из БД</small></a>
   <a class="quick-action" href="/leads"><span class="quick-action-icon hot"><i data-lucide="zap"></i></span><b>{{ counts.hot }} HOT</b><small>Открыть горячие лиды</small></a>
   <a class="quick-action" href="/tasks"><span class="quick-action-icon warn"><i data-lucide="circle-check-big"></i></span><b>{{ counts.tasks_today }} задач</b><small>{% if counts.tasks_due %}{{ counts.tasks_due }} просрочено{% else %}На сегодня{% endif %}</small></a>
   <a class="quick-action" href="/economics"><span class="quick-action-icon"><i data-lucide="wallet"></i></span><b>Экономика</b><small>Credits и эффективность</small></a>
@@ -33,7 +34,7 @@
   <button class="btn tiny" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %}>Проверить сейчас</button>
 </section>
 
-<div class="metrics dashboard-metrics">
+<div class="metrics dashboard-metrics" data-motion-root>
   <a class="metric" href="/contacts"><span>Клиенты</span><strong>{{ counts.contacts }}</strong><small>уникальных профилей</small></a>
   <a class="metric" href="/radar"><span>Сигналы</span><strong>{{ counts.comments }}</strong><small>+{{ counts.new_comments_24h }} за 24ч</small></a>
   <a class="metric" href="/radar?kind=pending"><span>Ждут разбора</span><strong>{{ counts.unprocessed + counts.ai_pending }}</strong><small>очередь + AI</small></a>

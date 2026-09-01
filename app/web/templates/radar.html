@@ -3,7 +3,7 @@
 {% block heading %}Радар сигналов{% endblock %}
 {% block subheading %}Каждый комментарий: кто написал, где нашли и что он означает{% endblock %}
 {% block content %}
-<section class="hero-status radar-hero {% if scan_budget.live_enabled %}live{% else %}safe{% endif %}">
+<section class="hero-status radar-hero {% if scan_budget.live_enabled %}live{% else %}safe{% endif %}" data-motion-root>
   <div>
     <span class="eyebrow">РАДАР СИГНАЛОВ</span>
     <h2>{{ overview.total }} сигналов · {{ overview.hot }} HOT</h2>
