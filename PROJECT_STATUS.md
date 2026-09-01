@@ -7,7 +7,7 @@
 Контрольная точка 2026-09-01: фоновая очередь `LeadAnalysisPipeline` (concurrency 1–10 в
 `operational_controls`, Alembic `a2b3c4d5e6f7`) — Instagram-scan не блокируется OpenAI.
 Radar UI: лента significant changes + HOT, live-баннер, toast/звук, polling `/api/radar/feed`.
-Retry AI и batch analyze — async через pipeline. Offline gate: **329 passed, 1 skipped**.
+Retry AI и batch analyze — async через pipeline. Offline gate: **331 passed, 1 skipped**.
 
 Controlled pilot: `scripts/arm_controlled_pilot.py` (aiko.uz only, 5 credits, Radar+OpenAI ON),
 preflight `scripts/prepare_controlled_pilot.py` (без live). Meta live OFF.

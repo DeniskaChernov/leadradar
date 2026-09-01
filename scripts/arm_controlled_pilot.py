@@ -1,5 +1,5 @@
 # Арм controlled pilot: aiko.uz only, Radar 5 credits, OpenAI ON.
-# Не запускает live scan — только ops + пауза лишних источников.
+# не запускает live scan — только ops + пауза лишних источников.
 from __future__ import annotations
 
 import asyncio
