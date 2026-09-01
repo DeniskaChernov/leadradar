@@ -139,11 +139,11 @@ class MarketIntelligenceService:
                 competitor.vertical = candidate.vertical
             candidate.instagram_handle = normalized
             candidate.status = "PROMOTED"
-            await session.flush()
-            if competitor.business_id:
-                business = await session.get(BusinessEntity, competitor.business_id)
-                sync_business_vertical_enrollment(business, vertical=competitor.vertical)
             try:
+                await session.flush()
+                if competitor.business_id:
+                    business = await session.get(BusinessEntity, competitor.business_id)
+                    sync_business_vertical_enrollment(business, vertical=competitor.vertical)
                 await session.commit()
             except IntegrityError:
                 await session.rollback()

@@ -49,7 +49,7 @@ def upgrade() -> None:
         sa.text(
             "INSERT INTO operational_controls "
             "(id, radar_live_armed, openai_live_armed, default_scan_credits, updated_at, created_at) "
-            "VALUES (1, 0, 0, 5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            "VALUES (1, FALSE, FALSE, 5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
         )
     )
 
