@@ -163,3 +163,56 @@ def test_cost_preview_estimation():
     assert preview.estimated_units == 20
     assert preview.estimated_cost_usd_min > Decimal("0")
     assert preview.estimated_cost_usd_max >= preview.estimated_cost_usd_min
+
+
+@pytest.mark.asyncio
+async def test_reconcile_uncertain_reservation_spent_and_not_spent(session_factory):
+    usage_svc = ExternalUsageService(session_factory)
+    spent_id = await usage_svc.reserve_budget(
+        "scrapecreators", "get_comments", 10, reservation_key="reconcile:spent"
+    )
+    free_id = await usage_svc.reserve_budget(
+        "scrapecreators", "get_comments", 10, reservation_key="reconcile:free"
+    )
+    await usage_svc.mark_call_started(spent_id)
+    await usage_svc.mark_call_started(free_id)
+    await usage_svc.mark_reservation_uncertain(spent_id, reason="network")
+    await usage_svc.mark_reservation_uncertain(free_id, reason="network")
+
+    assert await usage_svc.reconcile_uncertain_reservation(spent_id, spent=True, units=1)
+    assert await usage_svc.reconcile_uncertain_reservation(free_id, spent=False)
+    assert await usage_svc.reconcile_uncertain_reservation(spent_id, spent=True) is False
+
+    async with session_factory() as session:
+        spent = await session.get(ExternalBudgetReservation, spent_id)
+        free = await session.get(ExternalBudgetReservation, free_id)
+        usage_count = await session.scalar(select(func.count(ExternalUsage.id)))
+    assert spent is not None and spent.status == ReservationStatus.FINALIZED
+    assert free is not None and free.status == ReservationStatus.RELEASED
+    assert free.actual_units == 0
+    assert usage_count == 1
+
+
+@pytest.mark.asyncio
+async def test_ai_safety_counts_uncertain_status_not_expired(session_factory):
+    from datetime import UTC, datetime, timedelta
+
+    from app.web.queries import WebQueryService
+
+    usage_svc = ExternalUsageService(session_factory)
+    uncertain_id = await usage_svc.reserve_budget(
+        "openai", "lead_analysis", 10, reservation_key="diag:uncertain"
+    )
+    expired_id = await usage_svc.reserve_budget(
+        "openai", "lead_analysis", 10, reservation_key="diag:expired"
+    )
+    await usage_svc.mark_call_started(uncertain_id)
+    await usage_svc.mark_reservation_uncertain(uncertain_id)
+    async with session_factory() as session:
+        expired = await session.get(ExternalBudgetReservation, expired_id)
+        assert expired is not None
+        expired.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        await session.commit()
+
+    diagnostics = await WebQueryService(session_factory, hot_threshold=70).ai_safety_diagnostics()
+    assert diagnostics["uncertain_reservations"] == 1

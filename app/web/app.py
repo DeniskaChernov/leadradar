@@ -692,6 +692,7 @@ def build_web_app(
         replay_status = replay_scenario.status() if replay_scenario is not None else None
         notification_readiness = await notification_readiness_service.preview(limit=10)
         uncertain_notifications = await queries.uncertain_notification_queue(limit=20)
+        uncertain_budget_reservations = await queries.uncertain_external_reservation_queue(limit=20)
         ai_safety = await queries.ai_safety_diagnostics()
         intelligence_quality = intelligence_challenge.evaluate(
             hot_threshold=settings.hot_lead_threshold
@@ -784,6 +785,7 @@ def build_web_app(
                 notification_policy_info=notification_policy_info,
                 notification_readiness=notification_readiness,
                 uncertain_notifications=uncertain_notifications,
+                uncertain_budget_reservations=uncertain_budget_reservations,
                 ai_safety=ai_safety,
                 intelligence_quality=intelligence_quality,
                 quality_gates=quality_gates,
@@ -1175,6 +1177,44 @@ def build_web_app(
                 "Отмечено как доставлено в Telegram"
                 if delivered
                 else "Возвращено в очередь на повторную отправку"
+            ),
+        }
+
+    @app.post("/api/budget/reservations/{reservation_id}/reconcile")
+    async def reconcile_budget_reservation(request: Request, reservation_id: int):
+        payload = await _json_or_form(request)
+        spent_raw = str(payload.get("spent", "")).strip().lower()
+        if spent_raw not in {"1", "true", "yes", "on", "0", "false", "no", "off"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Укажите spent=true (провайдер списал) или spent=false (не списал)",
+            )
+        spent = spent_raw in {"1", "true", "yes", "on"}
+        units_raw = payload.get("units")
+        units = None
+        if units_raw not in (None, ""):
+            try:
+                units = max(0, int(units_raw))
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(status_code=400, detail="units должен быть целым") from exc
+        ok = await usage_service.reconcile_uncertain_reservation(
+            reservation_id,
+            spent=spent,
+            units=units,
+        )
+        if not ok:
+            raise HTTPException(
+                status_code=409,
+                detail="Резервация не найдена или уже не в статусе UNCERTAIN",
+            )
+        return {
+            "ok": True,
+            "reservation_id": reservation_id,
+            "spent": spent,
+            "message": (
+                "Списание подтверждено и зафиксировано в ledger"
+                if spent
+                else "Резервация закрыта без списания"
             ),
         }
 

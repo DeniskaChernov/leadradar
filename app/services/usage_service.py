@@ -290,7 +290,11 @@ class ExternalUsageService:
                     .where(
                         ExternalBudgetReservation.id == reservation_id,
                         ExternalBudgetReservation.status.in_(
-                            [ReservationStatus.RESERVED, ReservationStatus.EXPIRED]
+                            [
+                                ReservationStatus.RESERVED,
+                                ReservationStatus.EXPIRED,
+                                ReservationStatus.UNCERTAIN,
+                            ]
                         ),
                     )
                     .values(
@@ -391,6 +395,55 @@ class ExternalUsageService:
                 )
             )
             await session.commit()
+
+    async def reconcile_uncertain_reservation(
+        self,
+        reservation_id: int,
+        *,
+        spent: bool,
+        units: int | None = None,
+        unit_source: str = "PROVIDER_CONFIRMED",
+    ) -> bool:
+        """Ручная сверка UNCERTAIN reservation: подтвердить списание или закрыть без spend."""
+        async with self.session_factory() as session:
+            reservation = await session.get(ExternalBudgetReservation, reservation_id)
+            if reservation is None or reservation.status != ReservationStatus.UNCERTAIN:
+                return False
+        if spent:
+            resolved_units = units if units is not None else reservation.units_reserved
+            await self.finalize_reservation(
+                reservation_id,
+                units=resolved_units,
+                success=True,
+                details={
+                    "billing_state": "MANUAL_RECONCILIATION_CONFIRMED",
+                    "requires_reconciliation": False,
+                },
+                unit_source=unit_source,
+            )
+            return True
+        now = datetime.now(UTC)
+        async with self.session_factory() as session:
+            result = await session.execute(
+                update(ExternalBudgetReservation)
+                .where(
+                    ExternalBudgetReservation.id == reservation_id,
+                    ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
+                )
+                .values(
+                    status=ReservationStatus.RELEASED,
+                    finalized_at=now,
+                    released_at=now,
+                    actual_units=0,
+                    details_json={
+                        **dict(reservation.details_json or {}),
+                        "billing_state": "MANUAL_RECONCILIATION_NOT_SPENT",
+                        "requires_reconciliation": False,
+                    },
+                )
+            )
+            await session.commit()
+            return result.rowcount == 1
 
     async def release_reservation(self, reservation_id: int) -> None:
         async with self.session_factory() as session:

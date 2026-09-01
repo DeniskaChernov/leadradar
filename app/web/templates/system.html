@@ -156,6 +156,31 @@
     <span><b>{{ ai_safety.uncertain_reservations }}</b> неопределённых списаний</span>
     <span><b>{{ ai_safety.cost_events }}</b> записей себестоимости</span>
   </div>
+  {% if uncertain_budget_reservations %}
+  <p class="table-scroll-hint">Неопределённые списания ScrapeCreators/OpenAI — подтвердите факт charge или закройте без spend.</p>
+  <div class="table-wrap embedded system-table-wrap"><table class="responsive-table system-table"><thead><tr><th>ID</th><th>Provider</th><th>Операция</th><th>Units</th><th>Начат</th><th>Действия</th></tr></thead><tbody>
+    {% for item in uncertain_budget_reservations %}
+    <tr>
+      <td data-label="ID"><code>{{ item.reservation_id }}</code></td>
+      <td data-label="Provider">{{ item.provider }} / {{ item.service }}</td>
+      <td data-label="Операция"><code>{{ item.operation }}</code><br><small>{{ item.reservation_key }}</small></td>
+      <td data-label="Units">{{ item.units_reserved }}</td>
+      <td data-label="Начат">{{ item.call_started_at | display_dt if item.call_started_at else '—' }}</td>
+      <td data-label="Действия" class="stack-actions">
+        <form data-api-form action="/api/budget/reservations/{{ item.reservation_id }}/reconcile" data-reload="1" class="inline-form">
+          <input type="hidden" name="spent" value="true">
+          <input type="hidden" name="units" value="{{ item.units_reserved }}">
+          <button class="btn tiny success" type="submit">Списал</button>
+        </form>
+        <form data-api-form action="/api/budget/reservations/{{ item.reservation_id }}/reconcile" data-reload="1" class="inline-form">
+          <input type="hidden" name="spent" value="false">
+          <button class="btn tiny muted-action" type="submit">Не списал</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody></table></div>
+  {% endif %}
 </section>
 
 <section class="panel intelligence-quality">

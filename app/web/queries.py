@@ -100,8 +100,7 @@ class WebQueryService:
             )
             uncertain_reservations = await session.scalar(
                 select(func.count(ExternalBudgetReservation.id)).where(
-                    ExternalBudgetReservation.status == ReservationStatus.EXPIRED,
-                    ExternalBudgetReservation.call_started_at.is_not(None),
+                    ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
                 )
             )
         return {
@@ -182,6 +181,33 @@ class WebQueryService:
             reverse=True,
         )
         return items[:limit]
+
+    async def uncertain_external_reservation_queue(self, *, limit: int = 30) -> list[dict]:
+        """UNCERTAIN external budget reservations для ручной сверки списания."""
+        limit = max(1, min(limit, 100))
+        async with self.session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(ExternalBudgetReservation)
+                    .where(ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN)
+                    .order_by(desc(ExternalBudgetReservation.finalized_at), desc(ExternalBudgetReservation.id))
+                    .limit(limit)
+                )
+            ).all()
+        return [
+            {
+                "reservation_id": item.id,
+                "service": item.service,
+                "provider": item.provider,
+                "operation": item.operation,
+                "units_reserved": item.units_reserved,
+                "call_started_at": item.call_started_at,
+                "finalized_at": item.finalized_at,
+                "reservation_key": item.reservation_key,
+                "details": item.details_json or {},
+            }
+            for item in rows
+        ]
 
     async def _scalar_count(self, column) -> int:
         async with self.session_factory() as session:
