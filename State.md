@@ -1,7 +1,7 @@
 # Lead Radar — machine state
 
 - updated: 2026-09-01T17:25+05
-- branch: codex/phase-c-budget-ledger-hardening → merged PR #1
+- branch: main @ 3b48158 (PR #1 merged)
 - ui: 13.11.2-crm-pages
 - tests: 387 passed, 1 skipped (QA5 ROI smoke + browser 720px)
 - ruff: clean
