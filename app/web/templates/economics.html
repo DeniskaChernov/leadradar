@@ -29,7 +29,7 @@
 <section class="panel economics-provider-card" aria-labelledby="economics-provider-title">
   <div class="panel-head">
     <div><span class="eyebrow">КРЕДИТНЫЙ БЮДЖЕТ ПРОВАЙДЕРОВ</span><h2 id="economics-provider-title">ScrapeCreators</h2><p>Операционный wallet и месячные пределы. Для запуска Radar используйте <a href="/radar">страницу Радара</a>.</p></div>
-    {% if page.provider %}<span class="tag {% if page.provider.budget_status == 'HEALTHY' %}success{% elif page.provider.budget_status in ['WATCH','UNKNOWN'] %}warning{% else %}danger{% endif %}">{{ page.provider.budget_status }}</span>{% else %}<span class="tag neutral">NOT_CONFIGURED</span>{% endif %}
+    {% if page.provider %}<span class="tag {% if page.provider.budget_status == 'HEALTHY' %}success{% elif page.provider.budget_status in ['WATCH','UNKNOWN'] %}warning{% else %}danger{% endif %}">{{ budget_status_label(page.provider.budget_status) }}</span>{% else %}<span class="tag neutral">{{ budget_status_label('NOT_CONFIGURED') }}</span>{% endif %}
   </div>
   {% if page.provider %}
   <div class="radar-budget-metrics economics-wallet-metrics">

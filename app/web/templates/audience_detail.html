@@ -8,7 +8,7 @@
   <span class="pill primary">{{ segment.audience_family }} · {{ segment.audience_level }}</span>
 </div>
 
-<section class="panel audience-hero" data-motion-root>
+<section class="hero-status live audience-hero" data-motion-root>
   <div>
     <span class="eyebrow">ИНТЕЛЛЕКТ АУДИТОРИЙ</span>
     <h2>{{ segment.name }}</h2>
@@ -40,7 +40,7 @@
 </section>
 
 <section class="panel meta-readiness">
-  <div class="panel-head"><div><span class="eyebrow">ГРАНИЦА АКТИВАЦИИ META</span><h2>Готовность к активации</h2></div><span class="pill warn">{{ meta_readiness.blueprint.eligibility_status if meta_readiness else 'NOT_CONNECTED' }}</span></div>
+  <div class="panel-head"><div><span class="eyebrow">ГРАНИЦА АКТИВАЦИИ META</span><h2>Готовность к активации</h2></div><span class="pill warn">{% if meta_readiness %}{{ meta_readiness.blueprint.eligibility_status }}{% else %}Не подключено{% endif %}</span></div>
   {% if meta_readiness %}
   <p>{{ meta_readiness.blueprint.reason }}</p>
   <div class="audience-definition-meta"><span>{{ meta_readiness.blueprint.mode }}</span><span>{% if meta_readiness.blueprint.first_party_required %}Нужны first-party identifiers{% else %}First-party seed не требуется для планирования{% endif %}</span><span>Meta IDs: отсутствуют</span></div>
@@ -54,7 +54,7 @@
 
 {% if export_recipe %}
 <section class="panel export-recipes-workspace" aria-labelledby="audience-export-title">
-  <div class="panel-head"><div><span class="eyebrow">META ЭКСПОРТ · DRY-RUN</span><h2 id="audience-export-title">Предпросмотр экспорта сегмента</h2><p>Recipe «{{ export_recipe.name }}» · только first-party eligible · без Meta API</p></div><span class="tag neutral">NOT_CONNECTED</span></div>
+  <div class="panel-head"><div><span class="eyebrow">META ЭКСПОРТ · ПРЕДПРОСМОТР</span><h2 id="audience-export-title">Предпросмотр экспорта сегмента</h2><p>Recipe «{{ export_recipe.name }}» · только first-party eligible · без Meta API</p></div><span class="tag neutral">Не подключено</span></div>
   <button class="btn ghost btn-sm" type="button" data-api-action="/api/audiences/export-recipes/{{ export_recipe.slug }}" data-payload='{"dry_run": true}' data-result-target="#audience-export-result">Запустить dry-run</button>
   <pre class="export-result" id="audience-export-result" hidden aria-live="polite"></pre>
 </section>

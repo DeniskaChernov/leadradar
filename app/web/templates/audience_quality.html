@@ -61,7 +61,7 @@
         {% for row in page.health_rows %}
         <tr>
           <td data-label="Аудитория"><a href="/audiences/{{ row.segment_slug }}"><b>{{ row.segment_name }}</b></a><small>{{ row.audience_level }}</small></td>
-          <td data-label="Статус"><span class="tag {% if row.status == 'HEALTHY' %}success{% elif row.status in ['LOW_DATA','STALE'] %}warning{% else %}danger{% endif %}">{{ row.status }}</span></td>
+          <td data-label="Статус"><span class="tag {% if row.status == 'HEALTHY' %}success{% elif row.status in ['LOW_DATA','STALE'] %}warning{% else %}danger{% endif %}">{{ audience_health_label(row.status) }}</span></td>
           <td data-label="Участники">{{ row.active_members }}</td>
           <td data-label="+7д">{{ row.new_members_7d }}</td>
           <td data-label="−7д">{{ row.expired_7d }}</td>

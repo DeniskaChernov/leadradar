@@ -3,7 +3,7 @@
 {% block heading %}Разведка{% endblock %}
 {% block subheading %}Новые компании и изменения — сначала проверка, потом бесплатное добавление на паузу{% endblock %}
 {% block content %}
-<section class="discovery-hero panel" data-motion-root>
+<section class="hero-status safe discovery-hero" data-motion-root>
   <div>
     <span class="eyebrow">ЦЕНТР РАЗВЕДКИ</span>
     <h2>Один вход для рыночных находок</h2>
@@ -44,7 +44,7 @@
           {% if candidate.status != 'REJECTED' %}<button class="btn tiny ghost" data-api-action="/api/discovery/candidates/{{ candidate.id }}/status" data-payload='{"status":"REJECTED"}' data-reload="1">Не подходит</button>{% endif %}
         </div>
       </article>
-    {% else %}<div class="empty panel">Очередь пуста. Импортируйте таблицу или обновите встроенную карту рынка.</div>{% endfor %}
+    {% else %}<div class="empty-state panel"><span class="empty-icon" aria-hidden="true"><i data-lucide="inbox"></i></span><h3>Очередь пуста</h3><p>Импортируйте таблицу или обновите встроенную карту рынка.</p></div>{% endfor %}
     </div>
   </div>
 
@@ -58,7 +58,7 @@
         <p>{{ diff.changed_fields|join(', ') }}</p>
         <button class="btn tiny ghost" data-api-action="/api/discovery/diffs/{{ diff.id }}/acknowledge" data-payload="{}" data-reload="1">Просмотрено</button>
       </article>
-    {% else %}<div class="empty panel">Непросмотренных изменений нет.</div>{% endfor %}
+    {% else %}<div class="empty-state panel"><span class="empty-icon" aria-hidden="true"><i data-lucide="git-compare"></i></span><h3>Изменений нет</h3><p>Непросмотренных изменений пока нет.</p></div>{% endfor %}
     </div>
   </aside>
 </section>

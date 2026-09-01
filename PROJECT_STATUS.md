@@ -7,6 +7,11 @@
 Контрольная точка 2026-09-01 (QA5): ROI smoke 89x + gross margin 90% на /economics,
 browser visual 720px OK (economics/leads), PR #1 merged в main. **387 passed, 1 skipped**.
 
+Контрольная точка 2026-09-01 (design unify): hero-status на discovery/catalog/competitors/
+roadmap/audiences + detail pages (lead/contact/competitor/audience); glass KPI вместо тёмных
+блоков; empty-state с lucide; RU labels health/budget. UI cache **13.11.3-design-unify**.
+**392 passed, 1 skipped**.
+
 Контрольная точка 2026-09-01 (QA4): полная русификация economics (токены, HOT/WON,
 валовая прибыль), smoke WON+revenue 12.5M UZS, pilot preflight test, mobile CSS
 audit расширен. **385 passed, 1 skipped**.

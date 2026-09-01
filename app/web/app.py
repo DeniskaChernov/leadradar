@@ -53,6 +53,8 @@ from app.web.auth import TelegramAuthError, TelegramWebAuth, WebRole, required_r
 from app.web.datetime_display import format_display_dt, parse_display_dt
 from app.web.labels import (
     AI_SOURCE_LABELS,
+    AUDIENCE_HEALTH_LABELS,
+    BUDGET_STATUS_LABELS,
     BUYER_ROLE_ICONS,
     BUYER_ROLE_LABELS,
     CHANGE_TYPE_LABELS,
@@ -215,6 +217,8 @@ def build_web_app(
         buyer_role_icon=lambda value: BUYER_ROLE_ICONS.get(
             str(value) if value else "UNKNOWN", "❓"
         ),
+        audience_health_label=lambda value: label(AUDIENCE_HEALTH_LABELS, value),
+        budget_status_label=lambda value: label(BUDGET_STATUS_LABELS, value),
         money=lambda value: f"{float(value or 0):,.0f}".replace(",", " "),
         safe_attr=lambda obj, name, default=None: getattr(obj, name, default),
     )

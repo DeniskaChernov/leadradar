@@ -31,3 +31,9 @@ def test_arm_controlled_pilot_module_exposes_main():
     assert callable(arm_controlled_pilot.main)
     assert arm_controlled_pilot.PILOT_HANDLE == "aiko.uz"
     assert arm_controlled_pilot.DEFAULT_CREDITS == 5
+
+
+def test_restore_tier_a_competitors_module_exposes_main():
+    from scripts import restore_tier_a_competitors
+
+    assert callable(restore_tier_a_competitors.main)

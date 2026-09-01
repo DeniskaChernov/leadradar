@@ -9,7 +9,7 @@
 </div>
 
 {% set ai = lead.analysis_details or {} %}
-<div class="lead-hero {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %}">
+<div class="hero-status lead-hero {% if lead.lead_score >= settings.hot_lead_threshold %}hot live{% else %}safe{% endif %}" data-motion-root>
   <div class="lead-score-xl"><span>{{ lead.lead_score }}</span><small>из 100</small></div>
   <div class="lead-hero-body"><span class="eyebrow">{{ intent_label(lead.intent) }}</span><h2>{{ comment.text or 'Пустой комментарий' }}</h2><p>{{ lead.ai_reason or 'Система ещё не сформировала объяснение оценки.' }}</p><div class="lead-hero-tags"><span class="tag">{{ product_label(lead.product_category) }}</span><span class="tag">Источник: @{{ competitor.normalized_handle }}</span><span class="tag status-{{ lead.status.value|lower }}">{{ lead_status_label(lead.status) }}</span></div></div>
   <div class="lead-hero-actions"><a class="btn" target="_blank" rel="noopener" href="{{ contact.profile_url }}">Профиль Instagram ↗</a><a class="btn ghost" target="_blank" rel="noopener" href="{{ post.url }}">Открыть Reel ↗</a></div>

@@ -203,6 +203,23 @@ COMPETITOR_CATEGORY_LABELS = {
     "MASS": "Массовый рынок",
 }
 
+AUDIENCE_HEALTH_LABELS = {
+    "HEALTHY": "Здоровая",
+    "LOW_DATA": "Мало данных",
+    "STALE": "Устарела",
+    "NEEDS_REVIEW": "На проверке",
+    "NOT_EXPORTABLE": "Не для экспорта",
+    "NOISY": "Шумная",
+}
+
+BUDGET_STATUS_LABELS = {
+    "HEALTHY": "В норме",
+    "WATCH": "Наблюдение",
+    "UNKNOWN": "Неизвестно",
+    "NOT_CONFIGURED": "Не задан",
+    "DANGER": "Опасно",
+}
+
 
 def label(mapping: dict[str, str], value: object, fallback: str = "—") -> str:
     if value is None:

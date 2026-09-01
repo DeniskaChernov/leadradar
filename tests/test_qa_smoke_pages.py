@@ -147,6 +147,24 @@ async def test_secondary_pages_have_motion_root(session_factory, path: str):
     assert "data-motion-root" in response.text
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/discovery",
+        "/catalog",
+        "/competitors",
+        "/roadmap",
+        "/audiences",
+    ],
+)
+async def test_legacy_pages_use_hero_status(session_factory, path: str):
+    app = _app(session_factory)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(path)
+    assert response.status_code == 200
+    assert 'class="hero-status' in response.text
+
+
 async def _seed_mixed_credit_events(session_factory) -> None:
     async with session_factory() as session:
         session.add_all(

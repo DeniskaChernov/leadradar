@@ -3,7 +3,7 @@
 {% block heading %}@{{ contact.username }}{% endblock %}
 {% block subheading %}Вся история клиента, интерес, задачи и сделки в одном месте{% endblock %}
 {% block content %}
-<div class="contact-header panel" data-motion-root>
+<div class="hero-status safe contact-header" data-motion-root>
   <div class="profile-avatar">{{ (contact.display_name or contact.username)[:1]|upper }}</div>
   <div>
     <span class="eyebrow">КЛИЕНТ #{{ contact.id }}</span>
