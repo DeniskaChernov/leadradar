@@ -3,15 +3,130 @@
 {% block heading %}Радар сигналов{% endblock %}
 {% block subheading %}Каждый комментарий: кто написал, где нашли и что он означает{% endblock %}
 {% block content %}
-<div class="page-help"><b>Что здесь происходит?</b><span>Радар показывает все сохранённые комментарии, даже если они не являются лидами. Так всегда видно, откуда система взяла человека и почему дала ему конкретную оценку.</span></div>
-<div class="radar-summary">
-  <a href="/radar"><span>Все сигналы</span><b>{{ overview.total }}</b></a>
-  <a href="/radar?kind=pending"><span>Не разобраны</span><b>{{ overview.unprocessed + overview.pending }}</b></a>
-  <a href="/leads"><span>Лиды</span><b>{{ overview.qualified }}</b></a>
-  <a href="/radar?kind=hot" class="hot"><span>HOT</span><b>{{ overview.hot }}</b></a>
-  <div><span>Отсеяно</span><b>{{ overview.rejected }}</b></div>
+<section class="hero-status radar-hero {% if scan_budget.live_enabled %}live{% else %}safe{% endif %}" data-motion-root>
+  <div>
+    <span class="eyebrow">РАДАР СИГНАЛОВ</span>
+    <h2>{{ overview.total }} сигналов · {{ overview.hot }} HOT</h2>
+    <p>{{ overview.unprocessed + overview.pending }} ждут разбора · {{ overview.qualified }} в воронке лидов</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn primary" href="/leads">Лиды ({{ overview.qualified }})</a>
+    <a class="btn" href="/radar?kind=hot">HOT</a>
+    <a class="btn" href="/radar?kind=new">Новые</a>
+    <button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-async-retry="1">Повторить очередь AI</button>
+    <button class="btn ghost" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Проверить</button>
+  </div>
+</section>
+<section class="panel ops-arm-card">
+  <div class="panel-head"><div><h2>Управление Live</h2><p>Тумблеры пишутся в БД. Master unlock остаётся в .env</p></div>
+    <span class="tag {% if ops.radar_live_armed %}success{% else %}muted-tag{% endif %}">{% if ops.radar_live_armed %}Radar включён{% else %}Radar выключен{% endif %}</span>
+  </div>
+  {% if not master_live_ready %}
+  <div class="alert warn"><b>Master unlock не готов</b><span>В .env нужны scrapecreators + live flags + EXTERNAL_LIVE_UNLOCK. Без этого тумблер Radar не включится.</span></div>
+  {% else %}
+  <div class="form-row">
+    <form data-api-form method="post" action="/api/ops/radar-live" data-reload="1">
+      <input type="hidden" name="armed" value="{{ 'false' if ops.radar_live_armed else 'true' }}">
+      <input type="hidden" name="default_scan_credits" value="{{ ops.default_scan_credits }}">
+      <button class="btn {% if ops.radar_live_armed %}ghost{% else %}success{% endif %}" type="submit">{% if ops.radar_live_armed %}Выключить Live Radar{% else %}Включить Live Radar{% endif %}</button>
+    </form>
+  </div>
+  {% endif %}
+  <div class="form-row">
+    <form data-api-form method="post" action="/api/ops/openai-live" data-reload="1">
+      <input type="hidden" name="armed" value="{{ 'false' if ops.openai_live_armed else 'true' }}">
+      <button class="btn {% if ops.openai_live_armed %}ghost{% else %}primary{% endif %}" type="submit" {% if not settings.openai_live_enabled %}disabled{% endif %}>{% if ops.openai_live_armed %}Выключить OpenAI{% else %}Включить OpenAI анализ{% endif %}</button>
+    </form>
+  </div>
+  <p class="muted">Hybrid: сначала локальные правила; GPT только для неоднозначных сигналов и только если OpenAI live разрешён. Расход OpenAI сейчас: {% if openai_spend_allowed %}разрешён{% else %}заблокирован{% endif %}.</p>
+</section>
+<section class="panel radar-live-panel" id="radar-live-status" data-radar-live {% if not snapshot.cycle_running %}hidden{% endif %}>
+  <div class="radar-live-row">
+    <span class="pulse busy"></span>
+    <div><b data-radar-live-title>{% if snapshot.cycle_running %}Идёт проверка Instagram{% else %}OpenAI разбирает очередь{% endif %}</b><small data-radar-live-detail>Обновление каждые несколько секунд</small></div>
+  </div>
+</section>
+<section class="panel radar-feed-panel" id="radar-feed">
+  <div class="panel-head">
+    <div><span class="eyebrow">ИЗМЕНЕНИЯ · УВЕДОМЛЕНИЯ</span><h2>Что требует внимания</h2><p>Significant changes, HOT и очередь OpenAI</p></div>
+    <span class="tag {% if radar_feed.ai_pending or radar_feed.analyzing %}warning{% else %}success{% endif %}" data-radar-queue-badge>{% if radar_feed.ai_pending + radar_feed.analyzing > 0 %}AI: {{ radar_feed.ai_pending + radar_feed.analyzing }}{% else %}AI готов{% endif %}</span>
+  </div>
+  <div class="attention-list" data-radar-feed-list>
+    {% for change in radar_feed.changes %}
+    <a class="attention-item change-alert" href="/contacts/{{ change.contact_id }}#significant-changes" data-feed-id="change-{{ change.id }}">
+      <span class="attention-icon change">↑</span>
+      <div><b>@{{ change.username }} · {{ change_type_label(change.primary_type) }}</b><p>{{ change.summary }}</p><small>{{ change.previous_priority }} → {{ change.current_priority }}</small></div>
+      <span>→</span>
+    </a>
+    {% endfor %}
+    {% for hot in radar_feed.hot_leads %}
+    <a class="attention-item" href="/leads/{{ hot.lead_id }}" data-feed-id="hot-{{ hot.lead_id }}">
+      <span class="attention-icon hot">{{ hot.score }}</span>
+      <div><b>@{{ hot.username }}</b><p>{{ hot.comment_preview }}</p><small>@{{ hot.competitor }}</small></div>
+      <span>→</span>
+    </a>
+    {% endfor %}
+    {% if not radar_feed.changes and not radar_feed.hot_leads %}
+    <div class="empty-box" data-radar-feed-empty><span class="empty-icon" aria-hidden="true"><i data-lucide="bell"></i></span><b>Пока спокойно</b><span>Изменения и HOT появятся после проверки и разбора сигналов.</span></div>
+    {% endif %}
+  </div>
+</section>
+<section class="panel radar-budget-card" aria-labelledby="radar-budget-title">
+  <div class="radar-budget-head">
+    <div><span class="eyebrow">ЛИМИТ CREDITS</span><h2 id="radar-budget-title">Бюджет проверки</h2></div>
+    <span class="tag {% if scan_budget.budget_status == 'HEALTHY' %}success{% elif scan_budget.budget_status in ['WATCH','UNKNOWN'] %}warning{% else %}danger{% endif %}">{% if scan_budget.budget_status == 'HEALTHY' %}В норме{% elif scan_budget.budget_status == 'WATCH' %}Наблюдение{% elif scan_budget.budget_status == 'UNKNOWN' %}Неизвестно{% elif scan_budget.budget_status == 'NOT_CONFIGURED' %}Не задан{% elif scan_budget.budget_status == 'DANGER' %}Опасно{% else %}{{ scan_budget.budget_status }}{% endif %}</span>
+  </div>
+  {% if scan_budget.is_live and scan_budget.live_enabled %}
+  <div class="radar-budget-metrics">
+    <div><small>Остаток</small><b>{% if scan_budget.credits_remaining is not none %}{{ '{:,}'.format(scan_budget.credits_remaining).replace(',', ' ') }} credits{% else %}Не подтверждён{% endif %}</b><span>{{ scan_budget.credits_remaining_source }}</span></div>
+    <div><small>Этот месяц</small><b>{{ scan_budget.used_this_month }} / {{ scan_budget.monthly_hard_limit or '—' }}</b><span>Рабочая цель: {{ scan_budget.monthly_target or '—' }}</span></div>
+    <div><small>Прогноз месяца</small><b>~{{ scan_budget.projected_monthly_burn|round|int }} credits</b><span>Мягкий лимит: {{ scan_budget.monthly_soft_limit or '—' }}</span></div>
+    <div><small>Примерно хватит</small><b>{% if scan_budget.package_months_remaining_estimate is not none %}{{ scan_budget.package_months_remaining_estimate }} месяца{% else %}Баланс неизвестен{% endif %}</b><span>Цель: ≥6 месяцев</span></div>
+  </div>
+  <fieldset class="scan-budget-picker">
+    <legend>Сколько разрешить на эту проверку?</legend>
+    {% for units, title in [(5, 'Эконом'), (10, 'Обычно'), (20, 'Расширенно'), (40, 'Глубоко')] %}
+    <label><input type="radio" name="scan_budget" value="{{ units }}" {% if units == scan_budget.requested_credits %}checked{% endif %}><span><b>{{ units }}</b><small>{{ title }}</small></span></label>
+    {% endfor %}
+    <label class="custom"><input type="radio" name="scan_budget" value="custom"><span><b>Свой лимит</b><input type="number" data-custom-scan-budget min="1" max="{{ scan_budget.maximum_manual_scan_budget or 50 }}" value="{{ scan_budget.default_scan_budget or 10 }}" aria-label="Свой лимит ScrapeCreators credits"></span></label>
+  </fieldset>
+  <div class="scan-budget-preview">
+    <span>Максимальный расход: <b data-budget-max>{{ scan_budget.effective_max_credits }} credits</b></span>
+    <span>Осталось в месяце: <b data-budget-monthly>{{ scan_budget.monthly_remaining }}</b></span>
+    <span>Доступно сегодня: <b data-budget-daily>{{ scan_budget.daily_remaining }}</b></span>
+    <button class="btn primary" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Запустить Radar</button>
+  </div>
+  {% elif scan_budget.is_live %}
+  <div class="alert warn"><span>{% for reason in scan_budget.blocking_reasons %}{{ reason }}{% if not loop.last %} {% endif %}{% endfor %}</span></div>
+  {% else %}
+  <div class="alert info"><b>Offline-режим</b><span>Replay/mock не расходует ScrapeCreators credits.</span></div>
+  {% endif %}
+</section>
+{% if last_run and last_run.status.value == 'SUCCESS' %}
+<section class="panel scan-result-card">
+  <div class="scan-result-summary">
+    <span class="eyebrow">ПОСЛЕДНИЙ ЗАПУСК</span>
+    <h2>Проверка завершена · {{ last_run.started_at | display_dt }}</h2>
+    {% if last_run.budget_stop_reason %}<p class="muted">Остановлено по выбранному лимиту credits.</p>{% endif %}
+  </div>
+  <div class="scan-result-grid">
+    <div class="scan-result-stat"><span>Разрешено</span><b>{{ last_run.effective_credit_budget or '—' }}</b></div>
+    <div class="scan-result-stat"><span>Потрачено</span><b>{{ last_run.actual_credits_spent }}</b></div>
+    <div class="scan-result-stat"><span>Конкурентов</span><b>{{ last_run.stats_json.get('competitors_checked', 0) }}</b></div>
+    <div class="scan-result-stat"><span>Новых комментариев</span><b>{{ last_run.stats_json.get('comments_created', 0) }}</b></div>
+    <div class="scan-result-stat"><span>Новых лидов</span><b>{{ last_run.stats_json.get('leads_created', 0) }}</b></div>
+    <div class="scan-result-stat"><span>Ошибок</span><b>{{ last_run.stats_json.get('errors', 0) }}</b></div>
+  </div>
+</section>
+{% endif %}
+<div class="metrics radar-metrics">
+  <a class="metric" href="/radar"><span>Все сигналы</span><strong>{{ overview.total }}</strong><small>в базе</small></a>
+  <a class="metric warn" href="/radar?kind=pending"><span>Не разобраны</span><strong>{{ overview.unprocessed + overview.pending }}</strong><small>очередь + AI</small></a>
+  <a class="metric" href="/leads"><span>Лиды</span><strong>{{ overview.qualified }}</strong><small>воронка</small></a>
+  <a class="metric accent" href="/radar?kind=hot"><span>HOT</span><strong>{{ overview.hot }}</strong><small>от {{ settings.hot_lead_threshold }}/100</small></a>
+  <div class="metric muted-metric"><span>Отсеяно</span><strong>{{ overview.rejected }}</strong><small>Не лид</small></div>
 </div>
-<form class="filters" method="get">
+<form class="filters radar-filters" method="get">
   <input name="q" value="{{ q }}" aria-label="Поиск по радару" placeholder="Имя, username, комментарий или товар">
   <select name="competitor" aria-label="Фильтр по конкуренту"><option value="">Все конкуренты</option>{% for item in competitors %}<option value="{{ item.competitor.normalized_handle }}" {% if competitor_filter == item.competitor.normalized_handle %}selected{% endif %}>@{{ item.competitor.normalized_handle }}</option>{% endfor %}</select>
   <select name="kind" aria-label="Тип сигнала">
@@ -29,12 +144,13 @@
 {% for comment, contact, competitor, post, lead in rows %}
 <tr>
   <td data-label="Клиент"><a class="user" href="/contacts/{{ contact.id }}"><b>@{{ contact.username }}</b><small>{{ contact.display_name or 'Имя не указано' }}</small></a></td>
-  <td data-label="Комментарий" class="comment-cell"><b>{{ comment.text or 'Пустой комментарий' }}</b><small>{% if comment.is_baseline %}<span class="tag neutral">история</span>{% else %}<span class="tag live">новый</span>{% endif %} {{ comment.created_at_platform.strftime('%d.%m %H:%M') if comment.created_at_platform else comment.discovered_at.strftime('%d.%m %H:%M') }}</small></td>
+  <td data-label="Комментарий" class="comment-cell"><b>{{ comment.text or 'Пустой комментарий' }}</b><small>{% if comment.is_baseline %}<span class="tag neutral">история</span>{% else %}<span class="tag live">новый</span>{% endif %} {{ (comment.created_at_platform or comment.discovered_at) | display_dt }}</small></td>
   <td data-label="Источник"><b>@{{ competitor.normalized_handle }}</b><small><a target="_blank" rel="noopener" href="{{ post.url }}">Открыть Reel ↗</a></small></td>
   <td data-label="Контекст Reel" class="context">{{ post.caption[:165] or 'Описание Reel не получено' }}{% if post.caption|length > 165 %}…{% endif %}</td>
-  <td data-label="AI-оценка">{% if lead and lead.status.value == 'ANALYZING' %}<span class="tag pending">Анализируем</span><small>Сигнал уже сохранён и виден менеджеру</small>{% elif lead and lead.status.value == 'AI_PENDING' %}<span class="tag pending">Нужна дополнительная проверка</span><small>Сигнал остаётся рабочим</small>{% elif lead %}<div class="score-line"><div class="lead-score {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead.lead_score >= 50 %}warm{% endif %}">{{ lead.lead_score }}</div><div><b>{{ intent_label(lead.intent) }}</b><small>{{ product_label(lead.product_category) }} · {{ ai_source_label(lead.ai_source) }}</small></div></div>{% else %}<span class="tag pending">Ещё не разобран</span>{% endif %}</td>
+  <td data-label="AI-оценка">{% if lead and lead.status.value == 'ANALYZING' %}<span class="tag pending">Анализируем</span><small>Сигнал уже сохранён и виден менеджеру</small>{% elif lead and lead.status.value == 'AI_PENDING' %}<span class="tag pending">Нужна дополнительная проверка</span><small>Очередь OpenAI · сигнал рабочий</small>{% elif lead %}<div class="score-line"><div class="lead-score {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead.lead_score >= 50 %}warm{% endif %}">{{ lead.lead_score }}</div><div><b>{{ intent_label(lead.intent) }}</b><small>{{ product_label(lead.product_category) }} · {{ ai_source_label(lead.ai_source) }}</small></div></div>{% else %}<span class="tag pending">Ещё не разобран</span>{% endif %}</td>
   <td data-label="Действие">{% if lead %}<a class="btn tiny" href="/leads/{{ lead.id }}">Открыть лид</a><small class="human-status">{{ lead_status_label(lead.status) }}</small>{% else %}<a class="btn tiny ghost" href="/contacts/{{ contact.id }}">Карточка клиента</a>{% endif %}</td>
 </tr>
 {% else %}<tr><td colspan="6" class="empty">По этим условиям ничего не найдено.</td></tr>{% endfor %}
-</tbody></table></div>
+</tbody>
+</table></div>
 {% endblock %}

@@ -1,32 +1,35 @@
-"""
-next_best_action_service.py — V6 Next Best Action Engine & Offer Recommendation.
-
-Generates precise, evidence-backed next actions for managers based on:
-  - Buyer role (B2B_HORECA vs DESIGNER_CONTRACTOR vs B2C_CONSUMER)
-  - Intent (PRICE, AVAILABILITY, DELIVERY, QUANTITY, CATALOG)
-  - Product category (DINING_SET, RATTAN_SOFA, CHAIRS, etc.)
-  - Multi-competitor activity
-  - Urgency & recency
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from app.db.models import Product
+from app.services.b2b_policy import B2BPolicy
+
 
 @dataclass(frozen=True, slots=True)
 class ActionRecommendation:
-    action_type: str  # OFFER, CALL, QUESTION, B2B_PROPOSAL, FOLLOW_UP
+    action_type: str
     title: str
     description: str
+    recommended_product_id: int | None
     recommended_sku: str | None
-    urgency: str  # HIGH, MEDIUM, LOW
-    evidence_ids: Sequence[str]
+    urgency: str
+    evidence_ids: Sequence[int]
+    match_score: int | None
+    match_reasons: Sequence[str]
+    ranked_product_ids: Sequence[int]
+
+
+@dataclass(frozen=True, slots=True)
+class RankedProduct:
+    product: Product
+    score: int
+    reasons: Sequence[str]
 
 
 class NextBestActionEngine:
-    """Evidence-backed Next Best Action recommendation engine."""
+    """Produces actions grounded only in lead evidence and persisted catalog facts."""
 
     @classmethod
     def recommend(
@@ -38,61 +41,120 @@ class NextBestActionEngine:
         lead_score: int,
         competitor_count: int = 1,
         quantity: int | None = None,
-        evidence_ids: Sequence[str] = (),
+        evidence_ids: Sequence[int] = (),
+        catalog_products: Sequence[RankedProduct] = (),
     ) -> ActionRecommendation:
         evidence_list = list(evidence_ids)
+        selected = catalog_products[0] if catalog_products else None
+        product = selected.product if selected is not None else None
 
-        # 1. High-volume B2B HoReCa orders
-        if buyer_role == "B2B_HORECA" or (quantity and quantity >= 10):
-            qty_str = f" на {quantity} единиц" if quantity else ""
-            return ActionRecommendation(
+        if buyer_role == "B2B_HORECA" or (
+            quantity and quantity >= B2BPolicy.PROBABLE_QUANTITY
+        ):
+            quantity_text = f" ({quantity} ед.)" if quantity else ""
+            description = (
+                "Подтвердить модель, количество, актуальную цену, наличие и срок поставки. "
+                "Коммерческие условия и остаток проверить по каталогу перед ответом."
+            )
+            if product is not None:
+                description = cls._catalog_description(product, prefix="Подготовить расчёт")
+            return cls._result(
                 action_type="B2B_PROPOSAL",
-                title=f"Сформировать B2B-предложение{qty_str}",
-                description="Подготовить оптовый прайс-лист со скидкой за объём и согласовать сроки поставки.",
-                recommended_sku="SKU-B2B-WHOLESALE",
+                title=f"Уточнить объём и подготовить B2B-расчёт{quantity_text}",
+                description=description,
+                candidate=selected,
+                ranked_products=catalog_products,
                 urgency="HIGH",
                 evidence_ids=evidence_list,
             )
 
-        # 2. Multi-competitor active shopping
         if competitor_count >= 2:
-            return ActionRecommendation(
+            return cls._result(
                 action_type="CALL",
-                title="Связаться сегодня: лид сравнивает конкурентов",
-                description=f"Клиент замечен у {competitor_count} конкурентов. Подчеркнуть наличие на складе и быструю доставку.",
-                recommended_sku=None,
+                title="Связаться сегодня: клиент сравнивает предложения",
+                description=(
+                    f"Есть подтверждённый коммерческий интерес у {competitor_count} компаний. "
+                    "Уточнить критерии выбора и только затем предложить подтверждённую модель."
+                ),
+                candidate=selected,
+                ranked_products=catalog_products,
                 urgency="HIGH",
                 evidence_ids=evidence_list,
             )
 
-        # 3. Designers / Specifiers
         if buyer_role == "DESIGNER_CONTRACTOR":
-            return ActionRecommendation(
-                action_type="OFFER",
-                title="Отправить 3D-модели и каталог для проекта",
-                description="Предоставить файлы для визуализации и специальное агентское вознаграждение.",
-                recommended_sku="SKU-DESIGNER-KIT",
+            return cls._result(
+                action_type="QUESTION",
+                title="Уточнить спецификацию проекта",
+                description=(
+                    "Запросить категорию, количество, размеры и срок проекта. "
+                    "3D-модели и агентские условия не подтверждены в каталоге."
+                ),
+                candidate=selected,
+                ranked_products=catalog_products,
                 urgency="MEDIUM",
                 evidence_ids=evidence_list,
             )
 
-        # 4. Price & Availability inquiries on specific categories
-        if intent in {"PRICE", "AVAILABILITY"} and product_category == "DINING_SET":
-            return ActionRecommendation(
+        if product is not None and intent in {"PRICE", "AVAILABILITY", "BUY", "CATALOG"}:
+            return cls._result(
                 action_type="OFFER",
-                title="Предложить обеденный комплект на 6 персон в наличии",
-                description="Показать обеденный стол + 6 плетёных стульев с фиксированной ценой и доставкой за 24 часа.",
-                recommended_sku="SKU-DINING-SET-6P",
+                title=f"Проверить и предложить {product.name}",
+                description=cls._catalog_description(product),
+                candidate=selected,
+                ranked_products=catalog_products,
                 urgency="HIGH" if lead_score >= 80 else "MEDIUM",
                 evidence_ids=evidence_list,
             )
 
-        # 5. Default follow-up
-        return ActionRecommendation(
-            action_type="FOLLOW_UP",
-            title="Уточнить детали заказа и желаемые цвета",
-            description="Связаться в мессенджере и предложить актуальные фото товара с нашего склада.",
-            recommended_sku=None,
+        product_text = f" по категории {product_category}" if product_category else ""
+        return cls._result(
+            action_type="QUESTION",
+            title=f"Уточнить нужную модель и параметры{product_text}",
+            description=(
+                "Подходящий подтверждённый товар пока не сопоставлен. "
+                "Уточнить количество, размеры и цвет; наличие проверить перед предложением."
+            ),
+            candidate=None,
+            ranked_products=catalog_products,
             urgency="MEDIUM" if lead_score >= 70 else "LOW",
             evidence_ids=evidence_list,
+        )
+
+    @staticmethod
+    def _catalog_description(product: Product, *, prefix: str = "Подтвердить предложение") -> str:
+        facts = [f"цена {product.price} {product.currency}" if product.price is not None else None]
+        if product.minimum_order_quantity is not None:
+            facts.append(f"MOQ {product.minimum_order_quantity}")
+        facts_text = ", ".join(fact for fact in facts if fact)
+        stock_text = (
+            f"Подтверждённый остаток: {product.stock}."
+            if product.stock is not None
+            else "Наличие не подтверждено — проверить перед ответом."
+        )
+        return f"{prefix}: {facts_text}. {stock_text}" if facts_text else f"{prefix}. {stock_text}"
+
+    @staticmethod
+    def _result(
+        *,
+        action_type: str,
+        title: str,
+        description: str,
+        candidate: RankedProduct | None,
+        ranked_products: Sequence[RankedProduct],
+        urgency: str,
+        evidence_ids: Sequence[int],
+    ) -> ActionRecommendation:
+        product = candidate.product if candidate is not None else None
+        return ActionRecommendation(
+            action_type=action_type,
+            title=title,
+            description=description,
+            recommended_product_id=product.id if product is not None else None,
+            recommended_sku=product.sku if product is not None else None,
+            urgency=urgency,
+            evidence_ids=evidence_ids,
+            match_score=candidate.score if candidate is not None else None,
+            match_reasons=tuple(candidate.reasons) if candidate is not None else (),
+            ranked_product_ids=tuple(item.product.id for item in ranked_products[:3]),
         )

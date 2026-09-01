@@ -7,11 +7,16 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import Comment, Competitor, CoverageStatus, Post
+from app.db.models import Comment, CoverageStatus, Post
 from app.db.repositories import CompetitorRepository, PostRepository
 from app.providers.base import InstagramProvider, ProviderError, ProviderUsageBlockedError
 from app.schemas.instagram import InstagramPost
+from app.services.adaptive_monitoring_service import (
+    AdaptiveMonitoringService,
+    CompetitorScanPlan,
+)
 from app.services.contact_service import ContactService
+from app.services.lead_analysis_pipeline import LeadAnalysisPipeline
 from app.services.lead_service import LeadService
 from app.services.notification_service import LeadNotifier
 
@@ -31,6 +36,12 @@ class CycleStats:
     historical_analyzed: int = 0
     errors: int = 0
     budget_stops: int = 0
+    posts_skipped_unchanged: int = 0
+    zero_comment_posts_skipped: int = 0
+    pagination_stopped_on_known: int = 0
+    competitors_not_due: int = 0
+    budget_deferred_candidates: int = 0
+    avoided_requests: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +51,18 @@ class PostCheck:
     is_baseline: bool
     known_comment_ids: set[str]
     previous_coverage: CoverageStatus
+    skip_reason: str | None
+    is_new_post: bool
+    comment_delta: int
+    post_age_hours: float
+
+
+@dataclass(frozen=True, slots=True)
+class CommentRefreshCandidate:
+    reel: InstagramPost
+    check: PostCheck
+    competitor: CompetitorScanPlan
+    priority_score: int
 
 
 class InstagramMonitor:
@@ -62,6 +85,7 @@ class InstagramMonitor:
         retry_pending_enabled: bool = False,
         retry_pending_batch_size: int = 5,
         retry_pending_cooldown_seconds: int = 3600,
+        analysis_pipeline: LeadAnalysisPipeline | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.provider = provider
@@ -79,6 +103,11 @@ class InstagramMonitor:
         self.retry_pending_enabled = retry_pending_enabled
         self.retry_pending_batch_size = retry_pending_batch_size
         self.retry_pending_cooldown_seconds = retry_pending_cooldown_seconds
+        self.analysis_pipeline = analysis_pipeline
+        self.adaptive_monitoring = AdaptiveMonitoringService(
+            session_factory,
+            hot_threshold=lead_service.hot_threshold,
+        )
 
     async def run_cycle(self, *, force: bool = True) -> CycleStats:
         self.provider.begin_cycle()
@@ -125,86 +154,149 @@ class InstagramMonitor:
                     "historical_analysis_failed error_type=%s", type(exc).__name__
                 )
 
-        handles = await self._active_competitors(force=force)
-        for handle in handles:
+        plans, stats.competitors_not_due = (
+            await self.adaptive_monitoring.ranked_due_competitors(
+                self.competitors,
+                force=force,
+            )
+        )
+        stats.avoided_requests += stats.competitors_not_due
+        candidates: list[CommentRefreshCandidate] = []
+        discovered_handles: set[str] = set()
+        discovery_failed: set[str] = set()
+        required_by_handle: dict[str, int] = {}
+        processed_by_handle: dict[str, int] = {}
+
+        # Фаза A: сначала распределяем discovery coverage между источниками.
+        for index, plan in enumerate(plans):
+            budget = self.provider.scan_budget_status()
+            if (
+                candidates
+                and budget is not None
+                and budget["remaining"] <= max(1, budget["limit"] // 2)
+            ):
+                deferred = len(plans) - index
+                stats.budget_deferred_candidates += deferred
+                stats.avoided_requests += deferred
+                break
             try:
-                reels = await self.provider.get_reels(handle)
-                competitor_failed = False
+                reels = await self.provider.get_reels(plan.handle)
+                discovered_handles.add(plan.handle)
                 stats.competitors_checked += 1
                 stats.reels_found += len(reels)
-                logger.info("competitor_checked competitor=%s reels=%s", handle, len(reels))
+                logger.info(
+                    "competitor_discovery_complete competitor=%s state=%s priority=%s reels=%s",
+                    plan.handle,
+                    plan.state,
+                    plan.priority_score,
+                    len(reels),
+                )
                 for reel in reels:
                     try:
-                        await self._process_reel(reel, stats)
+                        check = await self._prepare_post(reel)
+                        if not check.should_fetch_comments:
+                            if check.skip_reason == "ZERO_COMMENTS":
+                                stats.zero_comment_posts_skipped += 1
+                            elif check.skip_reason == "UNCHANGED":
+                                stats.posts_skipped_unchanged += 1
+                            stats.avoided_requests += 1
+                            continue
+                        required_by_handle[plan.handle] = (
+                            required_by_handle.get(plan.handle, 0) + 1
+                        )
+                        candidates.append(
+                            CommentRefreshCandidate(
+                                reel=reel,
+                                check=check,
+                                competitor=plan,
+                                priority_score=self._post_priority(plan, check),
+                            )
+                        )
                     except Exception as exc:
-                        competitor_failed = True
+                        discovery_failed.add(plan.handle)
                         stats.errors += 1
                         logger.exception(
                             "reel_processing_failed competitor=%s post_id=%s error_type=%s",
-                            handle,
+                            plan.handle,
                             reel.platform_post_id,
                             type(exc).__name__,
                         )
-                if not competitor_failed:
-                    await self._complete_baseline(handle)
-                    await self._mark_competitor_scan(handle, success=True)
             except ProviderUsageBlockedError as exc:
-                # A safety/budget guard is global for this cycle. Continuing with more competitors
-                # would only produce repeated blocked attempts, so stop cleanly.
                 stats.budget_stops += 1
+                deferred = len(plans) - index
+                stats.budget_deferred_candidates += deferred
                 logger.warning(
                     "monitor_cycle_budget_stopped competitor=%s error=%s",
-                    handle,
+                    plan.handle,
                     str(exc)[:200],
                 )
                 break
             except ProviderError as exc:
                 stats.errors += 1
-                await self._mark_competitor_scan(handle, success=False)
+                discovery_failed.add(plan.handle)
+                await self.adaptive_monitoring.mark_scanned(plan.handle, success=False)
                 logger.error(
                     "competitor_check_failed competitor=%s error_type=%s",
-                    handle,
+                    plan.handle,
                     type(exc).__name__,
                 )
+
+        # Фаза B: тратим остаток на лучшие comment refresh среди всех найденных Reel.
+        candidates.sort(key=lambda item: (-item.priority_score, item.reel.platform_post_id))
+        for index, candidate in enumerate(candidates):
+            try:
+                await self._process_prepared_reel(
+                    candidate.reel,
+                    candidate.check,
+                    stats,
+                )
+                processed_by_handle[candidate.competitor.handle] = (
+                    processed_by_handle.get(candidate.competitor.handle, 0) + 1
+                )
+            except ProviderUsageBlockedError as exc:
+                stats.budget_stops += 1
+                deferred = len(candidates) - index
+                stats.budget_deferred_candidates += deferred
+                stats.avoided_requests += deferred
+                logger.warning(
+                    "monitor_comment_budget_stopped competitor=%s post_id=%s error=%s",
+                    candidate.competitor.handle,
+                    candidate.reel.platform_post_id,
+                    str(exc)[:200],
+                )
+                break
+            except Exception as exc:
+                discovery_failed.add(candidate.competitor.handle)
+                stats.errors += 1
+                logger.exception(
+                    "comment_refresh_failed competitor=%s post_id=%s error_type=%s",
+                    candidate.competitor.handle,
+                    candidate.reel.platform_post_id,
+                    type(exc).__name__,
+                )
+
+        for handle in discovered_handles:
+            all_required_processed = processed_by_handle.get(handle, 0) == required_by_handle.get(
+                handle, 0
+            )
+            if all_required_processed and handle not in discovery_failed:
+                await self._complete_baseline(handle)
+            await self.adaptive_monitoring.mark_scanned(
+                handle,
+                success=handle not in discovery_failed,
+            )
+        if self.analysis_pipeline is not None:
+            await self.analysis_pipeline.enqueue_pending_batch(
+                limit=self.retry_pending_batch_size or 10
+            )
         return stats
 
-    async def _active_competitors(self, *, force: bool) -> list[str]:
-        """Load competitors from DB so UI changes take effect without restarting the bot."""
-        now = datetime.now(UTC)
-        async with self.session_factory() as session:
-            repo = CompetitorRepository(session)
-            for configured in self.competitors:
-                await repo.get_or_create(configured)
-            await session.commit()
-            rows = (await session.scalars(select(Competitor))).all()
-        result: list[str] = []
-        for competitor in rows:
-            if not competitor.active:
-                continue
-            if force or competitor.last_scanned_at is None:
-                result.append(competitor.normalized_handle)
-                continue
-            last = competitor.last_scanned_at
-            if last.tzinfo is None:
-                last = last.replace(tzinfo=UTC)
-            if last + timedelta(seconds=max(30, competitor.poll_interval_seconds)) <= now:
-                result.append(competitor.normalized_handle)
-        return result
-
-    async def _mark_competitor_scan(self, handle: str, *, success: bool) -> None:
-        async with self.session_factory() as session:
-            competitor = await CompetitorRepository(session).get_or_create(handle)
-            competitor.last_scanned_at = datetime.now(UTC)
-            if success:
-                competitor.scan_error_count = 0
-            else:
-                competitor.scan_error_count += 1
-            await session.commit()
-
-    async def _process_reel(self, reel: InstagramPost, stats: CycleStats) -> None:
-        check = await self._prepare_post(reel)
-        if not check.should_fetch_comments:
-            return
+    async def _process_prepared_reel(
+        self,
+        reel: InstagramPost,
+        check: PostCheck,
+        stats: CycleStats,
+    ) -> None:
         batch = await self.provider.get_comment_batch(
             reel,
             known_comment_ids=check.known_comment_ids,
@@ -217,6 +309,14 @@ class InstagramMonitor:
         comments = batch.comments
         stats.comment_requests += batch.pages_fetched
         stats.comments_seen += len(comments)
+        if batch.stopped_on_known_comment:
+            stats.pagination_stopped_on_known += 1
+            configured_pages = (
+                self.baseline_max_comment_pages
+                if check.is_baseline
+                else self.incremental_max_comment_pages
+            )
+            stats.avoided_requests += max(0, configured_pages - batch.pages_fetched)
         for comment in comments:
             signal = await self.contact_service.persist_signal(
                 reel, comment, is_baseline=check.is_baseline
@@ -242,6 +342,13 @@ class InstagramMonitor:
                     lead.lead_id,
                     type(exc).__name__,
                 )
+            if self.analysis_pipeline is not None:
+                await self.analysis_pipeline.enqueue(
+                    lead.lead_id,
+                    initial_already_sent=notified_initially,
+                    stats=stats,
+                )
+                continue
             analyzed = await self.lead_service.analyze_lead(lead.lead_id)
             try:
                 stats.hot_notifications += await self._notify_analyzed(
@@ -297,7 +404,9 @@ class InstagramMonitor:
     async def _prepare_post(self, reel: InstagramPost) -> PostCheck:
         async with self.session_factory() as session:
             competitor = await CompetitorRepository(session).get_or_create(reel.competitor)
-            post, _, _ = await PostRepository(session).upsert(competitor, reel)
+            post, created, previous_comments_count = await PostRepository(session).upsert(
+                competitor, reel
+            )
             provider_changed = competitor.baseline_provider != self.provider.name
             is_first_baseline = (
                 (competitor.baseline_completed_at is None or provider_changed)
@@ -336,6 +445,10 @@ class InstagramMonitor:
                     is_baseline=is_first_baseline,
                     known_comment_ids=set(),
                     previous_coverage=CoverageStatus.FULL,
+                    skip_reason="ZERO_COMMENTS",
+                    is_new_post=created,
+                    comment_delta=0,
+                    post_age_hours=self._post_age_hours(reel.published_at, now),
                 )
 
             should_fetch = (
@@ -362,7 +475,36 @@ class InstagramMonitor:
                 is_baseline=is_first_baseline,
                 known_comment_ids=known_ids,
                 previous_coverage=post.coverage_status,
+                skip_reason=None if should_fetch else "UNCHANGED",
+                is_new_post=created,
+                comment_delta=max(
+                    0,
+                    reel.comments_count - int(previous_comments_count or 0),
+                ),
+                post_age_hours=self._post_age_hours(reel.published_at, now),
             )
+
+    @staticmethod
+    def _post_priority(plan: CompetitorScanPlan, check: PostCheck) -> int:
+        recency = max(0, 72 - min(72, round(check.post_age_hours)))
+        return (
+            plan.priority_score
+            + (80 if check.is_new_post else 0)
+            + min(80, check.comment_delta * 4)
+            + (30 if check.previous_coverage != CoverageStatus.FULL else 0)
+            + recency
+        )
+
+    @staticmethod
+    def _post_age_hours(published_at: datetime | None, now: datetime) -> float:
+        if published_at is None:
+            return 72.0
+        aware = (
+            published_at
+            if published_at.tzinfo is not None
+            else published_at.replace(tzinfo=UTC)
+        )
+        return max(0.0, (now - aware).total_seconds() / 3600)
 
     async def _mark_comments_fetched(
         self,

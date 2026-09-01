@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import normalize_instagram_handle
 from app.data.competitor_catalog import MARKET_CANDIDATES, MONITORED_COMPETITORS
-from app.db.models import Competitor, MarketCandidate, Vertical
+from app.db.models import BusinessEntity, Competitor, MarketCandidate, Vertical
+from app.services.rattan_vertical_service import sync_business_vertical_enrollment
 
 
 class MarketIntelligenceService:
@@ -130,9 +132,30 @@ class MarketIntelligenceService:
                     notes=candidate.rationale,
                     website_url=candidate.website_url,
                     catalog_managed=True,
+                    vertical=candidate.vertical,
                 )
                 session.add(competitor)
+            else:
+                competitor.vertical = candidate.vertical
             candidate.instagram_handle = normalized
             candidate.status = "PROMOTED"
-            await session.commit()
+            try:
+                await session.flush()
+                if competitor.business_id:
+                    business = await session.get(BusinessEntity, competitor.business_id)
+                    sync_business_vertical_enrollment(business, vertical=competitor.vertical)
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                competitor = await session.scalar(
+                    select(Competitor).where(
+                        Competitor.normalized_handle == normalized
+                    )
+                )
+                candidate = await session.get(MarketCandidate, candidate_id)
+                if competitor is None or candidate is None:
+                    raise
+                candidate.instagram_handle = normalized
+                candidate.status = "PROMOTED"
+                await session.commit()
             return competitor

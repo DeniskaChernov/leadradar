@@ -5,14 +5,18 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#f4f7ff">
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <title>{% block title %}Lead Radar{% endblock %}</title>
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
-  <link rel="stylesheet" href="/static/app.css?v=10.0.0-flawless-frosted-glass">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css?v=13.11.2-crm-pages">
   <script defer src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
-  <script defer src="/static/app.js?v=4.1"></script>
+  <script defer src="/static/app.js?v=13.11.2-crm-pages"></script>
 </head>
-<body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}">
+<body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}" data-page="{{ active_path }}">
 <a class="skip-link" href="#main-content">Перейти к содержимому</a>
 <div class="shell">
   <aside class="sidebar">
@@ -20,19 +24,42 @@
       <div class="brand-mark" aria-hidden="true"><i data-lucide="radar">LR</i></div>
       <div><strong>Lead Radar</strong><span>Радар спроса и CRM</span></div>
     </a>
-    <nav aria-label="Основная навигация">
-      <a class="nav {% if active_path == '/' %}active{% endif %}" href="/" {% if active_path == '/' %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="layout-dashboard">⌂</i></span>Обзор</a>
-      <a class="nav {% if active_path.startswith('/radar') %}active{% endif %}" href="/radar" {% if active_path.startswith('/radar') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="radar">⌁</i></span>Радар</a>
-      <a class="nav {% if active_path.startswith('/leads') %}active{% endif %}" href="/leads" {% if active_path.startswith('/leads') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="zap">⚡</i></span>Лиды</a>
-      <a class="nav {% if active_path.startswith('/contacts') %}active{% endif %}" href="/contacts" {% if active_path.startswith('/contacts') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="users">◎</i></span>Клиенты</a>
-      <a class="nav {% if active_path.startswith('/audiences') %}active{% endif %}" href="/audiences" {% if active_path.startswith('/audiences') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="target">◉</i></span>Аудитории</a>
-      <a class="nav {% if active_path.startswith('/tasks') %}active{% endif %}" href="/tasks" {% if active_path.startswith('/tasks') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="circle-check-big">✓</i></span>Задачи</a>
-      <a class="nav {% if active_path.startswith('/deals') %}active{% endif %}" href="/deals" {% if active_path.startswith('/deals') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="handshake">₽</i></span>Сделки</a>
-      <a class="nav {% if active_path.startswith('/analytics') %}active{% endif %}" href="/analytics" {% if active_path.startswith('/analytics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="chart-no-axes-combined">◒</i></span>Аналитика</a>
-      <a class="nav {% if active_path.startswith('/competitors') %}active{% endif %}" href="/competitors" {% if active_path.startswith('/competitors') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="building-2">◫</i></span>Конкуренты</a>
-      <a class="nav {% if active_path.startswith('/openings') %}active{% endif %}" href="/openings" {% if active_path.startswith('/openings') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="store">🏪</i></span>Открытия</a>
-      <a class="nav {% if active_path.startswith('/roadmap') %}active{% endif %}" href="/roadmap" {% if active_path.startswith('/roadmap') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="route">↗</i></span>Развитие</a>
-      <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system" {% if active_path.startswith('/system') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="settings-2">⚙</i></span>Система</a>
+    <nav id="main-navigation" aria-label="Основная навигация">
+      {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}
+      <div class="nav-primary">
+        <a class="nav {% if active_path == '/rattan' %}active{% endif %}" href="/rattan" {% if active_path == '/rattan' %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="sprout"></i></span><b>Обзор</b></a>
+        <a class="nav" href="/rattan#signals"><span aria-hidden="true"><i data-lucide="radio-tower"></i></span><b>Сигналы</b></a>
+        <a class="nav" href="/rattan#companies"><span aria-hidden="true"><i data-lucide="building-2"></i></span><b>Компании</b></a>
+        <a class="nav" href="/audiences?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true"><i data-lucide="target"></i></span><b>Аудитории</b></a>
+      </div>
+      <button class="nav nav-more" type="button" data-more-toggle aria-expanded="false" aria-controls="more-navigation"><span aria-hidden="true"><i data-lucide="grid-2x2"></i></span><b>Ещё</b></button>
+      <div class="nav-secondary" id="more-navigation" aria-label="Дополнительная навигация">
+        <a class="nav {% if active_path.startswith('/competitors') %}active{% endif %}" href="/competitors"><span aria-hidden="true"><i data-lucide="building-2"></i></span><b>Конкуренты</b></a>
+        <a class="nav {% if active_path.startswith('/catalog') %}active{% endif %}" href="/catalog?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true"><i data-lucide="notebook-tabs"></i></span><b>Каталог</b></a>
+        <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system?vertical=ARTIFICIAL_RATTAN"><span aria-hidden="true"><i data-lucide="settings-2"></i></span><b>Система</b></a>
+      </div>
+      {% else %}
+      <div class="nav-primary">
+      <a class="nav {% if active_path == '/' %}active{% endif %}" href="/" {% if active_path == '/' %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="layout-dashboard"></i></span><b>Обзор</b></a>
+      <a class="nav {% if active_path.startswith('/radar') %}active{% endif %}" href="/radar" {% if active_path.startswith('/radar') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="radar"></i></span><b>Радар</b></a>
+      <a class="nav {% if active_path.startswith('/leads') %}active{% endif %}" href="/leads" {% if active_path.startswith('/leads') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="zap"></i></span><b>Лиды</b></a>
+      <a class="nav {% if active_path.startswith('/contacts') %}active{% endif %}" href="/contacts" {% if active_path.startswith('/contacts') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="users"></i></span><b>Клиенты</b></a>
+      <a class="nav {% if active_path.startswith('/tasks') %}active{% endif %}" href="/tasks" {% if active_path.startswith('/tasks') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="circle-check-big"></i></span><b>Задачи</b></a>
+      <a class="nav {% if active_path.startswith('/agent') %}active{% endif %}" href="/agent" {% if active_path.startswith('/agent') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="bot"></i></span><b>AI-чат</b></a>
+      </div>
+      <button class="nav nav-more" type="button" data-more-toggle aria-expanded="false" aria-controls="more-navigation"><span aria-hidden="true"><i data-lucide="grid-2x2"></i></span><b>Ещё</b></button>
+      <div class="nav-secondary" id="more-navigation" aria-label="Дополнительная навигация">
+      <a class="nav {% if active_path.startswith('/economics') %}active{% endif %}" href="/economics" {% if active_path.startswith('/economics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="wallet"></i></span><b>Экономика</b></a>
+      <a class="nav {% if active_path.startswith('/analytics') %}active{% endif %}" href="/analytics" {% if active_path.startswith('/analytics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="bar-chart-3"></i></span><b>Аналитика</b></a>
+      <a class="nav {% if active_path.startswith('/openings') %}active{% endif %}" href="/openings" {% if active_path.startswith('/openings') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="store"></i></span><b>Открытия</b></a>
+      <a class="nav {% if active_path.startswith('/deals') %}active{% endif %}" href="/deals" {% if active_path.startswith('/deals') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="handshake"></i></span><b>Сделки</b></a>
+      <a class="nav {% if active_path.startswith('/audiences') %}active{% endif %}" href="/audiences" {% if active_path.startswith('/audiences') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="target"></i></span><b>Аудитории</b></a>
+      <a class="nav {% if active_path.startswith('/catalog') %}active{% endif %}" href="/catalog" {% if active_path.startswith('/catalog') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="notebook-tabs"></i></span><b>Каталог</b></a>
+      <a class="nav {% if active_path.startswith('/competitors') %}active{% endif %}" href="/competitors" {% if active_path.startswith('/competitors') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="building-2"></i></span><b>Конкуренты</b></a>
+      <a class="nav {% if active_path.startswith('/discovery') %}active{% endif %}" href="/discovery" {% if active_path.startswith('/discovery') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="search"></i></span><b>Поиск</b></a>
+      <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system" {% if active_path.startswith('/system') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="settings-2"></i></span><b>Система</b></a>
+      </div>
+      {% endif %}
     </nav>
     <div class="side-info">
       {% if search_paused %}
@@ -59,18 +86,21 @@
         <p>{% block subheading %}Публичный спрос конкурентов в одной базе{% endblock %}</p>
       </div>
 
-      <!-- Vertical Navigation Context Switcher (V6 Section 6) -->
-      <div class="vertical-switcher" role="radiogroup" aria-label="Выбор вертикали бизнеса">
-        <a href="?vertical=FURNITURE" class="switcher-tab {% if selected_vertical != 'ARTIFICIAL_RATTAN' %}active{% endif %}">
-          🪑 Мебель
+      <nav class="vertical-switcher" aria-label="Вертикаль бизнеса">
+        <a href="/" class="switcher-tab {% if selected_vertical != 'ARTIFICIAL_RATTAN' %}active{% endif %}" {% if selected_vertical != 'ARTIFICIAL_RATTAN' %}aria-current="page"{% endif %}>
+          <i data-lucide="armchair" aria-hidden="true"></i><span>Мебель</span>
         </a>
-        <a href="?vertical=ARTIFICIAL_RATTAN" class="switcher-tab {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}active{% endif %}">
-          🌾 Искусственный ротанг
+        <a href="/rattan" class="switcher-tab {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}active{% endif %}" {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}aria-current="page"{% endif %}>
+          <i data-lucide="sprout" aria-hidden="true"></i><span>Ротанг</span>
         </a>
-      </div>
+      </nav>
 
       <div class="top-actions">
-
+        <button class="btn ghost" type="button" data-agent-open aria-label="Открыть AI-ассистента"><i data-lucide="bot"></i><span>AI</span></button>
+        {% if settings.web_auth_enabled %}
+        <span class="status-pill safe">{{ web_role }}</span>
+        <button class="btn ghost" type="button" data-logout>Выйти</button>
+        {% endif %}
         {% if search_paused %}
         <span class="status-pill paused">⏸ Поиск на паузе</span>
         {% elif safe_mode %}
@@ -82,11 +112,11 @@
         {% else %}
         <span class="status-pill ok">Live включён</span>
         {% endif %}
-        <button class="btn primary" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %}>{% if search_paused %}Поиск приостановлен{% else %}Проверить сейчас{% endif %}</button>
+        <button class="btn primary" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %} data-scan-cap="{{ settings.instagram_max_units_per_scan }}">{% if search_paused %}Поиск приостановлен{% elif active_path.startswith('/radar') %}Запустить Radar{% else %}Проверить сейчас{% endif %}</button>
       </div>
     </header>
 
-    <section class="content">
+    <section class="content" data-motion-root>
       {% if snapshot.last_error %}
       <div class="alert error"><b>Последняя проблема мониторинга</b><span>{{ snapshot.last_error }}</span><a href="/system">Открыть диагностику →</a></div>
       {% endif %}
@@ -94,9 +124,49 @@
     </section>
   </main>
 </div>
-<div id="toast" class="toast" role="status"></div>
+<button class="mobile-nav-backdrop" type="button" data-more-close aria-label="Закрыть дополнительную навигацию" tabindex="-1"></button>
+<div id="toast" class="toast" role="status" aria-live="polite"><span data-toast-message></span><i aria-hidden="true"></i></div>
 <div id="confirm" class="modal-backdrop" hidden>
-  <div class="modal"><h3 id="confirm-title">Подтвердите действие</h3><p id="confirm-text"></p><div class="modal-actions"><button class="btn ghost" data-confirm-cancel>Отмена</button><button class="btn primary" data-confirm-ok>Продолжить</button></div></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-text"><h3 id="confirm-title">Подтвердите действие</h3><p id="confirm-text"></p><div class="modal-actions"><button class="btn ghost" type="button" data-confirm-cancel>Отмена</button><button class="btn primary" type="button" data-confirm-ok>Продолжить</button></div></div>
+</div>
+<div id="scan-quick" class="modal-backdrop" hidden>
+  <div class="modal scan-quick-modal" role="dialog" aria-modal="true" aria-labelledby="scan-quick-title">
+    <h3 id="scan-quick-title">Запуск Radar</h3>
+    <p class="muted">Выберите лимит ScrapeCreators credits на эту проверку. Scheduler выключен — только ручной запуск.</p>
+    <fieldset class="scan-budget-picker compact">
+      <legend class="sr-only">Лимит credits</legend>
+      <label><input type="radio" name="scan_budget_quick" value="5" checked><span><b>5</b><small>Эконом</small></span></label>
+      <label><input type="radio" name="scan_budget_quick" value="10"><span><b>10</b><small>Обычно</small></span></label>
+      <label><input type="radio" name="scan_budget_quick" value="20"><span><b>20</b><small>Расширенно</small></span></label>
+      <label class="custom"><input type="radio" name="scan_budget_quick" value="custom"><span><b>Свой</b><input type="number" data-custom-scan-budget-quick min="1" max="50" value="10" aria-label="Свой лимит credits"></span></label>
+    </fieldset>
+    <p class="scan-quick-meta" data-scan-quick-meta hidden></p>
+    <div class="modal-actions">
+      <button class="btn ghost" type="button" data-scan-quick-cancel>Отмена</button>
+      <button class="btn primary" type="button" data-scan-quick-go>Запустить</button>
+    </div>
+  </div>
+</div>
+<div id="agent-quick" class="modal-backdrop" hidden>
+  <div class="modal agent-quick-modal" role="dialog" aria-modal="true" aria-labelledby="agent-quick-title">
+    <h3 id="agent-quick-title">AI-ассистент</h3>
+    <p class="muted">Ответ только из базы Lead Radar: evidence_ids, без GPT и без write tools.</p>
+    <div class="agent-presets" role="group" aria-label="Быстрые вопросы">
+      <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи горячие лиды"}'>HOT лиды</button>
+      <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи задачи на сегодня"}'>Задачи</button>
+      <button class="agent-preset" type="button" data-agent-preset='{"query":"Сводка экономики credits"}'>Credits</button>
+      <button class="agent-preset" type="button" data-agent-preset='{"query":"lead_id=1"}'>Лид #1</button>
+    </div>
+    <form class="agent-query-form form-grid compact" data-agent-query data-agent-target="#agent-quick-result">
+      <label class="wide">Вопрос<input name="query" placeholder="Покажи лиды · lead_id=1 · furniture-dining" required autocomplete="off"></label>
+      <label>lead_id<input name="lead_id" inputmode="numeric" placeholder="опционально"></label>
+      <div class="modal-actions inline">
+        <button class="btn ghost" type="button" data-agent-quick-cancel>Закрыть</button>
+        <button class="btn primary" type="submit">Спросить</button>
+      </div>
+    </form>
+    <div class="agent-result-rich" id="agent-quick-result" hidden aria-live="polite"></div>
+  </div>
 </div>
 </body>
 </html>

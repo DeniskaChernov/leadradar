@@ -4,7 +4,7 @@ test_export_recipes.py — Master Phase 9 test suite
 Tests:
   1. CatalogMapper taxonomy resolution
   2. ExportRecipeService dry-run preview (non-mutating)
-  3. ExportRecipeService confirmed export (mutates status, creates audit record)
+  3. ExportRecipeService confirmed export blocked until Meta Custom Audience path exists
   4. FIRST_PARTY_ELIGIBLE gate enforcement
   5. Privacy assurance: dry-run returns SHA-256 hashes only
   6. Invalid recipe slug handling
@@ -18,7 +18,13 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import select
 
-from app.db.models import Contact, ContactEvent, ContactIntelligence, ExportEligibility
+from app.db.models import (
+    Contact,
+    ContactEvent,
+    ContactEventType,
+    ContactIntelligence,
+    ExportEligibility,
+)
 from app.schemas.leads import BuyerRole, Intent, LeadAnalysis
 from app.services.audience_service import AudienceEngine
 from app.services.contact_service import ContactService
@@ -36,8 +42,15 @@ class QualifiedB2CAnalyzer:
             product_category="DINING_SET",
             language="uz",
             reason="CTA asks for plus to receive a price",
+            confidence=90,
             buyer_role=BuyerRole.B2C_CONSUMER,
-            factors={"intent_strength": 90, "specificity_score": 10, "role_score": 70, "history_boost": 0, "objection_penalty": 0},
+            factors={
+                "intent_strength": 90,
+                "specificity_score": 10,
+                "role_score": 70,
+                "history_boost": 0,
+                "objection_penalty": 0,
+            },
         )
 
 
@@ -54,7 +67,9 @@ async def test_export_recipe_dry_run(session_factory):
     cs = ContactService(session_factory)
     engine = AudienceEngine(session_factory, hot_threshold=70)
     sig = await cs.persist_signal(make_post(), make_comment("exp-dry-1"))
-    await LeadService(session_factory, QualifiedB2CAnalyzer(), hot_threshold=70, audience_engine=engine).process_signal(sig)
+    await LeadService(
+        session_factory, QualifiedB2CAnalyzer(), hot_threshold=70, audience_engine=engine
+    ).process_signal(sig)
 
     # Qualify contact to make FIRST_PARTY_ELIGIBLE
     async with session_factory() as session:
@@ -66,7 +81,7 @@ async def test_export_recipe_dry_run(session_factory):
     await engine.recalculate_contact(sig.contact_id)
 
     service = ExportRecipeService(session_factory)
-    res = await service.run_export_recipe("high_intent_dining", dry_run=True)
+    res = await service.run_export_recipe("high_intent_dining", dry_run=True, manager_id=42)
 
     assert res["dry_run"] is True
     assert res["total_matched"] >= 1
@@ -81,14 +96,27 @@ async def test_export_recipe_dry_run(session_factory):
         )
         assert intel is not None
         assert intel.export_eligibility == ExportEligibility.FIRST_PARTY_ELIGIBLE
+        preview_event = await session.scalar(
+            select(ContactEvent).where(
+                ContactEvent.contact_id == sig.contact_id,
+                ContactEvent.event_type == ContactEventType.AUDIENCE_EXPORT_PREVIEW,
+            )
+        )
+        assert preview_event is not None
+        assert preview_event.manager_telegram_id == 42
+        assert preview_event.payload_json["action"] == "AUDIENCE_EXPORT_PREVIEW"
+        assert preview_event.payload_json["recipe_slug"] == "high_intent_dining"
 
 
-async def test_export_recipe_confirmed_export(session_factory):
-    """Confirmed export updates status to EXPORTED and emits ContactEvent audit record."""
+async def test_export_recipe_confirmed_export_is_blocked_while_meta_not_connected(
+    session_factory,
+):
     cs = ContactService(session_factory)
     engine = AudienceEngine(session_factory, hot_threshold=70)
     sig = await cs.persist_signal(make_post(), make_comment("exp-conf-1"))
-    await LeadService(session_factory, QualifiedB2CAnalyzer(), hot_threshold=70, audience_engine=engine).process_signal(sig)
+    await LeadService(
+        session_factory, QualifiedB2CAnalyzer(), hot_threshold=70, audience_engine=engine
+    ).process_signal(sig)
 
     async with session_factory() as session:
         contact = await session.get(Contact, sig.contact_id)
@@ -99,29 +127,55 @@ async def test_export_recipe_confirmed_export(session_factory):
     await engine.recalculate_contact(sig.contact_id)
 
     service = ExportRecipeService(session_factory)
-    res = await service.run_export_recipe("high_intent_dining", dry_run=False, manager_id=42)
+    with pytest.raises(RuntimeError, match="NOT_CONNECTED"):
+        await service.run_export_recipe("high_intent_dining", dry_run=False, manager_id=42)
 
-    assert res["dry_run"] is False
-    assert res["exported_count"] >= 1
-    assert "EXP-high_intent_dining" in res["batch_id"]
-
-    # Verify DB state is mutated
+    # Verify DB state is unchanged while Meta export stays blocked
     async with session_factory() as session:
         intel = await session.scalar(
             select(ContactIntelligence).where(ContactIntelligence.contact_id == sig.contact_id)
         )
         assert intel is not None
-        assert intel.export_eligibility == ExportEligibility.EXPORTED
-
-        # Verify audit event created
+        assert intel.export_eligibility == ExportEligibility.FIRST_PARTY_ELIGIBLE
         events = (
             await session.scalars(
                 select(ContactEvent).where(ContactEvent.contact_id == sig.contact_id)
             )
         ).all()
-        export_events = [e for e in events if e.payload_json and e.payload_json.get("action") == "AUDIENCE_EXPORT"]
-        assert len(export_events) == 1
-        assert export_events[0].payload_json["exported_by"] == 42
+        assert not any(
+            e.payload_json and e.payload_json.get("action") == "AUDIENCE_EXPORT" for e in events
+        )
+
+
+async def test_export_recipe_confirmed_export_returns_503_via_api(session_factory):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.config import Settings
+    from app.services.audience_service import AudienceEngine
+    from app.services.crm_service import CRMService
+    from app.services.lead_workflow_service import LeadWorkflowService
+    from app.services.monitor_controller import MonitorController
+    from app.web.app import build_web_app
+    from app.web.queries import WebQueryService
+
+    await AudienceEngine(session_factory, hot_threshold=70).sync_segments()
+
+    app = build_web_app(
+        settings=Settings(web_auth_enabled=False, web_manager_id=42),
+        queries=WebQueryService(session_factory, hot_threshold=70),
+        workflow=LeadWorkflowService(session_factory, hot_threshold=70),
+        controller=MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/audiences/export-recipes/high_intent_dining",
+            json={"dry_run": False},
+        )
+
+    assert response.status_code == 503
+    assert "NOT_CONNECTED" in response.json()["detail"]
 
 
 async def test_export_recipe_unknown_slug_raises(session_factory):
@@ -134,14 +188,16 @@ async def test_export_recipes_api_endpoints(session_factory):
     from httpx import ASGITransport, AsyncClient
 
     from app.config import Settings
+    from app.services.audience_service import AudienceEngine
     from app.services.crm_service import CRMService
     from app.services.lead_workflow_service import LeadWorkflowService
     from app.services.monitor_controller import MonitorController
     from app.web.app import build_web_app
     from app.web.queries import WebQueryService
 
+    await AudienceEngine(session_factory, hot_threshold=70).sync_segments()
 
-    settings = Settings(web_auth_enabled=False)
+    settings = Settings(web_auth_enabled=False, web_manager_id=1)
     queries = WebQueryService(session_factory, hot_threshold=70)
     crm = CRMService(session_factory)
     workflow = LeadWorkflowService(session_factory, hot_threshold=70)
@@ -154,12 +210,7 @@ async def test_export_recipes_api_endpoints(session_factory):
         crm=crm,
     )
 
-
-
-
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # GET recipes list
         r1 = await client.get("/api/audiences/export-recipes")
         assert r1.status_code == 200
@@ -168,7 +219,9 @@ async def test_export_recipes_api_endpoints(session_factory):
         assert len(data1["recipes"]) >= 4
 
         # POST dry run
-        r2 = await client.post("/api/audiences/export-recipes/b2b_horeca_wholesale", json={"dry_run": True})
+        r2 = await client.post(
+            "/api/audiences/export-recipes/b2b_horeca_wholesale", json={"dry_run": True}
+        )
         assert r2.status_code == 200
         data2 = r2.json()
         assert data2["ok"] is True

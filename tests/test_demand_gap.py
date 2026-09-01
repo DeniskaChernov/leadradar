@@ -4,9 +4,12 @@ test_demand_gap.py — Tests for Phase 7 Competitor Demand Gap Analytics
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from decimal import Decimal
+
 from sqlalchemy import select
 
-from app.db.models import Competitor, Lead, LeadStatus
+from app.db.models import Competitor, Lead, LeadStatus, Product, Vertical
 from app.schemas.leads import Intent
 from app.services.contact_service import ContactService
 from app.web.queries import WebQueryService
@@ -31,15 +34,16 @@ async def test_demand_gap_score_empty(session_factory):
 
     assert gap["competitor_id"] == comp_id
     assert gap["total_commercial"] == 0
-    assert gap["unanswered_count"] == 0
-    assert gap["unanswered_rate"] == 0.0
+    assert gap["unworked_count"] == 0
+    assert gap["unworked_rate"] == 0.0
     assert gap["b2b_gap"] == 0
     assert gap["multi_source_gap"] == 0
     assert "Direct" in gap["boundary_note"]
 
 
-async def test_demand_gap_score_with_unanswered_leads(session_factory):
-    """Calculates unanswered rate and B2B gap correctly."""
+async def test_demand_gap_score_separates_unworked_queue_and_catalog_coverage(
+    session_factory,
+):
     cs = ContactService(session_factory)
     sig1 = await cs.persist_signal(make_post(), make_comment("c_gap_1"))
     sig2 = await cs.persist_signal(make_post(), make_comment("c_gap_2"))
@@ -73,15 +77,38 @@ async def test_demand_gap_score_with_unanswered_leads(session_factory):
             analysis_details={"buyer_role": "B2C_CONSUMER"},
         )
         session.add_all([l1, l2])
+        session.add(
+            Product(
+                canonical_key="confirmed-set",
+                name="Confirmed Set",
+                vertical=Vertical.FURNITURE,
+                category="SET",
+                category_confirmed_at=datetime.now(UTC),
+                price=Decimal("100"),
+                currency="USD",
+                colors_json=[],
+                b2b_suitability="UNCONFIRMED",
+                active=True,
+            )
+        )
         await session.commit()
 
     service = WebQueryService(session_factory, hot_threshold=70)
     gap = await service.demand_gap_score(comp_id)
 
     assert gap["total_commercial"] >= 2
-    assert gap["unanswered_count"] >= 1
-    assert gap["unanswered_rate"] > 0.0
+    assert gap["unworked_count"] >= 1
+    assert gap["unworked_rate"] > 0.0
     assert gap["b2b_gap"] >= 1
+    assert gap["catalog_coverage_percent"] == 50.0
+    assert any(
+        item["category"] == "SET" and item["covered"]
+        for item in gap["catalog_coverage"]
+    )
+    assert any(
+        item["category"] == "HORECA" and not item["covered"]
+        for item in gap["catalog_coverage"]
+    )
 
 
 async def test_demand_gap_overview(session_factory):
@@ -100,5 +127,5 @@ async def test_demand_gap_overview(session_factory):
     overview = await service.demand_gap_overview()
     assert isinstance(overview, list)
     assert len(overview) >= 1
-    assert "unanswered_rate" in overview[0]
+    assert "unworked_rate" in overview[0]
     assert "b2b_gap" in overview[0]

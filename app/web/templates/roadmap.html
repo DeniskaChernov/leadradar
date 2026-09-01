@@ -3,7 +3,7 @@
 {% block heading %}План развития{% endblock %}
 {% block subheading %}Где мы сейчас и что превращает Lead Radar в систему роста продаж{% endblock %}
 {% block content %}
-<section class="roadmap-hero panel">
+<section class="roadmap-hero panel" data-motion-root>
   <div><span class="eyebrow">ТЕКУЩАЯ СТАДИЯ</span><h2>Стадия {{ current_stage }} из {{ total_stages }} · Мультиконкурентный радар</h2><p>Фундамент и CRM уже есть. Сейчас расширяем покрытие рынка: конкуренты, качество источников, приоритеты и прозрачность, откуда приходит каждый лид.</p></div>
   <div class="stage-meter"><div><i style="width: {{ (current_stage / total_stages * 100)|round|int }}%"></i></div><b>{{ (current_stage / total_stages * 100)|round|int }}%</b><span>пути до зрелой production-системы</span></div>
 </section>

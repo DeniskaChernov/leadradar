@@ -1,41 +1,93 @@
-# Audience Engine V3 Audit
+# Audience Engine V3 Audit (historical checkpoint)
+
+This document records the V3 hardening checkpoint. The active ontology and registry are
+documented in `AUDIENCE_ONTOLOGY.md` and `AUDIENCE_CREATION_POLICY.md`; canonical V4 slugs
+supersede the legacy segment names below.
 
 ## CURRENT BEHAVIOR
-- `AudienceService` computes memberships using boolean filters and counter aggregations over raw signals.
-- Decayed interest score formula existed in helper functions but was not systematically stored and applied during membership evaluation.
-- Membership in segments lacked granular explainability (e.g. why a user was placed in `hot-7d` or `dining-sets`).
-- No dedicated `InterestEvidence` table tracking individual topic observations with timestamps and half-life decay.
+
+- Phase D core is implemented offline. Every validated commercial Lead is projected into
+  idempotent `InterestEvidence` rows linked to a real `Evidence` and `PublicSignal` row.
+- `ContactInterestProfile` stores a decayed score per vertical, dimension and topic. It includes
+  confidence, first/last observation, commercial-signal count, source count and Evidence IDs.
+- Audience membership is unique by segment/contact and stores structured `reasons_json`, real
+  `evidence_ids_json`, expiry and `engine_version=3.0`.
+- `OutcomeDNA` snapshots only evidence whose `observed_at` is not later than the deal's `won_at`.
+- Reactions and other V3 non-commercial signals do not create InterestEvidence and do not count
+  as competitor overlap.
 
 ## EXPECTED BEHAVIOR
-- Segment memberships must be 100% explainable with traceable bullet points referencing evidence IDs.
-- `InterestEvidence` records store each topic observation with confidence and half-life decay parameters.
-- Lookalike / similarity engine derives feature vectors from pre-purchase attributes of `WON` deals (`OutcomeDNA`), with zero data leakage.
-- Non-commercial reactions (likes, praise) must never count toward interest strength or multi-competitor affinity.
 
-## BUGS
-1. `calculate_decayed_interest_score` was computed on the fly in certain view helpers rather than driving the core membership evaluation query.
-2. Audience membership explanations were generic strings rather than evidence-linked structured arrays.
-3. Multi-competitor overlap did not filter out non-commercial comments.
+- Memberships must remain fully reproducible from persisted evidence after restart.
+- Expired commercial interest must leave the active segment without deleting history.
+- Similarity must use non-sensitive commercial features and return a human-readable explanation.
+- Outcome learning must use only facts observed before WON and must never use WON as a feature.
+
+## BUGS FIXED
+
+1. Generic membership strings were replaced with structured, Evidence-linked reasons.
+2. The half-life formula now drives persisted interest-profile scores and membership expiry.
+3. Reaction/noise rows no longer inflate activity or multi-competitor source counts.
+4. Recalculation no longer creates duplicate observations, profiles, memberships or OutcomeDNA.
+5. Product and intent confidence is no longer calculated from raw occurrence counters alone.
+6. Empty profiles and shared `UNKNOWN`/missing values no longer create fake 100% similarity.
+7. The duplicate `multi-competitor-2` definition is retired in favor of the existing
+   `comparison-shoppers` segment used by export recipes.
+8. `high-intent-b2c` now expires after 30 days instead of inheriting a historical HOT score
+   forever.
 
 ## DATA RISKS
-- Stale memberships persisting indefinitely if decay threshold does not trigger automatic eviction.
+
+- Legacy analyses are accepted as commercial only when their saved status and score pass the
+  compatibility gate. They should be re-analysed offline before a live pilot.
+- Existing data contains mostly one-source price signals, so current audience distribution is not
+  representative of production demand.
+- Product taxonomy still belongs to the legacy furniture/rattan boundary and will be rebuilt in
+  Phase E.
 
 ## COST RISKS
-- Low: Audience calculations are purely local database queries.
+
+- Audience V3 is database-only and makes no network or paid AI calls.
+- Full recalculation is currently sequential by contact; safe but not yet optimized for a large DB.
 
 ## FALSE POSITIVE RISKS
-- High: Casual commenters asking generic non-commercial questions placed into high-intent targeting segments.
+
+- Legacy custom analyzer results do not contain all V3 component scores; compatibility falls back
+  to the saved lead score.
+- Current active threshold (20/100) needs calibration on a larger golden/replay dataset.
 
 ## FALSE NEGATIVE RISKS
-- Moderate: Contacts with strong historical intent evicted too quickly if half-life decay is overly aggressive.
 
-## PROPOSED FIX
-1. Create `InterestEvidence` model (`contact_id`, `topic`, `signal_id`, `strength`, `confidence`, `observed_at`, `expires_at`).
-2. Upgrade `AudienceMembership` with structured `reasons_json` containing evidence-backed justifications.
-3. Implement `OutcomeDNA` extraction based exclusively on pre-won signals.
+- A signal without a persisted Evidence row is intentionally excluded even when Lead data exists.
+- Aggressive half-life values may evict legitimate long-cycle demand and require vertical-specific
+  calibration.
 
-## TESTS REQUIRED
-- `test_interest_evidence_decay_eviction`
-- `test_audience_membership_has_evidence_explanations`
-- `test_non_commercial_reactions_excluded_from_segments`
-- `test_outcome_dna_pre_purchase_isolation`
+## IMPLEMENTED FIX
+
+1. Migration `f3b9d7a61c20` adds `interest_evidence`, `contact_interest_profiles`, `outcome_dna`
+   and structured membership explanation fields.
+2. Recalculation performs deterministic upserts and preserves expired observations as inactive
+   history.
+3. Profiles combine decayed observations with diminishing returns and confidence weighting.
+4. UI shows why each contact belongs to a segment and the supporting Evidence IDs.
+5. Data-integrity checks cover all new unique scopes.
+6. Similarity now combines products, intents and their order, buyer role, B2B/B2C, quantity,
+   vertical, recency and competitor overlap. Ranked results include human-readable reasons.
+
+## TESTS
+
+- Interest evidence/profile/membership recalculation is idempotent.
+- Membership explanations reference real Evidence IDs.
+- A reaction at another competitor creates no interest and no multi-source membership.
+- Decayed PRICE interest expires while its historical observation remains stored.
+- OutcomeDNA excludes signals observed after WON.
+- Duplicate legacy segments are deactivated without deleting historical memberships.
+- Empty profiles produce zero similarity; evidence-bearing matches return explanation reasons.
+- Full offline suite: 193 passed, zero paid/network calls.
+
+## REMAINING
+
+- Add 100+ audience golden scenarios and measure segment precision/recall.
+- Add aggregate won-customer pattern reporting.
+- Run the 500–1000 signal offline replay and publish audience accuracy in the pilot report.
+- Validate decay thresholds on real, consented pilot outcomes before production use.

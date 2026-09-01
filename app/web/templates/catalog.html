@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Каталог · Lead Radar{% endblock %}
+{% block heading %}Каталог BTT{% endblock %}
+{% block subheading %}Только подтверждённые товары и факты — без выдуманного наличия, SKU и скидок{% endblock %}
+{% block content %}
+<section class="catalog-hero panel" data-motion-root>
+  <div><span class="eyebrow">ИСТОЧНИК ИСТИНЫ</span><h2>Что менеджер действительно может предложить</h2><p>Название, цена и технические данные загружены из подтверждённого списка. Пустые поля означают «не подтверждено», а не ноль. Категория и остаток начинают участвовать в рекомендациях только после ручной проверки.</p></div>
+  <div class="catalog-summary"><strong>{{ products|length }}</strong><span>подтверждённых позиций</span><small>{{ catalog_vertical }}</small></div>
+</section>
+
+{% if web_role == 'ADMIN' %}
+<section class="panel">
+  <div class="panel-head"><div><span class="eyebrow">АТОМАРНЫЙ ИМПОРТ CSV</span><h2>Обновление каталога</h2><p>Сначала выполните предпросмотр. Подтверждённые category, price, stock и COGS импортом не перезаписываются.</p></div></div>
+  <form data-api-form data-output="#catalog-import-result" action="/api/catalog/import" method="post" enctype="multipart/form-data" class="form-grid">
+    <label>CSV в UTF-8<input name="file" type="file" accept=".csv,text/csv" required></label>
+    <small>Ровно 9 колонок: canonical_key, name, vertical, category, price, currency, stock, cogs, active. До 5 МБ и 2000 строк.</small>
+    <div class="button-row"><button class="btn ghost" type="submit" name="apply" value="false">Показать diff</button><button class="btn primary" type="submit" name="apply" value="true" data-confirm="Все валидные изменения из файла будут применены одной транзакцией. Подтверждённые поля останутся защищены.">Применить файл</button></div>
+  </form>
+  <pre id="catalog-import-result" class="truth-note" hidden aria-live="polite"></pre>
+</section>
+{% endif %}
+
+<div class="catalog-grid">
+{% for product in products %}
+  <article class="panel product-card" id="product-{{ product.id }}">
+    <div class="product-card-head"><div><span class="tag">{{ product.vertical.value }}</span><h2>{{ product.name }}</h2></div><strong>{% if product.price is not none %}${{ '%.2f'|format(product.price) }}{% else %}Цена не подтверждена{% endif %}</strong></div>
+    <dl class="product-facts">
+      <div><dt>SKU</dt><dd>{{ product.sku or 'не присвоен' }}</dd></div>
+      <div><dt>Категория</dt><dd>{{ product.category if product.category != 'UNCONFIRMED' else 'не подтверждена' }}</dd></div>
+      <div><dt>Остаток</dt><dd>{{ product.stock if product.stock is not none else 'не подтверждён' }}</dd></div>
+      <div><dt>Себестоимость</dt><dd>{% if product.cogs is not none %}${{ '%.2f'|format(product.cogs) }}{% else %}не подтверждена{% endif %}</dd></div>
+      <div><dt>MOQ</dt><dd>{{ product.minimum_order_quantity if product.minimum_order_quantity is not none else 'не подтверждён' }}</dd></div>
+      <div><dt>Макс. нагрузка</dt><dd>{% if product.max_load_kg is not none %}{{ product.max_load_kg }} кг{% else %}не подтверждена{% endif %}</dd></div>
+      <div class="wide"><dt>Размеры</dt><dd>{% if product.dimensions_json %}{{ product.dimensions_json.length }} × {{ product.dimensions_json.width }} × {{ product.dimensions_json.height }} см{% else %}не подтверждены{% endif %}</dd></div>
+    </dl>
+    <details class="catalog-verify"><summary>Подтвердить рабочие данные</summary><form data-api-form action="/api/catalog/{{ product.id }}" data-reload="1" class="form-grid"><label>Категория<select name="category">{% for category in product_categories %}<option value="{{ category }}" {% if product.category == category %}selected{% endif %}>{{ category }}</option>{% endfor %}</select></label><div class="form-row"><label>Цена<input name="price" inputmode="decimal" value="{{ product.price if product.price is not none else '' }}" placeholder="Не подтверждена"></label><label>Валюта<input name="currency" value="{{ product.currency }}" maxlength="8"></label></div><label>Остаток<input name="stock" type="number" min="0" value="{{ product.stock if product.stock is not none else '' }}" placeholder="Не подтверждён"></label><label>Себестоимость<input name="cogs" inputmode="decimal" value="{{ product.cogs if product.cogs is not none else '' }}" placeholder="Не подтверждена"></label><div><button class="btn tiny primary" type="submit">Сохранить подтверждение</button></div></form></details>
+    <small class="catalog-source">Источник: {{ product.source_reference or 'не указан' }}</small>
+  </article>
+{% else %}
+  <div class="empty panel">Для выбранной вертикали подтверждённых товаров пока нет. Система не создаёт демонстрационные SKU.</div>
+{% endfor %}
+</div>
+{% endblock %}

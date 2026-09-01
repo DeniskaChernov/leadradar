@@ -5,6 +5,7 @@ import hmac
 import json
 import time
 from dataclasses import dataclass
+from enum import IntEnum
 from urllib.parse import parse_qsl
 
 from app.config import Settings
@@ -12,6 +13,18 @@ from app.config import Settings
 
 class TelegramAuthError(RuntimeError):
     pass
+
+
+class WebRole(IntEnum):
+    VIEWER = 10
+    MANAGER = 20
+    ADMIN = 30
+
+
+@dataclass(frozen=True, slots=True)
+class WebPrincipal:
+    user_id: int
+    role: WebRole
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +40,15 @@ class TelegramWebAuth:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+
+    def principal_for(self, user_id: int) -> WebPrincipal | None:
+        if user_id in self.settings.telegram_admin_chat_ids:
+            return WebPrincipal(user_id=user_id, role=WebRole.ADMIN)
+        if user_id in self.settings.telegram_manager_chat_ids:
+            return WebPrincipal(user_id=user_id, role=WebRole.MANAGER)
+        if user_id in self.settings.telegram_viewer_chat_ids:
+            return WebPrincipal(user_id=user_id, role=WebRole.VIEWER)
+        return None
 
     def validate_init_data(self, init_data: str) -> TelegramUser:
         if not self.settings.telegram_bot_token:
@@ -60,7 +82,12 @@ class TelegramWebAuth:
             user_id = int(user_data["id"])
         except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
             raise TelegramAuthError("Telegram user data is invalid") from exc
-        if self.settings.telegram_admin_chat_ids and user_id not in self.settings.telegram_admin_chat_ids:
+        configured_ids = (
+            set(self.settings.telegram_admin_chat_ids)
+            | set(self.settings.telegram_manager_chat_ids)
+            | set(self.settings.telegram_viewer_chat_ids)
+        )
+        if configured_ids and user_id not in configured_ids:
             raise TelegramAuthError("У этого Telegram-пользователя нет доступа к Lead Radar")
         return TelegramUser(
             id=user_id,
@@ -90,10 +117,49 @@ class TelegramWebAuth:
         expected = hmac.new(self._session_key(), payload.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected, signature):
             return None
-        if self.settings.telegram_admin_chat_ids and user_id not in self.settings.telegram_admin_chat_ids:
+        if self.settings.web_auth_enabled and self.principal_for(user_id) is None:
             return None
         return user_id
 
+    def create_csrf_token(self, session_token: str) -> str:
+        return hmac.new(
+            self._session_key(),
+            f"csrf:{session_token}".encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+    def validate_csrf_token(self, session_token: str, csrf_token: str | None) -> bool:
+        if not csrf_token:
+            return False
+        expected = self.create_csrf_token(session_token)
+        return hmac.compare_digest(expected, csrf_token)
+
     def _session_key(self) -> bytes:
-        source = self.settings.telegram_bot_token or "lead-radar-local-session"
-        return hashlib.sha256(f"lead-radar:{source}".encode()).digest()
+        if not self.settings.telegram_bot_token:
+            raise TelegramAuthError("Telegram bot token is required for signed web sessions")
+        return hashlib.sha256(
+            f"lead-radar:{self.settings.telegram_bot_token}".encode()
+        ).digest()
+
+
+_ADMIN_PATH_PREFIXES = (
+    "/api/pricing",
+    "/api/replay/",
+    "/api/scan",
+    "/api/ops/",
+    "/api/history/",
+    "/api/audiences/export-recipes/",
+    "/api/competitors",
+    "/api/market-",
+    "/api/discovery/",
+    "/api/catalog/",
+    "/api/agent/",
+)
+
+
+def required_role(method: str, path: str) -> WebRole:
+    if method.upper() in {"GET", "HEAD", "OPTIONS"} or path == "/logout":
+        return WebRole.VIEWER
+    if any(path == prefix or path.startswith(prefix) for prefix in _ADMIN_PATH_PREFIXES):
+        return WebRole.ADMIN
+    return WebRole.MANAGER

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 
@@ -86,10 +88,38 @@ async def test_market_candidate_can_be_promoted_paused(session_factory):
         assert candidate.status == "PROMOTED"
 
 
+async def test_concurrent_candidate_promotion_creates_one_competitor(
+    file_session_factory,
+):
+    first = MarketIntelligenceService(file_session_factory)
+    second = MarketIntelligenceService(file_session_factory)
+    await first.sync_catalog()
+    async with file_session_factory() as session:
+        candidate = await session.scalar(
+            select(MarketCandidate).where(MarketCandidate.display_name == "Lazuno Ok")
+        )
+        assert candidate is not None
+        candidate_id = candidate.id
+
+    promoted = await asyncio.gather(
+        first.promote_candidate(candidate_id, handle="lazuno.race", active=False),
+        second.promote_candidate(candidate_id, handle="lazuno.race", active=False),
+    )
+
+    assert promoted[0].id == promoted[1].id
+    async with file_session_factory() as session:
+        count = await session.scalar(
+            select(func.count(Competitor.id)).where(
+                Competitor.normalized_handle == "lazuno.race"
+            )
+        )
+    assert count == 1
+
+
 async def test_market_pages_render_and_candidate_promotion_api(session_factory):
     service = MarketIntelligenceService(session_factory)
     await service.sync_catalog()
-    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay")
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
     app = build_web_app(
         settings,
         WebQueryService(session_factory, hot_threshold=70),
@@ -99,6 +129,7 @@ async def test_market_pages_render_and_candidate_promotion_api(session_factory):
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         competitors = await client.get("/competitors")
+        discovery = await client.get("/discovery")
         roadmap = await client.get("/roadmap")
         async with session_factory() as session:
             candidate = await session.scalar(
@@ -113,7 +144,8 @@ async def test_market_pages_render_and_candidate_promotion_api(session_factory):
 
     assert competitors.status_code == 200
     assert "Мы больше не ограничены AIKO" in competitors.text
-    assert "Lazuno Ok" in competitors.text
+    assert discovery.status_code == 200
+    assert "Lazuno Ok" in discovery.text
     assert roadmap.status_code == 200
     assert "Стадия 3 из 7" in roadmap.text
     assert promoted.status_code == 200

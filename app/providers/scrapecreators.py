@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
 import httpx
 
@@ -15,6 +16,7 @@ from app.schemas.instagram import (
     InstagramComment,
     InstagramPost,
     InstagramProfile,
+    ProviderCreditObservation,
 )
 
 
@@ -37,12 +39,61 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.max_comment_pages = max(1, max_comment_pages)
+        self._credit_observations: list[ProviderCreditObservation] = []
 
     @property
     def headers(self) -> dict[str, str]:
         if not self.api_key:
             raise ProviderAuthError("SCRAPECREATORS_API_KEY is not configured")
         return {"x-api-key": self.api_key}
+
+    async def _request_json(self, method: str, url: str, **kwargs: Any) -> Any:
+        payload = await super()._request_json(method, url, **kwargs)
+        self._capture_credit_observation(payload, url)
+        return payload
+
+    def pop_credit_observations(self) -> list[ProviderCreditObservation]:
+        observations = self._credit_observations
+        self._credit_observations = []
+        return observations
+
+    def _capture_credit_observation(self, payload: Any, url: str) -> None:
+        if not isinstance(payload, dict):
+            return
+        containers = [
+            payload,
+            payload.get("meta"),
+            payload.get("data"),
+        ]
+        remaining = None
+        charged = None
+        for container in containers:
+            if not isinstance(container, dict):
+                continue
+            if remaining is None:
+                remaining = _optional_nonnegative_int(container.get("credits_remaining"))
+            if charged is None:
+                charged = _optional_nonnegative_int(container.get("credits_charged"))
+        if remaining is None and charged is None:
+            return
+        operation = (
+            "get_comment_page"
+            if url.endswith("/v2/instagram/post/comments")
+            else "get_reels"
+            if url.endswith("/v2/instagram/user/posts")
+            else "get_profile"
+            if url.endswith("/v1/instagram/profile")
+            else "get_post"
+        )
+        self._credit_observations.append(
+            ProviderCreditObservation(
+                idempotency_key=f"scrapecreators-response:{uuid4().hex}",
+                provider=self.name,
+                operation=operation,
+                credits_remaining=remaining,
+                credits_charged=charged,
+            )
+        )
 
     async def get_profile(self, handle: str) -> InstagramProfile:
         payload = await self._request_json(
@@ -211,4 +262,14 @@ def _required_string(item: dict[str, Any], key: str, *, allow_empty: bool = Fals
 
 def _optional_string(value: object) -> str | None:
     return None if value in (None, "") else str(value)
+
+
+def _optional_nonnegative_int(value: object) -> int | None:
+    if value in (None, "") or isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
 

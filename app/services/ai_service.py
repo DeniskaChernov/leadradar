@@ -1,26 +1,38 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
+import os
 import re
+import socket
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar, Protocol
+from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import AnalysisCache
+from app.db.models import AIRequest, AIRequestStatus, Vertical
 from app.schemas.leads import (
     BuyerRole,
+    CommercialSignalQuality,
     FunnelStage,
     Intent,
     LeadAnalysis,
     PurchaseHorizon,
     Urgency,
 )
-from app.services.usage_service import ExternalBudgetExceeded, ExternalUsageService
+from app.services.ai_context_fingerprint_service import AIContextFingerprintService
+from app.services.b2b_policy import B2BPolicy
+from app.services.lead_scoring_v3 import (
+    HistoricalSignal,
+    LeadScorerV3,
+    parse_observed_at,
+)
+from app.services.usage_service import ExternalUsageService
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +42,20 @@ class AIAnalysisError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class PreviousSignal:
+class ValidatedPreviousSignal:
+    lead_id: int
+    public_signal_id: int
+    evidence_ids: list[int]
+    competitor_id: int
     competitor: str
-    post_caption: str
-    comment: str
-    discovered_at: str
+    intent: str
+    product_family: str | None
+    buyer_role: str
+    commercial_quality: str
+    priority_score: int
+    confidence: int
+    observed_at: str
+    vertical: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,11 +64,15 @@ class LeadAnalysisContext:
     post_caption: str
     comment: str
     username: str
-    previous_signals: list[PreviousSignal]
+    previous_signals: list[ValidatedPreviousSignal]
     previous_interests: list[str]
     known_customer_context: dict[str, str | int | None] = field(default_factory=dict)
     evidence_ids: list[int] = field(default_factory=list)
     public_signal_id: int | None = None
+    lead_id: int | None = None
+    stable_contact_id: str | None = None
+    vertical: str = "FURNITURE"
+    catalog_context_version: str = "catalog:v1"
 
 
 class LeadAnalyzer(Protocol):
@@ -66,6 +91,7 @@ class RuleBasedLeadAnalyzer:
         "класс",
         "красиво",
         "красивая",
+        "красота",
         "супер",
         "огонь",
         "вау",
@@ -74,6 +100,9 @@ class RuleBasedLeadAnalyzer:
         "zor",
         "chiroyli",
         "ajoyib",
+        "gap yo'q",
+        "зўр",
+        "чиройли",
         "cool",
         "nice",
         "муборак",
@@ -109,19 +138,48 @@ class RuleBasedLeadAnalyzer:
                 context,
             )
 
-        non_commercial = (
-            "сколько лет",
-            "сколько красоты",
-            "ish kerak",
-            "работа нужна",
-            "вакансия",
-            "резюме",
+        job_pattern = re.search(
+            r"\b(?:ish\s+(?:kerak|bormi)|иш\s+борми|работа\s+нужна|"
+            r"(?:есть(?:\s+ли)?(?:\s+у\s+вас)?)\s+работ\w*|ищу\s+работу|"
+            r"ваканс\w*|резюме)\b",
+            text,
         )
-        if any(marker in text for marker in non_commercial):
+        if job_pattern:
             return self._result(
                 False,
                 5,
                 Intent.SPAM,
+                self._product(caption),
+                language,
+                "Комментарий относится к поиску работы, а не к покупке мебели.",
+                context,
+                buyer_role=BuyerRole.JOB_SEEKER,
+            )
+
+        spam_like = (
+            "сколько лет",
+            "сколько красоты",
+        )
+        if any(marker in text for marker in spam_like):
+            return self._result(
+                False,
+                5,
+                Intent.SPAM,
+                self._product(caption),
+                language,
+                "Комментарий не относится к покупке мебели.",
+                context,
+            )
+
+        unrelated = (
+            "где это снято",
+            "қаерда олинган",
+        )
+        if any(marker in text for marker in unrelated):
+            return self._result(
+                False,
+                10,
+                Intent.OTHER,
                 self._product(caption),
                 language,
                 "Комментарий не относится к покупке мебели.",
@@ -134,8 +192,14 @@ class RuleBasedLeadAnalyzer:
             "не буду покупать",
             "покупать не буду",
             "kerak emas",
+            "керак эмас",
             "olmayman",
             "сотиб олмайман",
+            "цена не интересует",
+            "уже купил",
+            "уже купила",
+            "buyurtma qilmoqchi emasman",
+            "буюртма қилмоқчи эмасман",
         )
         if any(marker in text for marker in negative_purchase):
             return self._result(
@@ -149,9 +213,9 @@ class RuleBasedLeadAnalyzer:
                 risk_flags=["Явный отказ от покупки"],
             )
 
-        if re.fullmatch(r"\+{1,3}", raw.replace(" ", "")):
+        if re.fullmatch(r"\+{1,3}[?!.,…🙏]*", raw.replace(" ", "")):
             if self._caption_has_commercial_plus_cta(caption):
-                score = min(99, 92 + self._history_boost(context))
+                score = 92
                 return self._result(
                     True,
                     score,
@@ -183,20 +247,9 @@ class RuleBasedLeadAnalyzer:
             "dizayn loyiha",
             "proyekt uchun",
             "для проекта",
+            "комплектуем объект",
         )
-        if any(marker in text for marker in designer_markers):
-            score = min(99, 88 + self._history_boost(context))
-            return self._result(
-                True,
-                score,
-                Intent.BUY,
-                self._product(f"{caption} {text}") or "DESIGN_PROJECT",
-                language,
-                "Запрос от дизайнера или под дизайн-проект/комплектацию объекта.",
-                context,
-                buyer_role=BuyerRole.DESIGNER_CONTRACTOR,
-                role_score=85,
-            )
+        designer_context = any(marker in text for marker in designer_markers)
 
         business_markers = (
             "для кафе",
@@ -204,26 +257,66 @@ class RuleBasedLeadAnalyzer:
             "для гостиницы",
             "для объекта",
             "для отеля",
+            "гостиниц",
+            "банкетн",
+            "террасы кафе",
+            "нового кафе",
             "оптом",
             "ulgurji",
             "kafe uchun",
             "restoran uchun",
+            "restoranga",
             "mehmonxona uchun",
             "choyxona",
+            "кафе учун",
+            "ресторан учун",
         )
-        if any(marker in text for marker in business_markers):
-            score = min(99, 90 + self._history_boost(context))
+        business_context = any(marker in text for marker in business_markers)
+        contextual_buyer_role = (
+            BuyerRole.DESIGNER_CONTRACTOR
+            if designer_context
+            else BuyerRole.B2B_HORECA
+            if business_context
+            else None
+        )
+        contextual_role_score = (
+            85
+            if designer_context
+            else 90
+            if business_context
+            else None
+        )
+
+        explicit_purchase = (
+            "хочу купить",
+            "хочу заказать",
+            "оформить заказ",
+            "buyurtma",
+            "olmoqchiman",
+            "sotib olmoqchiman",
+            "сотиб олмоқчиман",
+            "сотиб олмокчиман",
+            "буюртма қил",
+        )
+        quantity_pattern = re.search(
+            r"\b(?:\d{1,3}|два|две)\s*(?:шт\w*|штук\w*|dona\w*|дона\w*|ta|та|стул\w*|стол\w*|кресл\w*|диван\w*)\b",
+            text,
+        )
+        if quantity_pattern and not any(marker in text for marker in explicit_purchase):
             return self._result(
                 True,
-                score,
-                Intent.BUY,
-                self._product(f"{caption} {text}") or "HORECA",
+                90,
+                Intent.QUANTITY,
+                self._product(f"{caption} {text}"),
                 language,
-                "Пользователь описывает коммерческое или оптовое применение мебели (HoReCa / B2B).",
+                "Пользователь указывает конкретное количество, что является сильным коммерческим сигналом.",
                 context,
-                buyer_role=BuyerRole.B2B_HORECA,
-                role_score=90,
+                buyer_role=contextual_buyer_role,
+                role_score=contextual_role_score,
             )
+
+        objection_markers = ("дорог", "qimmat", "киммат", "қиммат")
+        has_price_objection = any(marker in text for marker in objection_markers)
 
         checks: list[tuple[Intent, tuple[str, ...], int, str]] = [
             (
@@ -239,6 +332,9 @@ class RuleBasedLeadAnalyzer:
                     "можно заказать",
                     "хотела бы заказать",
                     "хотел бы заказать",
+                    "берем ",
+                    "берём ",
+                    "оформить заказ",
                     "нужно ",
                     "buyurtma",
                     "buyurtma qil",
@@ -248,6 +344,8 @@ class RuleBasedLeadAnalyzer:
                     "olsa bo'ladimi",
                     "olsa boladimi",
                     "sotib ol",
+                    "сотиб олмоқчиман",
+                    "буюртма қил",
                     "kerak",
                     "керак",
                 ),
@@ -264,6 +362,8 @@ class RuleBasedLeadAnalyzer:
                     "почем",
                     "почём",
                     "стоимость",
+                    "цену",
+                    "во сколько обойд",
                     "narx",
                     "qancha",
                     "kancha",
@@ -278,6 +378,7 @@ class RuleBasedLeadAnalyzer:
                     "рассрочка",
                     "в рассрочку",
                     "nasiya",
+                    "насия",
                     "bo'lib to'lash",
                     "bolib tolash",
                 ),
@@ -289,6 +390,7 @@ class RuleBasedLeadAnalyzer:
                 (
                     "доставка",
                     "доставк",
+                    "достав",
                     "yetkaz",
                     "yetkazib berish",
                     "етказ",
@@ -307,7 +409,15 @@ class RuleBasedLeadAnalyzer:
             ),
             (
                 Intent.SIZE,
-                ("размер", "размеры", "o'lcham", "olcham", "ўлчам"),
+                (
+                    "размер",
+                    "размеры",
+                    "длиной",
+                    "ширина",
+                    "o'lcham",
+                    "olcham",
+                    "ўлчам",
+                ),
                 74,
                 "Пользователь уточняет размер товара.",
             ),
@@ -319,6 +429,7 @@ class RuleBasedLeadAnalyzer:
                     "есть?",
                     "есть ли",
                     "у вас есть",
+                    "есть этот",
                     "bormi",
                     "mavjud",
                     "qolganmi",
@@ -331,7 +442,15 @@ class RuleBasedLeadAnalyzer:
             ),
             (
                 Intent.CATALOG,
-                ("каталог", "catalog", "katalog", "варианты", "модели", "ассортимент"),
+                (
+                    "каталог",
+                    "catalog",
+                    "katalog",
+                    "варианты",
+                    "модели",
+                    "modellar",
+                    "ассортимент",
+                ),
                 78,
                 "Пользователь запрашивает каталог или варианты товара.",
             ),
@@ -340,6 +459,7 @@ class RuleBasedLeadAnalyzer:
                 (
                     "адрес",
                     "где посмотреть",
+                    "где купить",
                     "где вы",
                     "manzil",
                     "манзил",
@@ -347,6 +467,8 @@ class RuleBasedLeadAnalyzer:
                     "qayerda",
                     "каерда",
                     "қаерда",
+                    "шоурум",
+                    "приехать посмотреть",
                 ),
                 76,
                 "Пользователь спрашивает, где посмотреть или купить товар.",
@@ -356,11 +478,13 @@ class RuleBasedLeadAnalyzer:
                 (
                     "номер",
                     "телефон",
+                    "raqam",
                     "связаться",
                     "напишите",
                     "напишите мне",
                     "yozing",
                     "ёзинг",
+                    "езинг",
                     "aloqa",
                     "алока",
                 ),
@@ -370,16 +494,37 @@ class RuleBasedLeadAnalyzer:
         ]
         matched_checks: list[tuple[Intent, int, str, list[str]]] = []
         for intent, phrases, base_score, reason in checks:
-            matched_phrases = [phrase for phrase in phrases if phrase in text]
+            matched_phrases = [
+                phrase for phrase in phrases if self._contains_marker(text, phrase)
+            ]
             if matched_phrases:
                 matched_checks.append((intent, base_score, reason, matched_phrases[:2]))
         if matched_checks:
-            # The checks are ordered from the most decision-specific intent to more generic
-            # signals. Preserve that semantic priority: e.g. "delivery bormi" contains the
-            # generic availability word too, but the real question is about delivery.
-            intent, base_score, reason, _phrases = matched_checks[0]
+            semantic_priority = {
+                Intent.DELIVERY: 0,
+                Intent.SIZE: 1,
+                Intent.COLOR: 2,
+                Intent.CATALOG: 3,
+                Intent.PRICE: 4,
+                Intent.CONTACT: 5,
+                Intent.LOCATION: 6,
+                Intent.BUY: 7,
+                Intent.AVAILABILITY: 8,
+            }
+            explicit_buy = next(
+                (
+                    item
+                    for item in matched_checks
+                    if item[0] == Intent.BUY
+                    and any(marker in text for marker in explicit_purchase)
+                ),
+                None,
+            )
+            intent, base_score, reason, _phrases = explicit_buy or min(
+                matched_checks, key=lambda item: semantic_priority.get(item[0], 99)
+            )
             specificity_boost = min(6, (len(matched_checks) - 1) * 3)
-            score = min(99, base_score + specificity_boost + self._history_boost(context))
+            score = min(99, base_score + specificity_boost)
             evidence = [reason]
             evidence.extend(
                 f"Дополнительный сигнал: {extra_reason}"
@@ -395,26 +540,14 @@ class RuleBasedLeadAnalyzer:
                 reason,
                 context,
                 evidence=evidence[:4],
+                risk_flags=["Ценовое возражение"] if has_price_objection else None,
+                buyer_role=contextual_buyer_role,
+                role_score=contextual_role_score,
+                objection_penalty=8 if has_price_objection else 0,
             )
 
-        if re.search(
-            r"\b\d{1,3}\s*(шт\w*|штук\w*|dona\w*|дона\w*|та|персон\w*|киши\w*|kishi\w*|комплект\w*|стул\w*|стол\w*|кресл\w*|диван\w*)\b",
-            text,
-        ):
-            score = min(99, 90 + self._history_boost(context))
-            return self._result(
-                True,
-                score,
-                Intent.QUANTITY,
-                self._product(f"{caption} {text}"),
-                language,
-                "Пользователь указывает конкретное количество, что является сильным коммерческим сигналом.",
-                context,
-            )
-
-        objection_markers = ("дорого", "слишком дорого", "qimmat", "киммат", "қиммат")
-        if any(marker in text for marker in objection_markers):
-            score = min(79, 58 + self._history_boost(context))
+        if has_price_objection:
+            score = 58
             return self._result(
                 score >= 65,
                 score,
@@ -424,6 +557,35 @@ class RuleBasedLeadAnalyzer:
                 "Пользователь выражает ценовое возражение: интерес возможен, но требуется уточнение бюджета.",
                 context,
                 risk_flags=["Ценовое возражение"],
+                buyer_role=contextual_buyer_role,
+                role_score=contextual_role_score,
+                objection_penalty=8,
+            )
+
+        if designer_context:
+            return self._result(
+                True,
+                88,
+                Intent.BUY,
+                self._product(f"{caption} {text}") or "DESIGN_PROJECT",
+                language,
+                "Запрос от дизайнера или под дизайн-проект/комплектацию объекта.",
+                context,
+                buyer_role=BuyerRole.DESIGNER_CONTRACTOR,
+                role_score=85,
+            )
+
+        if business_context:
+            return self._result(
+                True,
+                90,
+                Intent.BUY,
+                self._product(f"{caption} {text}") or "HORECA",
+                language,
+                "Пользователь описывает коммерческое или оптовое применение мебели (HoReCa / B2B).",
+                context,
+                buyer_role=BuyerRole.B2B_HORECA,
+                role_score=90,
             )
 
         if any(word in text for word in self._reaction_words) and len(text.split()) <= 16:
@@ -461,10 +623,19 @@ class RuleBasedLeadAnalyzer:
         return re.sub(r"\s+", " ", value.lower().replace("ё", "е")).strip()
 
     @staticmethod
+    def _contains_marker(text: str, marker: str) -> bool:
+        """Avoid short-word collisions such as Uzbek `rang` inside `restoranga`."""
+        if " " not in marker and marker.isalpha() and len(marker) <= 5:
+            return re.search(rf"\b{re.escape(marker)}\w*\b", text) is not None
+        return marker in text
+
+    @staticmethod
     def _language(value: str) -> str:
         lowered = value.lower()
         uz_cyrillic_markers = ("нарх", "қанча", "канча", "борми", "керак", "етказ", "кишилик")
-        if any(ch in lowered for ch in "ўқғҳ") or any(marker in lowered for marker in uz_cyrillic_markers):
+        if any(ch in lowered for ch in "ўқғҳ") or any(
+            marker in lowered for marker in uz_cyrillic_markers
+        ):
             return "uz-cyrl"
         uz_markers = ("narx", "qancha", "kancha", "bormi", "kerak", "yetkaz", "kishilik")
         if any(marker in lowered for marker in uz_markers):
@@ -511,10 +682,53 @@ class RuleBasedLeadAnalyzer:
             # Specific compound sets — highest priority
             (("обеден", "dining", "стол со стул", "комплект стол", "komplekt stol"), "DINING_SET"),
             # Rattan sub-types — before generic rattan
-            (("диван ротанг", "диваны ротанг", "диваны из ротанга", "ротанг диван", "ротанговый диван", "плетен диван", "диван плетен", "rattan sofa", "rattan divan"), "RATTAN_SOFA"),
-            (("кресло ротанг", "ротанг кресл", "плетен кресл", "плетеное кресло", "плетеные кресла", "rattan armchair", "rattan kreslo"), "RATTAN_ARMCHAIR"),
-            (("гарнитур ротанг", "ротанг набор", "комплект ротанг", "rattan garden set", "rattan komplekt"), "RATTAN_GARDEN_SET"),
-            (("барный стул", "барные стулья", "bar stool", "высокий стул", "баркаунтер", "bar stol"), "RATTAN_BAR_STOOL"),
+            (
+                (
+                    "диван ротанг",
+                    "диваны ротанг",
+                    "диваны из ротанга",
+                    "ротанг диван",
+                    "ротанговый диван",
+                    "плетен диван",
+                    "диван плетен",
+                    "rattan sofa",
+                    "rattan divan",
+                ),
+                "RATTAN_SOFA",
+            ),
+            (
+                (
+                    "кресло ротанг",
+                    "ротанг кресл",
+                    "плетен кресл",
+                    "плетеное кресло",
+                    "плетеные кресла",
+                    "rattan armchair",
+                    "rattan kreslo",
+                ),
+                "RATTAN_ARMCHAIR",
+            ),
+            (
+                (
+                    "гарнитур ротанг",
+                    "ротанг набор",
+                    "комплект ротанг",
+                    "rattan garden set",
+                    "rattan komplekt",
+                ),
+                "RATTAN_GARDEN_SET",
+            ),
+            (
+                (
+                    "барный стул",
+                    "барные стулья",
+                    "bar stool",
+                    "высокий стул",
+                    "баркаунтер",
+                    "bar stol",
+                ),
+                "RATTAN_BAR_STOOL",
+            ),
             (("качел", "swing", "хорч"), "SWING"),
             (("пергол", "pergola", "беседк"), "PERGOLA"),
             # Generic rattan — catch-all for unspecified rattan
@@ -532,18 +746,30 @@ class RuleBasedLeadAnalyzer:
 
     @staticmethod
     def _history_boost(context: LeadAnalysisContext) -> int:
-        # Repeated interest matters, but interest across different sellers is even stronger:
-        # it usually means the person is actively comparing the market rather than casually
-        # reacting to one account. The cap prevents history from turning weak comments into HOT
-        # leads by itself.
-        repetition = min(9, len(context.previous_signals) * 3)
-        other_sources = {
-            item.competitor
-            for item in context.previous_signals
-            if item.competitor and item.competitor != context.competitor
-        }
-        comparison_boost = min(6, len(other_sources) * 3)
-        return min(15, repetition + comparison_boost)
+        history = RuleBasedLeadAnalyzer._validated_history(context)
+        boost, _sequence = LeadScorerV3._history_scores(history, Intent.OTHER)
+        return boost
+
+    @staticmethod
+    def _validated_history(context: LeadAnalysisContext) -> list[HistoricalSignal]:
+        result: list[HistoricalSignal] = []
+        for item in context.previous_signals:
+            try:
+                intent = Intent(item.intent)
+                quality = CommercialSignalQuality(item.commercial_quality)
+            except ValueError:
+                continue
+            if quality == CommercialSignalQuality.NON_COMMERCIAL:
+                continue
+            result.append(
+                HistoricalSignal(
+                    competitor=item.competitor,
+                    intent=intent,
+                    quality=quality,
+                    observed_at=parse_observed_at(item.observed_at),
+                )
+            )
+        return result
 
     @staticmethod
     def _detect_buyer_role(
@@ -572,26 +798,9 @@ class RuleBasedLeadAnalyzer:
         if any(marker in text for marker in designer_markers):
             return BuyerRole.DESIGNER_CONTRACTOR
 
-        business_markers = (
-            "для кафе",
-            "для ресторана",
-            "для гостиницы",
-            "для объекта",
-            "для отеля",
-            "оптом",
-            "ulgurji",
-            "kafe uchun",
-            "restoran uchun",
-            "mehmonxona uchun",
-            "choyxona",
-        )
-        quantity_match = re.search(
-            r"\b(\d{1,3})\s*(шт\w*|штук\w*|dona\w*|дона\w*|та|персон\w*|киши\w*|kishi\w*|комплект\w*|стул\w*|стол\w*|кресл\w*|диван\w*|chair\w*|table\w*)\b",
-            text,
-        )
-        qty = int(quantity_match.group(1)) if quantity_match else 0
-        if any(marker in text for marker in business_markers) or qty >= 10 or product == "HORECA":
-            return BuyerRole.B2B_HORECA
+        b2b = B2BPolicy.assess(text, product=product)
+        if b2b.role == BuyerRole.B2B_HORECA:
+            return b2b.role
 
         if is_lead:
             return BuyerRole.B2C_CONSUMER
@@ -674,6 +883,12 @@ class RuleBasedLeadAnalyzer:
                 reason=reason,
                 product=product,
             )
+        role_evidence = {
+            BuyerRole.B2B_HORECA: "Контекст покупателя: B2B / HoReCa.",
+            BuyerRole.DESIGNER_CONTRACTOR: "Контекст покупателя: дизайнер или комплектатор.",
+        }.get(buyer_role)
+        if role_evidence and role_evidence not in details:
+            details.append(role_evidence)
 
         # Determine role_score
         if role_score is None:
@@ -701,17 +916,46 @@ class RuleBasedLeadAnalyzer:
                 spec += 5
             specificity_score = min(10, spec)
 
-        history_boost = RuleBasedLeadAnalyzer._history_boost(context) if context else 0
-
+        evidence_ids = list(context.evidence_ids) if context and context.evidence_ids else []
+        history = RuleBasedLeadAnalyzer._validated_history(context) if context else []
+        scoring = LeadScorerV3.score(
+            is_lead=is_lead,
+            intent=intent,
+            legacy_intent_score=intent_strength,
+            text=raw,
+            product=product,
+            evidence_ids=evidence_ids,
+            history=history,
+            current_competitor=context.competitor if context else "",
+            urgency_score={Urgency.LOW: 30, Urgency.MEDIUM: 60, Urgency.HIGH: 95}[urgency],
+        )
+        confidence = scoring.confidence_score
+        score = max(0, scoring.priority_score - max(0, objection_penalty))
+        if not is_lead:
+            stage = FunnelStage.NON_COMMERCIAL
+        elif intent in {Intent.BUY, Intent.QUANTITY} and score >= 88:
+            stage = FunnelStage.READY_TO_BUY
+        elif intent in {Intent.BUY, Intent.QUANTITY, Intent.CONTACT}:
+            stage = FunnelStage.PURCHASE_INTENT
+        else:
+            stage = FunnelStage.CONSIDERATION
         factors = {
-            "intent_strength": intent_strength,
-            "specificity_score": specificity_score,
+            "intent_strength": scoring.intent_score,
+            "intent_score": scoring.intent_score,
+            "activity_score": scoring.activity_score,
+            "specificity_score": scoring.specificity_score,
+            "value_score": scoring.value_score,
+            "fit_score": scoring.fit_score,
+            "source_quality_score": scoring.source_quality_score,
+            "confidence_score": scoring.confidence_score,
+            "priority_score": score,
             "role_score": role_score,
-            "history_boost": history_boost,
+            "history_boost": scoring.history_boost,
+            "sequence_score": scoring.sequence_score,
+            "validated_commercial_count": scoring.validated_commercial_count,
+            "validated_competitor_count": scoring.validated_competitor_count,
             "objection_penalty": objection_penalty,
         }
-
-        evidence_ids = list(context.evidence_ids) if context and context.evidence_ids else []
 
         actions = {
             Intent.BUY: "Связаться в течение 10 минут, подтвердить модель, количество и удобный способ оформления.",
@@ -731,6 +975,11 @@ class RuleBasedLeadAnalyzer:
             if not is_lead
             else "Менеджеру проверить контекст и задать один уточняющий вопрос.",
         )
+        if objection_penalty and is_lead:
+            recommended_action = (
+                "Уточнить бюджет и критерии выбора; предложить только подтверждённые "
+                "альтернативы без обещания скидки."
+            )
         return LeadAnalysis(
             is_lead=is_lead,
             lead_score=score,
@@ -745,16 +994,31 @@ class RuleBasedLeadAnalyzer:
             evidence=details[:6],
             risk_flags=(risk_flags or [])[:6],
             recommended_action=recommended_action,
-            intelligence_version="2.0",
+            intelligence_version=LeadScorerV3.VERSION,
             buyer_role=buyer_role,
             factors=factors,
             evidence_ids=evidence_ids,
+            is_commercial=scoring.quality.value != "NON_COMMERCIAL",
+            commercial_quality=scoring.quality,
+            commercial_stage=stage,
+            intent_score=scoring.intent_score,
+            activity_score=scoring.activity_score,
+            specificity_score=scoring.specificity_score,
+            value_score=scoring.value_score,
+            fit_score=scoring.fit_score,
+            source_quality_score=scoring.source_quality_score,
+            confidence_score=scoring.confidence_score,
+            priority_score=score,
+            quantity=scoring.b2b.quantity,
+            next_best_action=recommended_action,
+            short_reason=reason,
         )
 
 
 class OpenAILeadAnalyzer:
     def __init__(self, api_key: str, model: str, client: Any | None = None) -> None:
         self.model = model
+        self.last_token_usage: tuple[int | None, int | None] = (None, None)
         if client is not None:
             self.client = client
         else:
@@ -765,8 +1029,9 @@ class OpenAILeadAnalyzer:
             self.client = AsyncOpenAI(api_key=api_key)
 
     async def analyze(self, context: LeadAnalysisContext) -> LeadAnalysis:
+        context_payload = asdict(context)
         payload = {
-            **asdict(context),
+            **context_payload,
             "catalog_scope": [
                 "wicker furniture",
                 "artificial rattan furniture",
@@ -783,10 +1048,11 @@ class OpenAILeadAnalyzer:
             ),
         }
         system_prompt = (
-            "You are the lead-intelligence layer for a furniture seller (version 2.0). Qualify public Instagram "
+            "You are Lead Radar Intelligence Agent (production prompt v3.1). Transform only supplied public commercial Evidence into structured sales intelligence. "
+            "ValidatedCommercialHistory is already server-validated and contains no arbitrary raw prior comments. Qualify the current public Instagram "
             "comments in Russian, Uzbek Latin, Uzbek Cyrillic, or mixed language. The outcome must "
             "help a sales manager decide whether to act, why, how quickly, and what to say next. "
-            "Use only supplied evidence. Never infer private traits, contact details, income, or "
+            "Use only CurrentSignal, PostContext, EvidenceBundle, ValidatedCommercialHistory, ContactCRMContext, and ProductCatalogFacts supplied in the input. Never infer private traits, contact details, income, or "
             "facts that are not present. Evaluate the comment together with the Reel caption and "
             "CTA, product fit, request specificity, repetition across prior signals, comparison "
             "across competitors, buyer role (B2C, HoReCa/B2B, Designer), and manager-entered CRM context. A plus sign is commercial only "
@@ -795,7 +1061,7 @@ class OpenAILeadAnalyzer:
             "Negation overrides keyword matches. Distinguish active purchase intent from research, "
             "price objections, and ambiguous questions. Score 0–100 consistently; confidence means "
             "confidence in the classification, not purchase probability. Provide short observable "
-            "evidence, uncertainty flags, intelligence_version '2.0', buyer_role, factors breakdown, "
+            "evidence, uncertainty flags, intelligence_version '3.0', buyer_role, decomposed component scores, "
             "evidence_ids, and one concrete manager action. Do not reveal hidden "
             "chain-of-thought or invent a rationale. Return only the validated structured result."
         )
@@ -805,25 +1071,58 @@ class OpenAILeadAnalyzer:
                 instructions=system_prompt,
                 input=json.dumps(payload, ensure_ascii=False, default=str),
                 text_format=LeadAnalysis,
-                reasoning={"effort": "medium"},
-                max_output_tokens=900,
+                reasoning={"effort": "low"},
+                max_output_tokens=2000,
                 store=False,
-                prompt_cache_key="lead-radar-qualifier-v2",
+                prompt_cache_key="lead-radar-qualifier-v3",
             )
             parsed = response.output_parsed
             if parsed is None:
                 raise AIAnalysisError("OpenAI returned no parsed lead analysis")
-            if isinstance(parsed, LeadAnalysis):
-                return parsed
-            return LeadAnalysis.model_validate(parsed)
+            self.last_token_usage = self._extract_token_usage(response)
+            analysis = (
+                parsed
+                if isinstance(parsed, LeadAnalysis)
+                else LeadAnalysis.model_validate(parsed)
+            )
+            valid_evidence_ids = sorted(
+                set(analysis.evidence_ids) & set(context.evidence_ids)
+            )
+            confidence = analysis.confidence
+            confidence_score = analysis.confidence_score or confidence
+            if not valid_evidence_ids:
+                confidence = min(confidence, 65)
+                confidence_score = min(confidence_score, 65)
+            return analysis.model_copy(
+                update={
+                    "evidence_ids": valid_evidence_ids,
+                    "confidence": confidence,
+                    "confidence_score": confidence_score,
+                    "intelligence_version": "3.0",
+                }
+            )
         except AIAnalysisError:
             raise
         except Exception as exc:
             logger.exception("ai_analysis_failed error_type=%s", type(exc).__name__)
             raise AIAnalysisError("OpenAI lead analysis failed") from exc
 
+    @staticmethod
+    def _extract_token_usage(response: Any) -> tuple[int | None, int | None]:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return None, None
+        input_tokens = getattr(usage, "input_tokens", None)
+        output_tokens = getattr(usage, "output_tokens", None)
+        if input_tokens is None and output_tokens is None:
+            return None, None
+        return input_tokens, output_tokens
+
 
 class BudgetedCachedOpenAIAnalyzer:
+    PROMPT_VERSION = "lead-v3.1-validated-history"
+    SCHEMA_VERSION = "lead-analysis-v3.2"
+
     def __init__(
         self,
         inner: OpenAILeadAnalyzer,
@@ -832,69 +1131,380 @@ class BudgetedCachedOpenAIAnalyzer:
         *,
         enabled: bool,
         daily_limit: int,
+        worker_id: str = "default-worker",
+        analysis_version: str = "3.0",
+        lease_seconds: int = 180,
+        max_attempts: int = 3,
+        live_gate: Callable[[], bool] | None = None,
     ) -> None:
         self.inner = inner
         self.session_factory = session_factory
         self.usage = usage
-        self.enabled = enabled
+        self._master_enabled = enabled
+        self._live_gate = live_gate
         self.daily_limit = daily_limit
+        self.analysis_version = analysis_version
+        self.lease_seconds = lease_seconds
+        self.max_attempts = max_attempts
+        self.worker_id = (
+            worker_id
+            if worker_id != "default-worker"
+            else f"{socket.gethostname()}:{os.getpid()}:{uuid4().hex[:8]}"
+        )
+        self.fingerprint_service = AIContextFingerprintService(
+            analysis_version=analysis_version,
+            model=self.inner.model,
+            prompt_version=self.PROMPT_VERSION,
+            schema_version=self.SCHEMA_VERSION,
+        )
+
+    @property
+    def enabled(self) -> bool:
+        if not self._master_enabled:
+            return False
+        if self._live_gate is not None:
+            return bool(self._live_gate())
+        return True
+
+    def context_fingerprint(self, context: LeadAnalysisContext) -> str:
+        return self.fingerprint_service.fingerprint(context)
 
     async def analyze(self, context: LeadAnalysisContext) -> LeadAnalysis:
-        cache_key = self._cache_key(context)
-        async with self.session_factory() as session:
-            cached = await session.scalar(
-                select(AnalysisCache).where(AnalysisCache.cache_key == cache_key)
+        fingerprint = self.context_fingerprint(context)
+        now = datetime.now(UTC)
+        if context.lead_id is None:
+            raise AIAnalysisError("AI request requires a persisted lead_id")
+
+        cached, request_id, claim_token = await self._claim_request(
+            context.lead_id, fingerprint, now
+        )
+        if cached is not None:
+            return cached
+        if request_id is None or claim_token is None:
+            raise AIAnalysisError(
+                "AI анализ для данного контекста уже выполняется другим процессом."
             )
-            if cached is not None:
-                cached.hit_count += 1
-                cached.last_used_at = datetime.now(UTC)
-                await session.commit()
-                return LeadAnalysis.model_validate(cached.result_json)
 
         if not self.enabled:
+            await self._release_request_claim(
+                request_id,
+                claim_token,
+                AIRequestStatus.RETRYABLE,
+                "OpenAI disabled",
+                paid_attempt=False,
+            )
             raise AIAnalysisError(
                 "OpenAI отключён для экономии токенов. Неоднозначный сигнал оставлен в очереди AI."
             )
-        try:
-            await self.usage.assert_available("openai", self.daily_limit)
-        except ExternalBudgetExceeded as exc:
-            raise AIAnalysisError(str(exc)) from exc
 
         try:
-            analysis = await self.inner.analyze(context)
-        except Exception:
-            await self.usage.record("openai", "lead_analysis", success=False)
+            reservation_id = await self.usage.reserve_budget(
+                "openai",
+                "lead_analysis",
+                self.daily_limit,
+                units=1,
+                request_fingerprint=fingerprint,
+                lease_seconds=self.lease_seconds,
+                reservation_key=f"ai:{request_id}:{claim_token}",
+                worker_id=self.worker_id,
+                provider="openai",
+            )
+        except Exception as exc:
+            await self._release_request_claim(
+                request_id,
+                claim_token,
+                AIRequestStatus.RETRYABLE,
+                str(exc),
+                paid_attempt=False,
+            )
             raise
-        await self.usage.record("openai", "lead_analysis", success=True)
+
+        await self.usage.mark_call_started(reservation_id)
+        input_tokens, output_tokens = None, None
+        try:
+            analysis = await self.inner.analyze(context)
+            input_tokens, output_tokens = getattr(
+                self.inner, "last_token_usage", (None, None)
+            )
+        except Exception as exc:
+            # После call_started списание неизвестно — не придумываем charge.
+            await self.usage.mark_reservation_uncertain(
+                reservation_id,
+                reason="openai_call_failed_without_usage_proof",
+                details={
+                    "model": self.inner.model,
+                    "fingerprint": fingerprint,
+                    "billing_state": "UNKNOWN",
+                    "error_type": type(exc).__name__,
+                },
+            )
+            failure_status, failure_type = self._classify_failure(exc)
+            await self._release_request_claim(
+                request_id, claim_token, failure_status, str(exc), failure_type
+            )
+            raise
+
+        request_values: dict[str, Any] = {
+            "status": AIRequestStatus.SUCCEEDED,
+            "result_json": analysis.model_dump(mode="json"),
+            "error": None,
+            "error_type": None,
+            "error_message": None,
+            "completed_at": datetime.now(UTC),
+            "claim_expires_at": None,
+            "claim_token": None,
+            "worker_id": None,
+        }
+        if input_tokens is not None:
+            request_values["input_tokens"] = input_tokens
+        if output_tokens is not None:
+            request_values["output_tokens"] = output_tokens
+        async with self.session_factory() as session:
+            saved = (
+                await session.execute(
+                    update(AIRequest)
+                    .where(
+                        AIRequest.id == request_id,
+                        AIRequest.status == AIRequestStatus.CLAIMED,
+                        AIRequest.claim_token == claim_token,
+                    )
+                    .values(**request_values)
+                    .returning(AIRequest.id)
+                )
+            ).scalar_one_or_none()
+            await session.commit()
+        if saved is None:
+            # Ответ уже получен и оплачен: фиксируем ledger и паркуем результат,
+            # чтобы recovery не купил второй OpenAI-вызов.
+            await self.usage.finalize_reservation(
+                reservation_id,
+                units=1,
+                success=True,
+                details={
+                    "model": self.inner.model,
+                    "fingerprint": fingerprint,
+                    "billing_state": "DELIVERED_RESULT_CLAIM_LOST",
+                },
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                lead_id=context.lead_id,
+                vertical=Vertical(context.vertical),
+            )
+            parked = await self._persist_delivered_result_after_claim_lost(
+                request_id,
+                request_values,
+            )
+            if parked:
+                return analysis
+            raise AIAnalysisError("AI result lost its durable claim before persistence")
+
+        await self.usage.finalize_reservation(
+            reservation_id,
+            units=1,
+            success=True,
+            details={"model": self.inner.model, "fingerprint": fingerprint},
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            lead_id=context.lead_id,
+            vertical=Vertical(context.vertical),
+        )
+
+        return analysis
+
+    async def _persist_delivered_result_after_claim_lost(
+        self,
+        request_id: int,
+        request_values: dict[str, Any],
+    ) -> bool:
+        """Сохраняет оплаченный результат, если claim уже снят и нет живого чужого lease."""
+        now = datetime.now(UTC)
+        async with self.session_factory() as session:
+            saved = (
+                await session.execute(
+                    update(AIRequest)
+                    .where(
+                        AIRequest.id == request_id,
+                        or_(
+                            AIRequest.status == AIRequestStatus.RETRYABLE,
+                            and_(
+                                AIRequest.status == AIRequestStatus.CLAIMED,
+                                or_(
+                                    AIRequest.claim_expires_at.is_(None),
+                                    AIRequest.claim_expires_at <= now,
+                                ),
+                            ),
+                        ),
+                    )
+                    .values(**request_values)
+                    .returning(AIRequest.id)
+                )
+            ).scalar_one_or_none()
+            await session.commit()
+        return saved is not None
+
+    @staticmethod
+    def _classify_failure(exc: Exception) -> tuple[AIRequestStatus, str]:
+        root = exc
+        while root.__cause__ is not None and isinstance(root.__cause__, Exception):
+            root = root.__cause__
+        error_type = type(root).__name__
+        message = str(root).lower()
+        retryable_markers = (
+            "timeout",
+            "temporar",
+            "connection",
+            "rate limit",
+            "429",
+            "500",
+            "502",
+            "503",
+            "504",
+        )
+        permanent_markers = (
+            "invalid",
+            "schema",
+            "unsupported",
+            "authentication",
+            "permission",
+            "400",
+            "401",
+            "403",
+        )
+        if isinstance(root, (TimeoutError, ConnectionError)) or any(
+            marker in message for marker in retryable_markers
+        ):
+            return AIRequestStatus.RETRYABLE, error_type
+        if isinstance(root, (TypeError, ValueError)) or any(
+            marker in message for marker in permanent_markers
+        ):
+            return AIRequestStatus.PERMANENT_FAILURE, error_type
+        # Unknown post-delivery failures stop automatically: money safety is stronger than
+        # speculative retry. An operator may re-enable via a new analysis version.
+        return AIRequestStatus.PERMANENT_FAILURE, error_type
+
+    async def _claim_request(
+        self, lead_id: int, fingerprint: str, now: datetime
+    ) -> tuple[LeadAnalysis | None, int | None, str | None]:
+        token = uuid4().hex
+        async with self.session_factory() as session:
+            request = AIRequest(
+                lead_id=lead_id,
+                analysis_version=self.analysis_version,
+                prompt_version=self.PROMPT_VERSION,
+                schema_version=self.SCHEMA_VERSION,
+                context_fingerprint=fingerprint,
+                model=self.inner.model,
+                status=AIRequestStatus.CLAIMED,
+                claimed_at=now,
+                claim_expires_at=now + timedelta(seconds=self.lease_seconds),
+                worker_id=self.worker_id,
+                claim_token=token,
+                attempt_count=1,
+            )
+            session.add(request)
+            try:
+                await session.commit()
+                return None, request.id, token
+            except IntegrityError:
+                await session.rollback()
 
         async with self.session_factory() as session:
             existing = await session.scalar(
-                select(AnalysisCache).where(AnalysisCache.cache_key == cache_key)
+                select(AIRequest).where(
+                    AIRequest.lead_id == lead_id,
+                    AIRequest.analysis_version == self.analysis_version,
+                    AIRequest.context_fingerprint == fingerprint,
+                )
             )
             if existing is None:
-                session.add(
-                    AnalysisCache(
-                        cache_key=cache_key,
-                        model=self.inner.model,
-                        result_json=analysis.model_dump(mode="json"),
+                return None, None, None
+            if existing.status == AIRequestStatus.SUCCEEDED and existing.result_json:
+                return LeadAnalysis.model_validate(existing.result_json), None, None
+            claimed_id = (
+                await session.execute(
+                    update(AIRequest)
+                    .where(
+                        AIRequest.id == existing.id,
+                        AIRequest.status.not_in(
+                            [AIRequestStatus.SUCCEEDED, AIRequestStatus.PERMANENT_FAILURE]
+                        ),
+                        AIRequest.attempt_count < self.max_attempts,
+                        or_(
+                            AIRequest.status != AIRequestStatus.CLAIMED,
+                            AIRequest.claim_expires_at.is_(None),
+                            AIRequest.claim_expires_at <= now,
+                        ),
                     )
+                    .values(
+                        status=AIRequestStatus.CLAIMED,
+                        claimed_at=now,
+                        claim_expires_at=now + timedelta(seconds=self.lease_seconds),
+                        worker_id=self.worker_id,
+                        claim_token=token,
+                        attempt_count=AIRequest.attempt_count + 1,
+                        error=None,
+                        error_type=None,
+                        error_message=None,
+                    )
+                    .execution_options(synchronize_session=False)
+                    .returning(AIRequest.id)
                 )
-                await session.commit()
-        return analysis
+            ).scalar_one_or_none()
+            await session.commit()
+        return None, claimed_id, token if claimed_id is not None else None
 
-    def _cache_key(self, context: LeadAnalysisContext) -> str:
-        normalized = {
-            "analysis_contract": "lead-analysis-v2",
-            "model": self.inner.model,
-            "competitor": context.competitor,
-            "post_caption": context.post_caption,
-            "comment": context.comment,
-            "previous_signals": [asdict(item) for item in context.previous_signals],
-            "previous_interests": context.previous_interests,
-            "known_customer_context": context.known_customer_context,
-        }
-        raw = json.dumps(normalized, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    async def _release_request_claim(
+        self,
+        request_id: int,
+        claim_token: str,
+        status: AIRequestStatus,
+        error: str,
+        error_type: str = "AIAnalysisError",
+        paid_attempt: bool = True,
+    ) -> None:
+        async with self.session_factory() as session:
+            request = await session.scalar(
+                select(AIRequest).where(
+                    AIRequest.id == request_id,
+                    AIRequest.status == AIRequestStatus.CLAIMED,
+                    AIRequest.claim_token == claim_token,
+                )
+            )
+            if request is None:
+                return
+            final_status = (
+                AIRequestStatus.PERMANENT_FAILURE
+                if paid_attempt and request.attempt_count >= self.max_attempts
+                else status
+            )
+            await session.execute(
+                update(AIRequest)
+                .where(
+                    AIRequest.id == request_id,
+                    AIRequest.status == AIRequestStatus.CLAIMED,
+                    AIRequest.claim_token == claim_token,
+                )
+                .values(
+                    status=final_status,
+                    error=error[:1000],
+                    error_type=error_type[:128],
+                    error_message=error[:4000],
+                    completed_at=(
+                        datetime.now(UTC)
+                        if final_status == AIRequestStatus.PERMANENT_FAILURE
+                        else None
+                    ),
+                    attempt_count=(
+                        request.attempt_count
+                        if paid_attempt
+                        else max(0, request.attempt_count - 1)
+                    ),
+                    claim_expires_at=None,
+                    claim_token=None,
+                    worker_id=None,
+                )
+            )
+            await session.commit()
 
 
 class HybridLeadAnalyzer:
@@ -909,9 +1519,7 @@ class HybridLeadAnalyzer:
         self.openai = openai
         self.mode = mode
 
-    async def analyze_with_source(
-        self, context: LeadAnalysisContext
-    ) -> tuple[LeadAnalysis, str]:
+    async def analyze_with_source(self, context: LeadAnalysisContext) -> tuple[LeadAnalysis, str]:
         if self.mode in {"rules", "hybrid"}:
             local = self.rules.classify(context)
             if local is not None:

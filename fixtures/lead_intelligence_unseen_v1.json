@@ -1,0 +1,394 @@
+[
+  {
+    "id": "unseen_ru_negation_01",
+    "comment": "Спасибо, уже нашли другого поставщика",
+    "caption": "Мебель для дома",
+    "expected_is_lead": false,
+    "expected_intent": "OTHER"
+  },
+  {
+    "id": "unseen_ru_job_01",
+    "comment": "Есть вакансия менеджера?",
+    "caption": "Мебельная фабрика",
+    "expected_is_lead": false,
+    "expected_intent": "SPAM"
+  },
+  {
+    "id": "unseen_ru_reaction_01",
+    "comment": "Очень стильно получилось",
+    "caption": "Интерьер гостиной",
+    "expected_is_lead": false,
+    "expected_intent": "OTHER"
+  },
+  {
+    "id": "unseen_ru_price_01",
+    "comment": "Подскажите цену за комплект из 4 стульев",
+    "caption": "Обеденная зона",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE"
+  },
+  {
+    "id": "unseen_ru_buy_01",
+    "comment": "Хотим заказать такой же диван",
+    "caption": "Новая коллекция",
+    "expected_is_lead": true,
+    "expected_intent": "BUY"
+  },
+  {
+    "id": "unseen_ru_delivery_01",
+    "comment": "Доставка в Нукус возможна?",
+    "caption": "Садовая мебель",
+    "expected_is_lead": true,
+    "expected_intent": "DELIVERY"
+  },
+  {
+    "id": "unseen_ru_avail_01",
+    "comment": "Белый комплект ещё есть?",
+    "caption": "Мебель для террасы",
+    "expected_is_lead": true,
+    "expected_intent": "AVAILABILITY"
+  },
+  {
+    "id": "unseen_ru_qty_01",
+    "comment": "Нужно 24 стула для зала",
+    "caption": "Стулья для бизнеса",
+    "expected_is_lead": true,
+    "expected_intent": "QUANTITY"
+  },
+  {
+    "id": "unseen_ru_catalog_01",
+    "comment": "Пришлите прайс и каталог в PDF",
+    "caption": "Оптовые поставки",
+    "expected_is_lead": true,
+    "expected_intent": "CATALOG"
+  },
+  {
+    "id": "unseen_ru_contact_01",
+    "comment": "Оставьте номер менеджера",
+    "caption": "Мебель на заказ",
+    "expected_is_lead": true,
+    "expected_intent": "CONTACT"
+  },
+  {
+    "id": "unseen_uz_price_01",
+    "comment": "Bu stol narxi qancha ekan?",
+    "caption": "Uy mebeli",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE"
+  },
+  {
+    "id": "unseen_uz_buy_01",
+    "comment": "Shu komplektni olmoqchiman",
+    "caption": "Yangi kolleksiya",
+    "expected_is_lead": true,
+    "expected_intent": "BUY"
+  },
+  {
+    "id": "unseen_uz_delivery_01",
+    "comment": "Andijonga yetkazib berasizmi?",
+    "caption": "Bog mebellari",
+    "expected_is_lead": true,
+    "expected_intent": "DELIVERY"
+  },
+  {
+    "id": "unseen_uz_avail_01",
+    "comment": "Hozir oq rangda bormi?",
+    "caption": "Terrasa mebeli",
+    "expected_is_lead": true,
+    "expected_intent": "AVAILABILITY"
+  },
+  {
+    "id": "unseen_uz_neg_01",
+    "comment": "Hozircha kerak emas",
+    "caption": "Chegirmalar",
+    "expected_is_lead": false,
+    "expected_intent": "OTHER"
+  },
+  {
+    "id": "unseen_uz_job_01",
+    "comment": "Ish bormi ofisda?",
+    "caption": "Fabrika",
+    "expected_is_lead": false,
+    "expected_intent": "SPAM"
+  },
+  {
+    "id": "unseen_cyr_price_01",
+    "comment": "Нархи қанча бу кресло?",
+    "caption": "Мебел",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE"
+  },
+  {
+    "id": "unseen_cyr_buy_01",
+    "comment": "Шу комплектни сотиб олмоқчиман",
+    "caption": "Янги коллекция",
+    "expected_is_lead": true,
+    "expected_intent": "BUY"
+  },
+  {
+    "id": "unseen_en_price_01",
+    "comment": "Сколько стоит этот садовый комплект?",
+    "caption": "Садовая мебель",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE"
+  },
+  {
+    "id": "unseen_en_avail_01",
+    "comment": "Это кресло ещё в наличии?",
+    "caption": "Кресла",
+    "expected_is_lead": true,
+    "expected_intent": "AVAILABILITY"
+  },
+  {
+    "id": "unseen_en_reaction_01",
+    "comment": "Looks amazing!",
+    "caption": "Showroom tour",
+    "expected_is_lead": false,
+    "expected_intent": "OTHER"
+  },
+  {
+    "id": "unseen_b2b_01",
+    "comment": "Нужна поставка 60 стульев для нового ресторана",
+    "caption": "HoReCa мебель",
+    "expected_is_lead": true,
+    "expected_intent": "QUANTITY"
+  },
+  {
+    "id": "unseen_b2b_02",
+    "comment": "Kafe uchun 35 ta stul kerak",
+    "caption": "Biznes mebel",
+    "expected_is_lead": true,
+    "expected_intent": "QUANTITY"
+  },
+  {
+    "id": "unseen_designer_01",
+    "comment": "Я дизайнер, нужны 3D модели столов",
+    "caption": "Проектная мебель",
+    "expected_is_lead": true,
+    "expected_intent": "CATALOG"
+  },
+  {
+    "id": "unseen_color_01",
+    "comment": "Есть в графитовом цвете?",
+    "caption": "Стулья",
+    "expected_is_lead": true,
+    "expected_intent": "COLOR"
+  },
+  {
+    "id": "unseen_size_01",
+    "comment": "Какой размер столешницы 180 см?",
+    "caption": "Столы",
+    "expected_is_lead": true,
+    "expected_intent": "SIZE"
+  },
+  {
+    "id": "unseen_location_01",
+    "comment": "Где ваш шоурум в Ташкенте?",
+    "caption": "Салон",
+    "expected_is_lead": true,
+    "expected_intent": "LOCATION"
+  },
+  {
+    "id": "unseen_plus_cta_01",
+    "comment": "+",
+    "caption": "Оставьте плюс для прайса",
+    "expected_is_lead": true,
+    "expected_intent": "BUY"
+  },
+  {
+    "id": "unseen_plus_nocta_01",
+    "comment": "+",
+    "caption": "Готовый интерьер",
+    "expected_is_lead": false,
+    "expected_intent": "REACTION"
+  },
+  {
+    "id": "unseen_ambiguous_01",
+    "comment": "Интересно, где это снято?",
+    "caption": "Интерьер",
+    "expected_is_lead": false,
+    "expected_intent": "OTHER"
+  },
+  {
+    "id": "unseen_ru_wholesale_01",
+    "comment": "Интересует оптовая цена на 100 стульев",
+    "caption": "Опт",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE"
+  },
+  {
+    "id": "unseen_ru_install_01",
+    "comment": "Есть доставка и сборка на объект?",
+    "caption": "Комплекты",
+    "expected_is_lead": true,
+    "expected_intent": "DELIVERY"
+  },
+  {
+    "id": "unseen_uz_catalog_01",
+    "comment": "Katalog yuboring iltimos",
+    "caption": "Mebel",
+    "expected_is_lead": true,
+    "expected_intent": "CATALOG"
+  },
+  {
+    "id": "unseen_uz_contact_01",
+    "comment": "Telefon raqam qoldiring",
+    "caption": "Buyurtma",
+    "expected_is_lead": true,
+    "expected_intent": "CONTACT"
+  },
+  {
+    "id": "unseen_ru_compare_01",
+    "comment": "Сравниваю предложения, какая цена у вас?",
+    "caption": "Столы",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE"
+  },
+  {
+    "id": "unseen_ru_followup_01",
+    "comment": "Вернусь к заказу через месяц",
+    "caption": "Мебель",
+    "expected_is_lead": false,
+    "expected_intent": "OTHER"
+  },
+  {
+    "id": "unseen_ru_spam_01",
+    "comment": "Подпишитесь на мой канал",
+    "caption": "Реклама",
+    "expected_is_lead": false,
+    "expected_intent": "OTHER"
+  },
+  {
+    "id": "unseen_uz_qty_b2c_01",
+    "comment": "8 dona stul kerak uyga",
+    "caption": "Stullar",
+    "expected_is_lead": true,
+    "expected_intent": "QUANTITY"
+  },
+  {
+    "id": "unseen_cyr_delivery_01",
+    "comment": "Самарқандга етказиб берасизми?",
+    "caption": "Мебел",
+    "expected_is_lead": true,
+    "expected_intent": "DELIVERY"
+  },
+  {
+    "id": "unseen_en_delivery_01",
+    "comment": "В Самарканд доставляете?",
+    "caption": "Мебель",
+    "expected_is_lead": true,
+    "expected_intent": "DELIVERY"
+  },
+  {
+    "id": "unseen_ru_armchair_01",
+    "comment": "Сколько стоит кресло-качалка?",
+    "caption": "Кресла",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE"
+  },
+  {
+    "id": "unseen_uz_armchair_01",
+    "comment": "Kachalka kreslo narxi qancha?",
+    "caption": "Kreslolar",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE"
+  },
+  {
+    "id": "unseen_ru_table_01",
+    "comment": "Хочу заказать стол на 8 персон",
+    "caption": "Столы",
+    "expected_is_lead": true,
+    "expected_intent": "BUY"
+  },
+  {
+    "id": "unseen_uz_table_01",
+    "comment": "8 kishilik stol kerak",
+    "caption": "Stollar",
+    "expected_is_lead": true,
+    "expected_intent": "BUY"
+  },
+  {
+    "id": "unseen_ru_sofa_01",
+    "comment": "Диван для террасы в наличии?",
+    "caption": "Диваны",
+    "expected_is_lead": true,
+    "expected_intent": "AVAILABILITY"
+  },
+  {
+    "id": "unseen_uz_sofa_01",
+    "comment": "Terrasa divani bormi?",
+    "caption": "Divanlar",
+    "expected_is_lead": true,
+    "expected_intent": "AVAILABILITY"
+  },
+  {
+    "id": "unseen_ru_payment_01",
+    "comment": "Как с вами связаться по оплате?",
+    "caption": "Условия",
+    "expected_is_lead": true,
+    "expected_intent": "CONTACT"
+  },
+  {
+    "id": "unseen_uz_payment_01",
+    "comment": "To'lov uchun qanday bog'lanamiz?",
+    "caption": "Shartlar",
+    "expected_is_lead": true,
+    "expected_intent": "CONTACT"
+  },
+  {
+    "id": "unseen_ru_discount_01",
+    "comment": "Какая цена на комплект со скидкой?",
+    "caption": "Акции",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE"
+  },
+  {
+    "id": "unseen_uz_discount_01",
+    "comment": "Komplektga chegirma bormi?",
+    "caption": "Aksiya",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE"
+  },
+  {
+    "id": "unseen_ru_material_01",
+    "comment": "Из какого материала каркас и какая цена?",
+    "caption": "Стулья",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE"
+  },
+  {
+    "id": "unseen_uz_material_01",
+    "comment": "Karkas qanday materialdan va narxi qancha?",
+    "caption": "Stullar",
+    "expected_is_lead": true,
+    "expected_intent": "PRICE"
+  },
+  {
+    "id": "unseen_ru_warranty_01",
+    "comment": "Какая гарантия и как с вами связаться?",
+    "caption": "Сервис",
+    "expected_is_lead": true,
+    "expected_intent": "CONTACT"
+  },
+  {
+    "id": "unseen_uz_warranty_01",
+    "comment": "Kafolat muddati qancha?",
+    "caption": "Xizmat",
+    "expected_is_lead": true,
+    "expected_intent": "CONTACT"
+  },
+  {
+    "id": "unseen_ru_leadtime_01",
+    "comment": "За сколько дней изготовите 30 стульев?",
+    "caption": "Производство",
+    "expected_is_lead": true,
+    "expected_intent": "QUANTITY"
+  },
+  {
+    "id": "unseen_uz_leadtime_01",
+    "comment": "30 ta stul qancha kunda tayyor?",
+    "caption": "Ishlab chiqarish",
+    "expected_is_lead": true,
+    "expected_intent": "QUANTITY"
+  }
+]

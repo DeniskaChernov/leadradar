@@ -20,8 +20,8 @@ from app.db.models import (
 from app.schemas.leads import BuyerRole, Intent
 from app.services.ai_service import (
     LeadAnalysisContext,
-    PreviousSignal,
     RuleBasedLeadAnalyzer,
+    ValidatedPreviousSignal,
 )
 from app.services.lead_service import LeadService
 
@@ -55,7 +55,7 @@ def test_intelligence_v2_golden_dataset_calibration():
                 context,
             )
 
-        assert analysis.intelligence_version == "2.0", f"Case {case['id']} version mismatch"
+        assert analysis.intelligence_version == "3.0", f"Case {case['id']} version mismatch"
         assert analysis.is_lead == case["expected_is_lead"], (
             f"Case {case['id']} failed is_lead check: got {analysis.is_lead}, expected {case['expected_is_lead']}"
         )
@@ -78,11 +78,13 @@ def test_intelligence_v2_golden_dataset_calibration():
 
         # Factor validation
         factors = analysis.factors
-        assert "intent_strength" in factors
+        assert "intent_score" in factors
+        assert "activity_score" in factors
         assert "specificity_score" in factors
         assert "role_score" in factors
         assert "history_boost" in factors
-        assert "objection_penalty" in factors
+        assert "confidence_score" in factors
+        assert "priority_score" in factors
 
         passed += 1
 
@@ -143,17 +145,35 @@ def test_intelligence_v2_history_and_comparison_boost():
 
     # Context with prior inquiries across 2 different competitors
     prior = [
-        PreviousSignal(
+        ValidatedPreviousSignal(
+            lead_id=1,
+            public_signal_id=1,
+            evidence_ids=[1],
+            competitor_id=1,
             competitor="competitor_a",
-            post_caption="Столы",
-            comment="Цена?",
-            discovered_at="2026-08-20T10:00:00Z",
+            intent="PRICE",
+            product_family="TABLE",
+            buyer_role="B2C_CONSUMER",
+            commercial_quality="MEDIUM_COMMERCIAL",
+            priority_score=72,
+            confidence=85,
+            observed_at="2026-08-20T10:00:00Z",
+            vertical="FURNITURE",
         ),
-        PreviousSignal(
+        ValidatedPreviousSignal(
+            lead_id=2,
+            public_signal_id=2,
+            evidence_ids=[2],
+            competitor_id=2,
             competitor="competitor_b",
-            post_caption="Стулья",
-            comment="В наличии?",
-            discovered_at="2026-08-22T10:00:00Z",
+            intent="AVAILABILITY",
+            product_family="CHAIRS",
+            buyer_role="B2C_CONSUMER",
+            commercial_quality="MEDIUM_COMMERCIAL",
+            priority_score=78,
+            confidence=88,
+            observed_at="2026-08-22T10:00:00Z",
+            vertical="FURNITURE",
         ),
     ]
     ctx = LeadAnalysisContext(
@@ -258,7 +278,7 @@ async def test_lead_service_links_evidence_ids_in_v2_analysis(session_factory):
         assert stored_lead is not None
         details = stored_lead.analysis_details
         assert details is not None
-        assert details["intelligence_version"] == "2.0"
+        assert details["intelligence_version"] == "3.0"
         assert evidence_id in details["evidence_ids"]
         assert details["buyer_role"] == BuyerRole.B2C_CONSUMER.value
         assert "factors" in details
@@ -276,6 +296,6 @@ async def test_lead_service_links_evidence_ids_in_v2_analysis(session_factory):
         ).all()
         assert len(events) == 1
         payload = events[0].payload_json
-        assert payload["intelligence_version"] == "2.0"
+        assert payload["intelligence_version"] == "3.0"
         assert evidence_id in payload["evidence_ids"]
         assert payload["buyer_role"] == BuyerRole.B2C_CONSUMER.value

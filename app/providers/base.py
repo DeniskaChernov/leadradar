@@ -12,6 +12,7 @@ from app.schemas.instagram import (
     InstagramComment,
     InstagramPost,
     InstagramProfile,
+    ProviderCreditObservation,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,13 @@ class ProviderUsageBlockedError(ProviderError):
     """
 
 
+class ProviderCallUncertainError(ProviderError):
+    """Вызов ушёл во внешний API, но списание не подтверждено.
+
+    Fallback запрещён — иначе возможен double spend на двух провайдерах.
+    """
+
+
 class InstagramProvider(ABC):
     name: str
 
@@ -46,6 +54,17 @@ class InstagramProvider(ABC):
         Mock/replay providers do not need it. Live wrappers use it to reset the
         conservative request budget that protects external credits.
         """
+        return None
+
+    def set_scan_budget_limit(self, limit: int) -> None:
+        """Установить лимит только для текущего ручного/API запуска."""
+        return None
+
+    def restore_default_scan_budget(self) -> None:
+        """Вернуть per-scan cap к default_limit перед scheduler cycle."""
+        return None
+
+    def scan_budget_status(self) -> dict[str, int] | None:
         return None
 
     @abstractmethod
@@ -82,6 +101,10 @@ class InstagramProvider(ABC):
 
     async def aclose(self) -> None:
         return None
+
+    def pop_credit_observations(self) -> list[ProviderCreditObservation]:
+        """Вернуть provider-confirmed credit facts, накопленные последним вызовом."""
+        return []
 
 
 class HTTPInstagramProvider(InstagramProvider):

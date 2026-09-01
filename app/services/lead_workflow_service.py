@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -15,12 +16,14 @@ from app.db.models import (
     Contact,
     ContactEventType,
     Deal,
+    DealSaleSnapshot,
     DealStatus,
     Lead,
     LeadStatus,
     NotificationLog,
     NotificationStatus,
     Post,
+    Product,
 )
 from app.db.repositories.events import ContactEventRepository
 
@@ -217,12 +220,51 @@ class LeadWorkflowService:
         product_name: str,
         amount: Decimal,
         quantity: int,
+        product_id: int | None = None,
+        sale_currency: str = "UZS",
     ) -> Deal:
+        cleaned_product = product_name.strip()
+        if not cleaned_product and product_id is None:
+            raise LeadWorkflowError("Product name is required")
+        if not amount.is_finite() or amount <= 0:
+            raise LeadWorkflowError("Deal amount must be positive")
+        if quantity <= 0:
+            raise LeadWorkflowError("Deal quantity must be positive")
+        normalized_currency = sale_currency.strip().upper()
+        if not normalized_currency or len(normalized_currency) > 8:
+            raise LeadWorkflowError("Sale currency is invalid")
         async with self.session_factory() as session:
-            deal, lead = await self._load_deal_and_lead(session, deal_id, manager_id)
+            deal, lead = await self._load_deal_and_lead(
+                session,
+                deal_id,
+                manager_id,
+                allow_closed=True,
+            )
+            product = None
+            if product_id is not None:
+                product = await session.get(Product, product_id)
+                if product is None or not product.active:
+                    raise LeadWorkflowError("Active catalog product not found")
+                cleaned_product = product.name
+            if deal.status == DealStatus.WON:
+                snapshot = await session.scalar(
+                    select(DealSaleSnapshot).where(DealSaleSnapshot.deal_id == deal.id)
+                )
+                if snapshot is not None and (
+                    snapshot.product_id == product_id
+                    and snapshot.product_name == cleaned_product
+                    and snapshot.sale_amount == amount
+                    and snapshot.quantity == quantity
+                    and snapshot.sale_currency == normalized_currency
+                ):
+                    return deal
+                raise LeadWorkflowError("Won deal cannot be changed by a repeated request")
+            if deal.status == DealStatus.LOST:
+                raise LeadWorkflowError("Lost deal cannot become WON")
             now = datetime.now(UTC)
             deal.status = DealStatus.WON
-            deal.product_name = product_name
+            deal.product_id = product.id if product is not None else None
+            deal.product_name = cleaned_product
             deal.amount = amount
             deal.final_amount = amount
             deal.quantity = quantity
@@ -236,22 +278,79 @@ class LeadWorkflowService:
                 feedback.deal_created = True
                 feedback.deal_won = True
                 feedback.deal_amount = amount
+            evidence_ids = tuple((lead.analysis_details or {}).get("evidence_ids") or ())
+            session.add(
+                DealSaleSnapshot(
+                    deal_id=deal.id,
+                    product_id=product.id if product is not None else None,
+                    product_canonical_key=(
+                        product.canonical_key if product is not None else None
+                    ),
+                    product_name=cleaned_product,
+                    sku=product.sku if product is not None else None,
+                    category=(
+                        product.category
+                        if product is not None and product.category_confirmed_at is not None
+                        else (deal.product_category if product is None else None)
+                    ),
+                    catalog_price=(
+                        product.price
+                        if product is not None and product.price_confirmed_at is not None
+                        else None
+                    ),
+                    catalog_currency=(
+                        product.currency
+                        if product is not None and product.price_confirmed_at is not None
+                        else None
+                    ),
+                    cogs=(
+                        product.cogs
+                        if product is not None and product.cogs_confirmed_at is not None
+                        else None
+                    ),
+                    quantity=quantity,
+                    sale_amount=amount,
+                    sale_currency=normalized_currency,
+                    catalog_version=product.catalog_version if product is not None else None,
+                    evidence_ids_json=list(evidence_ids),
+                    manager_telegram_id=manager_id,
+                )
+            )
             await ContactEventRepository(session).add(
                 deal.contact_id,
                 ContactEventType.DEAL_WON,
                 lead_id=lead.id,
                 deal_id=deal.id,
                 manager_telegram_id=manager_id,
-                payload={"amount": str(amount), "quantity": quantity, "product": product_name},
+                payload={
+                    "amount": str(amount),
+                    "quantity": quantity,
+                    "product": cleaned_product,
+                    "product_id": product.id if product is not None else None,
+                },
             )
             await session.commit()
             return deal
 
     async def lose_deal(self, deal_id: int, manager_id: int, *, reason: str) -> Deal:
+        cleaned_reason = reason.strip()
+        if not cleaned_reason:
+            raise LeadWorkflowError("Lost reason is required")
         async with self.session_factory() as session:
-            deal, lead = await self._load_deal_and_lead(session, deal_id, manager_id)
+            deal, lead = await self._load_deal_and_lead(
+                session,
+                deal_id,
+                manager_id,
+                allow_closed=True,
+            )
+            if deal.status == DealStatus.LOST:
+                if deal.lost_reason == cleaned_reason:
+                    return deal
+                raise LeadWorkflowError("Lost deal reason cannot be changed by a repeated request")
+            if deal.status == DealStatus.WON:
+                raise LeadWorkflowError("Won deal cannot become LOST")
             deal.status = DealStatus.LOST
-            deal.lost_reason = reason
+            deal.lost_reason = cleaned_reason
             deal.lost_at = datetime.now(UTC)
             lead.status = LeadStatus.LOST
             feedback = await session.scalar(
@@ -261,14 +360,14 @@ class LeadWorkflowService:
                 feedback.actual_outcome = DealStatus.LOST.value
                 feedback.deal_created = True
                 feedback.deal_won = False
-                feedback.lost_reason = reason
+                feedback.lost_reason = cleaned_reason
             await ContactEventRepository(session).add(
                 deal.contact_id,
                 ContactEventType.DEAL_LOST,
                 lead_id=lead.id,
                 deal_id=deal.id,
                 manager_telegram_id=manager_id,
-                payload={"reason": reason},
+                payload={"reason": cleaned_reason},
             )
             await session.commit()
             return deal
@@ -332,6 +431,22 @@ class LeadWorkflowService:
             ).all()
         return [await self.get_lead_card(lead_id) for lead_id in ids]
 
+    async def list_ai_pending_leads(self, limit: int = 10) -> list[LeadCard]:
+        async with self.session_factory() as session:
+            ids = (
+                await session.scalars(
+                    select(Lead.id)
+                    .where(Lead.status == LeadStatus.AI_PENDING)
+                    .order_by(Lead.created_at)
+                    .limit(limit)
+                )
+            ).all()
+        cards: list[LeadCard] = []
+        for lead_id in ids:
+            with contextlib.suppress(LeadWorkflowError):
+                cards.append(await self.get_lead_card(lead_id))
+        return cards
+
     async def get_stats(self) -> WorkflowStats:
         async with self.session_factory() as session:
             contacts = await session.scalar(select(func.count(Contact.id))) or 0
@@ -392,7 +507,12 @@ class LeadWorkflowService:
             )
 
     async def _load_deal_and_lead(
-        self, session: AsyncSession, deal_id: int, manager_id: int
+        self,
+        session: AsyncSession,
+        deal_id: int,
+        manager_id: int,
+        *,
+        allow_closed: bool = False,
     ) -> tuple[Deal, Lead]:
         deal = await session.get(Deal, deal_id)
         if deal is None or deal.lead_id is None:
@@ -402,6 +522,6 @@ class LeadWorkflowService:
         lead = await session.get(Lead, deal.lead_id)
         if lead is None:
             raise LeadWorkflowError("Lead for deal not found")
-        if deal.status in {DealStatus.WON, DealStatus.LOST}:
+        if not allow_closed and deal.status in {DealStatus.WON, DealStatus.LOST}:
             raise LeadWorkflowError("Deal is already closed")
         return deal, lead

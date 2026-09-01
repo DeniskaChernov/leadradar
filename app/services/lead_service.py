@@ -5,10 +5,9 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm import selectinload
 
 from app.db.models import (
     AIFeedback,
@@ -16,7 +15,9 @@ from app.db.models import (
     Competitor,
     Contact,
     ContactEventType,
+    ContactInterestProfile,
     Evidence,
+    InterestEvidence,
     Lead,
     LeadStatus,
     Post,
@@ -28,8 +29,8 @@ from app.services.ai_service import (
     AIAnalysisError,
     LeadAnalysisContext,
     LeadAnalyzer,
-    PreviousSignal,
     RuleBasedLeadAnalyzer,
+    ValidatedPreviousSignal,
 )
 from app.services.contact_service import PersistedSignal
 
@@ -41,6 +42,8 @@ if TYPE_CHECKING:
         IntelligenceSnapshot,
         SignificantChangeDetector,
     )
+
+_STALE_ANALYZING_SECONDS = 15 * 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,10 +103,14 @@ class LeadService:
             contact = await session.get(Contact, signal.contact_id)
             if comment is None or contact is None:
                 raise RuntimeError("Persisted signal references missing database rows")
+            public_signal = await session.scalar(
+                select(PublicSignal).where(PublicSignal.comment_id == signal.comment_id)
+            )
             lead = Lead(
                 contact_id=signal.contact_id,
                 comment_id=signal.comment_id,
                 competitor_id=signal.competitor_id,
+                vertical=(public_signal.vertical if public_signal else signal.vertical),
                 intent="OTHER",
                 lead_score=0,
                 ai_reason="Анализируем публичный коммерческий сигнал",
@@ -121,9 +128,6 @@ class LeadService:
                         "status": LeadStatus.ANALYZING.value,
                         "public_signal_id": signal.public_signal_id,
                     },
-                )
-                public_signal = await session.scalar(
-                    select(PublicSignal).where(PublicSignal.comment_id == signal.comment_id)
                 )
                 if public_signal is not None:
                     public_signal.pipeline_stage = "LEAD_COMMITTED"
@@ -174,7 +178,9 @@ class LeadService:
                     raise RuntimeError(f"Lead {lead_id} was not found") from exc
                 if lead.status == LeadStatus.ANALYZING:
                     lead.status = LeadStatus.AI_PENDING
-                lead.ai_reason = "Нужна дополнительная проверка; сигнал сохранён и доступен менеджеру"
+                lead.ai_reason = (
+                    "Нужна дополнительная проверка; сигнал сохранён и доступен менеджеру"
+                )
                 public_signal = await session.scalar(
                     select(PublicSignal).where(PublicSignal.comment_id == lead.comment_id)
                 )
@@ -202,20 +208,40 @@ class LeadService:
             contact = await session.get(Contact, lead.contact_id)
             if comment is None or post is None or contact is None:
                 raise RuntimeError("Analyzing lead references missing database rows")
+            public_signal = await session.scalar(
+                select(PublicSignal).where(PublicSignal.comment_id == lead.comment_id)
+            )
+            source_evidence = None
+            if public_signal is not None:
+                source_evidence = await session.scalar(
+                    select(Evidence)
+                    .where(Evidence.public_signal_id == public_signal.id)
+                    .order_by(Evidence.id)
+                )
+            taxonomy = (
+                ((source_evidence.raw_data or {}).get("rattan_taxonomy") or {})
+                if source_evidence is not None
+                else {}
+            )
+            taxonomy_products = list(taxonomy.get("products") or [])
+            product_category = analysis.product_category
+            if taxonomy.get("layer") == "RAW_MATERIAL" and taxonomy_products:
+                product_category = str(taxonomy_products[0])
             previous_score = lead.lead_score
             lead.intent = analysis.intent.value
-            lead.product_category = analysis.product_category
+            lead.product_category = product_category
             lead.lead_score = analysis.lead_score
             lead.ai_reason = analysis.reason
             lead.analysis_details = analysis.model_dump(mode="json")
+            lead.analysis_details["vertical"] = lead.vertical.value
+            if taxonomy:
+                lead.analysis_details["rattan_taxonomy"] = taxonomy
             lead.language = analysis.language
             lead.ai_source = analysis_source
             if lead.status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING}:
                 lead.status = LeadStatus.NEW if analysis.is_lead else LeadStatus.NOT_LEAD
             contact.current_lead_score = max(contact.current_lead_score, analysis.lead_score)
-            feedback = await session.scalar(
-                select(AIFeedback).where(AIFeedback.lead_id == lead.id)
-            )
+            feedback = await session.scalar(select(AIFeedback).where(AIFeedback.lead_id == lead.id))
             if feedback is None:
                 session.add(
                     AIFeedback(
@@ -224,7 +250,7 @@ class LeadService:
                         comment_text=comment.text,
                         post_context=post.caption,
                         predicted_intent=analysis.intent.value,
-                        predicted_product=analysis.product_category,
+                        predicted_product=product_category,
                         predicted_score=analysis.lead_score,
                     )
                 )
@@ -236,18 +262,15 @@ class LeadService:
                     "from": previous_score,
                     "to": analysis.lead_score,
                     "intent": analysis.intent.value,
-                    "product_category": analysis.product_category,
+                    "product_category": product_category,
                     "confidence": analysis.confidence,
                     "funnel_stage": analysis.funnel_stage.value,
                     "urgency": analysis.urgency.value,
                     "buyer_role": analysis.buyer_role.value,
                     "intelligence_version": analysis.intelligence_version,
-                    "factors": analysis.factors,
+                    "factors": analysis.factors.model_dump(),
                     "evidence_ids": analysis.evidence_ids,
                 },
-            )
-            public_signal = await session.scalar(
-                select(PublicSignal).where(PublicSignal.comment_id == lead.comment_id)
             )
             if public_signal is not None:
                 public_signal.status = PublicSignalStatus.ANALYZED
@@ -300,14 +323,18 @@ class LeadService:
             return []
         async with self.session_factory() as session:
             rows = (
-                await session.execute(
-                    select(Comment)
-                    .outerjoin(Lead, Lead.comment_id == Comment.id)
-                    .where(Lead.id.is_(None))
-                    .order_by(Comment.created_at_platform.desc(), Comment.id.desc())
-                    .limit(limit)
+                (
+                    await session.execute(
+                        select(Comment)
+                        .outerjoin(Lead, Lead.comment_id == Comment.id)
+                        .where(Lead.id.is_(None))
+                        .order_by(Comment.created_at_platform.desc(), Comment.id.desc())
+                        .limit(limit)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
         results: list[ProcessedLead] = []
         for comment in rows:
@@ -324,6 +351,45 @@ class LeadService:
                 results.append(result)
         return results
 
+    async def list_pending_lead_ids(
+        self,
+        limit: int = 50,
+        *,
+        cooldown_seconds: int = 0,
+    ) -> list[int]:
+        if limit <= 0:
+            return []
+        cutoff = datetime.now(UTC) - timedelta(seconds=cooldown_seconds)
+        stale_analyzing = datetime.now(UTC) - timedelta(
+            seconds=max(cooldown_seconds, _STALE_ANALYZING_SECONDS)
+        )
+        async with self.session_factory() as session:
+            return list(
+                await session.scalars(
+                    select(Lead.id)
+                    .where(
+                        or_(
+                            (
+                                (Lead.status == LeadStatus.AI_PENDING)
+                                & (
+                                    Lead.ai_last_attempt_at.is_(None)
+                                    | (Lead.ai_last_attempt_at <= cutoff)
+                                )
+                            ),
+                            (
+                                (Lead.status == LeadStatus.ANALYZING)
+                                & (
+                                    Lead.ai_last_attempt_at.is_(None)
+                                    | (Lead.ai_last_attempt_at <= stale_analyzing)
+                                )
+                            ),
+                        )
+                    )
+                    .order_by(Lead.created_at)
+                    .limit(limit)
+                )
+            )
+
     async def retry_pending(
         self,
         limit: int = 50,
@@ -332,19 +398,7 @@ class LeadService:
     ) -> list[ProcessedLead]:
         if limit <= 0:
             return []
-        cutoff = datetime.now(UTC) - timedelta(seconds=cooldown_seconds)
-        async with self.session_factory() as session:
-            lead_ids = (
-                await session.scalars(
-                    select(Lead.id)
-                    .where(
-                        Lead.status == LeadStatus.AI_PENDING,
-                        (Lead.ai_last_attempt_at.is_(None) | (Lead.ai_last_attempt_at <= cutoff)),
-                    )
-                    .order_by(Lead.created_at)
-                    .limit(limit)
-                )
-            ).all()
+        lead_ids = await self.list_pending_lead_ids(limit, cooldown_seconds=cooldown_seconds)
         results: list[ProcessedLead] = []
         for lead_id in lead_ids:
             result = await self._retry_pending_one(lead_id)
@@ -352,10 +406,14 @@ class LeadService:
                 results.append(result)
         return results
 
+    async def retry_pending_lead(self, lead_id: int) -> ProcessedLead | None:
+        """Повторный разбор одного AI_PENDING/ANALYZING лида тем же analyzer, что и batch retry."""
+        return await self._retry_pending_one(lead_id)
+
     async def _retry_pending_one(self, lead_id: int) -> ProcessedLead | None:
         async with self.session_factory() as session:
             lead = await session.get(Lead, lead_id)
-            if lead is None or lead.status != LeadStatus.AI_PENDING:
+            if lead is None or lead.status not in {LeadStatus.AI_PENDING, LeadStatus.ANALYZING}:
                 return None
         result = await self.analyze_lead(lead_id)
         return ProcessedLead(
@@ -404,12 +462,7 @@ class LeadService:
         status and reason. Only the new JSON explanation is filled for rows that do not have it.
         """
         async with self.session_factory() as session:
-            lead_ids = list(
-                await session.scalars(
-                    select(Lead.id)
-                    .order_by(Lead.id)
-                )
-            )
+            lead_ids = list(await session.scalars(select(Lead.id).order_by(Lead.id)))
 
         rules = RuleBasedLeadAnalyzer()
         updated = 0
@@ -443,9 +496,7 @@ class LeadService:
                 updated += 1
         return updated
 
-    async def _build_context(
-        self, session: AsyncSession, comment_id: int
-    ) -> LeadAnalysisContext:
+    async def _build_context(self, session: AsyncSession, comment_id: int) -> LeadAnalysisContext:
         row = (
             await session.execute(
                 select(Comment, Contact, Post, Competitor)
@@ -458,37 +509,127 @@ class LeadService:
         if row is None:
             raise RuntimeError(f"Comment {comment_id} was not found")
         comment, contact, post, competitor = row
-        history_rows = (
-            await session.execute(
-                select(Comment, Post, Competitor)
-                .join(Post, Comment.post_id == Post.id)
-                .join(Competitor, Comment.competitor_id == Competitor.id)
-                .where(Comment.contact_id == contact.id, Comment.id != comment.id)
-                .order_by(Comment.discovered_at.desc())
-                .limit(20)
-            )
-        ).all()
-        previous = [
-            PreviousSignal(
-                competitor=history_competitor.normalized_handle,
-                post_caption=history_post.caption,
-                comment=history_comment.text,
-                discovered_at=history_comment.discovered_at.isoformat(),
-            )
-            for history_comment, history_post, history_competitor in history_rows
-        ]
-        interests = (
-            await session.scalars(
-                select(Lead)
-                .options(selectinload(Lead.comment))
-                .where(Lead.contact_id == contact.id, Lead.product_category.is_not(None))
-                .order_by(Lead.created_at.desc())
-                .limit(10)
-            )
-        ).all()
         public_signal = await session.scalar(
             select(PublicSignal).where(PublicSignal.comment_id == comment.id)
         )
+        history_rows = (
+            await session.execute(
+                select(Lead, PublicSignal, Competitor)
+                .join(PublicSignal, PublicSignal.comment_id == Lead.comment_id)
+                .join(Competitor, Competitor.id == Lead.competitor_id)
+                .where(
+                    Lead.contact_id == contact.id,
+                    Lead.comment_id != comment.id,
+                    Lead.vertical
+                    == (public_signal.vertical if public_signal is not None else "FURNITURE"),
+                )
+                .order_by(Lead.created_at.desc())
+                .limit(20)
+            )
+        ).all()
+        history_signal_ids = [signal.id for _lead, signal, _competitor in history_rows]
+        history_evidence = (
+            list(
+                await session.scalars(
+                    select(Evidence).where(Evidence.public_signal_id.in_(history_signal_ids))
+                )
+            )
+            if history_signal_ids
+            else []
+        )
+        history_interest_evidence = (
+            list(
+                await session.scalars(
+                    select(InterestEvidence).where(
+                        InterestEvidence.contact_id == contact.id,
+                        InterestEvidence.public_signal_id.in_(history_signal_ids),
+                    )
+                )
+            )
+            if history_signal_ids
+            else []
+        )
+        evidence_by_signal: dict[int, set[int]] = {}
+        for item in history_evidence:
+            evidence_by_signal.setdefault(item.public_signal_id, set()).add(item.id)
+        interests_by_signal: dict[int, list[InterestEvidence]] = {}
+        for item in history_interest_evidence:
+            interests_by_signal.setdefault(item.public_signal_id, []).append(item)
+
+        previous: list[ValidatedPreviousSignal] = []
+        for history_lead, history_signal, history_competitor in history_rows:
+            details = history_lead.analysis_details or {}
+            quality = str(details.get("commercial_quality") or "")
+            buyer_role = str(details.get("buyer_role") or "UNKNOWN")
+            intent = str(history_lead.intent or "")
+            if (
+                details.get("is_commercial") is not True
+                or quality == "NON_COMMERCIAL"
+                or buyer_role == "JOB_SEEKER"
+                or intent in {"REACTION", "SPAM", "OTHER", ""}
+            ):
+                continue
+            signal_interests = interests_by_signal.get(history_signal.id, [])
+            validated_ids = sorted(
+                evidence_by_signal.get(history_signal.id, set())
+                & {item.evidence_id for item in signal_interests}
+            )
+            if not validated_ids:
+                continue
+            product_observations = [
+                item for item in signal_interests if item.dimension == "PRODUCT"
+            ]
+            latest_observation = max(
+                signal_interests,
+                key=lambda item: item.observed_at,
+            )
+            latest_product = (
+                max(product_observations, key=lambda item: item.observed_at).topic
+                if product_observations
+                else None
+            )
+            previous.append(
+                ValidatedPreviousSignal(
+                    lead_id=history_lead.id,
+                    public_signal_id=history_signal.id,
+                    evidence_ids=validated_ids,
+                    competitor_id=history_competitor.id,
+                    competitor=history_competitor.normalized_handle,
+                    intent=intent,
+                    product_family=latest_product,
+                    buyer_role=buyer_role,
+                    commercial_quality=quality,
+                    priority_score=int(details.get("priority_score") or history_lead.lead_score),
+                    confidence=int(
+                        details.get("confidence_score") or details.get("confidence") or 0
+                    ),
+                    observed_at=latest_observation.observed_at.isoformat(),
+                    vertical=history_lead.vertical.value,
+                )
+            )
+        active_profiles = list(
+            await session.scalars(
+                select(ContactInterestProfile).where(
+                    ContactInterestProfile.contact_id == contact.id,
+                    ContactInterestProfile.vertical
+                    == (public_signal.vertical.value if public_signal else "FURNITURE"),
+                    ContactInterestProfile.dimension == "PRODUCT",
+                    ContactInterestProfile.current_score >= 20,
+                    ContactInterestProfile.confidence >= 50,
+                )
+            )
+        )
+        previous_interests = sorted(
+            {
+                profile.topic for profile in active_profiles
+            }
+            | {
+                item.product_family
+                for item in previous
+                if item.product_family is not None
+            }
+        )
+        lead_id = await session.scalar(select(Lead.id).where(Lead.comment_id == comment.id))
         evidence_ids: list[int] = []
         public_signal_id: int | None = None
         if public_signal is not None:
@@ -506,14 +647,14 @@ class LeadService:
             comment=comment.text,
             username=contact.username,
             previous_signals=previous,
-            previous_interests=[
-                lead.product_category for lead in interests if lead.product_category
-            ],
+            previous_interests=previous_interests,
             known_customer_context={
                 "city": contact.city,
                 "interest_summary": contact.interest_summary,
                 "desired_quantity": contact.desired_quantity,
-                "budget_from": str(contact.budget_from) if contact.budget_from is not None else None,
+                "budget_from": str(contact.budget_from)
+                if contact.budget_from is not None
+                else None,
                 "budget_to": str(contact.budget_to) if contact.budget_to is not None else None,
                 "desired_color": contact.desired_color,
                 "purchase_timeline": contact.purchase_timeline,
@@ -521,8 +662,18 @@ class LeadService:
             },
             evidence_ids=evidence_ids,
             public_signal_id=public_signal_id,
+            lead_id=lead_id,
+            stable_contact_id=(
+                f"instagram:{contact.platform_user_id}"
+                if contact.platform_user_id
+                else f"contact:{contact.id}"
+            ),
+            vertical=(
+                public_signal.vertical.value
+                if public_signal is not None
+                else "FURNITURE"
+            ),
         )
-
 
     async def _analyze(self, context: LeadAnalysisContext):
         analyze_with_source = getattr(self.analyzer, "analyze_with_source", None)

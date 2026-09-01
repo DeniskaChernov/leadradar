@@ -4,7 +4,9 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from html import escape
+from typing import ClassVar
 from uuid import uuid4
+from weakref import WeakKeyDictionary
 
 from aiogram import Bot
 from aiogram.exceptions import (
@@ -40,6 +42,10 @@ logger = logging.getLogger(__name__)
 
 
 class TelegramLeadNotifier:
+    _message_edit_locks: ClassVar[
+        WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock]
+    ] = WeakKeyDictionary()
+
     def __init__(
         self,
         bot: Bot,
@@ -53,6 +59,7 @@ class TelegramLeadNotifier:
         delivery_enabled: bool = True,
         lease_seconds: int = 120,
         worker_id: str | None = None,
+        web_public_url: str = "",
     ) -> None:
         self.bot = bot
         self.session_factory = session_factory
@@ -64,7 +71,9 @@ class TelegramLeadNotifier:
         self.delivery_enabled = delivery_enabled
         self.lease_seconds = lease_seconds
         self.worker_id = worker_id or f"telegram-{uuid4().hex[:12]}"
+        self.web_public_url = web_public_url
         self._delivery_lock = asyncio.Lock()
+
 
     async def notify_new_signal(self, lead_id: int) -> int:
         if not self.delivery_enabled:
@@ -173,37 +182,50 @@ class TelegramLeadNotifier:
                 )
             )
         for log_id in log_ids:
-            claim = await self._claim_message_edit(log_id)
-            if claim is None:
-                continue
-            chat_id, message_id, edit_token = claim
-            try:
-                await self.bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text=render_lead_card(card),
-                    reply_markup=lead_keyboard(card),
-                )
-                async with self.session_factory() as session:
-                    log = await session.get(NotificationLog, log_id)
-                    if (
-                        log is not None
-                        and log.content_version < 2
-                        and log.edit_claim_token == edit_token
-                    ):
-                        log.content_version = 2
-                        log.error = None
-                        log.edit_claim_token = None
-                        log.edit_lease_expires_at = None
-                        await session.commit()
-            except Exception as exc:
-                logger.warning(
-                    "telegram_message_refresh_failed lead_id=%s chat_id=%s error_type=%s",
-                    lead_id,
-                    chat_id,
-                    type(exc).__name__,
-                )
-                await self._send_enrichment_fallback(log_id, card, exc, edit_token)
+            # Keep the local lock through the network edit and persistence. The DB claim remains
+            # the cross-process guard; this lock prevents two notifier instances in one process
+            # from observing SQLite's delayed visibility and performing the same edit twice.
+            async with self._message_edit_lock():
+                claim = await self._claim_message_edit(log_id)
+                if claim is None:
+                    continue
+                chat_id, message_id, edit_token = claim
+                try:
+                    await self.bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=render_lead_card(card),
+                        reply_markup=lead_keyboard(card, web_public_url=self.web_public_url),
+                    )
+                    async with self.session_factory() as session:
+                        log = await session.get(NotificationLog, log_id)
+                        if (
+                            log is not None
+                            and log.content_version < 2
+                            and log.edit_claim_token == edit_token
+                        ):
+                            log.content_version = 2
+                            log.error = None
+                            log.edit_claim_token = None
+                            log.edit_lease_expires_at = None
+                            await session.commit()
+                except Exception as exc:
+                    logger.warning(
+                        "telegram_message_refresh_failed lead_id=%s chat_id=%s error_type=%s",
+                        lead_id,
+                        chat_id,
+                        type(exc).__name__,
+                    )
+                    await self._send_enrichment_fallback(log_id, card, exc, edit_token)
+
+    @classmethod
+    def _message_edit_lock(cls) -> asyncio.Lock:
+        loop = asyncio.get_running_loop()
+        lock = cls._message_edit_locks.get(loop)
+        if lock is None:
+            lock = asyncio.Lock()
+            cls._message_edit_locks[loop] = lock
+        return lock
 
     async def _claim_message_edit(
         self, log_id: int
@@ -218,16 +240,23 @@ class TelegramLeadNotifier:
                         NotificationLog.id == log_id,
                         NotificationLog.status == NotificationStatus.SENT,
                         NotificationLog.message_id.is_not(None),
-                        NotificationLog.content_version < 2,
                         or_(
-                            NotificationLog.edit_claim_token.is_(None),
                             and_(
+                                NotificationLog.content_version == 1,
+                                NotificationLog.edit_claim_token.is_(None),
+                            ),
+                            and_(
+                                NotificationLog.content_version == 0,
+                                NotificationLog.edit_claim_token.is_not(None),
                                 NotificationLog.edit_lease_expires_at.is_not(None),
                                 NotificationLog.edit_lease_expires_at <= now,
                             ),
                         ),
                     )
                     .values(
+                        # Version 0 is a durable in-progress marker. It closes a SQLite
+                        # visibility race that allowed two workers to claim version 1.
+                        content_version=0,
                         edit_claim_token=token,
                         edit_lease_expires_at=now
                         + timedelta(seconds=self.lease_seconds),
@@ -240,6 +269,7 @@ class TelegramLeadNotifier:
         if claimed is None:
             return None
         return int(claimed[0]), int(claimed[1]), token
+
 
     async def _send_enrichment_fallback(
         self,
@@ -276,7 +306,7 @@ class TelegramLeadNotifier:
             await self.bot.send_message(
                 chat_id,
                 render_enrichment_followup(card),
-                reply_markup=lead_keyboard(card),
+                reply_markup=lead_keyboard(card, web_public_url=self.web_public_url),
             )
         except Exception as fallback_error:
             logger.error(
@@ -290,6 +320,7 @@ class TelegramLeadNotifier:
                 if log is not None and log.edit_claim_token == edit_token:
                     if self._definitely_not_delivered(fallback_error):
                         log.enrichment_followup_started_at = None
+                        log.content_version = 1
                         log.edit_claim_token = None
                         log.edit_lease_expires_at = None
                     else:
@@ -433,28 +464,12 @@ class TelegramLeadNotifier:
         message_id: int | None = None,
     ) -> bool:
         """Explicitly resolve an ambiguous send; it is never retried automatically."""
-
-        async with self.session_factory() as session:
-            log = await session.get(NotificationLog, log_id)
-            if log is None or log.status != NotificationStatus.UNCERTAIN:
-                return False
-            log.resolved_at = datetime.now(UTC)
-            log.uncertain_at = None
-            log.error = None
-            log.lease_owner = None
-            log.lease_token = None
-            log.lease_expires_at = None
-            if delivered:
-                log.status = NotificationStatus.SENT
-                log.message_id = message_id or log.message_id
-                log.resolution = "CONFIRMED_SENT"
-            else:
-                log.status = NotificationStatus.PENDING
-                log.delivery_started_at = None
-                log.next_attempt_at = datetime.now(UTC)
-                log.resolution = "CONFIRMED_NOT_SENT_REQUEUED"
-            await session.commit()
-            return True
+        return await resolve_uncertain_lead_log(
+            self.session_factory,
+            log_id,
+            delivered=delivered,
+            message_id=message_id,
+        )
 
     async def resolve_uncertain_change_delivery(
         self,
@@ -464,28 +479,12 @@ class TelegramLeadNotifier:
         message_id: int | None = None,
     ) -> bool:
         """Resolve an ambiguous significant-change send without guessing its outcome."""
-
-        async with self.session_factory() as session:
-            log = await session.get(SignificantChangeNotification, log_id)
-            if log is None or log.status != NotificationStatus.UNCERTAIN:
-                return False
-            log.resolved_at = datetime.now(UTC)
-            log.uncertain_at = None
-            log.error = None
-            log.lease_owner = None
-            log.lease_token = None
-            log.lease_expires_at = None
-            if delivered:
-                log.status = NotificationStatus.SENT
-                log.message_id = message_id or log.message_id
-                log.resolution = "CONFIRMED_SENT"
-            else:
-                log.status = NotificationStatus.PENDING
-                log.delivery_started_at = None
-                log.next_attempt_at = datetime.now(UTC)
-                log.resolution = "CONFIRMED_NOT_SENT_REQUEUED"
-            await session.commit()
-            return True
+        return await resolve_uncertain_change_log(
+            self.session_factory,
+            log_id,
+            delivered=delivered,
+            message_id=message_id,
+        )
 
     async def _deliver_pending(self, *, lead_id: int | None = None) -> int:
         now = datetime.now(UTC)
@@ -558,7 +557,7 @@ class TelegramLeadNotifier:
             message = await self.bot.send_message(
                 chat_id,
                 render_signal_card(card) if initial else render_lead_card(card),
-                reply_markup=lead_keyboard(card),
+                reply_markup=lead_keyboard(card, web_public_url=self.web_public_url),
             )
             persisted = False
             async with self.session_factory() as session:
@@ -841,7 +840,7 @@ def render_lead_card(card: LeadCard) -> str:
         f"🎯 <b>Intent:</b> {escape(card.intent)}\n"
         f"🪑 <b>Интерес:</b> {escape(card.product_category or 'не определён')}\n\n"
         f"📹 <b>Reel:</b>\n{escape(card.post_caption[:350])}\n\n"
-        f"🧠 <b>Почему HOT:</b>\n{escape(card.ai_reason)}\n\n"
+        f"🧠 <b>Почему так:</b>\n{escape(card.ai_reason)}\n\n"
         f"📚 <b>История:</b> {history}\n"
         f"📌 <b>Статус:</b> {card.status.value}"
         f"{manager}"
@@ -901,13 +900,22 @@ def significant_change_keyboard(
     )
 
 
-def lead_keyboard(card: LeadCard) -> InlineKeyboardMarkup:
+def lead_keyboard(card: LeadCard, *, web_public_url: str | None = None) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(text="👤 Профиль", url=card.profile_url),
             InlineKeyboardButton(text="📹 Reel", url=card.post_url),
         ]
     ]
+    dashboard = (web_public_url or "").rstrip("/")
+    if dashboard:
+        lead_url = f"{dashboard}/leads/{card.lead_id}"
+        if dashboard.startswith("https://"):
+            from aiogram.types import WebAppInfo
+
+            rows.append([InlineKeyboardButton(text="🌐 Карточка", web_app=WebAppInfo(url=lead_url))])
+        else:
+            rows.append([InlineKeyboardButton(text="🌐 Карточка", url=lead_url)])
     if card.status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING, LeadStatus.NEW}:
         rows.append(
             [
@@ -928,3 +936,65 @@ def lead_keyboard(card: LeadCard) -> InlineKeyboardMarkup:
             ]
         )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def resolve_uncertain_lead_log(
+    session_factory: async_sessionmaker[AsyncSession],
+    log_id: int,
+    *,
+    delivered: bool,
+    message_id: int | None = None,
+) -> bool:
+    """Ручная сверка неоднозначной доставки карточки лида."""
+    async with session_factory() as session:
+        log = await session.get(NotificationLog, log_id)
+        if log is None or log.status != NotificationStatus.UNCERTAIN:
+            return False
+        log.resolved_at = datetime.now(UTC)
+        log.uncertain_at = None
+        log.error = None
+        log.lease_owner = None
+        log.lease_token = None
+        log.lease_expires_at = None
+        if delivered:
+            log.status = NotificationStatus.SENT
+            log.message_id = message_id or log.message_id
+            log.resolution = "CONFIRMED_SENT"
+        else:
+            log.status = NotificationStatus.PENDING
+            log.delivery_started_at = None
+            log.next_attempt_at = datetime.now(UTC)
+            log.resolution = "CONFIRMED_NOT_SENT_REQUEUED"
+        await session.commit()
+        return True
+
+
+async def resolve_uncertain_change_log(
+    session_factory: async_sessionmaker[AsyncSession],
+    log_id: int,
+    *,
+    delivered: bool,
+    message_id: int | None = None,
+) -> bool:
+    """Ручная сверка неоднозначной доставки significant-change."""
+    async with session_factory() as session:
+        log = await session.get(SignificantChangeNotification, log_id)
+        if log is None or log.status != NotificationStatus.UNCERTAIN:
+            return False
+        log.resolved_at = datetime.now(UTC)
+        log.uncertain_at = None
+        log.error = None
+        log.lease_owner = None
+        log.lease_token = None
+        log.lease_expires_at = None
+        if delivered:
+            log.status = NotificationStatus.SENT
+            log.message_id = message_id or log.message_id
+            log.resolution = "CONFIRMED_SENT"
+        else:
+            log.status = NotificationStatus.PENDING
+            log.delivery_started_at = None
+            log.next_attempt_at = datetime.now(UTC)
+            log.resolution = "CONFIRMED_NOT_SENT_REQUEUED"
+        await session.commit()
+        return True

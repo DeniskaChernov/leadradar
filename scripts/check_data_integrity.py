@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from app.config import get_settings
 from app.db.models import (
+    AIRequest,
     AudienceMembership,
     AudienceSegment,
     BusinessAlias,
@@ -15,11 +16,18 @@ from app.db.models import (
     Contact,
     ContactEvent,
     ContactIntelligence,
+    ContactInterestProfile,
     Deal,
     Evidence,
+    ExternalBudgetReservation,
+    InterestEvidence,
     Lead,
     NotificationLog,
+    OpeningSignal,
+    OutcomeDNA,
     Post,
+    ProviderBudgetPolicy,
+    ProviderCreditSnapshot,
     PublicSignal,
     SignificantChange,
     SignificantChangeNotification,
@@ -47,6 +55,7 @@ async def inspect_integrity() -> IntegrityResult:
                 BusinessEntity,
                 BusinessAlias,
                 ContactIntelligence,
+                ContactInterestProfile,
                 AudienceSegment,
                 AudienceMembership,
                 Post,
@@ -56,18 +65,23 @@ async def inspect_integrity() -> IntegrityResult:
                 Deal,
                 ContactEvent,
                 NotificationLog,
+                OpeningSignal,
                 SignificantChange,
                 SignificantChangeNotification,
                 Evidence,
+                InterestEvidence,
+                OutcomeDNA,
+                AIRequest,
+                ExternalBudgetReservation,
+                ProviderBudgetPolicy,
+                ProviderCreditSnapshot,
             )
             counts = {
                 model.__tablename__: await session.scalar(select(func.count(model.id))) or 0
                 for model in models
             }
             checks = {
-                "comment IDs": select(
-                    Comment.platform, Comment.platform_comment_id, func.count()
-                )
+                "comment IDs": select(Comment.platform, Comment.platform_comment_id, func.count())
                 .group_by(Comment.platform, Comment.platform_comment_id)
                 .having(func.count() > 1),
                 "post URLs": select(Post.platform, Post.url, func.count())
@@ -79,9 +93,7 @@ async def inspect_integrity() -> IntegrityResult:
                 "public signal comments": select(PublicSignal.comment_id, func.count())
                 .group_by(PublicSignal.comment_id)
                 .having(func.count() > 1),
-                "public signal dedupe keys": select(
-                    PublicSignal.dedupe_key, func.count()
-                )
+                "public signal dedupe keys": select(PublicSignal.dedupe_key, func.count())
                 .group_by(PublicSignal.dedupe_key)
                 .having(func.count() > 1),
                 "public signal external identities": select(
@@ -97,9 +109,7 @@ async def inspect_integrity() -> IntegrityResult:
                     PublicSignal.external_id,
                 )
                 .having(func.count() > 1),
-                "business canonical keys": select(
-                    BusinessEntity.canonical_key, func.count()
-                )
+                "business canonical keys": select(BusinessEntity.canonical_key, func.count())
                 .group_by(BusinessEntity.canonical_key)
                 .having(func.count() > 1),
                 "business aliases": select(
@@ -122,14 +132,34 @@ async def inspect_integrity() -> IntegrityResult:
                 )
                 .group_by(ContactIntelligence.contact_id)
                 .having(func.count() > 1),
+                "interest evidence keys": select(
+                    InterestEvidence.interest_key, func.count()
+                )
+                .group_by(InterestEvidence.interest_key)
+                .having(func.count() > 1),
+                "contact interest profile scopes": select(
+                    ContactInterestProfile.contact_id,
+                    ContactInterestProfile.vertical,
+                    ContactInterestProfile.dimension,
+                    ContactInterestProfile.topic,
+                    func.count(),
+                )
+                .group_by(
+                    ContactInterestProfile.contact_id,
+                    ContactInterestProfile.vertical,
+                    ContactInterestProfile.dimension,
+                    ContactInterestProfile.topic,
+                )
+                .having(func.count() > 1),
+                "outcome DNA deals": select(OutcomeDNA.deal_id, func.count())
+                .group_by(OutcomeDNA.deal_id)
+                .having(func.count() > 1),
                 "audience memberships": select(
                     AudienceMembership.segment_id,
                     AudienceMembership.contact_id,
                     func.count(),
                 )
-                .group_by(
-                    AudienceMembership.segment_id, AudienceMembership.contact_id
-                )
+                .group_by(AudienceMembership.segment_id, AudienceMembership.contact_id)
                 .having(func.count() > 1),
                 "deal leads": select(Deal.lead_id, func.count())
                 .where(Deal.lead_id.is_not(None))
@@ -145,9 +175,15 @@ async def inspect_integrity() -> IntegrityResult:
                 )
                 .group_by(NotificationLog.idempotency_key)
                 .having(func.count() > 1),
-                "significant changes per lead": select(
-                    SignificantChange.lead_id, func.count()
+                "opening signal contact/place keys": select(
+                    OpeningSignal.contact_id,
+                    OpeningSignal.place_name,
+                    func.count(),
                 )
+                .where(OpeningSignal.contact_id.is_not(None))
+                .group_by(OpeningSignal.contact_id, OpeningSignal.place_name)
+                .having(func.count() > 1),
+                "significant changes per lead": select(SignificantChange.lead_id, func.count())
                 .group_by(SignificantChange.lead_id)
                 .having(func.count() > 1),
                 "significant change notification targets": select(
@@ -165,10 +201,47 @@ async def inspect_integrity() -> IntegrityResult:
                 )
                 .group_by(SignificantChangeNotification.idempotency_key)
                 .having(func.count() > 1),
+                "AI request contexts": select(
+                    AIRequest.lead_id,
+                    AIRequest.analysis_version,
+                    AIRequest.context_fingerprint,
+                    func.count(),
+                )
+                .group_by(
+                    AIRequest.lead_id,
+                    AIRequest.analysis_version,
+                    AIRequest.context_fingerprint,
+                )
+                .having(func.count() > 1),
+                "AI request claim tokens": select(AIRequest.claim_token, func.count())
+                .where(AIRequest.claim_token.is_not(None))
+                .group_by(AIRequest.claim_token)
+                .having(func.count() > 1),
+                "provider budget policy scopes": select(
+                    ProviderBudgetPolicy.provider,
+                    ProviderBudgetPolicy.service,
+                    func.count(),
+                )
+                .group_by(
+                    ProviderBudgetPolicy.provider,
+                    ProviderBudgetPolicy.service,
+                )
+                .having(func.count() > 1),
+                "provider credit snapshot keys": select(
+                    ProviderCreditSnapshot.idempotency_key,
+                    func.count(),
+                )
+                .group_by(ProviderCreditSnapshot.idempotency_key)
+                .having(func.count() > 1),
+                "lead/public-signal vertical mismatches": select(Lead.id)
+                .join(PublicSignal, PublicSignal.comment_id == Lead.comment_id)
+                .where(Lead.vertical != PublicSignal.vertical),
+                "evidence/public-signal vertical mismatches": select(Evidence.id)
+                .join(PublicSignal, PublicSignal.id == Evidence.public_signal_id)
+                .where(Evidence.vertical != PublicSignal.vertical),
             }
             duplicates = {
-                name: len((await session.execute(query)).all())
-                for name, query in checks.items()
+                name: len((await session.execute(query)).all()) for name, query in checks.items()
             }
             return IntegrityResult(counts=counts, duplicates=duplicates)
     finally:

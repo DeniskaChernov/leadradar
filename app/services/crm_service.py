@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import normalize_instagram_handle
 from app.db.models import (
     AIFeedback,
+    BusinessEntity,
     Competitor,
     Contact,
     ContactEventType,
@@ -19,9 +20,11 @@ from app.db.models import (
     LeadStatus,
     NotificationPolicy,
     TaskStatus,
+    Vertical,
 )
 from app.db.repositories.events import ContactEventRepository
 from app.services.lead_workflow_service import LeadAlreadyAssignedError, LeadWorkflowError
+from app.services.rattan_vertical_service import sync_business_vertical_enrollment
 
 ALLOWED_STAGE_TRANSITIONS: dict[LeadStatus, set[LeadStatus]] = {
     LeadStatus.ANALYZING: {LeadStatus.TAKEN, LeadStatus.NOT_LEAD},
@@ -93,6 +96,10 @@ class CRMService:
             contact = await session.get(Contact, contact_id)
             if contact is None:
                 raise LeadWorkflowError("Клиент не найден")
+            if lead_id is not None:
+                lead = await session.get(Lead, lead_id)
+                if lead is None or lead.contact_id != contact_id:
+                    raise LeadWorkflowError("Лид не принадлежит этому клиенту")
             contact.last_contacted_at = datetime.now(UTC)
             await ContactEventRepository(session).add(
                 contact_id,
@@ -218,6 +225,22 @@ class CRMService:
             contact = await session.get(Contact, contact_id)
             if contact is None:
                 raise LeadWorkflowError("Клиент не найден")
+            if lead_id is not None:
+                lead = await session.get(Lead, lead_id)
+                if lead is None or lead.contact_id != contact_id:
+                    raise LeadWorkflowError("Лид не принадлежит этому клиенту")
+            existing = await session.scalar(
+                select(ContactTask).where(
+                    ContactTask.contact_id == contact_id,
+                    ContactTask.lead_id == lead_id,
+                    ContactTask.manager_telegram_id == manager_id,
+                    ContactTask.due_at == due_at,
+                    ContactTask.note == note.strip(),
+                    ContactTask.status == TaskStatus.OPEN,
+                )
+            )
+            if existing is not None:
+                return existing
             task = ContactTask(
                 contact_id=contact_id,
                 lead_id=lead_id,
@@ -228,10 +251,8 @@ class CRMService:
             )
             session.add(task)
             if lead_id is not None:
-                lead = await session.get(Lead, lead_id)
-                if lead is not None:
-                    lead.next_action_at = due_at
-                    lead.next_action_note = note.strip()
+                lead.next_action_at = due_at
+                lead.next_action_note = note.strip()
             await session.flush()
             await ContactEventRepository(session).add(
                 contact_id,
@@ -329,6 +350,10 @@ class CRMService:
         quantity: int | None = None,
         amount: Decimal | None = None,
     ) -> Deal:
+        if quantity is not None and quantity <= 0:
+            raise LeadWorkflowError("Количество должно быть больше нуля")
+        if amount is not None and amount < 0:
+            raise LeadWorkflowError("Сумма сделки не может быть отрицательной")
         async with self.session_factory() as session:
             lead = await session.get(Lead, lead_id)
             if lead is None:
@@ -347,6 +372,8 @@ class CRMService:
                 )
                 session.add(deal)
                 await session.flush()
+            elif deal.status in {DealStatus.WON, DealStatus.LOST}:
+                raise LeadWorkflowError("Закрытую сделку нельзя изменять")
             if product_name.strip():
                 deal.product_name = product_name.strip()
             if quantity is not None:
@@ -376,6 +403,7 @@ class CRMService:
         category: str = "DIRECT",
         tier: str = "A",
         notes: str = "",
+        vertical: str = "FURNITURE",
     ) -> Competitor:
         normalized = normalize_instagram_handle(handle)
         if not normalized:
@@ -384,6 +412,17 @@ class CRMService:
         if tier not in {"A", "B", "C"}:
             raise LeadWorkflowError("Приоритет должен быть A, B или C")
         interval = {"A": 180, "B": 600, "C": 1800}[tier]
+        normalized_vertical = vertical.strip().upper()
+        try:
+            enrolled_vertical = Vertical(normalized_vertical)
+        except ValueError as exc:
+            raise LeadWorkflowError(
+                "Вертикаль должна быть FURNITURE или ARTIFICIAL_RATTAN"
+            ) from exc
+        if enrolled_vertical not in {Vertical.FURNITURE, Vertical.ARTIFICIAL_RATTAN}:
+            raise LeadWorkflowError(
+                "Вертикаль должна быть FURNITURE или ARTIFICIAL_RATTAN"
+            )
         async with self.session_factory() as session:
             competitor = await session.scalar(
                 select(Competitor).where(Competitor.normalized_handle == normalized)
@@ -398,6 +437,7 @@ class CRMService:
                     poll_interval_seconds=interval,
                     notes=notes.strip() or None,
                     active=True,
+                    vertical=enrolled_vertical,
                 )
                 session.add(competitor)
             else:
@@ -406,9 +446,13 @@ class CRMService:
                 competitor.tier = tier
                 competitor.poll_interval_seconds = interval
                 competitor.notes = notes.strip() or competitor.notes
+                competitor.vertical = enrolled_vertical
+            await session.flush()
+            if competitor.business_id:
+                business = await session.get(BusinessEntity, competitor.business_id)
+                sync_business_vertical_enrollment(business, vertical=enrolled_vertical)
             await session.commit()
             return competitor
-
 
     async def update_competitor(
         self,
@@ -418,6 +462,7 @@ class CRMService:
         tier: str | None = None,
         category: str | None = None,
         notification_policy: str | None = None,
+        vertical: str | None = None,
     ) -> Competitor:
         async with self.session_factory() as session:
             competitor = await session.get(Competitor, competitor_id)
@@ -433,6 +478,24 @@ class CRMService:
                 competitor.poll_interval_seconds = {"A": 180, "B": 600, "C": 1800}[normalized_tier]
             if category is not None:
                 competitor.category = category.upper()
+            if vertical is not None:
+                normalized_vertical = vertical.strip().upper()
+                try:
+                    enrolled_vertical = Vertical(normalized_vertical)
+                except ValueError as exc:
+                    raise LeadWorkflowError(
+                        "Вертикаль должна быть FURNITURE или ARTIFICIAL_RATTAN"
+                    ) from exc
+                if enrolled_vertical not in {Vertical.FURNITURE, Vertical.ARTIFICIAL_RATTAN}:
+                    raise LeadWorkflowError(
+                        "Вертикаль должна быть FURNITURE или ARTIFICIAL_RATTAN"
+                    )
+                competitor.vertical = enrolled_vertical
+                if competitor.business_id:
+                    business = await session.get(BusinessEntity, competitor.business_id)
+                    sync_business_vertical_enrollment(
+                        business, vertical=enrolled_vertical
+                    )
             if notification_policy is not None:
                 normalized_policy = notification_policy.strip().upper()
                 if normalized_policy == "INHERIT":

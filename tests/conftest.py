@@ -19,7 +19,9 @@ def block_outbound_network(monkeypatch):
             host, _ = address[0], address[1]
             if host in {"127.0.0.1", "localhost", "::1", "0.0.0.0", "testserver"}:
                 return orig_connect(self, address)
-        elif isinstance(address, str) and (address.startswith("\x00") or "sqlite" in address or "test" in address):
+        elif isinstance(address, str) and (
+            address.startswith("\x00") or "sqlite" in address or "test" in address
+        ):
             return orig_connect(self, address)
         raise OutboundNetworkForbiddenError(
             f"Outbound network connection forbidden in test suite! Attempted connect to: {address}. "
@@ -43,3 +45,14 @@ async def session_factory():
     await engine.dispose()
 
 
+@pytest_asyncio.fixture
+async def file_session_factory(tmp_path):
+    """SQLite fixture with independent connections for real worker-race tests."""
+
+    database_path = (tmp_path / "worker-race.db").as_posix()
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    yield factory
+    await engine.dispose()

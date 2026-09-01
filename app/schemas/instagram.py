@@ -52,3 +52,13 @@ class CommentFetchResult(BaseModel):
     coverage_status: str = "UNKNOWN"
     cursor_exhausted: bool = True
     stopped_on_known_comment: bool = False
+
+
+class ProviderCreditObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str
+    provider: str
+    operation: str
+    credits_remaining: int | None = Field(default=None, ge=0)
+    credits_charged: int | None = Field(default=None, ge=0)

@@ -1,4 +1,7 @@
-# Lead Radar V6 — Pre-Implementation Audit Report
+# Lead Radar V6 — Pre-Implementation Audit Report (historical)
+
+The former static Meta recipe claims are superseded by `META_ACTIVATION_BOUNDARY.md`.
+No hardcoded interest name is considered a validated current Meta catalog mapping.
 
 ## 1. Actual Architecture Summary
 

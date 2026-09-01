@@ -50,6 +50,44 @@ class BuyerRole(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+class CommercialSignalQuality(StrEnum):
+    NON_COMMERCIAL = "NON_COMMERCIAL"
+    WEAK_COMMERCIAL = "WEAK_COMMERCIAL"
+    MEDIUM_COMMERCIAL = "MEDIUM_COMMERCIAL"
+    STRONG_COMMERCIAL = "STRONG_COMMERCIAL"
+
+
+class LeadScoreFactors(BaseModel):
+    """Закрытая схема факторов: OpenAI strict JSON запрещает свободный dict."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    intent_strength: int = Field(default=0, ge=0)
+    intent_score: int = Field(default=0, ge=0)
+    activity_score: int = Field(default=0, ge=0)
+    specificity_score: int = Field(default=0, ge=0)
+    value_score: int = Field(default=0, ge=0)
+    fit_score: int = Field(default=0, ge=0)
+    source_quality_score: int = Field(default=0, ge=0)
+    confidence_score: int = Field(default=0, ge=0)
+    priority_score: int = Field(default=0, ge=0)
+    role_score: int = Field(default=0, ge=0)
+    history_boost: int = Field(default=0, ge=0)
+    sequence_score: int = Field(default=0, ge=0)
+    validated_commercial_count: int = Field(default=0, ge=0)
+    validated_competitor_count: int = Field(default=0, ge=0)
+    objection_penalty: int = Field(default=0, ge=0)
+
+    def __getitem__(self, key: str) -> int:
+        return int(getattr(self, key))
+
+    def __contains__(self, key: object) -> bool:
+        return isinstance(key, str) and hasattr(self, key)
+
+    def get(self, key: str, default: int = 0) -> int:
+        return int(getattr(self, key, default))
+
+
 class LeadAnalysis(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -68,5 +106,22 @@ class LeadAnalysis(BaseModel):
     recommended_action: str = "Проверить контекст и решить, требуется ли ответ менеджера."
     intelligence_version: str = "2.0"
     buyer_role: BuyerRole = BuyerRole.UNKNOWN
-    factors: dict[str, int] = Field(default_factory=dict)
+    factors: LeadScoreFactors = Field(default_factory=LeadScoreFactors)
     evidence_ids: list[int] = Field(default_factory=list)
+    contradiction_ids: list[int] = Field(default_factory=list)
+    is_commercial: bool = False
+    commercial_quality: CommercialSignalQuality = (
+        CommercialSignalQuality.NON_COMMERCIAL
+    )
+    commercial_stage: FunnelStage = FunnelStage.NON_COMMERCIAL
+    intent_score: int = Field(default=0, ge=0, le=100)
+    activity_score: int = Field(default=0, ge=0, le=100)
+    specificity_score: int = Field(default=0, ge=0, le=100)
+    value_score: int = Field(default=0, ge=0, le=100)
+    fit_score: int = Field(default=0, ge=0, le=100)
+    source_quality_score: int = Field(default=0, ge=0, le=100)
+    confidence_score: int = Field(default=0, ge=0, le=100)
+    priority_score: int = Field(default=0, ge=0, le=100)
+    quantity: int | None = Field(default=None, ge=1)
+    next_best_action: str = "Проверить контекст и выбрать следующее действие."
+    short_reason: str = ""

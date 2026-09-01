@@ -1,27 +1,37 @@
 {% extends "base.html" %}
-
 {% block title %}Очередь открытий заведений — Lead Radar{% endblock %}
 {% block heading %}Радар открытий B2B-заведений{% endblock %}
 {% block subheading %}Отслеживание открывающихся ресторанов, кафе, отелей и офисов по публичным сигналам{% endblock %}
-
 {% block content %}
-<div class="panel">
-  <div class="panel-header">
-    <div>
-      <h2 class="panel-title">Сигналы новых открытий</h2>
-      <p class="panel-desc">Сформированная очередь потенциальных B2B-заказов на мебель и ротанг для новых мест</p>
-    </div>
-    <span class="pill primary">Всего в очереди: {{ queue|length }}</span>
+<section class="hero-status safe openings-hero" data-motion-root>
+  <div>
+    <span class="eyebrow">B2B ОТКРЫТИЯ</span>
+    <h2>{{ queue|length }} сигналов в очереди</h2>
+    <p>Сформированная очередь потенциальных B2B-заказов на мебель и ротанг для новых мест.</p>
   </div>
+  <div class="hero-actions">
+    <a class="btn ghost" href="/system#agent-workspace">AI · google.openings</a>
+    <a class="btn ghost" href="/leads?kind=b2b">Лиды B2B</a>
+  </div>
+</section>
 
+<section class="panel openings-panel">
+  <div class="panel-head">
+    <div>
+      <h2>Сигналы новых открытий</h2>
+      <p>Рестораны, кафе, отели и офисы — верификация перед конвертацией в лид</p>
+    </div>
+    <span class="tag status-contacted">В очереди: {{ queue|length }}</span>
+  </div>
   {% if queue %}
-  <div class="table-wrap">
-    <table class="table">
+  <p class="table-scroll-hint">На узком экране строки сворачиваются в карточки.</p>
+  <div class="table-wrap embedded openings-table-wrap">
+    <table class="responsive-table openings-table">
       <thead>
         <tr>
           <th>Заведение</th>
           <th>Категория</th>
-          <th>Город / Адрес</th>
+          <th>Город</th>
           <th>Сроки открытия</th>
           <th>Уверенность</th>
           <th>Статус</th>
@@ -31,29 +41,29 @@
       <tbody>
         {% for item in queue %}
         <tr>
-          <td><strong>{{ item.place_name }}</strong></td>
-          <td><span class="badge label">{{ item.place_type }}</span></td>
-          <td>{{ item.city or '—' }}</td>
-          <td>{{ item.opening_timeline or 'В ближайшее время' }}</td>
-          <td>
-            <span class="confidence-bar">
-              <span class="confidence-fill" style="width: {{ item.confidence }}%;"></span>
+          <td data-label="Заведение"><strong>{{ item.place_name }}</strong></td>
+          <td data-label="Категория"><span class="tag neutral">{{ item.place_type }}</span></td>
+          <td data-label="Город">{{ item.city or '—' }}</td>
+          <td data-label="Сроки открытия">{{ item.opening_timeline or 'В ближайшее время' }}</td>
+          <td data-label="Уверенность">
+            <div class="confidence-meter" style="--pct: {{ item.confidence }}%">
+              <i><b style="width: {{ item.confidence }}%"></b></i>
               <small>{{ item.confidence }}%</small>
-            </span>
+            </div>
           </td>
-          <td>
+          <td data-label="Статус">
             {% if item.review_status == 'VERIFIED' %}
-            <span class="badge success">Подтверждено</span>
+            <span class="tag success">Подтверждено</span>
             {% elif item.review_status == 'REJECTED' %}
-            <span class="badge danger">Отклонено</span>
+            <span class="tag danger">Отклонено</span>
             {% else %}
-            <span class="badge warning">Ожидает модерации</span>
+            <span class="tag warning">Ожидает модерации</span>
             {% endif %}
           </td>
-          <td>
+          <td data-label="Действие" class="row-actions">
             <div class="btn-group">
-              <button class="btn btn-sm success" onclick="reviewOpening({{ item.id }}, 'VERIFIED')">Подтвердить</button>
-              <button class="btn btn-sm danger" onclick="reviewOpening({{ item.id }}, 'REJECTED')">Отклонить</button>
+              <button class="btn btn-sm success" type="button" data-api-action="/api/openings/{{ item.id }}/review" data-payload='{"decision":"VERIFIED"}' data-confirm="Подтвердить этот публичный сигнал об открытии? Решение сохранится в истории проверки." data-reload="1">Подтвердить</button>
+              <button class="btn btn-sm danger" type="button" data-api-action="/api/openings/{{ item.id }}/review" data-payload='{"decision":"REJECTED"}' data-confirm="Отклонить этот сигнал? Он исчезнет из очереди модерации, а решение сохранится в базе." data-reload="1">Отклонить</button>
             </div>
           </td>
         </tr>
@@ -66,27 +76,8 @@
     <span class="empty-icon">🏪</span>
     <h3>Очередь открытий пуста</h3>
     <p>Новые сигналы об открытии ресторанов, кафе и отелей появятся здесь автоматически при их обнаружении в публичном мониторинге.</p>
+    <a class="btn ghost" href="/system#agent-workspace">Открыть AI workspace</a>
   </div>
   {% endif %}
-</div>
-
-<script>
-async function reviewOpening(openingId, decision) {
-  try {
-    const res = await fetch(`/api/openings/${openingId}/review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ decision })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      window.location.reload();
-    } else {
-      alert('Ошибка модерации: ' + (data.detail || 'Неизвестная ошибка'));
-    }
-  } catch (err) {
-    alert('Сетевая ошибка при принятии решения');
-  }
-}
-</script>
+</section>
 {% endblock %}

@@ -42,8 +42,42 @@ async def test_openai_structured_response_parsing():
     assert responses.kwargs["model"] == "configured-model"
     assert responses.kwargs["text_format"] is LeadAnalysis
     assert responses.kwargs["store"] is False
-    assert responses.kwargs["reasoning"] == {"effort": "medium"}
-    assert responses.kwargs["prompt_cache_key"] == "lead-radar-qualifier-v2"
+    assert responses.kwargs["reasoning"] == {"effort": "low"}
+    assert responses.kwargs["prompt_cache_key"] == "lead-radar-qualifier-v3"
+
+
+async def test_openai_cannot_persist_unknown_evidence_ids():
+    result = LeadAnalysis(
+        is_lead=True,
+        lead_score=88,
+        intent=Intent.BUY,
+        product_category="TABLE",
+        language="ru",
+        reason="Direct order request",
+        confidence=92,
+        confidence_score=92,
+        evidence_ids=[7, 999],
+    )
+    analyzer = OpenAILeadAnalyzer(
+        "unused",
+        "configured-model",
+        client=SimpleNamespace(responses=FakeResponses(result)),
+    )
+
+    parsed = await analyzer.analyze(
+        LeadAnalysisContext(
+            competitor="aiko.uz",
+            post_caption="Стол",
+            comment="Хочу заказать",
+            username="buyer",
+            previous_signals=[],
+            previous_interests=[],
+            evidence_ids=[7],
+        )
+    )
+
+    assert parsed.evidence_ids == [7]
+    assert parsed.intelligence_version == "3.0"
 
 
 async def test_rules_understand_uzbek_cyrillic_price_questions():
@@ -69,7 +103,7 @@ async def test_rules_cover_common_uzbek_purchase_signals_without_openai():
     cases = [
         ("6 кишилик борми?", Intent.AVAILABILITY),
         ("Доставка борми?", Intent.DELIVERY),
-        ("20 дона керак", Intent.BUY),
+        ("20 дона керак", Intent.QUANTITY),
         ("Манзил қаерда?", Intent.LOCATION),
     ]
     for text, expected_intent in cases:
@@ -133,7 +167,7 @@ async def test_rules_cover_installment_and_horeca_without_false_price_match():
     analyzer = RuleBasedLeadAnalyzer()
     contexts = [
         ("Можно в рассрочку?", Intent.PRICE, True),
-        ("Для ресторана нужно 20 штук", Intent.BUY, True),
+        ("Для ресторана нужно 20 штук", Intent.QUANTITY, True),
         ("Сколько красоты 😍", Intent.SPAM, False),
     ]
     for text, intent, is_lead in contexts:
@@ -168,7 +202,11 @@ def test_rules_classify_social_congratulations_locally():
     assert result.intent == Intent.REACTION
 
 async def test_local_rules_raise_priority_for_cross_competitor_history():
-    from app.services.ai_service import LeadAnalysisContext, PreviousSignal, RuleBasedLeadAnalyzer
+    from app.services.ai_service import (
+        LeadAnalysisContext,
+        RuleBasedLeadAnalyzer,
+        ValidatedPreviousSignal,
+    )
 
     analyzer = RuleBasedLeadAnalyzer()
     base_context = LeadAnalysisContext(
@@ -185,11 +223,20 @@ async def test_local_rules_raise_priority_for_cross_competitor_history():
         comment="narxi?",
         username="buyer",
         previous_signals=[
-            PreviousSignal(
+            ValidatedPreviousSignal(
+                lead_id=1,
+                public_signal_id=1,
+                evidence_ids=[101],
+                competitor_id=2,
                 competitor="chinar.uz",
-                post_caption="Стол и 6 кресел",
-                comment="qancha?",
-                discovered_at="2026-08-25T10:00:00+00:00",
+                intent="PRICE",
+                product_family="DINING_SET",
+                buyer_role="B2C_CONSUMER",
+                commercial_quality="MEDIUM_COMMERCIAL",
+                priority_score=74,
+                confidence=88,
+                observed_at="2026-08-25T10:00:00+00:00",
+                vertical="FURNITURE",
             )
         ],
         previous_interests=["DINING_SET"],
@@ -201,3 +248,21 @@ async def test_local_rules_raise_priority_for_cross_competitor_history():
     assert base is not None and comparison is not None
     assert comparison.lead_score > base.lead_score
     assert comparison.lead_score <= 99
+
+
+def test_commercial_plus_cta_tolerates_benign_punctuation_and_emoji():
+    analyzer = RuleBasedLeadAnalyzer()
+    for comment in ("+?", "+!", "+ 🙏", "+..."):
+        result = analyzer.classify(
+            LeadAnalysisContext(
+                competitor="aiko.uz",
+                post_caption="Оставьте плюс, чтобы получить каталог и цены",
+                comment=comment,
+                username="buyer",
+                previous_signals=[],
+                previous_interests=[],
+            )
+        )
+        assert result is not None
+        assert result.is_lead is True
+        assert result.intent == Intent.BUY

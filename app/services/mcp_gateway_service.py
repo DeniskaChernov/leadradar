@@ -1,15 +1,32 @@
 """
 mcp_gateway_service.py — V6 Lead Radar Internal MCP Gateway & Tool Surface.
 
-Defines the controlled tool surface and least-privilege schemas for the OpenAI Agent:
-  - Read tools (lead.*, audience.*, competitor.*, rattan.*, google.*, catalog.*, analytics.*)
+Defines the controlled tool surface and least-privilege schemas for the grounded agent:
+  - Read tools (lead.*, audience.*, competitor.*, rattan.*, google.*)
   - Write tools (crm.*, meta.*) with mandatory Human-in-the-Loop approval gating
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, ClassVar
+
+from app.services.mcp_write_tool_service import WRITE_TOOL_NAMES
+
+logger = logging.getLogger(__name__)
+
+READ_TOOL_NAMES = frozenset(
+    {
+        "lead.search",
+        "lead.explain_score",
+        "catalog.recommend",
+        "audience.dna",
+        "competitor.opportunities",
+        "rattan.company_analysis",
+        "google.openings",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +52,6 @@ class LeadRadarMCPGateway:
 
     _TOOLS: ClassVar[dict[str, MCPToolDefinition]] = {
         "lead.search": MCPToolDefinition(
-
             name="lead.search",
             namespace="lead",
             description="Поиск лидов по роли, статусу, скору и ключевым словам.",
@@ -49,9 +65,16 @@ class LeadRadarMCPGateway:
             requires_approval=False,
             parameters_schema={"type": "object", "properties": {"lead_id": {"type": "integer"}}},
         ),
+        "catalog.recommend": MCPToolDefinition(
+            name="catalog.recommend",
+            namespace="catalog",
+            description="Grounded next-best-action и рекомендация товара по лиду.",
+            requires_approval=False,
+            parameters_schema={"type": "object", "properties": {"lead_id": {"type": "integer"}}},
+        ),
         "audience.dna": MCPToolDefinition(
             name="audience.dna",
-            namespace="lead",
+            namespace="audience",
             description="Извлечение профиля Audience DNA для группы контактов или сегмента.",
             requires_approval=False,
             parameters_schema={"type": "object", "properties": {"segment_slug": {"type": "string"}}},
@@ -82,16 +105,68 @@ class LeadRadarMCPGateway:
             namespace="crm",
             description="Назначение ответственного менеджера за лидом.",
             requires_approval=True,
-            parameters_schema={"type": "object", "properties": {"lead_id": {"type": "integer"}, "manager_id": {"type": "integer"}}},
+            parameters_schema={
+                "type": "object",
+                "properties": {"lead_id": {"type": "integer"}, "manager_id": {"type": "integer"}},
+            },
         ),
         "meta.create_campaign_draft": MCPToolDefinition(
             name="meta.create_campaign_draft",
             namespace="meta",
             description="Создание приостановленного (PAUSED) черновика кампании в Meta Ads.",
             requires_approval=True,
-            parameters_schema={"type": "object", "properties": {"recipe_type": {"type": "string"}, "budget_usd": {"type": "number"}}},
+            parameters_schema={
+                "type": "object",
+                "properties": {"recipe_type": {"type": "string"}, "budget_usd": {"type": "number"}},
+            },
+        ),
+        "competitor.manage": MCPToolDefinition(
+            name="competitor.manage",
+            namespace="competitor",
+            description="Добавить или обновить конкурента (handle, active, tier).",
+            requires_approval=True,
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "handle": {"type": "string"},
+                    "active": {"type": "boolean"},
+                    "tier": {"type": "string"},
+                    "display_name": {"type": "string"},
+                    "category": {"type": "string"},
+                },
+                "required": ["handle"],
+            },
+        ),
+        "project.write_file": MCPToolDefinition(
+            name="project.write_file",
+            namespace="project",
+            description="Запись в allowlist-файлы проекта (State.md, exports/, docs/drafts/).",
+            requires_approval=True,
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "relative_path": {"type": "string"},
+                    "content": {"type": "string"},
+                    "mode": {"type": "string"},
+                },
+                "required": ["relative_path", "content"],
+            },
         ),
     }
+
+    def __init__(self, read_service: Any | None = None, write_service: Any | None = None) -> None:
+        self.read_service = read_service
+        self.write_service = write_service
+
+    @classmethod
+    def from_session_factory(cls, session_factory, *, hot_threshold: int) -> LeadRadarMCPGateway:
+        from app.services.mcp_read_tool_service import MCPReadToolService
+        from app.services.mcp_write_tool_service import MCPWriteToolService
+
+        return cls(
+            MCPReadToolService(session_factory, hot_threshold=hot_threshold),
+            MCPWriteToolService(session_factory, hot_threshold=hot_threshold),
+        )
 
     @classmethod
     def list_tools(cls, *, namespace: str | None = None) -> list[MCPToolDefinition]:
@@ -108,7 +183,39 @@ class LeadRadarMCPGateway:
         approval_granted: bool = False,
         trace_id: str | None = None,
     ) -> ToolExecutionResult:
-        tool = cls._TOOLS.get(tool_name)
+        """Sync stub без read_service — сохраняет честный NOT_CONNECTED контракт."""
+        return cls(read_service=None)._build_result(
+            tool_name,
+            arguments,
+            approval_granted=approval_granted,
+            trace_id=trace_id,
+            connected=False,
+        )
+
+    async def execute_tool_async(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        *,
+        approval_granted: bool = False,
+        trace_id: str | None = None,
+    ) -> ToolExecutionResult:
+        return await self._execute(
+            tool_name,
+            arguments,
+            approval_granted=approval_granted,
+            trace_id=trace_id,
+        )
+
+    async def _execute(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        *,
+        approval_granted: bool,
+        trace_id: str | None,
+    ) -> ToolExecutionResult:
+        tool = self._TOOLS.get(tool_name)
         if tool is None:
             return ToolExecutionResult(
                 tool_name=tool_name,
@@ -122,16 +229,122 @@ class LeadRadarMCPGateway:
             return ToolExecutionResult(
                 tool_name=tool_name,
                 success=False,
-                output={"error": f"Execution of write tool '{tool_name}' requires explicit human approval."},
+                output={
+                    "error": f"Execution of write tool '{tool_name}' requires explicit human approval."
+                },
                 approval_granted=False,
                 trace_id=trace_id,
             )
 
-        # Mock execution for read/write tools
+        if tool_name in READ_TOOL_NAMES:
+            if self.read_service is None:
+                return self._not_connected(tool_name, approval_granted, trace_id)
+            try:
+                output = await self.read_service.dispatch(tool_name, arguments)
+            except (KeyError, ValueError, TypeError) as exc:
+                return ToolExecutionResult(
+                    tool_name=tool_name,
+                    success=False,
+                    output={"error": "INVALID_ARGUMENTS", "message": str(exc)},
+                    approval_granted=approval_granted,
+                    trace_id=trace_id,
+                )
+            except Exception as exc:
+                logger.exception("mcp_read_tool_failed tool=%s", tool_name)
+                return ToolExecutionResult(
+                    tool_name=tool_name,
+                    success=False,
+                    output={"error": "INTERNAL", "message": str(exc)[:200]},
+                    approval_granted=approval_granted,
+                    trace_id=trace_id,
+                )
+            success = not (isinstance(output, dict) and output.get("error"))
+            return ToolExecutionResult(
+                tool_name=tool_name,
+                success=success,
+                output=output,
+                approval_granted=approval_granted,
+                trace_id=trace_id,
+            )
+
+        if tool_name in WRITE_TOOL_NAMES:
+            if self.write_service is None:
+                return self._not_connected(tool_name, approval_granted, trace_id)
+            try:
+                output = await self.write_service.dispatch(tool_name, arguments)
+            except (KeyError, ValueError, TypeError) as exc:
+                return ToolExecutionResult(
+                    tool_name=tool_name,
+                    success=False,
+                    output={"error": "INVALID_ARGUMENTS", "message": str(exc)},
+                    approval_granted=approval_granted,
+                    trace_id=trace_id,
+                )
+            except Exception as exc:
+                logger.exception("mcp_write_tool_failed tool=%s", tool_name)
+                return ToolExecutionResult(
+                    tool_name=tool_name,
+                    success=False,
+                    output={"error": "INTERNAL", "message": str(exc)[:200]},
+                    approval_granted=approval_granted,
+                    trace_id=trace_id,
+                )
+            success = not (isinstance(output, dict) and output.get("error"))
+            return ToolExecutionResult(
+                tool_name=tool_name,
+                success=success,
+                output=output,
+                approval_granted=approval_granted,
+                trace_id=trace_id,
+            )
+
+        return self._not_connected(tool_name, approval_granted, trace_id)
+
+    def _build_result(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        *,
+        approval_granted: bool,
+        trace_id: str | None,
+        connected: bool,
+    ) -> ToolExecutionResult:
+        tool = self._TOOLS.get(tool_name)
+        if tool is None:
+            return ToolExecutionResult(
+                tool_name=tool_name,
+                success=False,
+                output={"error": f"Tool '{tool_name}' not found"},
+                approval_granted=approval_granted,
+                trace_id=trace_id,
+            )
+        if tool.requires_approval and not approval_granted:
+            return ToolExecutionResult(
+                tool_name=tool_name,
+                success=False,
+                output={
+                    "error": f"Execution of write tool '{tool_name}' requires explicit human approval."
+                },
+                approval_granted=False,
+                trace_id=trace_id,
+            )
+        if connected and tool_name in READ_TOOL_NAMES:
+            raise RuntimeError("Sync execute_tool cannot run connected read tools")
+        return self._not_connected(tool_name, approval_granted, trace_id)
+
+    @staticmethod
+    def _not_connected(
+        tool_name: str,
+        approval_granted: bool,
+        trace_id: str | None,
+    ) -> ToolExecutionResult:
         return ToolExecutionResult(
             tool_name=tool_name,
-            success=True,
-            output={"ok": True, "result": f"Executed {tool_name} with arguments {arguments}"},
+            success=False,
+            output={
+                "error": "NOT_CONNECTED",
+                "message": f"Tool '{tool_name}' is not connected to a real service yet.",
+            },
             approval_granted=approval_granted,
             trace_id=trace_id,
         )

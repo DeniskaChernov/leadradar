@@ -5,12 +5,24 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select
 
-from app.db.models import Comment, Contact, Lead
-from app.providers.base import InstagramProvider, ProviderError
-from app.providers.budgeted import BudgetedInstagramProvider
+from app.db.models import (
+    Comment,
+    Contact,
+    ExternalBudgetReservation,
+    ExternalUsage,
+    Lead,
+    ProviderCreditSnapshot,
+)
+from app.providers.base import InstagramProvider, ProviderCallUncertainError, ProviderError
+from app.providers.budgeted import BudgetedInstagramProvider, ScanBudgetExceededError
 from app.providers.fallback import FallbackInstagramProvider
 from app.providers.replay import ReplayInstagramProvider
-from app.schemas.instagram import InstagramComment, InstagramPost, InstagramProfile
+from app.schemas.instagram import (
+    InstagramComment,
+    InstagramPost,
+    InstagramProfile,
+    ProviderCreditObservation,
+)
 from app.services.ai_service import HybridLeadAnalyzer, RuleBasedLeadAnalyzer
 from app.services.contact_service import ContactService
 from app.services.instagram_monitor import InstagramMonitor
@@ -79,8 +91,31 @@ class StubProfileProvider(InstagramProvider):
         raise NotImplementedError
 
 
+class CreditAwareProfileProvider(StubProfileProvider):
+    def __init__(self) -> None:
+        super().__init__("scrapecreators", False)
+        self._observations = [
+            ProviderCreditObservation(
+                idempotency_key="provider-response:credit-aware",
+                provider="scrapecreators",
+                operation="get_profile",
+                credits_remaining=21_840,
+                credits_charged=2,
+            )
+        ]
+
+    def pop_credit_observations(self) -> list[ProviderCreditObservation]:
+        observations = self._observations
+        self._observations = []
+        return observations
+
+
 @pytest.mark.asyncio
-async def test_fallback_spend_counts_each_provider_operation(session_factory):
+async def test_fallback_blocked_after_uncertain_primary_call(session_factory):
+    from sqlalchemy import select
+
+    from app.db.models import ExternalBudgetReservation, ReservationStatus
+
     usage = ExternalUsageService(session_factory)
     primary = BudgetedInstagramProvider(
         StubProfileProvider("scrapecreators", True), usage, enabled=True, daily_limit=10
@@ -90,12 +125,50 @@ async def test_fallback_spend_counts_each_provider_operation(session_factory):
     )
     provider = FallbackInstagramProvider(primary, fallback)
 
-    result = await provider.get_profile("aiko.uz")
+    with pytest.raises(ProviderCallUncertainError):
+        await provider.get_profile("aiko.uz")
 
-    assert result.username == "aiko.uz"
-    assert await usage.used_today("instagram") == 2
+    # Primary fail after call_started → UNCERTAIN. Fallback must not run (no double spend).
+    assert await usage.used_today("instagram") == 0
+    assert await usage.active_reservations_today("instagram") == 1
     breakdown = await usage.breakdown_today("instagram")
-    assert breakdown == {"scrapecreators": 1, "brightdata": 1}
+    assert breakdown == {}
+    async with session_factory() as session:
+        uncertain = list(
+            await session.scalars(
+                select(ExternalBudgetReservation).where(
+                    ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN
+                )
+            )
+        )
+    assert len(uncertain) == 1
+    assert uncertain[0].provider == "scrapecreators"
+
+
+@pytest.mark.asyncio
+async def test_provider_confirmed_response_reconciles_wallet_and_actual_usage(
+    session_factory,
+):
+    usage = ExternalUsageService(session_factory)
+    provider = BudgetedInstagramProvider(
+        CreditAwareProfileProvider(),
+        usage,
+        enabled=True,
+        daily_limit=10,
+    )
+
+    with pytest.raises(ScanBudgetExceededError, match="превысило резерв"):
+        await provider.get_profile("aiko.uz")
+
+    async with session_factory() as session:
+        snapshot = await session.scalar(select(ProviderCreditSnapshot))
+        reservation = await session.scalar(select(ExternalBudgetReservation))
+        recorded = await session.scalar(select(ExternalUsage))
+    assert snapshot is not None and snapshot.credits_remaining == 21_840
+    assert snapshot.credits_charged == 2
+    assert reservation is not None and reservation.actual_units == 2
+    assert recorded is not None and recorded.units == 2
+    assert recorded.unit_source == "PROVIDER_CONFIRMED"
 
 async def test_tasks_page_renders_in_russian(session_factory):
     from httpx import ASGITransport, AsyncClient
@@ -118,4 +191,5 @@ async def test_tasks_page_renders_in_russian(session_factory):
         response = await client.get("/tasks")
     assert response.status_code == 200
     assert "Задачи менеджера" in response.text
-    assert "Не теряйте тёплых клиентов" in response.text
+    assert "ОЧЕРЕДЬ КОНТАКТОВ" in response.text
+    assert "tasks-hero" in response.text

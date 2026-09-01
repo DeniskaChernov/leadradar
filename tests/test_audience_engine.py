@@ -9,7 +9,9 @@ from app.db.models import (
     Contact,
     ContactIntelligence,
     ExportEligibility,
+    Vertical,
 )
+from app.services.audience_registry import ACTIVE_AUDIENCE_DEFINITIONS
 from app.services.audience_service import SEGMENTS, AudienceEngine
 from app.services.contact_service import ContactService
 from app.services.lead_service import LeadService
@@ -47,7 +49,11 @@ async def test_audience_engine_builds_idempotent_commercial_segments(session_fac
     await engine.recalculate_contact(signal.contact_id)
 
     active = await _active_slugs(session_factory, signal.contact_id)
-    assert {"hot-24h", "hot-7d", "hot-30d", "dining-sets", "asked-price"} <= active
+    assert {
+        "furniture-commercial-intent",
+        "furniture-dining",
+        "price-sensitive-research",
+    } <= active
     async with session_factory() as session:
         intelligence = await session.scalar(select(ContactIntelligence))
         assert intelligence is not None
@@ -55,7 +61,9 @@ async def test_audience_engine_builds_idempotent_commercial_segments(session_fac
         assert intelligence.commercial_signal_count == 1
         assert intelligence.export_eligibility == ExportEligibility.NOT_EXPORTABLE
         assert await session.scalar(select(func.count(AudienceSegment.id))) == len(SEGMENTS)
-        assert await session.scalar(select(func.count(AudienceMembership.id))) == len(SEGMENTS)
+        assert await session.scalar(select(func.count(AudienceMembership.id))) == len(
+            ACTIVE_AUDIENCE_DEFINITIONS
+        )
 
 
 async def test_new_competitor_recalculates_overlap_without_duplicate_person(session_factory):
@@ -76,23 +84,44 @@ async def test_new_competitor_recalculates_overlap_without_duplicate_person(sess
             "url": "https://www.instagram.com/reel/chinar-post/",
         }
     )
-    second = await contact_service.persist_signal(
-        second_post, make_comment("audience-second")
-    )
+    second = await contact_service.persist_signal(second_post, make_comment("audience-second"))
     await service.process_signal(second)
 
     assert second.contact_id == first.contact_id
     active = await _active_slugs(session_factory, first.contact_id)
-    assert "multi-competitor-2" in active
+    assert "furniture-comparison" in active
     async with session_factory() as session:
         intelligence = await session.scalar(
-            select(ContactIntelligence).where(
-                ContactIntelligence.contact_id == first.contact_id
-            )
+            select(ContactIntelligence).where(ContactIntelligence.contact_id == first.contact_id)
         )
         assert intelligence is not None
         assert intelligence.source_count == 2
         assert await session.scalar(select(func.count(Contact.id))) == 1
+
+
+async def test_sync_segments_retires_duplicate_legacy_segment(session_factory):
+    async with session_factory() as session:
+        session.add(
+            AudienceSegment(
+                slug="multi-competitor-2",
+                vertical=Vertical.FURNITURE,
+                name="Legacy duplicate",
+                description="Retired in favor of comparison-shoppers",
+                criteria_json={"sources": 2},
+                active=True,
+            )
+        )
+        await session.commit()
+
+    changed = await AudienceEngine(session_factory, hot_threshold=70).sync_segments()
+
+    async with session_factory() as session:
+        legacy = await session.scalar(
+            select(AudienceSegment).where(AudienceSegment.slug == "multi-competitor-2")
+        )
+    assert changed >= 1
+    assert legacy is not None and legacy.active is False
+    assert legacy.status == "RETIRED"
 
 
 async def test_username_alone_is_never_export_eligible_and_recency_expires(session_factory):
@@ -114,7 +143,7 @@ async def test_username_alone_is_never_export_eligible_and_recency_expires(sessi
     await engine.recalculate_contact(signal.contact_id)
 
     active = await _active_slugs(session_factory, signal.contact_id)
-    assert "hot-7d" not in active
+    assert "furniture-high-intent" not in active
     async with session_factory() as session:
         intelligence = await session.scalar(select(ContactIntelligence))
         assert intelligence is not None

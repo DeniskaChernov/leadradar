@@ -1,12 +1,25 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from typing import Any
+from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, desc, func, or_, select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import ExternalUsage
+from app.db.models import (
+    CostEvent,
+    ExternalBudgetReservation,
+    ExternalUsage,
+    PricingConfig,
+    ProviderBudgetPolicy,
+    ReservationStatus,
+    Vertical,
+)
 
 
 class ExternalBudgetExceeded(RuntimeError):
@@ -21,9 +34,21 @@ class UsageSnapshot:
     remaining: int
 
 
+@dataclass(frozen=True, slots=True)
+class CostPreview:
+    operation: str
+    estimated_records: int
+    estimated_units: int
+    estimated_openai_calls: int
+    estimated_tokens: int
+    estimated_cost_usd_min: Decimal
+    estimated_cost_usd_max: Decimal
+
+
 class ExternalUsageService:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self.session_factory = session_factory
+        self._lock = asyncio.Lock()
 
     async def used_today(self, service: str) -> int:
         now = datetime.now(UTC)
@@ -37,36 +62,454 @@ class ExternalUsageService:
             )
             return int(value or 0)
 
-    async def assert_available(self, service: str, daily_limit: int, units: int = 1) -> None:
-        if daily_limit <= 0:
-            raise ExternalBudgetExceeded(f"Лимит внешних запросов {service} установлен в 0")
-        used = await self.used_today(service)
-        if used + units > daily_limit:
-            raise ExternalBudgetExceeded(
-                f"Дневной лимит {service} исчерпан: {used}/{daily_limit}"
+    async def active_reservations_today(self, service: str) -> int:
+        now = datetime.now(UTC)
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        async with self.session_factory() as session:
+            value = await session.scalar(
+                select(func.coalesce(func.sum(ExternalBudgetReservation.units_reserved), 0)).where(
+                    ExternalBudgetReservation.service == service,
+                    ExternalBudgetReservation.created_at >= start,
+                    or_(
+                        and_(
+                            ExternalBudgetReservation.status == ReservationStatus.RESERVED,
+                            ExternalBudgetReservation.expires_at > now,
+                        ),
+                        and_(
+                            ExternalBudgetReservation.status == ReservationStatus.EXPIRED,
+                            ExternalBudgetReservation.call_started_at.is_not(None),
+                        ),
+                        ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
+                    ),
+                )
             )
+            return int(value or 0)
 
-    async def record(
+    async def reserve_budget(
         self,
         service: str,
         operation: str,
+        daily_limit: int,
+        *,
+        units: int = 1,
+        estimated_cost: Decimal | float = 0.0,
+        request_fingerprint: str | None = None,
+        lease_seconds: int = 60,
+        reservation_key: str | None = None,
+        worker_id: str | None = None,
+        provider: str | None = None,
+    ) -> int:
+        if daily_limit <= 0:
+            raise ExternalBudgetExceeded(f"Лимит внешних запросов {service} установлен в 0")
+        if units <= 0:
+            raise ValueError("units must be positive")
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds must be positive")
+        async with self._lock:
+            now = datetime.now(UTC)
+            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            month_start = start.replace(day=1)
+            async with self.session_factory() as session:
+                bind = session.get_bind()
+                if bind.dialect.name == "sqlite":
+                    # SQLite has no row-level SELECT FOR UPDATE. Taking the write lock before
+                    # reading serializes the check-and-reserve transaction across processes.
+                    await session.execute(text("BEGIN IMMEDIATE"))
+                elif bind.dialect.name == "postgresql":
+                    # Serialize monthly/daily budget check+reserve across cloud workers.
+                    await session.execute(
+                        text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+                        {"lock_key": f"lead-radar:budget:{service}"},
+                    )
+                await session.execute(
+                    update(ExternalBudgetReservation)
+                    .where(
+                        ExternalBudgetReservation.status == ReservationStatus.RESERVED,
+                        ExternalBudgetReservation.expires_at <= now,
+                    )
+                    .values(status=ReservationStatus.EXPIRED, finalized_at=now)
+                )
+                used = await session.scalar(
+                    select(func.coalesce(func.sum(ExternalUsage.units), 0)).where(
+                        ExternalUsage.service == service,
+                        ExternalUsage.created_at >= start,
+                    )
+                )
+                active_res = await session.scalar(
+                    select(
+                        func.coalesce(func.sum(ExternalBudgetReservation.units_reserved), 0)
+                    ).where(
+                        ExternalBudgetReservation.service == service,
+                        ExternalBudgetReservation.created_at >= start,
+                        or_(
+                            and_(
+                                ExternalBudgetReservation.status == ReservationStatus.RESERVED,
+                                ExternalBudgetReservation.expires_at > now,
+                            ),
+                            and_(
+                                ExternalBudgetReservation.status == ReservationStatus.EXPIRED,
+                                ExternalBudgetReservation.call_started_at.is_not(None),
+                            ),
+                            ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
+                        ),
+                    )
+                )
+                total_committed = int(used or 0) + int(active_res or 0)
+                if total_committed + units > daily_limit:
+                    raise ExternalBudgetExceeded(
+                        f"Дневной лимит {service} исчерпан (использовано: {used}, зарезервировано: {active_res}, лимит: {daily_limit})"
+                    )
+                normalized_provider = (provider or service).strip().lower()
+                monthly_policy = await session.scalar(
+                    select(ProviderBudgetPolicy).where(
+                        ProviderBudgetPolicy.provider == normalized_provider,
+                        ProviderBudgetPolicy.service == service,
+                        ProviderBudgetPolicy.active.is_(True),
+                    )
+                )
+                if monthly_policy is not None:
+                    monthly_used = await session.scalar(
+                        select(func.coalesce(func.sum(CostEvent.units), 0)).where(
+                            CostEvent.provider == normalized_provider,
+                            CostEvent.created_at >= month_start,
+                        )
+                    )
+                    monthly_active = await session.scalar(
+                        select(
+                            func.coalesce(
+                                func.sum(ExternalBudgetReservation.units_reserved),
+                                0,
+                            )
+                        ).where(
+                            ExternalBudgetReservation.provider == normalized_provider,
+                            ExternalBudgetReservation.created_at >= month_start,
+                            or_(
+                                and_(
+                                    ExternalBudgetReservation.status
+                                    == ReservationStatus.RESERVED,
+                                    ExternalBudgetReservation.expires_at > now,
+                                ),
+                                and_(
+                                    ExternalBudgetReservation.status
+                                    == ReservationStatus.EXPIRED,
+                                    ExternalBudgetReservation.call_started_at.is_not(None),
+                                ),
+                                ExternalBudgetReservation.status
+                                == ReservationStatus.UNCERTAIN,
+                            ),
+                        )
+                    )
+                    if (
+                        int(monthly_used or 0) + int(monthly_active or 0) + units
+                        > monthly_policy.monthly_hard_limit_units
+                    ):
+                        raise ExternalBudgetExceeded(
+                            f"Месячный hard limit {normalized_provider} исчерпан "
+                            f"(использовано: {monthly_used}, зарезервировано: "
+                            f"{monthly_active}, лимит: "
+                            f"{monthly_policy.monthly_hard_limit_units})"
+                        )
+                reservation = ExternalBudgetReservation(
+                    reservation_key=reservation_key or f"reservation:{uuid4().hex}",
+                    worker_id=worker_id,
+                    service=service,
+                    provider=normalized_provider,
+                    operation=operation,
+                    units_reserved=units,
+                    estimated_cost_usd=Decimal(str(estimated_cost)),
+                    request_fingerprint=request_fingerprint,
+                    status=ReservationStatus.RESERVED,
+                    expires_at=now + timedelta(seconds=lease_seconds),
+                    reserved_at=now,
+                )
+                session.add(reservation)
+                try:
+                    await session.commit()
+                except IntegrityError:
+                    await session.rollback()
+                    if reservation_key is None:
+                        raise
+                    existing = await session.scalar(
+                        select(ExternalBudgetReservation).where(
+                            ExternalBudgetReservation.reservation_key == reservation_key
+                        )
+                    )
+                    if existing is None:
+                        raise
+                    return existing.id
+                return reservation.id
+
+    async def mark_call_started(self, reservation_id: int) -> None:
+        async with self.session_factory() as session:
+            await session.execute(
+                update(ExternalBudgetReservation)
+                .where(
+                    ExternalBudgetReservation.id == reservation_id,
+                    ExternalBudgetReservation.status == ReservationStatus.RESERVED,
+                    ExternalBudgetReservation.call_started_at.is_(None),
+                )
+                .values(call_started_at=datetime.now(UTC))
+            )
+            await session.commit()
+
+    async def finalize_reservation(
+        self,
+        reservation_id: int,
         *,
         units: int = 1,
         success: bool = True,
-        details: dict | None = None,
+        details: dict[str, Any] | None = None,
+        actual_cost: Decimal | float | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        vertical: Vertical | None = None,
+        competitor_id: int | None = None,
+        lead_id: int | None = None,
+        audience_id: int | None = None,
+        campaign_id: int | None = None,
+        unit_source: str = "ESTIMATED",
     ) -> None:
+        if units < 0:
+            raise ValueError("units must be non-negative")
+        now = datetime.now(UTC)
+        normalized_source = unit_source.strip().upper()
+        if normalized_source not in {"ESTIMATED", "PROVIDER_CONFIRMED"}:
+            raise ValueError("unit_source must be ESTIMATED or PROVIDER_CONFIRMED")
         async with self.session_factory() as session:
-            session.add(
-                ExternalUsage(
-                    service=service,
-                    operation=operation,
-                    units=units,
-                    success=success,
-                    details_json=details or {},
+            stored = await session.get(ExternalBudgetReservation, reservation_id)
+            resolved_details = dict(details or {})
+            if stored is not None and units > stored.units_reserved:
+                resolved_details["reservation_discrepancy"] = {
+                    "reserved_units": stored.units_reserved,
+                    "actual_units": units,
+                    "actual_exceeded_reservation": True,
+                }
+            reservation = (
+                await session.execute(
+                    update(ExternalBudgetReservation)
+                    .where(
+                        ExternalBudgetReservation.id == reservation_id,
+                        ExternalBudgetReservation.status.in_(
+                            [
+                                ReservationStatus.RESERVED,
+                                ReservationStatus.EXPIRED,
+                                ReservationStatus.UNCERTAIN,
+                            ]
+                        ),
+                    )
+                    .values(
+                        status=ReservationStatus.FINALIZED,
+                        finalized_at=now,
+                        actual_units=units,
+                        actual_cost_usd=(
+                            Decimal(str(actual_cost)) if actual_cost is not None else None
+                        ),
+                        details_json=resolved_details,
+                    )
+                    .returning(
+                        ExternalBudgetReservation.service,
+                        ExternalBudgetReservation.operation,
+                        ExternalBudgetReservation.reservation_key,
+                        ExternalBudgetReservation.provider,
+                    )
+                )
+            ).one_or_none()
+            if reservation is not None:
+                resolved_cost = (
+                    Decimal(str(actual_cost))
+                    if actual_cost is not None
+                    else await self._price_for(
+                        session,
+                        provider=reservation[3],
+                        operation=reservation[1],
+                        units=units,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        model_name=str(resolved_details.get("model") or "") or None,
+                    )
+                )
+                await session.execute(
+                    update(ExternalBudgetReservation)
+                    .where(ExternalBudgetReservation.id == reservation_id)
+                    .values(actual_cost_usd=resolved_cost)
+                )
+                session.add(
+                    ExternalUsage(
+                        service=reservation[0],
+                        operation=reservation[1],
+                        idempotency_key=f"reservation:{reservation[2]}",
+                        units=units,
+                        unit_source=normalized_source,
+                        success=success,
+                        details_json=resolved_details,
+                    )
+                )
+                session.add(
+                    CostEvent(
+                        idempotency_key=f"cost:{reservation[2]}",
+                        reservation_id=reservation_id,
+                        service=reservation[0],
+                        provider=reservation[3],
+                        operation=reservation[1],
+                        vertical=vertical,
+                        competitor_id=competitor_id,
+                        lead_id=lead_id,
+                        audience_id=audience_id,
+                        campaign_id=campaign_id,
+                        units=units,
+                        unit_source=normalized_source,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        cost_usd=resolved_cost,
+                        details_json=resolved_details,
+                    )
+                )
+                await session.commit()
+
+    async def mark_reservation_uncertain(
+        self,
+        reservation_id: int,
+        *,
+        reason: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """Зафиксировать неопределённый исход начатого вызова без предположений насчёт списания."""
+        now = datetime.now(UTC)
+        payload = dict(details or {})
+        if reason:
+            payload["reason"] = reason
+        async with self.session_factory() as session:
+            await session.execute(
+                update(ExternalBudgetReservation)
+                .where(
+                    ExternalBudgetReservation.id == reservation_id,
+                    ExternalBudgetReservation.status.in_(
+                        [ReservationStatus.RESERVED, ReservationStatus.EXPIRED]
+                    ),
+                    ExternalBudgetReservation.call_started_at.is_not(None),
+                )
+                .values(
+                    status=ReservationStatus.UNCERTAIN,
+                    finalized_at=now,
+                    details_json=payload,
                 )
             )
             await session.commit()
 
+    async def reconcile_uncertain_reservation(
+        self,
+        reservation_id: int,
+        *,
+        spent: bool,
+        units: int | None = None,
+        unit_source: str = "PROVIDER_CONFIRMED",
+    ) -> bool:
+        """Ручная сверка UNCERTAIN reservation: подтвердить списание или закрыть без spend."""
+        async with self.session_factory() as session:
+            reservation = await session.get(ExternalBudgetReservation, reservation_id)
+            if reservation is None or reservation.status != ReservationStatus.UNCERTAIN:
+                return False
+        if spent:
+            resolved_units = units if units is not None else reservation.units_reserved
+            await self.finalize_reservation(
+                reservation_id,
+                units=resolved_units,
+                success=True,
+                details={
+                    "billing_state": "MANUAL_RECONCILIATION_CONFIRMED",
+                    "requires_reconciliation": False,
+                },
+                unit_source=unit_source,
+            )
+            return True
+        now = datetime.now(UTC)
+        async with self.session_factory() as session:
+            result = await session.execute(
+                update(ExternalBudgetReservation)
+                .where(
+                    ExternalBudgetReservation.id == reservation_id,
+                    ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
+                )
+                .values(
+                    status=ReservationStatus.RELEASED,
+                    finalized_at=now,
+                    released_at=now,
+                    actual_units=0,
+                    details_json={
+                        **dict(reservation.details_json or {}),
+                        "billing_state": "MANUAL_RECONCILIATION_NOT_SPENT",
+                        "requires_reconciliation": False,
+                    },
+                )
+            )
+            await session.commit()
+            return result.rowcount == 1
+
+    async def release_reservation(self, reservation_id: int) -> None:
+        async with self.session_factory() as session:
+            await session.execute(
+                update(ExternalBudgetReservation)
+                .where(
+                    ExternalBudgetReservation.id == reservation_id,
+                    ExternalBudgetReservation.status == ReservationStatus.RESERVED,
+                    ExternalBudgetReservation.call_started_at.is_(None),
+                )
+                .values(
+                    status=ReservationStatus.RELEASED,
+                    finalized_at=datetime.now(UTC),
+                    released_at=datetime.now(UTC),
+                )
+            )
+            await session.commit()
+
+    async def assert_available(self, service: str, daily_limit: int, units: int = 1) -> None:
+        if daily_limit <= 0:
+            raise ExternalBudgetExceeded(f"Лимит внешних запросов {service} установлен в 0")
+        used = await self.used_today(service)
+        active_res = await self.active_reservations_today(service)
+        if used + active_res + units > daily_limit:
+            raise ExternalBudgetExceeded(
+                f"Дневной лимит {service} исчерпан: {used + active_res}/{daily_limit}"
+            )
+
+    @staticmethod
+    async def _price_for(
+        session: AsyncSession,
+        *,
+        provider: str,
+        operation: str,
+        units: int,
+        input_tokens: int | None,
+        output_tokens: int | None,
+        model_name: str | None,
+    ) -> Decimal | None:
+        now = datetime.now(UTC)
+        config = await session.scalar(
+            select(PricingConfig)
+            .where(
+                PricingConfig.provider == provider.lower(),
+                PricingConfig.operation == operation.lower(),
+                PricingConfig.model_name == (model_name.lower() if model_name else ""),
+                PricingConfig.active.is_(True),
+                PricingConfig.effective_from <= now,
+            )
+            .order_by(desc(PricingConfig.effective_from))
+            .limit(1)
+        )
+        if config is None:
+            return None
+        if config.pricing_basis in {"REQUEST", "UNIT"}:
+            return config.unit_price * units if config.unit_price is not None else None
+        if config.pricing_basis == "TOKENS":
+            if input_tokens and config.input_price is None:
+                return None
+            if output_tokens and config.output_price is None:
+                return None
+            return (
+                (config.input_price or Decimal("0")) * int(input_tokens or 0)
+                + (config.output_price or Decimal("0")) * int(output_tokens or 0)
+            )
+        return None
 
     async def breakdown_today(self, service: str) -> dict[str, int]:
         now = datetime.now(UTC)
@@ -88,9 +531,47 @@ class ExternalUsageService:
 
     async def snapshot(self, service: str, daily_limit: int) -> UsageSnapshot:
         used = await self.used_today(service)
+        active_res = await self.active_reservations_today(service)
+        total = used + active_res
         return UsageSnapshot(
             service=service,
-            used_today=used,
+            used_today=total,
             daily_limit=daily_limit,
-            remaining=max(0, daily_limit - used),
+            remaining=max(0, daily_limit - total),
+        )
+
+    @staticmethod
+    def preview_cost(
+        operation: str, records_count: int, *, provider: str = "scrapecreators"
+    ) -> CostPreview:
+        """Calculate estimated cost preview before starting any bulk operation."""
+        if operation == "followers_scan":
+            units = (records_count + 49) // 50
+            calls = max(1, records_count // 100)
+            tokens = calls * 650
+            cost_min = Decimal(str(units)) * Decimal("0.001") + Decimal(str(tokens)) * Decimal(
+                "0.0000003"
+            )
+            cost_max = cost_min * Decimal("1.25")
+        elif operation == "historical_backfill":
+            units = (records_count + 19) // 20
+            calls = records_count
+            tokens = calls * 750
+            cost_min = Decimal(str(tokens)) * Decimal("0.0000003")
+            cost_max = cost_min * Decimal("1.30")
+        else:
+            units = records_count
+            calls = records_count
+            tokens = calls * 500
+            cost_min = Decimal(str(records_count)) * Decimal("0.0005")
+            cost_max = cost_min * Decimal("1.20")
+
+        return CostPreview(
+            operation=operation,
+            estimated_records=records_count,
+            estimated_units=units,
+            estimated_openai_calls=calls,
+            estimated_tokens=tokens,
+            estimated_cost_usd_min=cost_min.quantize(Decimal("0.0001")),
+            estimated_cost_usd_max=cost_max.quantize(Decimal("0.0001")),
         )

@@ -3,18 +3,19 @@
 {% block heading %}Аудитории{% endblock %}
 {% block subheading %}Какие группы реального спроса сформировались в наблюдаемых публичных источниках{% endblock %}
 {% block content %}
-<section class="panel audience-intro">
-  <div><span class="eyebrow">AUDIENCE INTELLIGENCE</span><h2>Сегменты, после которых можно действовать</h2><p>Lead Radar использует только товарные и коммерческие признаки: интерес, намерение, давность активности, количество и пересечение конкурентов. Чувствительные признаки не собираются.</p></div>
+<section class="panel audience-intro" data-motion-root>
+  <div><span class="eyebrow">ИНТЕЛЛЕКТ АУДИТОРИЙ · V4</span><h2>Устойчивые аудитории реального спроса</h2><p>Каждая аудитория берётся из управляемого реестра и подтверждается текущими Evidence. Город, дата, количество и источник остаются фильтрами — они больше не создают десятки микросегментов. Чувствительные признаки не собираются.</p><p class="audience-quality-link"><a href="/audiences/quality?vertical={{ request.query_params.get('vertical', 'FURNITURE') }}">Открыть рабочее пространство качества →</a></p></div>
   <div class="privacy-boundary"><b>Экспорт личности закрыт по умолчанию</b><span>Instagram username не превращается в телефон или email. Для рекламного экспорта нужен законно полученный first-party контакт.</span></div>
 </section>
 <div class="audience-grid">
 {% for item in rows %}
   <a class="panel audience-card {% if item.members %}has-members{% endif %}" href="/audiences/{{ item.segment.slug }}">
-    <div class="audience-card-head"><span class="eyebrow">ДИНАМИЧЕСКАЯ АУДИТОРИЯ</span><strong>{{ item.members }}</strong></div>
+    <div class="audience-card-head"><span class="eyebrow">{{ item.segment.audience_family }} · {{ item.segment.audience_level }}</span><div class="audience-card-metrics"><strong>{{ item.members }}</strong>{% if item.health %}<span class="tag {% if item.health.status == 'HEALTHY' %}success{% elif item.health.status in ['LOW_DATA','STALE'] %}warning{% else %}danger{% endif %} audience-health-tag">{{ item.health.status }}</span>{% endif %}</div></div>
     <h2>{{ item.segment.name }}</h2><p>{{ item.segment.description }}</p>
     <div class="audience-stats"><span>Активность <b>{{ item.avg_activity }}</b></span><span>Ценность <b>{{ item.avg_value }}</b></span></div>
     <div class="audience-tags">{% if item.top_product %}<span>{{ product_label(item.top_product) }}</span>{% endif %}{% if item.top_intent %}<span>{{ intent_label(item.top_intent) }}</span>{% endif %}</div>
-    <small>Открыть состав и campaign brief →</small>
+    <div class="audience-definition-meta"><span>{{ item.segment.membership_strategy }}</span><span>{{ item.segment.meta_use_case }}</span><span>Evidence ≥ {{ item.segment.minimum_evidence_count }}</span></div>
+    <small>Открыть состав и доказательства →</small>
   </a>
 {% else %}
 <div class="empty-state panel" style="grid-column: 1 / -1;">

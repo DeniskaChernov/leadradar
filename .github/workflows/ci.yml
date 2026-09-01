@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  offline-quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, postgres]
+    env:
+      EXTERNAL_KILL_SWITCH: "true"
+      OPENAI_LIVE_CALLS_ENABLED: "false"
+      INSTAGRAM_LIVE_CALLS_ENABLED: "false"
+      LEAD_SEARCH_ENABLED: "false"
+      MONITOR_SCHEDULE_ENABLED: "false"
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: leadradar
+          POSTGRES_PASSWORD: leadradar
+          POSTGRES_DB: leadradar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - name: Configure database URL
+        run: |
+          if [ "${{ matrix.database }}" = "postgres" ]; then
+            echo "DATABASE_URL=postgresql+asyncpg://leadradar:leadradar@localhost:5432/leadradar" >> "$GITHUB_ENV"
+          else
+            echo "DATABASE_URL=sqlite+aiosqlite:///./ci.db" >> "$GITHUB_ENV"
+          fi
+      - run: python -m ruff check .
+      - run: python -m compileall -q app alembic tests
+      - run: python -m alembic upgrade head
+      - run: python -m alembic upgrade head
+      - run: python -m alembic check
+      - name: Upgrade an existing pre-Phase-B SQLite database twice
+        if: matrix.database == 'sqlite'
+        run: |
+          DATABASE_URL=sqlite+aiosqlite:///./ci-existing.db python -m alembic upgrade a6d4e2c91f30
+          DATABASE_URL=sqlite+aiosqlite:///./ci-existing.db python -m alembic upgrade head
+          DATABASE_URL=sqlite+aiosqlite:///./ci-existing.db python -m alembic upgrade head
+          DATABASE_URL=sqlite+aiosqlite:///./ci-existing.db python -m alembic check
+      - run: python -m pytest -q
+      - run: python -m scripts.check_data_integrity

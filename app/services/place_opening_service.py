@@ -12,9 +12,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import OpeningSignal
+from app.db.models import Contact, Lead, OpeningSignal
 
 
 class PlaceOpeningService:
@@ -107,16 +108,33 @@ class PlaceOpeningService:
         source_type: str = "INSTAGRAM_PUBLIC_SIGNAL",
     ) -> OpeningSignal:
         async with self.session_factory() as session:
-            # Check for existing duplicate signal for this contact
-            if contact_id:
+            if contact_id is not None and await session.get(Contact, contact_id) is None:
+                raise ValueError(f"Contact not found: {contact_id}")
+            if lead_id is not None:
+                lead = await session.get(Lead, lead_id)
+                if lead is None:
+                    raise ValueError(f"Lead not found: {lead_id}")
+                if contact_id is not None and lead.contact_id != contact_id:
+                    raise ValueError("Lead does not belong to the opening-signal contact")
+            # Идемпотентность: при contact_id — unique constraint; без него — явный lookup.
+            if contact_id is not None:
                 existing = await session.scalar(
                     select(OpeningSignal).where(
                         OpeningSignal.contact_id == contact_id,
                         OpeningSignal.place_name == place_name,
                     )
                 )
-                if existing is not None:
-                    return existing
+            else:
+                existing = await session.scalar(
+                    select(OpeningSignal).where(
+                        OpeningSignal.contact_id.is_(None),
+                        OpeningSignal.place_name == place_name,
+                        OpeningSignal.city == city,
+                        OpeningSignal.review_status == "PENDING_REVIEW",
+                    )
+                )
+            if existing is not None:
+                return existing
 
             signal = OpeningSignal(
                 place_name=place_name,
@@ -132,7 +150,29 @@ class PlaceOpeningService:
                 created_at=datetime.now(UTC),
             )
             session.add(signal)
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                if contact_id is None:
+                    existing = await session.scalar(
+                        select(OpeningSignal).where(
+                            OpeningSignal.contact_id.is_(None),
+                            OpeningSignal.place_name == place_name,
+                            OpeningSignal.city == city,
+                            OpeningSignal.review_status == "PENDING_REVIEW",
+                        )
+                    )
+                else:
+                    existing = await session.scalar(
+                        select(OpeningSignal).where(
+                            OpeningSignal.contact_id == contact_id,
+                            OpeningSignal.place_name == place_name,
+                        )
+                    )
+                if existing is None:
+                    raise
+                return existing
             return signal
 
     async def review_opening_signal(
@@ -146,7 +186,12 @@ class PlaceOpeningService:
             signal = await session.get(OpeningSignal, opening_id)
             if signal is None:
                 raise ValueError(f"OpeningSignal not found: {opening_id}")
-
+            if signal.review_status == decision_upper:
+                return signal
+            if signal.review_status != "PENDING_REVIEW":
+                raise ValueError(
+                    "Reviewed OpeningSignal cannot be overwritten with another decision"
+                )
             signal.review_status = decision_upper
             signal.reviewed_by_manager_id = manager_id
             signal.reviewed_at = datetime.now(UTC)

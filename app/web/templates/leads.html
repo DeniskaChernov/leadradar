@@ -3,11 +3,48 @@
 {% block heading %}Лиды{% endblock %}
 {% block subheading %}Рабочая воронка от первого интереса до продажи{% endblock %}
 {% block content %}
-<div class="page-help"><b>Главный принцип</b><span>Комментарий становится лидом только после оценки. Здесь уже не весь шум Instagram, а коммерческие возможности, которые можно вести к сделке.</span></div>
-<form class="filters" method="get"><input name="q" value="{{ q }}" aria-label="Поиск лидов" placeholder="Клиент, комментарий, товар или конкурент"><select name="status" aria-label="Стадия лида"><option value="">Все рабочие стадии</option>{% for s in ['ANALYZING','AI_PENDING','NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}<option value="{{ s }}" {% if status_filter==s %}selected{% endif %}>{{ lead_status_label(s) }}</option>{% endfor %}</select><button class="btn">Найти</button><a class="btn ghost" href="/leads">Сбросить</a></form>
+{% set ns = namespace(total=0, hot=0, new=0, active=0) %}
+{% for lead, contact, comment, competitor, post, deal in rows %}
+  {% set ns.total = ns.total + 1 %}
+  {% if lead.lead_score >= settings.hot_lead_threshold %}{% set ns.hot = ns.hot + 1 %}{% endif %}
+  {% if lead.status.value == 'NEW' %}{% set ns.new = ns.new + 1 %}{% endif %}
+  {% if lead.status.value in ['TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION'] %}{% set ns.active = ns.active + 1 %}{% endif %}
+{% endfor %}
+
+<section class="hero-status leads-hero {% if safe_mode %}safe{% else %}live{% endif %}" data-motion-root>
+  <div>
+    <span class="eyebrow">ВОРОНКА ЛИДОВ</span>
+    <h2>{{ ns.total }} лидов · {{ ns.hot }} HOT</h2>
+    <p>{{ ns.new }} новых · {{ ns.active }} в активной работе</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn primary" href="/leads?status=NEW">Новые ({{ ns.new }})</a>
+    <a class="btn" href="/radar?kind=hot">HOT сигналы</a>
+    <button class="btn ghost" type="button" data-agent-open>AI по лидам</button>
+  </div>
+</section>
+
+<form class="filters leads-filters" method="get" aria-label="Фильтр лидов">
+  <input name="q" value="{{ q }}" aria-label="Поиск лидов" placeholder="Клиент, комментарий, товар или конкурент">
+  <select name="status" aria-label="Стадия лида">
+    <option value="">Все рабочие стадии</option>
+    {% for s in ['ANALYZING','AI_PENDING','NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}
+    <option value="{{ s }}" {% if status_filter==s %}selected{% endif %}>{{ lead_status_label(s) }}</option>
+    {% endfor %}
+  </select>
+  <button class="btn">Найти</button>
+  <a class="btn ghost" href="/leads">Сбросить</a>
+</form>
+
+<div class="filters segmented-control leads-view-toggle" aria-label="Быстрый фильтр">
+  <a class="btn {% if not status_filter %}ghost{% endif %}" href="/leads{% if q %}?q={{ q|urlencode }}{% endif %}" {% if not status_filter %}aria-current="page"{% endif %}>Доска</a>
+  <a class="btn {% if status_filter != 'NEW' %}ghost{% endif %}" href="/leads?status=NEW{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'NEW' %}aria-current="page"{% endif %}>Новые</a>
+  <a class="btn {% if status_filter != 'NEGOTIATION' %}ghost{% endif %}" href="/leads?status=NEGOTIATION{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'NEGOTIATION' %}aria-current="page"{% endif %}>Переговоры</a>
+  <a class="btn {% if status_filter != 'WON' %}ghost{% endif %}" href="/leads?status=WON{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'WON' %}aria-current="page"{% endif %}>Продажа</a>
+</div>
 
 {% if status_filter %}
-<div class="cards">
+<div class="cards leads-cards">
 {% for lead, contact, comment, competitor, post, deal in rows %}
 <article class="lead-card {% if lead.lead_score >= settings.hot_lead_threshold %}is-hot{% endif %}">
   <div class="lead-card-top"><div><a href="/contacts/{{ contact.id }}"><b>@{{ contact.username }}</b></a><small>@{{ competitor.normalized_handle }}</small></div><div class="big-score">{% if lead.status.value in ['ANALYZING','AI_PENDING'] %}…{% else %}{{ lead.lead_score }}{% endif %}</div></div>
@@ -19,17 +56,17 @@
 {% else %}<div class="empty panel">Лидов с таким статусом нет.</div>{% endfor %}
 </div>
 {% else %}
-<div class="kanban">
+<div class="kanban" data-motion-root>
 {% for stage in board_statuses %}
 <section class="kanban-col">
-  <header><div><b>{{ lead_status_label(stage) }}</b><small>{% set ns=namespace(count=0) %}{% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}{% set ns.count=ns.count+1 %}{% endif %}{% endfor %}{{ ns.count }} лидов</small></div></header>
+  <header><div><b>{{ lead_status_label(stage) }}</b><small>{% set col=namespace(count=0) %}{% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}{% set col.count = col.count + 1 %}{% endif %}{% endfor %}{{ col.count }} лидов</small></div></header>
   <div class="kanban-stack">
   {% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}
     <a class="kanban-card {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %}" href="/leads/{{ lead.id }}">
-      <div class="kanban-top"><b>@{{ contact.username }}</b><span>{{ lead.lead_score }}</span></div>
+      <div class="kanban-top"><b>@{{ contact.username }}</b><span>{% if lead.status.value in ['ANALYZING','AI_PENDING'] %}…{% else %}{{ lead.lead_score }}{% endif %}</span></div>
       <p>{{ comment.text[:120] }}{% if comment.text|length > 120 %}…{% endif %}</p>
       <small>{{ intent_label(lead.intent) }} · {{ product_label(lead.product_category) }}</small>
-      <div class="kanban-source"><span>@{{ competitor.normalized_handle }}</span>{% if lead.next_action_at %}<em>⏱ {{ lead.next_action_at.strftime('%d.%m %H:%M') }}</em>{% endif %}</div>
+      <div class="kanban-source"><span>@{{ competitor.normalized_handle }}</span>{% if lead.next_action_at %}<em>⏱ {{ lead.next_action_at | display_dt }}</em>{% endif %}</div>
     </a>
   {% endif %}{% endfor %}
   </div>

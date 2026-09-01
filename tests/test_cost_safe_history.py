@@ -46,6 +46,7 @@ async def test_local_history_analysis_never_calls_openai_and_keeps_ambiguous_pen
         openai_live_calls_enabled=True,
         external_live_unlock="ALLOW_EXTERNAL_CALLS",
         web_enabled=True,
+        web_manager_id=1001,
     )
     controller = MonitorController(FakeMonitor())  # type: ignore[arg-type]
     app = build_web_app(
@@ -87,6 +88,17 @@ def test_external_unlock_is_required_in_addition_to_live_switches():
         instagram_live_calls_enabled=True,
         openai_live_calls_enabled=True,
         external_live_unlock="ALLOW_EXTERNAL_CALLS",
+        external_kill_switch=False,
     )
     assert unlocked.instagram_live_enabled is True
     assert unlocked.openai_live_enabled is True
+
+    killed = Settings(
+        _env_file=None,
+        instagram_live_calls_enabled=True,
+        openai_live_calls_enabled=True,
+        external_live_unlock="ALLOW_EXTERNAL_CALLS",
+        external_kill_switch=True,
+    )
+    assert killed.instagram_live_enabled is False
+    assert killed.openai_live_enabled is False

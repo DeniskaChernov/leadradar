@@ -1,55 +1,61 @@
 # Lead Scoring V3 & Commercial Signals Audit
 
 ## CURRENT BEHAVIOR
-- Scoring relied on monolithic score calculation (0–100) combining keyword weights with history boosts.
-- Multi-competitor boosts were awarded based on raw comment counts across competitors, even if some comments were purely non-commercial reactions ("🔥", "класс").
-- Intent sequence intelligence was primitive (equal weight to repeated identical intents vs progression from price to delivery).
-- B2B quantity thresholds were hardcoded inconsistently across several service files.
+
+- The production rule pipeline now returns Intelligence `3.0`, not the disconnected V6 demo calculator.
+- `LeadScorerV3` decomposes priority into intent, activity, specificity, value, fit, source quality and confidence.
+- History uses only locally validated commercial intents. Praise, emoji and unrelated comments are excluded from repetition and multi-competitor counts.
+- Activity applies intent-specific half-life decay and diminishing returns. Known progressions such as PRICE → AVAILABILITY → DELIVERY score above repeated PRICE.
+- `B2BPolicy 1.0` is the shared quantity/context policy. Ten or twenty chairs alone are not B2B; commercial context, 30+ probable quantity or 50+ strong quantity is required.
+- Rule and OpenAI output use real Evidence IDs only. Unknown IDs returned by a model are removed; absence of evidence reduces confidence.
+- Buyer role and primary intent are independent axes. A restaurant owner asking about price remains `PRICE + B2B_HORECA`; a designer asking for a catalog remains `CATALOG + DESIGNER_CONTRACTOR`.
+- Price objections remain visible as risk evidence, reduce priority deterministically and replace generic sales advice with a budget clarification that never invents a discount.
 
 ## EXPECTED BEHAVIOR
-- Decomposed Scoring Architecture:
-  - `intent_score` (commercial intent depth: price, availability, delivery, order, bulk).
-  - `activity_score` (validated signal recency and progression).
-  - `specificity_score` (model/color/dimensions/quantity specifics).
-  - `value_score` (order volume, basket size, B2B tier).
-  - `fit_score` (alignment with core catalog offering).
-  - `source_quality_score` (organic comment vs bot/giveaway noise).
-  - `confidence_score` (clarity and linguistic confidence).
-  - `priority_score` (weighted synthesis for queue ranking).
-- Commercial Signal Quality Tiers:
-  - `NON_COMMERCIAL` (emoji, reaction, praise, greetings).
-  - `WEAK_COMMERCIAL` (generic inquiry, vague interest).
-  - `MEDIUM_COMMERCIAL` (specific price, color, size, catalog request).
-  - `STRONG_COMMERCIAL` (availability, delivery terms, order placement, wholesale/B2B quantity).
-- Centralized `B2BPolicy`: Single configuration source defining thresholds (10+ items, commercial context, HoReCa markers).
-- Sequence Intelligence: Boost progression (`PRICE` -> `AVAILABILITY` -> `DELIVERY`) while applying diminishing returns on repetitive inquiries.
-- Half-life decay per signal type (PRICE: 14d, AVAILABILITY: 10d, DELIVERY: 14d, BUY: 21d, QUANTITY: 30d, CATALOG: 21d, FOLLOWER: 180d, BUSINESS_ROLE: 365d).
 
-## BUGS
-1. Non-commercial reactions inflated history count and triggered false HOT scores.
-2. Repetitive identical comments produced linear score increases without saturation capping.
-3. Inconsistent B2B thresholds across different modules.
+Evidence → features → component scores → confidence → priority, with every history contribution commercially validated, decayed and explainable. B2B thresholds must have one versioned owner.
+
+## BUGS FIXED
+
+1. Raw comment count and raw competitor count previously inflated activity.
+2. Reactions previously contributed to `_history_boost`.
+3. Twenty repeated PRICE questions grew almost linearly.
+4. A quantity of ten automatically became B2B without business context.
+5. Decay existed as an isolated helper but did not affect the lead/audience calculation.
+6. The OpenAI prompt and cache contract still described Intelligence V2.
+7. Early B2B/designer branches overwrote specific PRICE, DELIVERY, CATALOG and AVAILABILITY intents with generic BUY.
+8. Objection penalties were exposed in the factor payload but did not affect the final priority.
 
 ## DATA RISKS
-- Over-scoring old leads due to lack of real-time time decay during pipeline execution.
+
+- Existing stored V2 scores are historical and are not silently rewritten. A controlled offline re-score/backfill is still required before comparing old and new score distributions.
+- The original compatibility set still has 30 curated roots. A separate 200-phrase semantic
+  benchmark now covers RU, UZ Latin and UZ Cyrillic without case/punctuation multiplication.
 
 ## COST RISKS
-- Low.
+
+No external calls are introduced. The canonical AI fingerprint now excludes non-commercial history and includes stable contact identity, vertical and catalog context version.
 
 ## FALSE POSITIVE RISKS
-- High: Casual social users asking trivial questions elevated to high-priority sales queues.
+
+Reduced: reactions cannot create cross-competitor activity and small household quantities cannot create a B2B role. Remaining risk is ambiguous short language routed to AI when live AI is enabled.
 
 ## FALSE NEGATIVE RISKS
-- Low: Clear commercial intents are well captured.
 
-## PROPOSED FIX
-1. Implement `CommercialSignalQuality` classification.
-2. Build `LeadScorerV3` producing decoupled component metrics and evidence links.
-3. Create centralized `B2BPolicy` class.
-4. Establish 150+ multilingual golden test fixtures.
+Some valid B2B orders below 30 units need explicit business/HoReCa evidence. This is intentional for precision and must be evaluated against larger RU/UZ fixtures.
 
-## TESTS REQUIRED
-- `test_non_commercial_reactions_produce_zero_lead_score`
-- `test_sequence_intelligence_progression_vs_repetition`
-- `test_b2b_policy_centralized_thresholds`
-- `test_multilingual_golden_scenarios_accuracy`
+## PROPOSED NEXT FIX
+
+Create a separately labelled unseen offline corpus and measure confusion by language, intent and buyer role. The current 200-scenario benchmark remains a calibration suite, not a production-accuracy claim.
+
+## TESTS REQUIRED / STATUS
+
+- reaction history exclusion — implemented;
+- sequence progression vs repetition — implemented;
+- half-life used in history scoring — implemented;
+- repetition diminishing/cap — implemented;
+- centralized contextual B2B thresholds — implemented;
+- missing evidence lowers confidence — implemented;
+- 200 multilingual semantic scenarios — implemented; internal calibration gate passes.
+- role/intent contrast cases and objection-priority consistency — implemented.
+- unseen production-like sample — not yet complete.
