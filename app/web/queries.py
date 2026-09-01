@@ -46,6 +46,7 @@ from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.audience_quality_service import AudienceQualityService
 from app.services.economics_page_service import EconomicsPageService
 from app.services.product_catalog_service import normalize_product_category
+from app.web.labels import CHANGE_TYPE_LABELS, label
 
 OPEN_LEAD_STATUSES = [
     LeadStatus.ANALYZING,
@@ -551,6 +552,78 @@ class WebQueryService:
             "hot": hot,
             "rejected": rejected,
             "pending": pending,
+        }
+
+    async def radar_feed(self, *, limit: int = 8) -> dict[str, object]:
+        overview = await self.signal_overview()
+        async with self.session_factory() as session:
+            changes_rows = (
+                await session.execute(
+                    select(SignificantChange, Contact, Lead)
+                    .join(Contact, Contact.id == SignificantChange.contact_id)
+                    .join(Lead, Lead.id == SignificantChange.lead_id)
+                    .order_by(desc(SignificantChange.created_at))
+                    .limit(limit)
+                )
+            ).all()
+            hot_rows = (
+                await session.execute(
+                    select(Lead, Contact, Comment, Competitor)
+                    .join(Contact, Contact.id == Lead.contact_id)
+                    .join(Comment, Comment.id == Lead.comment_id)
+                    .join(Competitor, Competitor.id == Lead.competitor_id)
+                    .where(
+                        Lead.lead_score >= self.hot_threshold,
+                        Lead.status.in_(OPEN_LEAD_STATUSES),
+                    )
+                    .order_by(desc(Lead.lead_score), desc(Lead.created_at))
+                    .limit(limit)
+                )
+            ).all()
+            analyzing = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.ANALYZING)
+                )
+                or 0
+            )
+            ai_pending = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.AI_PENDING)
+                )
+                or 0
+            )
+        return {
+            "overview": overview,
+            "analyzing": analyzing,
+            "ai_pending": ai_pending,
+            "changes": [
+                {
+                    "id": change.id,
+                    "contact_id": contact.id,
+                    "lead_id": lead.id,
+                    "username": contact.username,
+                    "primary_type": change.primary_type,
+                    "primary_type_label": label(CHANGE_TYPE_LABELS, change.primary_type),
+                    "summary": change.summary,
+                    "severity": change.severity,
+                    "previous_priority": change.previous_priority,
+                    "current_priority": change.current_priority,
+                    "created_at": change.created_at.isoformat(),
+                }
+                for change, contact, lead in changes_rows
+            ],
+            "hot_leads": [
+                {
+                    "lead_id": lead.id,
+                    "contact_id": contact.id,
+                    "username": contact.username,
+                    "score": lead.lead_score,
+                    "intent": lead.intent.value if lead.intent else None,
+                    "comment_preview": (comment.text or "")[:140],
+                    "competitor": competitor.normalized_handle,
+                }
+                for lead, contact, comment, competitor in hot_rows
+            ],
         }
 
     async def signals(

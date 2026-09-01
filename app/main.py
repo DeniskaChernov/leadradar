@@ -35,6 +35,7 @@ from app.services.audience_service import AudienceEngine
 from app.services.contact_service import ContactService
 from app.services.external_safety_recovery_service import ExternalSafetyRecoveryService
 from app.services.instagram_monitor import InstagramMonitor
+from app.services.lead_analysis_pipeline import LeadAnalysisPipeline
 from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowService
 from app.services.market_intelligence_service import MarketIntelligenceService
@@ -112,6 +113,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
     logger.info("external_safety_recovery_completed stats=%s", recovery_stats)
     ops_control = OperationalControlService(session_factory)
     await ops_control.load()
+    analysis_concurrency = ops_control.snapshot().ai_analysis_max_concurrency
     provider = create_instagram_provider(
         settings,
         usage_service,
@@ -188,7 +190,15 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             retry_pending_enabled=settings.ai_pending_retry_enabled,
             retry_pending_batch_size=settings.ai_pending_retry_batch_size,
             retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
+            analysis_pipeline=LeadAnalysisPipeline(
+                lead_service,
+                NullLeadNotifier(),
+                max_concurrency=analysis_concurrency,
+            ),
         )
+        analysis_pipeline = monitor.analysis_pipeline
+        assert analysis_pipeline is not None
+        await analysis_pipeline.start()
         run_service = MonitorRunService(session_factory, provider.name)
         run_id = await run_service.start(
             "once",
@@ -202,6 +212,8 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             await run_service.finish_failure(run_id, exc)
             raise
         logger.info("one_shot_cycle_complete stats=%s", stats)
+        await analysis_pipeline.flush()
+        await analysis_pipeline.stop()
         await provider.aclose()
         await engine.dispose()
         return 0
@@ -229,7 +241,15 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             retry_pending_enabled=settings.ai_pending_retry_enabled,
             retry_pending_batch_size=settings.ai_pending_retry_batch_size,
             retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
+            analysis_pipeline=LeadAnalysisPipeline(
+                lead_service,
+                NullLeadNotifier(),
+                max_concurrency=analysis_concurrency,
+            ),
         )
+        analysis_pipeline = monitor.analysis_pipeline
+        assert analysis_pipeline is not None
+        await analysis_pipeline.start()
         controller = MonitorController(monitor, MonitorRunService(session_factory, provider.name))
         web_app = build_web_app(
             settings,
@@ -238,6 +258,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             controller,
             usage_service,
             ops_control=ops_control,
+            analysis_pipeline=analysis_pipeline,
         )
         web_server = uvicorn.Server(
             uvicorn.Config(
@@ -249,6 +270,9 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             )
         )
         monitor_task = asyncio.create_task(_monitor_loop(controller, settings))
+        analysis_task = asyncio.create_task(
+            _analysis_loop(analysis_pipeline, settings), name="lead-radar-analysis"
+        )
         shutdown_event = asyncio.Event()
         logger.info("web_only_started url=http://%s:%s", settings.web_host, settings.web_port)
         try:
@@ -256,9 +280,13 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         finally:
             shutdown_event.set()
             monitor_task.cancel()
+            analysis_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await monitor_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await analysis_task
             await controller.stop()
+            await analysis_pipeline.stop()
             await provider.aclose()
             await engine.dispose()
         return 0
@@ -307,7 +335,15 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         retry_pending_enabled=settings.ai_pending_retry_enabled,
         retry_pending_batch_size=settings.ai_pending_retry_batch_size,
         retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
+        analysis_pipeline=LeadAnalysisPipeline(
+            lead_service,
+            notifier,
+            max_concurrency=analysis_concurrency,
+        ),
     )
+    analysis_pipeline = monitor.analysis_pipeline
+    assert analysis_pipeline is not None
+    await analysis_pipeline.start()
     run_service = MonitorRunService(session_factory, provider.name)
     controller = MonitorController(monitor, run_service)
     dispatcher = Dispatcher(storage=MemoryStorage())
@@ -320,6 +356,9 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
     notification_task = asyncio.create_task(
         _notification_loop(notifier, settings), name="lead-radar-notifications"
     )
+    analysis_task = asyncio.create_task(
+        _analysis_loop(analysis_pipeline, settings), name="lead-radar-analysis"
+    )
     web_task = None
     web_server = None
     if settings.web_enabled:
@@ -331,6 +370,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             usage_service,
             notification_worker_active=True,
             ops_control=ops_control,
+            analysis_pipeline=analysis_pipeline,
         )
         web_config = uvicorn.Config(
             web_app,
@@ -364,18 +404,22 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         polling_task.cancel()
         monitor_task.cancel()
         notification_task.cancel()
+        analysis_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await polling_task
         with contextlib.suppress(asyncio.CancelledError):
             await monitor_task
         with contextlib.suppress(asyncio.CancelledError):
             await notification_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await analysis_task
         if web_server is not None:
             web_server.should_exit = True
         if web_task is not None:
             with contextlib.suppress(asyncio.CancelledError):
                 await web_task
         await controller.stop()
+        await analysis_pipeline.stop()
         await provider.aclose()
         await bot.session.close()
         await engine.dispose()
@@ -396,6 +440,19 @@ async def _monitor_loop(controller: MonitorController, settings: Settings) -> No
                 except Exception:
                     logger.exception("scheduled_monitor_cycle_failed")
         await asyncio.sleep(settings.instagram_poll_interval_seconds)
+
+
+async def _analysis_loop(pipeline: LeadAnalysisPipeline, settings: Settings) -> None:
+    """Фоновый добор AI_PENDING / зависшего ANALYZING в очередь разбора."""
+    batch = max(1, settings.ai_pending_retry_batch_size or 5)
+    while True:
+        try:
+            added = await pipeline.enqueue_pending_batch(limit=batch)
+            if added:
+                logger.info("analysis_pending_enqueued count=%s", added)
+        except Exception as exc:
+            logger.exception("analysis_pending_enqueue_failed error_type=%s", type(exc).__name__)
+        await asyncio.sleep(settings.ai_analysis_poll_seconds)
 
 
 async def _notification_loop(notifier: TelegramLeadNotifier, settings: Settings) -> None:

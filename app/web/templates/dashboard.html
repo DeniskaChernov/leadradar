@@ -12,7 +12,7 @@
   <div class="hero-actions">
     <a class="btn primary" href="/radar">Открыть Radar</a>
     <button class="btn" type="button" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Разобрать локально</button>
-    <button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-reload="1">Повторить очередь AI</button>
+    <button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-async-retry="1">Повторить очередь AI</button>
   </div>
 </section>
 

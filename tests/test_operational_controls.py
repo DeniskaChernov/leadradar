@@ -91,3 +91,29 @@ async def test_ops_openai_toggle_persists(session_factory):
     assert armed.status_code == 200
     assert armed.json()["openai_live_armed"] is True
     assert ops.openai_live_armed() is True
+
+
+async def test_ops_ai_concurrency_persists(session_factory):
+    settings = Settings(
+        _env_file=None,
+        web_enabled=True,
+        web_manager_id=1001,
+    )
+    ops = OperationalControlService(session_factory)
+    await ops.load()
+    workflow = LeadWorkflowService(session_factory, hot_threshold=70)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        workflow,
+        MonitorController(FakeMonitor()),  # type: ignore[arg-type]
+        ExternalUsageService(session_factory),
+        ops_control=ops,
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post("/api/ops/ai-concurrency", json={"max_concurrency": 7})
+
+    assert resp.status_code == 200
+    assert resp.json()["ai_analysis_max_concurrency"] == 7
+    assert ops.snapshot().ai_analysis_max_concurrency == 7

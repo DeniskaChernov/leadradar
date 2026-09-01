@@ -16,6 +16,7 @@ from app.services.adaptive_monitoring_service import (
     CompetitorScanPlan,
 )
 from app.services.contact_service import ContactService
+from app.services.lead_analysis_pipeline import LeadAnalysisPipeline
 from app.services.lead_service import LeadService
 from app.services.notification_service import LeadNotifier
 
@@ -84,6 +85,7 @@ class InstagramMonitor:
         retry_pending_enabled: bool = False,
         retry_pending_batch_size: int = 5,
         retry_pending_cooldown_seconds: int = 3600,
+        analysis_pipeline: LeadAnalysisPipeline | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.provider = provider
@@ -101,6 +103,7 @@ class InstagramMonitor:
         self.retry_pending_enabled = retry_pending_enabled
         self.retry_pending_batch_size = retry_pending_batch_size
         self.retry_pending_cooldown_seconds = retry_pending_cooldown_seconds
+        self.analysis_pipeline = analysis_pipeline
         self.adaptive_monitoring = AdaptiveMonitoringService(
             session_factory,
             hot_threshold=lead_service.hot_threshold,
@@ -282,6 +285,10 @@ class InstagramMonitor:
                 handle,
                 success=handle not in discovery_failed,
             )
+        if self.analysis_pipeline is not None:
+            await self.analysis_pipeline.enqueue_pending_batch(
+                limit=self.retry_pending_batch_size or 10
+            )
         return stats
 
     async def _process_prepared_reel(
@@ -335,6 +342,13 @@ class InstagramMonitor:
                     lead.lead_id,
                     type(exc).__name__,
                 )
+            if self.analysis_pipeline is not None:
+                await self.analysis_pipeline.enqueue(
+                    lead.lead_id,
+                    initial_already_sent=notified_initially,
+                    stats=stats,
+                )
+                continue
             analyzed = await self.lead_service.analyze_lead(lead.lead_id)
             try:
                 stats.hot_notifications += await self._notify_analyzed(

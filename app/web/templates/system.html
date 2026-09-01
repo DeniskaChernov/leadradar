@@ -15,7 +15,7 @@
   </div>
   <div class="hero-actions">
     <button class="btn primary" type="button" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Локальный разбор</button>
-    <button class="btn" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-reload="1">Повторить очередь AI</button>
+    <button class="btn" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-async-retry="1">Повторить очередь AI</button>
     <a class="btn ghost" href="/radar?kind=pending">Очередь</a>
   </div>
 </section>
@@ -54,6 +54,13 @@
     </form>
   </div>
   <div class="explain-line"><span>Hybrid: правила → при неоднозначности GPT пишет разбор в карточку лида. Расход OpenAI сейчас: {% if openai_spend_allowed %}разрешён{% else %}заблокирован{% endif %}. Telegram-уведомления требуют полного запуска <code>python -m app.main</code> (не web-only).</span></div>
+  <form class="ops-concurrency-form" data-api-form method="post" action="/api/ops/ai-concurrency" data-reload="1">
+    <label>Параллельных OpenAI-разборов
+      <input type="number" name="max_concurrency" min="1" max="10" value="{{ ops.ai_analysis_max_concurrency }}" required>
+    </label>
+    <button class="btn ghost" type="submit">Сохранить concurrency</button>
+    <small class="muted">Сейчас: {{ ops.ai_analysis_max_concurrency }} · применяется сразу без перезапуска</small>
+  </form>
 </section>
 
 <section class="cost-guard panel {% if safe_mode %}safe{% else %}live{% endif %}" id="cost-guard"><div><span class="eyebrow">КОНТРОЛЬ РАСХОДОВ</span><h2>{% if safe_mode %}Внешние Instagram-запросы заблокированы{% else %}Live-запросы разрешены{% endif %}</h2><p>{% if safe_mode %}Master unlock + тумблер Live Radar на этой странице. Без обоих режимов credits не списываются.{% else %}Каждая внешняя операция в журнале. Расписание может быть отдельно ограничено INSTAGRAM_MANUAL_LIVE_SCAN_ONLY.{% endif %}</p></div><div class="budget-box"><div><span>Instagram сегодня</span><b>{{ usage.get('instagram',0) }} / {{ settings.instagram_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('instagram',0) / (settings.instagram_daily_request_limit if settings.instagram_daily_request_limit else 1) * 100]|min }}%"></i></div><div><span>OpenAI сегодня</span><b>{{ usage.get('openai',0) }} / {{ settings.openai_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('openai',0) / (settings.openai_daily_request_limit if settings.openai_daily_request_limit else 1) * 100]|min }}%"></i></div></div></section>

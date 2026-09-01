@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     ai_pending_retry_cooldown_seconds: int = Field(default=3600, ge=60)
     ai_request_lease_seconds: int = Field(default=180, ge=30, le=3600)
     ai_request_max_attempts: int = Field(default=3, ge=1, le=20)
+    ai_analysis_max_concurrency: int = Field(default=3, ge=1, le=10)
+    ai_analysis_poll_seconds: int = Field(default=5, ge=2, le=60)
     lead_analysis_version: str = "3.2"
 
     scrapecreators_api_key: str = ""

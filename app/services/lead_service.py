@@ -351,18 +351,20 @@ class LeadService:
                 results.append(result)
         return results
 
-    async def retry_pending(
+    async def list_pending_lead_ids(
         self,
         limit: int = 50,
         *,
         cooldown_seconds: int = 0,
-    ) -> list[ProcessedLead]:
+    ) -> list[int]:
         if limit <= 0:
             return []
         cutoff = datetime.now(UTC) - timedelta(seconds=cooldown_seconds)
-        stale_analyzing = datetime.now(UTC) - timedelta(seconds=max(cooldown_seconds, _STALE_ANALYZING_SECONDS))
+        stale_analyzing = datetime.now(UTC) - timedelta(
+            seconds=max(cooldown_seconds, _STALE_ANALYZING_SECONDS)
+        )
         async with self.session_factory() as session:
-            lead_ids = (
+            return list(
                 await session.scalars(
                     select(Lead.id)
                     .where(
@@ -386,7 +388,17 @@ class LeadService:
                     .order_by(Lead.created_at)
                     .limit(limit)
                 )
-            ).all()
+            )
+
+    async def retry_pending(
+        self,
+        limit: int = 50,
+        *,
+        cooldown_seconds: int = 0,
+    ) -> list[ProcessedLead]:
+        if limit <= 0:
+            return []
+        lead_ids = await self.list_pending_lead_ids(limit, cooldown_seconds=cooldown_seconds)
         results: list[ProcessedLead] = []
         for lead_id in lead_ids:
             result = await self._retry_pending_one(lead_id)

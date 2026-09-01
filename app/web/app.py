@@ -28,6 +28,7 @@ from app.services.discovery_service import DiscoveryService
 from app.services.export_recipe_service import ExportRecipeService
 from app.services.fx_policy_service import FxPolicyService
 from app.services.independent_quality_gates_service import IndependentQualityGatesService
+from app.services.lead_analysis_pipeline import LeadAnalysisPipeline
 from app.services.lead_intelligence_challenge import LeadIntelligenceChallenge
 from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowService
@@ -92,6 +93,7 @@ def build_web_app(
     crm: CRMService | None = None,
     notification_worker_active: bool = False,
     ops_control: OperationalControlService | None = None,
+    analysis_pipeline: LeadAnalysisPipeline | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Lead Radar",
@@ -412,6 +414,7 @@ def build_web_app(
         overview = await queries.signal_overview()
         scan_budget = await _scan_preview_payload()
         recent_runs = await queries.monitor_runs(limit=1)
+        radar_feed = await queries.radar_feed(limit=8)
         return templates.TemplateResponse(
             request=request,
             name="radar.html",
@@ -425,6 +428,7 @@ def build_web_app(
                 overview=overview,
                 scan_budget=scan_budget,
                 last_run=recent_runs[0] if recent_runs else None,
+                radar_feed=radar_feed,
             ),
         )
 
@@ -1093,6 +1097,30 @@ def build_web_app(
             ),
         }
 
+    @app.post("/api/ops/ai-concurrency")
+    async def set_ai_concurrency(request: Request):
+        payload = await _json_or_form(request)
+        try:
+            max_concurrency = int(payload.get("max_concurrency") or 0)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400, detail="max_concurrency должен быть целым от 1 до 10"
+            ) from exc
+        snap = await ops_control.set_ai_analysis_concurrency(
+            max_concurrency,
+            manager_id=manager_id(request),
+        )
+        if analysis_pipeline is not None:
+            await analysis_pipeline.set_max_concurrency(snap.ai_analysis_max_concurrency)
+        return {
+            "ok": True,
+            "ai_analysis_max_concurrency": snap.ai_analysis_max_concurrency,
+            "message": (
+                f"Параллельных OpenAI-разборов: {snap.ai_analysis_max_concurrency}. "
+                "Применено сразу."
+            ),
+        }
+
     @app.post("/api/notifications/uncertain/{kind}/{log_id}/resolve")
     async def resolve_uncertain_notification(
         request: Request,
@@ -1171,6 +1199,18 @@ def build_web_app(
         payload = await _json_or_form(request)
         limit = max(1, min(int(payload.get("limit") or 10), 50))
         use_openai = openai_spend_allowed()
+        if analysis_pipeline is not None and use_openai:
+            queued = await analysis_pipeline.enqueue_retry_batch(limit, cooldown_seconds=0)
+            return {
+                "ok": True,
+                "queued": queued,
+                "async": True,
+                "openai_used": True,
+                "message": (
+                    f"В очередь OpenAI поставлено: {queued}. "
+                    "Разбор идёт в фоне — следите за лентой на Radar."
+                ),
+            }
         service = hybrid_lead_service if use_openai else local_lead_service
         results = await service.retry_pending(limit, cooldown_seconds=0)
         still_pending = sum(item.status == LeadStatus.AI_PENDING for item in results)
@@ -1190,6 +1230,7 @@ def build_web_app(
             "processed": len(results),
             "still_pending": still_pending,
             "openai_used": use_openai,
+            "async": False,
             "message": message,
         }
 
@@ -1197,6 +1238,22 @@ def build_web_app(
     async def analyze_lead_now(request: Request, lead_id: int):
         """Повторный разбор одного лида: hybrid+OpenAI если armed, иначе только правила."""
         use_openai = openai_spend_allowed()
+        if analysis_pipeline is not None and use_openai:
+            pending_ids = await hybrid_lead_service.list_pending_lead_ids(500, cooldown_seconds=0)
+            if lead_id not in pending_ids:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Лид не найден или не в очереди AI_PENDING/ANALYZING",
+                )
+            await analysis_pipeline.enqueue(lead_id)
+            return {
+                "ok": True,
+                "lead_id": lead_id,
+                "queued": True,
+                "async": True,
+                "openai_used": True,
+                "message": "Лид поставлен в очередь OpenAI · разбор в фоне",
+            }
         service = hybrid_lead_service if use_openai else local_lead_service
         result = await service.retry_pending_lead(lead_id)
         if result is None:
@@ -1673,10 +1730,26 @@ def build_web_app(
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=400, detail=_human_workflow_error(exc)) from exc
 
+    @app.get("/api/radar/feed")
+    async def radar_feed_api(limit: int = 8):
+        safe_limit = max(1, min(limit, 20))
+        payload = await queries.radar_feed(limit=safe_limit)
+        snapshot = controller.snapshot()
+        payload["cycle_running"] = snapshot.cycle_running
+        payload["last_error"] = snapshot.last_error
+        if analysis_pipeline is not None:
+            payload["analysis_queue"] = analysis_pipeline.pending_count
+            payload["analysis_in_flight"] = analysis_pipeline.in_flight_count
+            payload["ai_analysis_max_concurrency"] = ops_control.snapshot().ai_analysis_max_concurrency
+        else:
+            payload["analysis_queue"] = 0
+            payload["analysis_in_flight"] = 0
+        return payload
+
     @app.get("/health")
     async def health():
         snapshot = controller.snapshot()
-        return {
+        payload = {
             "safe_mode": not radar_spend_allowed(),
             "ok": True,
             "cycle_running": snapshot.cycle_running,
@@ -1686,6 +1759,11 @@ def build_web_app(
             "openai_live_armed": ops_control.openai_live_armed(),
             "master_live_ready": master_live_ready(),
         }
+        if analysis_pipeline is not None:
+            payload["analysis_queue"] = analysis_pipeline.pending_count
+            payload["analysis_in_flight"] = analysis_pipeline.in_flight_count
+            payload["ai_analysis_max_concurrency"] = ops_control.snapshot().ai_analysis_max_concurrency
+        return payload
 
     @app.get("/ready")
     async def ready():

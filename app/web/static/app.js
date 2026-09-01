@@ -363,6 +363,29 @@
     return selected.value;
   };
 
+  const refreshScanBudgetPreview = async (root = document) => {
+    const credits = readScanBudgetSelection(root);
+    if (!credits) return;
+    try {
+      const preview = await api(
+        `/api/scan/preview?max_credits=${encodeURIComponent(credits)}`,
+        { method: 'GET' },
+      );
+      const maxEl = root.querySelector('[data-budget-max]');
+      const monthlyEl = root.querySelector('[data-budget-monthly]');
+      const dailyEl = root.querySelector('[data-budget-daily]');
+      if (maxEl) maxEl.textContent = `${preview.effective_max_credits} credits`;
+      if (monthlyEl && preview.monthly_remaining != null) {
+        monthlyEl.textContent = String(preview.monthly_remaining);
+      }
+      if (dailyEl && preview.daily_remaining != null) {
+        dailyEl.textContent = String(preview.daily_remaining);
+      }
+    } catch (_error) {
+      /* preview недоступен offline */
+    }
+  };
+
   const openScanQuickModal = () => new Promise((resolve) => {
     const root = document.getElementById('scan-quick');
     if (!root) return resolve(null);
@@ -464,8 +487,11 @@
       toast(data.message || 'Проверка запущена');
       if (data.ok) {
         const onRadar = (document.body.dataset.page || '').startsWith('/radar');
-        if (onRadar) reloadSoon(1800);
-        else setTimeout(() => { window.location.href = '/radar'; }, 1200);
+        if (onRadar) {
+          startRadarPolling();
+        } else {
+          setTimeout(() => { window.location.href = '/radar'; }, 1200);
+        }
       }
     } catch (error) {
       toast(error.message, true);
@@ -697,6 +723,11 @@
           return;
         }
         toast(data.message || 'Готово');
+        if (action.dataset.asyncRetry === '1') {
+          if (typeof startRadarPolling === 'function') startRadarPolling();
+          setLoading(action, false);
+          return;
+        }
         if (action.dataset.reload === '1') reloadSoon();
         else setLoading(action, false);
       } catch (error) {
@@ -774,5 +805,169 @@
     if (!row || !['Enter', ' '].includes(event.key)) return;
     event.preventDefault();
     location.href = row.dataset.href;
+  });
+
+  const escapeHtml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  const playChangeAlert = () => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gain.gain.value = 0.07;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.18);
+      osc.onended = () => { ctx.close(); };
+    } catch (_error) {
+      /* без звука */
+    }
+  };
+
+  const knownFeedIds = new Set(
+    [...document.querySelectorAll('[data-feed-id]')].map((node) => node.dataset.feedId).filter(Boolean),
+  );
+  let feedAlertsPrimed = knownFeedIds.size > 0;
+
+  const notifyNewRadarChanges = (feed) => {
+    const fresh = (feed.changes || []).filter((change) => {
+      const key = `change-${change.id}`;
+      return !knownFeedIds.has(key);
+    });
+    (feed.changes || []).forEach((change) => knownFeedIds.add(`change-${change.id}`));
+    (feed.hot_leads || []).forEach((hot) => knownFeedIds.add(`hot-${hot.lead_id}`));
+    if (!feedAlertsPrimed) {
+      feedAlertsPrimed = true;
+      return;
+    }
+    fresh.forEach((change) => {
+      const label = change.primary_type_label || change.primary_type || 'изменение';
+      toast(`@${change.username}: ${label} · ${change.summary}`);
+      playChangeAlert();
+    });
+  };
+
+  const renderRadarFeed = (feed) => {
+    const list = document.querySelector('[data-radar-feed-list]');
+    if (!list || !feed) return;
+    const parts = [];
+    (feed.changes || []).forEach((change) => {
+      parts.push(
+        `<a class="attention-item change-alert" href="/contacts/${change.contact_id}#significant-changes" data-feed-id="change-${change.id}">`
+        + '<span class="attention-icon change">↑</span>'
+        + `<div><b>@${escapeHtml(change.username)} · ${escapeHtml(change.primary_type_label || change.primary_type)}</b>`
+        + `<p>${escapeHtml(change.summary)}</p>`
+        + `<small>${change.previous_priority} → ${change.current_priority}</small></div><span>→</span></a>`
+      );
+    });
+    (feed.hot_leads || []).forEach((hot) => {
+      parts.push(
+        `<a class="attention-item" href="/leads/${hot.lead_id}" data-feed-id="hot-${hot.lead_id}">`
+        + `<span class="attention-icon hot">${hot.score}</span>`
+        + `<div><b>@${escapeHtml(hot.username)}</b>`
+        + `<p>${escapeHtml(hot.comment_preview)}</p>`
+        + `<small>@${escapeHtml(hot.competitor)}</small></div><span>→</span></a>`
+      );
+    });
+    if (!parts.length) {
+      parts.push(
+        '<div class="empty-box" data-radar-feed-empty>'
+        + '<span class="empty-icon" aria-hidden="true"><i data-lucide="bell"></i></span>'
+        + '<b>Пока спокойно</b><span>Изменения и HOT появятся после проверки и разбора сигналов.</span></div>'
+      );
+    }
+    list.innerHTML = parts.join('');
+    if (window.lucide?.createIcons) window.lucide.createIcons();
+    const badge = document.querySelector('[data-radar-queue-badge]');
+    if (badge) {
+      const queueTotal = Number(feed.ai_pending || 0) + Number(feed.analyzing || 0);
+      badge.textContent = queueTotal > 0 ? `AI: ${queueTotal}` : 'AI готов';
+      badge.classList.toggle('warning', queueTotal > 0);
+      badge.classList.toggle('success', queueTotal === 0);
+    }
+  };
+
+  const updateRadarLiveBanner = (payload) => {
+    const banner = document.querySelector('[data-radar-live]');
+    if (!banner) return;
+    const busy = Boolean(payload.cycle_running)
+      || Number(payload.analysis_queue || 0) > 0
+      || Number(payload.analysis_in_flight || 0) > 0;
+    banner.hidden = !busy;
+    const title = banner.querySelector('[data-radar-live-title]');
+    const detail = banner.querySelector('[data-radar-live-detail]');
+    if (!title || !detail) return;
+    if (payload.cycle_running) {
+      title.textContent = 'Идёт проверка Instagram';
+      detail.textContent = 'Сбор комментариев и Reels…';
+    } else if (Number(payload.analysis_in_flight || 0) > 0) {
+      title.textContent = 'OpenAI разбирает сигналы';
+      detail.textContent = `В работе: ${payload.analysis_in_flight}, в очереди: ${payload.analysis_queue || 0}`;
+    } else if (Number(payload.analysis_queue || 0) > 0) {
+      title.textContent = 'Очередь OpenAI';
+      detail.textContent = `Ждут разбора: ${payload.analysis_queue}`;
+    }
+  };
+
+  let radarPollTimer = null;
+  let radarPollBusy = false;
+
+  const pollRadarFeed = async () => {
+    if (radarPollBusy) return;
+    radarPollBusy = true;
+    try {
+      const feed = await api('/api/radar/feed?limit=8', { method: 'GET' });
+      notifyNewRadarChanges(feed);
+      renderRadarFeed(feed);
+      updateRadarLiveBanner(feed);
+      const stillBusy = feed.cycle_running
+        || Number(feed.analysis_queue || 0) > 0
+        || Number(feed.analysis_in_flight || 0) > 0;
+      if (!stillBusy && radarPollTimer) {
+        clearInterval(radarPollTimer);
+        radarPollTimer = null;
+        reloadSoon(800);
+      }
+    } catch (_error) {
+      /* тихий poll */
+    } finally {
+      radarPollBusy = false;
+    }
+  };
+
+  const startRadarPolling = () => {
+    if (!(document.body.dataset.page || '').startsWith('/radar')) return;
+    pollRadarFeed();
+    if (radarPollTimer) clearInterval(radarPollTimer);
+    radarPollTimer = setInterval(pollRadarFeed, 3500);
+  };
+
+  if ((document.body.dataset.page || '').startsWith('/radar')) {
+    startRadarPolling();
+    const budgetRoot = document.querySelector('.radar-budget-card');
+    if (budgetRoot) refreshScanBudgetPreview(budgetRoot);
+  }
+
+  document.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (
+      target.name === 'scan_budget'
+      || target.name === 'scan_budget_quick'
+      || target.matches('[data-custom-scan-budget], [data-custom-scan-budget-quick]')
+    ) {
+      const root = target.closest('.radar-budget-card, #scan-quick') || document;
+      refreshScanBudgetPreview(root);
+    }
   });
 })();

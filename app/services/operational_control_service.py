@@ -15,6 +15,7 @@ class OperationalSnapshot:
     radar_live_armed: bool
     openai_live_armed: bool
     default_scan_credits: int
+    ai_analysis_max_concurrency: int
     updated_by: int | None
     updated_at: datetime | None
 
@@ -23,6 +24,7 @@ _DEFAULT = OperationalSnapshot(
     radar_live_armed=False,
     openai_live_armed=False,
     default_scan_credits=5,
+    ai_analysis_max_concurrency=3,
     updated_by=None,
     updated_at=None,
 )
@@ -51,6 +53,7 @@ class OperationalControlService:
                     radar_live_armed=False,
                     openai_live_armed=False,
                     default_scan_credits=5,
+                    ai_analysis_max_concurrency=3,
                 )
                 session.add(row)
                 await session.commit()
@@ -93,6 +96,22 @@ class OperationalControlService:
             self._cache = self._from_row(row)
             return self._cache
 
+    async def set_ai_analysis_concurrency(
+        self,
+        max_concurrency: int,
+        *,
+        manager_id: int | None = None,
+    ) -> OperationalSnapshot:
+        async with self.session_factory() as session:
+            row = await self._get_or_create(session)
+            row.ai_analysis_max_concurrency = max(1, min(10, int(max_concurrency)))
+            row.updated_by = manager_id
+            row.updated_at = datetime.now(UTC)
+            await session.commit()
+            await session.refresh(row)
+            self._cache = self._from_row(row)
+            return self._cache
+
     async def _get_or_create(self, session: AsyncSession) -> OperationalControl:
         row = await session.get(OperationalControl, 1)
         if row is None:
@@ -101,6 +120,7 @@ class OperationalControlService:
                 radar_live_armed=False,
                 openai_live_armed=False,
                 default_scan_credits=5,
+                ai_analysis_max_concurrency=3,
             )
             session.add(row)
             await session.flush()
@@ -112,6 +132,7 @@ class OperationalControlService:
             radar_live_armed=bool(row.radar_live_armed),
             openai_live_armed=bool(row.openai_live_armed),
             default_scan_credits=int(row.default_scan_credits),
+            ai_analysis_max_concurrency=int(getattr(row, "ai_analysis_max_concurrency", 3) or 3),
             updated_by=row.updated_by,
             updated_at=row.updated_at,
         )

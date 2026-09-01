@@ -1272,12 +1272,17 @@ class OperationalControl(Base):
             "default_scan_credits > 0 AND default_scan_credits <= 50",
             name="default_scan_credits_range",
         ),
+        CheckConstraint(
+            "ai_analysis_max_concurrency >= 1 AND ai_analysis_max_concurrency <= 10",
+            name="ai_analysis_max_concurrency_range",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
     radar_live_armed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     openai_live_armed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     default_scan_credits: Mapped[int] = mapped_column(Integer, default=5)
+    ai_analysis_max_concurrency: Mapped[int] = mapped_column(Integer, default=3)
     updated_by: Mapped[int | None] = mapped_column(BigInteger)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
