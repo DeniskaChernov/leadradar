@@ -18,7 +18,7 @@
     <div><span>Источников</span><b>{{ source_count }}</b></div>
     <div><span>Лучшая оценка</span><b>{{ contact.current_lead_score }}</b></div>
     <div><span>Сделок</span><b>{{ deals|length }}</b></div>
-    <div><span>Последняя активность</span><b>{{ contact.last_seen_at.strftime('%d.%m') }}</b></div>
+    <div><span>Последняя активность</span><b>{{ contact.last_seen_at | display_dt('%d.%m') }}</b></div>
   </div>
 </div>
 
@@ -61,7 +61,7 @@
     {% for change in significant_changes %}
     <article class="change-row severity-{{ change.severity|lower }}">
       <div class="change-priority"><span>{{ change.previous_priority }}</span><b>→</b><strong>{{ change.current_priority }}</strong></div>
-      <div><div class="change-badges">{% for kind in change.change_types_json %}<span>{{ change_type_label(kind) }}</span>{% endfor %}</div><p>{{ change.summary }}</p><small>{{ change.created_at.strftime('%d.%m.%Y %H:%M') }}</small></div>
+      <div><div class="change-badges">{% for kind in change.change_types_json %}<span>{{ change_type_label(kind) }}</span>{% endfor %}</div><p>{{ change.summary }}</p><small>{{ change.created_at | display_dt('%d.%m.%Y %H:%M') }}</small></div>
     </article>
     {% endfor %}
   </div>
@@ -72,7 +72,7 @@
 <section class="panel customer-knowledge">
   <div class="panel-head">
     <div><h2>Что мы уже знаем о клиенте</h2><p>Эти данные вводит менеджер после реального общения. Они остаются в истории и учитываются при будущих сигналах.</p></div>
-    <span class="tag {% if contact.qualification_updated_at %}status-qualified{% else %}neutral{% endif %}">{% if contact.qualification_updated_at %}обновлено {{ contact.qualification_updated_at.strftime('%d.%m %H:%M') }}{% else %}ещё не заполнено{% endif %}</span>
+    <span class="tag {% if contact.qualification_updated_at %}status-qualified{% else %}neutral{% endif %}">{% if contact.qualification_updated_at %}обновлено {{ contact.qualification_updated_at | display_dt }}{% else %}ещё не заполнено{% endif %}</span>
   </div>
   <div class="knowledge-grid">
     <div><span>Что ищет</span><b>{{ contact.interest_summary or 'Пока не уточнили' }}</b></div>
@@ -111,7 +111,7 @@
       <div class="timeline">
       {% for comment, competitor, post, signal_lead in signals %}
       <div class="timeline-item">
-        <div class="time">{{ comment.created_at_platform.strftime('%d.%m.%Y %H:%M') if comment.created_at_platform else comment.discovered_at.strftime('%d.%m.%Y %H:%M') }}</div>
+        <div class="time">{{ (comment.created_at_platform or comment.discovered_at) | display_dt('%d.%m.%Y %H:%M') }}</div>
         <div class="timeline-card">
           <div class="feed-meta"><b>@{{ competitor.normalized_handle }}</b>{% if comment.is_baseline %}<span class="tag neutral">история</span>{% else %}<span class="tag live">новый сигнал</span>{% endif %}</div>
           <blockquote>{{ comment.text or 'Пустой комментарий' }}</blockquote>
@@ -130,7 +130,7 @@
       <div class="event-list rich-events">
       {% for event in events %}
         <div class="event">
-          <span>{{ event.created_at.strftime('%d.%m %H:%M') }}</span>
+          <span>{{ event.created_at | display_dt }}</span>
           <div>
             <b>{{ event_label(event.event_type) }}</b>
             {% if event.payload_json.get('text') %}<p>{{ event.payload_json.get('text') }}</p>
@@ -182,7 +182,7 @@
 
     <section class="panel"><div class="panel-head"><div><h2>Задачи</h2></div><a href="/tasks">Все →</a></div>
       {% set open_count = namespace(value=0) %}
-      {% for task in tasks %}{% if task.status.value == 'OPEN' %}{% set open_count.value = open_count.value + 1 %}<div class="task-row"><div><b>{{ task.due_at.strftime('%d.%m.%Y %H:%M') }}</b><p>{{ task.note or 'Связаться с клиентом' }}</p></div><div class="task-row-actions"><button class="icon-btn" data-task-complete="{{ task.id }}" title="Выполнено">✓</button><button class="icon-btn muted-action" data-api-action="/api/tasks/{{ task.id }}/cancel" data-payload='{}' data-reload="1" title="Отменить">×</button></div></div>{% endif %}{% endfor %}
+      {% for task in tasks %}{% if task.status.value == 'OPEN' %}{% set open_count.value = open_count.value + 1 %}<div class="task-row"><div><b>{{ task.due_at | display_dt('%d.%m.%Y %H:%M') }}</b><p>{{ task.note or 'Связаться с клиентом' }}</p></div><div class="task-row-actions"><button class="icon-btn" data-task-complete="{{ task.id }}" title="Выполнено">✓</button><button class="icon-btn muted-action" data-api-action="/api/tasks/{{ task.id }}/cancel" data-payload='{}' data-reload="1" title="Отменить">×</button></div></div>{% endif %}{% endfor %}
       {% if open_count.value == 0 %}<div class="empty-box"><span class="empty-icon">✅</span><b>Открытых задач нет</b><span>Запланируйте следующий шаг для работы с клиентом.</span></div>{% endif %}
     </section>
 

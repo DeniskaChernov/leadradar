@@ -216,8 +216,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.8.5-openai-schema" in base
-    assert "13.8.5-openai-schema" in auth
+    assert "13.8.7-openai-toggle" in base
+    assert "13.8.7-openai-toggle" in auth
     assert "fonts.googleapis.com" in base
     assert 'href="/catalog"' in base
     assert 'href="/discovery"' in base
@@ -273,6 +273,8 @@ def test_radar_budget_ui_uses_credit_presets_truthful_max_and_result_facts():
     for preset in ("Эконом", "Обычно", "Расширенно", "Глубоко"):
         assert preset in radar
     assert "max_credits" in javascript
+    assert "getAttribute('method')" in javascript
+    assert 'method="post" action="/api/ops/openai-live"' in radar
     assert "Использовано за месяц" in javascript
     assert ".radar-budget-card" in css
     assert ".scan-result-grid" in css

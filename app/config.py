@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     web_enabled: bool = True
     web_host: str = "127.0.0.1"
     web_port: int = Field(default=8000, ge=1, le=65535)
+    web_display_timezone: str = "Asia/Tashkent"
     web_public_url: str = ""
     web_manager_id: int = 0
     web_auth_enabled: bool = False
@@ -138,6 +139,20 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [int(item.strip()) for item in value.split(",") if item.strip()]
         return value
+
+    @field_validator("web_display_timezone")
+    @classmethod
+    def validate_web_display_timezone(cls, value: str) -> str:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        key = value.strip()
+        if not key:
+            raise ValueError("WEB_DISPLAY_TIMEZONE не может быть пустым")
+        try:
+            ZoneInfo(key)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"Неизвестный часовой пояс: {key}") from exc
+        return key
 
     @model_validator(mode="after")
     def apply_platform_port(self) -> Settings:

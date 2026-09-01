@@ -25,7 +25,7 @@
   <div class="alert warn"><b>Master unlock не готов</b><span>В .env нужны scrapecreators + live flags + EXTERNAL_LIVE_UNLOCK. Без этого тумблер Radar не включится.</span></div>
   {% else %}
   <div class="form-row">
-    <form data-api-form action="/api/ops/radar-live" data-reload="1">
+    <form data-api-form method="post" action="/api/ops/radar-live" data-reload="1">
       <input type="hidden" name="armed" value="{{ 'false' if ops.radar_live_armed else 'true' }}">
       <input type="hidden" name="default_scan_credits" value="{{ ops.default_scan_credits }}">
       <button class="btn {% if ops.radar_live_armed %}ghost{% else %}success{% endif %}" type="submit">{% if ops.radar_live_armed %}Выключить Live Radar{% else %}Включить Live Radar{% endif %}</button>
@@ -33,7 +33,7 @@
   </div>
   {% endif %}
   <div class="form-row">
-    <form data-api-form action="/api/ops/openai-live" data-reload="1">
+    <form data-api-form method="post" action="/api/ops/openai-live" data-reload="1">
       <input type="hidden" name="armed" value="{{ 'false' if ops.openai_live_armed else 'true' }}">
       <button class="btn {% if ops.openai_live_armed %}ghost{% else %}primary{% endif %}" type="submit" {% if not settings.openai_live_enabled %}disabled{% endif %}>{% if ops.openai_live_armed %}Выключить OpenAI{% else %}Включить OpenAI анализ{% endif %}</button>
     </form>
@@ -66,21 +66,25 @@
     <button class="btn primary" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Запустить Radar</button>
   </div>
   {% elif scan_budget.is_live %}
-  <div class="alert warn"><b>Live Radar выключен тумблером</b><span>{% for reason in scan_budget.blocking_reasons %}{{ reason }} {% endfor %}</span></div>
+  <div class="alert warn"><span>{% for reason in scan_budget.blocking_reasons %}{{ reason }}{% if not loop.last %} {% endif %}{% endfor %}</span></div>
   {% else %}
   <div class="alert info"><b>Offline-режим</b><span>Replay/mock не расходует ScrapeCreators credits.</span></div>
   {% endif %}
 </section>
 {% if last_run and last_run.status.value == 'SUCCESS' %}
 <section class="panel scan-result-card">
-  <div><span class="eyebrow">ПОСЛЕДНИЙ ЗАПУСК</span><h2>Проверка завершена · {{ last_run.started_at.strftime('%d.%m %H:%M') }}</h2>{% if last_run.budget_stop_reason %}<p class="muted">Остановлено по выбранному лимиту credits.</p>{% endif %}</div>
+  <div class="scan-result-summary">
+    <span class="eyebrow">ПОСЛЕДНИЙ ЗАПУСК</span>
+    <h2>Проверка завершена · {{ last_run.started_at | display_dt }}</h2>
+    {% if last_run.budget_stop_reason %}<p class="muted">Остановлено по выбранному лимиту credits.</p>{% endif %}
+  </div>
   <div class="scan-result-grid">
-    <span>Разрешено <b>{{ last_run.effective_credit_budget or '—' }}</b></span>
-    <span>Потрачено <b>{{ last_run.actual_credits_spent }}</b></span>
-    <span>Конкурентов <b>{{ last_run.stats_json.get('competitors_checked', 0) }}</b></span>
-    <span>Новых комментариев <b>{{ last_run.stats_json.get('comments_created', 0) }}</b></span>
-    <span>Новых лидов <b>{{ last_run.stats_json.get('leads_created', 0) }}</b></span>
-    <span>Ошибок <b>{{ last_run.stats_json.get('errors', 0) }}</b></span>
+    <div class="scan-result-stat"><span>Разрешено</span><b>{{ last_run.effective_credit_budget or '—' }}</b></div>
+    <div class="scan-result-stat"><span>Потрачено</span><b>{{ last_run.actual_credits_spent }}</b></div>
+    <div class="scan-result-stat"><span>Конкурентов</span><b>{{ last_run.stats_json.get('competitors_checked', 0) }}</b></div>
+    <div class="scan-result-stat"><span>Новых комментариев</span><b>{{ last_run.stats_json.get('comments_created', 0) }}</b></div>
+    <div class="scan-result-stat"><span>Новых лидов</span><b>{{ last_run.stats_json.get('leads_created', 0) }}</b></div>
+    <div class="scan-result-stat"><span>Ошибок</span><b>{{ last_run.stats_json.get('errors', 0) }}</b></div>
   </div>
 </section>
 {% endif %}
@@ -109,7 +113,7 @@
 {% for comment, contact, competitor, post, lead in rows %}
 <tr>
   <td data-label="Клиент"><a class="user" href="/contacts/{{ contact.id }}"><b>@{{ contact.username }}</b><small>{{ contact.display_name or 'Имя не указано' }}</small></a></td>
-  <td data-label="Комментарий" class="comment-cell"><b>{{ comment.text or 'Пустой комментарий' }}</b><small>{% if comment.is_baseline %}<span class="tag neutral">история</span>{% else %}<span class="tag live">новый</span>{% endif %} {{ comment.created_at_platform.strftime('%d.%m %H:%M') if comment.created_at_platform else comment.discovered_at.strftime('%d.%m %H:%M') }}</small></td>
+  <td data-label="Комментарий" class="comment-cell"><b>{{ comment.text or 'Пустой комментарий' }}</b><small>{% if comment.is_baseline %}<span class="tag neutral">история</span>{% else %}<span class="tag live">новый</span>{% endif %} {{ (comment.created_at_platform or comment.discovered_at) | display_dt }}</small></td>
   <td data-label="Источник"><b>@{{ competitor.normalized_handle }}</b><small><a target="_blank" rel="noopener" href="{{ post.url }}">Открыть Reel ↗</a></small></td>
   <td data-label="Контекст Reel" class="context">{{ post.caption[:165] or 'Описание Reel не получено' }}{% if post.caption|length > 165 %}…{% endif %}</td>
   <td data-label="AI-оценка">{% if lead and lead.status.value == 'ANALYZING' %}<span class="tag pending">Анализируем</span><small>Сигнал уже сохранён и виден менеджеру</small>{% elif lead and lead.status.value == 'AI_PENDING' %}<span class="tag pending">Нужна дополнительная проверка</span><small>Очередь OpenAI · сигнал рабочий</small>{% elif lead %}<div class="score-line"><div class="lead-score {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead.lead_score >= 50 %}warm{% endif %}">{{ lead.lead_score }}</div><div><b>{{ intent_label(lead.intent) }}</b><small>{{ product_label(lead.product_category) }} · {{ ai_source_label(lead.ai_source) }}</small></div></div>{% else %}<span class="tag pending">Ещё не разобран</span>{% endif %}</td>

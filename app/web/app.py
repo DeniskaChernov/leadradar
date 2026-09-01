@@ -49,6 +49,7 @@ from app.services.telegram_notification_service import (
 )
 from app.services.usage_service import ExternalUsageService
 from app.web.auth import TelegramAuthError, TelegramWebAuth, WebRole, required_role
+from app.web.datetime_display import format_display_dt, parse_display_dt
 from app.web.labels import (
     AI_SOURCE_LABELS,
     BUYER_ROLE_ICONS,
@@ -177,7 +178,11 @@ def build_web_app(
         return master_live_ready() and ops_control.radar_live_armed()
 
     def openai_spend_allowed() -> bool:
-        return settings.openai_live_enabled and ops_control.openai_live_armed()
+        return (
+            settings.openai_live_enabled
+            and bool(settings.openai_api_key)
+            and ops_control.openai_live_armed()
+        )
     pricing_service = PricingConfigService(workflow.session_factory)
     fx_policy_service = FxPolicyService(workflow.session_factory)
     intelligence_challenge = LeadIntelligenceChallenge()
@@ -210,6 +215,9 @@ def build_web_app(
         ),
         money=lambda value: f"{float(value or 0):,.0f}".replace(",", " "),
         safe_attr=lambda obj, name, default=None: getattr(obj, name, default),
+    )
+    templates.env.filters["display_dt"] = lambda value, fmt="%d.%m %H:%M": format_display_dt(
+        value, fmt, timezone=settings.web_display_timezone
     )
 
     def local_manager_id() -> int:
@@ -674,7 +682,7 @@ def build_web_app(
         scan_plan = await queries.scan_plan(
             max_units_per_scan=settings.instagram_max_units_per_scan,
             daily_remaining=instagram_remaining,
-            live_enabled=settings.instagram_live_enabled,
+            live_enabled=radar_spend_allowed(),
         )
         replay_scenario = getattr(getattr(controller.monitor, "provider", None), "scenario", None)
         replay_status = replay_scenario.status() if replay_scenario is not None else None
@@ -731,12 +739,12 @@ def build_web_app(
             },
             "OpenAI": {
                 "configured": bool(settings.openai_api_key),
-                "enabled": settings.openai_live_enabled,
+                "enabled": openai_spend_allowed(),
                 "detail": f"{usage.get('openai', 0)}/{settings.openai_daily_request_limit} запросов сегодня",
             },
             "ScrapeCreators / Bright Data": {
                 "configured": bool(settings.scrapecreators_api_key or settings.brightdata_api_key),
-                "enabled": settings.instagram_live_enabled,
+                "enabled": radar_spend_allowed(),
                 "detail": f"{usage.get('instagram', 0)}/{settings.instagram_daily_request_limit} операций сегодня",
             },
             "AI Agent / MCP": {
@@ -1290,7 +1298,10 @@ def build_web_app(
     async def add_task(request: Request, contact_id: int):
         payload = await _json_or_form(request)
         try:
-            due_at = datetime.fromisoformat(str(payload.get("due_at") or ""))
+            due_at = parse_display_dt(
+                str(payload.get("due_at") or ""),
+                timezone=settings.web_display_timezone,
+            )
         except ValueError as exc:
             raise HTTPException(
                 status_code=400, detail="Укажите дату и время следующего контакта"
@@ -1298,10 +1309,10 @@ def build_web_app(
         lead_id_raw = payload.get("lead_id")
         lead_id = int(lead_id_raw) if lead_id_raw not in (None, "") else None
         try:
-            await crm.schedule_next_contact(
+            await crm.schedule_contact(
                 contact_id,
                 manager_id(request),
-                due_at,
+                due_at=due_at,
                 note=str(payload.get("note") or ""),
                 lead_id=lead_id,
             )

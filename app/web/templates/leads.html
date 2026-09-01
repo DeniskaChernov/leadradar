@@ -66,7 +66,7 @@
       <div class="kanban-top"><b>@{{ contact.username }}</b><span>{% if lead.status.value in ['ANALYZING','AI_PENDING'] %}…{% else %}{{ lead.lead_score }}{% endif %}</span></div>
       <p>{{ comment.text[:120] }}{% if comment.text|length > 120 %}…{% endif %}</p>
       <small>{{ intent_label(lead.intent) }} · {{ product_label(lead.product_category) }}</small>
-      <div class="kanban-source"><span>@{{ competitor.normalized_handle }}</span>{% if lead.next_action_at %}<em>⏱ {{ lead.next_action_at.strftime('%d.%m %H:%M') }}</em>{% endif %}</div>
+      <div class="kanban-source"><span>@{{ competitor.normalized_handle }}</span>{% if lead.next_action_at %}<em>⏱ {{ lead.next_action_at | display_dt }}</em>{% endif %}</div>
     </a>
   {% endif %}{% endfor %}
   </div>

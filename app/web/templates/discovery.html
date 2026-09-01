@@ -36,7 +36,7 @@
         <div class="candidate-head"><div><span class="tier tier-{{ candidate.tier|lower }}">{{ candidate.tier }}</span><span class="tag">{{ discovery_status_labels.get(candidate.status, candidate.status) }}</span></div><span class="confidence {% if candidate.confidence >= 85 %}high{% elif candidate.confidence >= 65 %}medium{% else %}low{% endif %}">{{ candidate.confidence }}%</span></div>
         <h3>{{ candidate.display_name }}</h3>
         <p>{{ candidate.rationale or 'Описание пока не добавлено.' }}</p>
-        <small>{{ candidate.source }}{% if candidate.location %} · {{ candidate.location }}{% endif %}{% if candidate.last_seen_at %} · замечен {{ candidate.last_seen_at.strftime('%d.%m %H:%M') }}{% endif %}</small>
+        <small>{{ candidate.source }}{% if candidate.location %} · {{ candidate.location }}{% endif %}{% if candidate.last_seen_at %} · замечен {{ candidate.last_seen_at | display_dt }}{% endif %}</small>
         <div class="candidate-links">{% if candidate.website_url %}<a href="{{ candidate.website_url }}" target="_blank" rel="noopener">Сайт ↗</a>{% endif %}{% if candidate.instagram_handle %}<a href="https://instagram.com/{{ candidate.instagram_handle }}" target="_blank" rel="noopener">@{{ candidate.instagram_handle }} ↗</a>{% endif %}{% if candidate.source_url %}<a href="{{ candidate.source_url }}" target="_blank" rel="noopener">Источник ↗</a>{% endif %}</div>
         <div class="candidate-actions">
           {% if candidate.status != 'REVIEWED' %}<button class="btn tiny ghost" data-api-action="/api/discovery/candidates/{{ candidate.id }}/status" data-payload='{"status":"REVIEWED"}' data-reload="1">Проверено</button>{% endif %}
@@ -53,7 +53,7 @@
     <div class="discovery-changes">
     {% for diff, candidate in changes %}
       <article class="panel discovery-change">
-        <div><span class="tag diff-{{ diff.diff_type|lower }}">{{ discovery_diff_labels.get(diff.diff_type, diff.diff_type) }}</span><time>{{ diff.created_at.strftime('%d.%m %H:%M') }}</time></div>
+        <div><span class="tag diff-{{ diff.diff_type|lower }}">{{ discovery_diff_labels.get(diff.diff_type, diff.diff_type) }}</span><time>{{ diff.created_at | display_dt }}</time></div>
         <h3>{{ candidate.display_name }}</h3>
         <p>{{ diff.changed_fields|join(', ') }}</p>
         <button class="btn tiny ghost" data-api-action="/api/discovery/diffs/{{ diff.id }}/acknowledge" data-payload="{}" data-reload="1">Просмотрено</button>

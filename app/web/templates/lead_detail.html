@@ -77,14 +77,14 @@
 
     <section class="panel source-panel">
       <div class="panel-head"><div><h2>Откуда взялся лид</h2><p>Полный контекст, чтобы менеджер не работал вслепую</p></div></div>
-      <div class="source-detail"><div><span>Конкурент</span><b>@{{ competitor.normalized_handle }}</b></div><div><span>Комментарий</span><b>{{ comment.text or '—' }}</b></div><div class="wide"><span>Описание Reel</span><p>{{ post.caption or 'Описание не получено' }}</p></div><div><span>Комментарий найден</span><b>{{ comment.discovered_at.strftime('%d.%m.%Y %H:%M') }}</b></div><div><span>Тип сигнала</span><b>{% if comment.is_baseline %}Исторический{% else %}Новый{% endif %}</b></div></div>
+      <div class="source-detail"><div><span>Конкурент</span><b>@{{ competitor.normalized_handle }}</b></div><div><span>Комментарий</span><b>{{ comment.text or '—' }}</b></div><div class="wide"><span>Описание Reel</span><p>{{ post.caption or 'Описание не получено' }}</p></div><div><span>Комментарий найден</span><b>{{ comment.discovered_at | display_dt('%d.%m.%Y %H:%M') }}</b></div><div><span>Тип сигнала</span><b>{% if comment.is_baseline %}Исторический{% else %}Новый{% endif %}</b></div></div>
     </section>
 
     <section class="panel">
       <div class="panel-head"><div><h2>История интереса</h2><p>Другие сигналы этого же Instagram-пользователя</p></div><a href="/contacts/{{ contact.id }}">Вся карточка клиента →</a></div>
       <div class="mini-history">
         {% for h_comment, h_competitor, h_post, h_lead in history %}
-        <div class="mini-history-row"><span>{{ h_comment.discovered_at.strftime('%d.%m.%Y') }}</span><div><b>@{{ h_competitor.normalized_handle }}</b><p>{{ h_comment.text }}</p></div><div>{% if h_lead %}<strong>{{ h_lead.lead_score }}</strong><small>{{ intent_label(h_lead.intent) }}</small>{% else %}<small>не разобран</small>{% endif %}</div></div>
+        <div class="mini-history-row"><span>{{ h_comment.discovered_at | display_dt('%d.%m.%Y') }}</span><div><b>@{{ h_competitor.normalized_handle }}</b><p>{{ h_comment.text }}</p></div><div>{% if h_lead %}<strong>{{ h_lead.lead_score }}</strong><small>{{ intent_label(h_lead.intent) }}</small>{% else %}<small>не разобран</small>{% endif %}</div></div>
         {% else %}
         <div class="empty-box">
           <span class="empty-icon" aria-hidden="true"><i data-lucide="message-circle"></i></span>
@@ -114,7 +114,7 @@
 
     <section class="panel side-card">
       <div class="avatar large-avatar">{{ (contact.display_name or contact.username)[:1]|upper }}</div><h3>{{ contact.display_name or '@' ~ contact.username }}</h3><a target="_blank" rel="noopener" href="{{ contact.profile_url }}">@{{ contact.username }} ↗</a>
-      <dl><dt>Первый сигнал</dt><dd>{{ contact.first_seen_at.strftime('%d.%m.%Y') }}</dd><dt>Последняя активность</dt><dd>{{ contact.last_seen_at.strftime('%d.%m.%Y %H:%M') }}</dd><dt>Лучшая оценка</dt><dd>{{ contact.current_lead_score }}/100</dd><dt>Ответственный</dt><dd>{% if lead.assigned_manager_telegram_id %}Telegram ID {{ lead.assigned_manager_telegram_id }}{% else %}Не назначен{% endif %}</dd></dl>
+      <dl><dt>Первый сигнал</dt><dd>{{ contact.first_seen_at | display_dt('%d.%m.%Y') }}</dd><dt>Последняя активность</dt><dd>{{ contact.last_seen_at | display_dt('%d.%m.%Y %H:%M') }}</dd><dt>Лучшая оценка</dt><dd>{{ contact.current_lead_score }}/100</dd><dt>Ответственный</dt><dd>{% if lead.assigned_manager_telegram_id %}Telegram ID {{ lead.assigned_manager_telegram_id }}{% else %}Не назначен{% endif %}</dd></dl>
     </section>
 
     <section class="panel action-form-card">
@@ -123,7 +123,7 @@
 
     <section class="panel action-form-card">
       <h3>Следующий контакт</h3><form data-api-form action="/api/contacts/{{ contact.id }}/tasks" data-reload="1"><input type="hidden" name="lead_id" value="{{ lead.id }}"><label>Когда связаться<input name="due_at" type="datetime-local" required></label><label>Что сделать<input name="note" placeholder="Написать после 15:00"></label><button class="btn" type="submit">Поставить задачу</button></form>
-      {% for task in tasks %}<div class="task-mini"><div><b>{{ task.due_at.strftime('%d.%m %H:%M') }}</b><span>{{ task.note or 'Связаться' }}</span></div><button class="icon-btn" data-task-complete="{{ task.id }}" title="Отметить выполненной">✓</button></div>{% endfor %}
+      {% for task in tasks %}<div class="task-mini"><div><b>{{ task.due_at | display_dt }}</b><span>{{ task.note or 'Связаться' }}</span></div><button class="icon-btn" data-task-complete="{{ task.id }}" title="Отметить выполненной">✓</button></div>{% endfor %}
     </section>
 
     <section class="panel action-form-card deal-box {% if deal %}has-deal{% endif %}">

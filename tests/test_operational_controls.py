@@ -60,3 +60,34 @@ async def test_ops_radar_toggle_persists_and_gates_scan(session_factory):
     assert ops.radar_live_armed() is True
     assert preview.json()["radar_live_armed"] is True
     assert preview.json()["live_enabled"] is True
+
+
+async def test_ops_openai_toggle_persists(session_factory):
+    settings = Settings(
+        _env_file=None,
+        web_enabled=True,
+        openai_api_key="sk-test",
+        openai_live_calls_enabled=True,
+        external_live_unlock="ALLOW_EXTERNAL_CALLS",
+        external_kill_switch=False,
+        web_manager_id=1001,
+    )
+    ops = OperationalControlService(session_factory)
+    await ops.load()
+    assert ops.openai_live_armed() is False
+    workflow = LeadWorkflowService(session_factory, hot_threshold=70)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        workflow,
+        MonitorController(FakeMonitor()),  # type: ignore[arg-type]
+        ExternalUsageService(session_factory),
+        ops_control=ops,
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        armed = await client.post("/api/ops/openai-live", json={"armed": True})
+
+    assert armed.status_code == 200
+    assert armed.json()["openai_live_armed"] is True
+    assert ops.openai_live_armed() is True

@@ -164,14 +164,21 @@
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
   const api = async (url, options = {}) => {
+    const method = (options.method || 'GET').toUpperCase();
     const headers = { ...(options.headers || {}) };
-    if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
-    if (csrfToken && !headers['X-CSRF-Token']) headers['X-CSRF-Token'] = csrfToken;
-    const response = await fetch(url, {
+    const fetchOptions = {
       credentials: 'same-origin',
-      headers,
+      method,
       ...options,
-    });
+    };
+    if (method === 'GET' || method === 'HEAD') {
+      delete fetchOptions.body;
+    } else if (!(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+    }
+    if (csrfToken && !headers['X-CSRF-Token']) headers['X-CSRF-Token'] = csrfToken;
+    fetchOptions.headers = headers;
+    const response = await fetch(url, fetchOptions);
     const data = await readResponse(response);
     if (!response.ok) throw new Error(data.detail || data.message || 'Не удалось выполнить действие');
     return data;
@@ -531,8 +538,10 @@
       if (multipart && event.submitter?.name) {
         body.set(event.submitter.name, event.submitter.value);
       }
+      const rawMethod = (form.getAttribute('method') || 'post').trim().toLowerCase();
+      const method = rawMethod === 'get' ? 'POST' : rawMethod.toUpperCase();
       const data = await api(form.action, {
-        method: (form.method || 'POST').toUpperCase(),
+        method,
         body: multipart ? body : JSON.stringify(body),
       });
       toast(data.message || 'Сохранено');

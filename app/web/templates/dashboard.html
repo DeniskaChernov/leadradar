@@ -54,7 +54,7 @@
       {% endfor %}
       {% for task, contact, task_lead in tasks %}
       <a class="attention-item" href="/contacts/{{ contact.id }}">
-        <span class="attention-icon">⏱</span><div><b>@{{ contact.username }}</b><p>{{ task.note or 'Связаться' }}</p><small>{{ task.due_at.strftime('%d.%m %H:%M') }}</small></div><span>→</span>
+        <span class="attention-icon">⏱</span><div><b>@{{ contact.username }}</b><p>{{ task.note or 'Связаться' }}</p><small>{{ task.due_at | display_dt }}</small></div><span>→</span>
       </a>
       {% endfor %}
       {% for lead, contact, comment, competitor in hot_leads %}
@@ -104,7 +104,7 @@
       {% for run in recent_runs %}
       <div class="run-row">
         <span class="run-dot {{ run.status.value|lower }}"></span>
-        <div><b>{{ trigger_label(run.trigger) }}</b><small>{{ run.started_at.strftime('%d.%m %H:%M') }}</small></div>
+        <div><b>{{ trigger_label(run.trigger) }}</b><small>{{ run.started_at | display_dt }}</small></div>
         <div class="run-stat"><b>{{ run.stats_json.get('comments_created', 0) }}</b><small>новых</small></div>
         <div class="run-stat"><b>{{ run.actual_credits_spent or 0 }}</b><small>credits</small></div>
       </div>

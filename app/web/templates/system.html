@@ -40,7 +40,7 @@
   <div class="alert warn"><b>Master unlock не готов</b><span>Нужны scrapecreators + INSTAGRAM_LIVE_CALLS_ENABLED + EXTERNAL_LIVE_UNLOCK в .env.</span></div>
   {% else %}
   <div class="form-row">
-    <form data-api-form action="/api/ops/radar-live" data-reload="1">
+    <form data-api-form method="post" action="/api/ops/radar-live" data-reload="1">
       <input type="hidden" name="armed" value="{{ 'false' if ops.radar_live_armed else 'true' }}">
       <input type="hidden" name="default_scan_credits" value="{{ ops.default_scan_credits }}">
       <button class="btn {% if ops.radar_live_armed %}ghost{% else %}success{% endif %}" type="submit">{% if ops.radar_live_armed %}Выключить Live Radar{% else %}Включить Live Radar{% endif %}</button>
@@ -48,7 +48,7 @@
   </div>
   {% endif %}
   <div class="form-row">
-    <form data-api-form action="/api/ops/openai-live" data-reload="1">
+    <form data-api-form method="post" action="/api/ops/openai-live" data-reload="1">
       <input type="hidden" name="armed" value="{{ 'false' if ops.openai_live_armed else 'true' }}">
       <button class="btn {% if ops.openai_live_armed %}ghost{% else %}primary{% endif %}" type="submit" {% if not settings.openai_live_enabled %}disabled{% endif %}>{% if ops.openai_live_armed %}Выключить OpenAI{% else %}Включить OpenAI анализ{% endif %}</button>
     </form>
@@ -115,7 +115,7 @@
         <td data-label="Контакт"><a href="/contacts/{{ item.contact_id }}">@{{ item.username }}</a></td>
         <td data-label="Chat"><code>{{ item.chat_id }}</code>{% if item.message_id %}<br><small>msg {{ item.message_id }}</small>{% endif %}</td>
         <td data-label="Ошибка">{{ item.error or '—' }}</td>
-        <td data-label="Когда">{{ item.uncertain_at.strftime('%d.%m %H:%M') if item.uncertain_at else '—' }}</td>
+        <td data-label="Когда">{{ item.uncertain_at | display_dt if item.uncertain_at else '—' }}</td>
         <td data-label="Действие" class="actions-cell">
           <form data-api-form action="/api/notifications/uncertain/{{ item.kind }}/{{ item.log_id }}/resolve" data-reload="1" class="inline-form">
             <input type="hidden" name="delivered" value="true">
@@ -209,7 +209,7 @@
   </form>
   <p class="table-scroll-hint">На узком экране строки сворачиваются в карточки.</p>
   <div class="table-wrap embedded system-table-wrap"><table class="responsive-table system-table"><thead><tr><th>Provider</th><th>Операция / модель</th><th>Основа</th><th>Текущая цена</th><th>Действует с</th></tr></thead><tbody>
-    {% for price in pricing_configs %}<tr><td data-label="Provider">{{ price.provider }}</td><td data-label="Операция">{{ price.operation }}{% if price.model_name %}<br><small>{{ price.model_name }}</small>{% endif %}</td><td data-label="Основа">{{ price.pricing_basis }}</td><td data-label="Цена">{% if price.pricing_basis == 'TOKENS' %}input {{ price.input_price or '—' }} · output {{ price.output_price or '—' }}{% else %}{{ price.unit_price or '—' }} USD{% endif %}</td><td data-label="Действует с">{{ price.effective_from.strftime('%d.%m.%Y %H:%M') }}</td></tr>{% else %}<tr><td colspan="5" class="empty">Тарифы ещё не внесены. Расходы учитываются в единицах, стоимость USD остаётся неизвестной.</td></tr>{% endfor %}
+    {% for price in pricing_configs %}<tr><td data-label="Provider">{{ price.provider }}</td><td data-label="Операция">{{ price.operation }}{% if price.model_name %}<br><small>{{ price.model_name }}</small>{% endif %}</td><td data-label="Основа">{{ price.pricing_basis }}</td><td data-label="Цена">{% if price.pricing_basis == 'TOKENS' %}input {{ price.input_price or '—' }} · output {{ price.output_price or '—' }}{% else %}{{ price.unit_price or '—' }} USD{% endif %}</td><td data-label="Действует с">{{ price.effective_from | display_dt('%d.%m.%Y %H:%M') }}</td></tr>{% else %}<tr><td colspan="5" class="empty">Тарифы ещё не внесены. Расходы учитываются в единицах, стоимость USD остаётся неизвестной.</td></tr>{% endfor %}
   </tbody></table></div>
 </details>
 
@@ -222,7 +222,7 @@
     <div><button class="btn primary" type="submit">Сохранить новую версию курса</button></div>
   </form>
   <div class="table-wrap embedded system-table-wrap"><table class="responsive-table system-table"><thead><tr><th>Пара</th><th>Курс</th><th>Действует с</th><th>Кто подтвердил</th></tr></thead><tbody>
-    {% for fx in fx_policies %}<tr><td data-label="Пара">{{ fx.base_currency }} → {{ fx.quote_currency }}</td><td data-label="Курс">{{ fx.rate }}</td><td data-label="Действует с">{{ fx.effective_from.strftime('%d.%m.%Y %H:%M') }}</td><td data-label="Кто подтвердил">{{ fx.manager_telegram_id }}</td></tr>{% else %}<tr><td colspan="4" class="empty">FX-курс не задан. Margin и ROI остаются недоступны.</td></tr>{% endfor %}
+    {% for fx in fx_policies %}<tr><td data-label="Пара">{{ fx.base_currency }} → {{ fx.quote_currency }}</td><td data-label="Курс">{{ fx.rate }}</td><td data-label="Действует с">{{ fx.effective_from | display_dt('%d.%m.%Y %H:%M') }}</td><td data-label="Кто подтвердил">{{ fx.manager_telegram_id }}</td></tr>{% else %}<tr><td colspan="4" class="empty">FX-курс не задан. Margin и ROI остаются недоступны.</td></tr>{% endfor %}
   </tbody></table></div>
 </details>
 
@@ -284,5 +284,5 @@
 <section class="panel action-form-card"><h3>Как тестировать без потерь</h3><ol class="plain-steps"><li>Оставить <code>INSTAGRAM_LIVE_CALLS_ENABLED=false</code>.</li><li>Проверить интерфейс и логику на mock и сохранённой базе.</li><li>Перед контрольным тестом включить live-запросы, поставить маленький дневной лимит и только тогда задать <code>EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS</code>.</li><li>После теста снова выключить live-режим.</li></ol></section>
 </div>
 
-<section class="panel"><div class="panel-head"><div><h2>История проверок</h2><p>Что происходило в каждом цикле, без технических загадок</p></div></div><p class="table-scroll-hint">Широкая таблица — горизонтальная прокрутка на мобильных.</p><div class="table-wrap embedded system-table-wrap system-run-wrap"><table class="system-run-history"><thead><tr><th>Время</th><th>Кто запустил</th><th>Источник</th><th>Результат</th><th>Reels</th><th>Страниц API</th><th>Комментариев увидели</th><th>Новых сохранили</th><th>История разобрана</th><th>Ошибки</th></tr></thead><tbody>{% for run in runs %}<tr><td>{{ run.started_at.strftime('%d.%m %H:%M:%S') }}</td><td>{{ trigger_label(run.trigger) }}</td><td>{{ run.provider or '—' }}</td><td><span class="tag run-{{ run.status.value|lower }}">{{ run_status_label(run.status) }}</span></td><td>{{ run.stats_json.get('reels_found',0) }}</td><td>{{ run.stats_json.get('comment_requests',0) }}</td><td>{{ run.stats_json.get('comments_seen',0) }}</td><td>{{ run.stats_json.get('comments_created',0) }}</td><td>{{ run.stats_json.get('historical_analyzed',0) }}</td><td>{% if run.error %}<span class="warn">{{ run.error }}</span>{% else %}{{ run.stats_json.get('errors',0) }}{% endif %}</td></tr>{% else %}<tr><td colspan="10" class="empty">Проверок пока не было.</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="panel"><div class="panel-head"><div><h2>История проверок</h2><p>Что происходило в каждом цикле, без технических загадок</p></div></div><p class="table-scroll-hint">Широкая таблица — горизонтальная прокрутка на мобильных.</p><div class="table-wrap embedded system-table-wrap system-run-wrap"><table class="system-run-history"><thead><tr><th>Время</th><th>Кто запустил</th><th>Источник</th><th>Результат</th><th>Reels</th><th>Страниц API</th><th>Комментариев увидели</th><th>Новых сохранили</th><th>История разобрана</th><th>Ошибки</th></tr></thead><tbody>{% for run in runs %}<tr><td>{{ run.started_at | display_dt('%d.%m %H:%M:%S') }}</td><td>{{ trigger_label(run.trigger) }}</td><td>{{ run.provider or '—' }}</td><td><span class="tag run-{{ run.status.value|lower }}">{{ run_status_label(run.status) }}</span></td><td>{{ run.stats_json.get('reels_found',0) }}</td><td>{{ run.stats_json.get('comment_requests',0) }}</td><td>{{ run.stats_json.get('comments_seen',0) }}</td><td>{{ run.stats_json.get('comments_created',0) }}</td><td>{{ run.stats_json.get('historical_analyzed',0) }}</td><td>{% if run.error %}<span class="warn">{{ run.error }}</span>{% else %}{{ run.stats_json.get('errors',0) }}{% endif %}</td></tr>{% else %}<tr><td colspan="10" class="empty">Проверок пока не было.</td></tr>{% endfor %}</tbody></table></div></section>
 {% endblock %}
