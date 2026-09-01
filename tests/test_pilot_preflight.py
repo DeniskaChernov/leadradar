@@ -23,3 +23,11 @@ def test_prepare_controlled_pilot_script_runs():
     assert "CONTROLLED RADAR PILOT" in stdout
     assert "Pilot contract" in stdout or "Pilot contract (manual)" in stdout
     assert "RESULT:" in stdout
+
+
+def test_arm_controlled_pilot_module_exposes_main():
+    from scripts import arm_controlled_pilot
+
+    assert callable(arm_controlled_pilot.main)
+    assert arm_controlled_pilot.PILOT_HANDLE == "aiko.uz"
+    assert arm_controlled_pilot.DEFAULT_CREDITS == 5

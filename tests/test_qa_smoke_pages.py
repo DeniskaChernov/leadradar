@@ -266,3 +266,58 @@ async def test_economics_page_shows_won_revenue_with_commercial_fixture(session_
     assert "Валовая прибыль" in text
     assert 'data-label="Горячие"' in text
     assert 'data-label="Выиграно"' in text
+
+
+async def _seed_complete_roi_fixture(session_factory) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import select
+
+    from app.db.models import CostEvent, DealSaleSnapshot
+    from app.services.fx_policy_service import FxPolicyService
+    from tests.test_unit_economics import _commercial_fixture
+
+    lead_id, _competitor_id = await _commercial_fixture(session_factory)
+    async with session_factory() as session:
+        snapshot = await session.scalar(select(DealSaleSnapshot))
+        assert snapshot is not None
+        snapshot.cogs = Decimal("100")
+        snapshot.catalog_currency = "USD"
+        session.add(
+            CostEvent(
+                idempotency_key="qa:roi-complete",
+                service="openai",
+                provider="openai",
+                operation="lead_analysis",
+                lead_id=lead_id,
+                units=1,
+                cost_usd=Decimal("10"),
+            )
+        )
+        await session.commit()
+    await FxPolicyService(session_factory).set_rate(
+        base_currency="USD",
+        quote_currency="UZS",
+        rate=Decimal("12500"),
+        manager_id=101,
+        effective_from=datetime.now(UTC) - timedelta(days=1),
+    )
+
+
+async def test_economics_page_shows_roi_with_complete_cogs_and_fx(session_factory):
+    await _seed_complete_roi_fixture(session_factory)
+    from app.services.unit_economics_service import UnitEconomicsEngine
+
+    report = await UnitEconomicsEngine(session_factory, hot_threshold=70).snapshot(30)
+    assert report.gross_profit_uzs == Decimal("11250000.000000")
+    assert report.roi_ratio == Decimal("89.0000")
+
+    app = _app(session_factory)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/economics?days=30")
+    assert response.status_code == 200
+    text = response.text
+    assert "11 250 000" in text
+    assert "маржа 90.00%" in text
+    assert "8900.00%" in text
+    assert "рассчитан" in text
