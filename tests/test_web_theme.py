@@ -206,6 +206,9 @@ def test_economics_page_has_hero_and_safe_credit_accuracy():
     assert "hero-status economics-hero" in economics
     assert "safe_attr(page.credits, 'confirmed_coverage_percent')" in economics
     assert "segmented-control" in economics
+    assert "Входные токены" in economics
+    assert "Валовая прибыль" in economics
+    assert 'data-label="Горячие"' in economics
 
 
 def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
@@ -266,6 +269,8 @@ def test_mobile_responsive_tables_and_economics_wrap_at_720px():
     assert 'data-label="Увер."' in audience_quality
     assert "body.more-navigation-open .mobile-nav-backdrop" in css
     assert ".nav-primary { grid-template-columns: repeat(4,minmax(0,1fr))" in css
+    assert "padding-bottom: calc(78px + env(safe-area-inset-bottom))" in css
+    assert ".filters { top: 78px; }" in css
 
 
 def test_contact_qualification_and_intelligence_sections_have_explicit_layouts():

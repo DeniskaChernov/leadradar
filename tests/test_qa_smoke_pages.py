@@ -248,3 +248,21 @@ async def test_competitor_detail_404_for_missing_id(session_factory):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/competitors/999999")
     assert response.status_code == 404
+
+
+async def test_economics_page_shows_won_revenue_with_commercial_fixture(session_factory):
+    from tests.test_unit_economics import _commercial_fixture
+
+    await _commercial_fixture(session_factory)
+    app = _app(session_factory)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/economics?days=30")
+    assert response.status_code == 200
+    text = response.text
+    assert "Выручка snapshot" in text
+    assert "12 500 000" in text
+    assert "Выиграно: 1" in text or "выигранных" in text
+    assert "Входные токены" in text
+    assert "Валовая прибыль" in text
+    assert 'data-label="Горячие"' in text
+    assert 'data-label="Выиграно"' in text

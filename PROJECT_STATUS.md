@@ -4,6 +4,10 @@
 
 **PERSISTENT AI CHAT · FUNNEL UX · QA 55 · LIVE PILOT READY**
 
+Контрольная точка 2026-09-01 (QA4): полная русификация economics (токены, HOT/WON,
+валовая прибыль), smoke WON+revenue 12.5M UZS, pilot preflight test, mobile CSS
+audit расширен. **385 passed, 1 skipped**.
+
 Контрольная точка 2026-09-01 (QA3): economics split test (30 confirmed + 10
 estimated = 75%), smoke competitor/audience detail по реальным ID, русификация
 audience_quality таблиц, mobile responsive-table audit. **383 passed, 1 skipped**.

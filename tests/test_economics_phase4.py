@@ -263,7 +263,7 @@ async def test_analytics_page_excludes_money_metrics(session_factory):
     assert response.status_code == 200
     assert "Стоимость лида" not in response.text
     assert "ROI не подменяется догадкой" not in response.text
-    assert "Market intelligence" in response.text
+    assert "Market intelligence" in response.text or "Рыночная аналитика" in response.text
     assert "Воронка лидов" in response.text
 
 
