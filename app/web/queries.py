@@ -618,7 +618,7 @@ class WebQueryService:
                     "contact_id": contact.id,
                     "username": contact.username,
                     "score": lead.lead_score,
-                    "intent": lead.intent.value if lead.intent else None,
+                    "intent": lead.intent,
                     "comment_preview": (comment.text or "")[:140],
                     "competitor": competitor.normalized_handle,
                 }
