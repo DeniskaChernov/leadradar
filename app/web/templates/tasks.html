@@ -11,9 +11,9 @@
   {% endif %}
 {% endfor %}
 
-<section class="hero-status {% if ns.overdue %}warn{% else %}live{% endif %} tasks-hero">
+<section class="hero-status {% if ns.overdue %}warn{% else %}live{% endif %} tasks-hero" data-motion-root>
   <div>
-    <span class="eyebrow">FOLLOW-UP QUEUE</span>
+    <span class="eyebrow">ОЧЕРЕДЬ КОНТАКТОВ</span>
     <h2>{{ rows|length }} задач · {{ ns.open }} открытых</h2>
     <p>{% if ns.overdue %}{{ ns.overdue }} просрочено — начните с них.{% else %}Просроченных задач нет. Следующие контакты видны ниже.{% endif %}</p>
   </div>
@@ -35,7 +35,7 @@
   <a class="btn ghost" href="/tasks">Сбросить</a>
 </form>
 
-<div class="task-list-page">
+<div class="task-list-page" data-motion-root>
 {% for task, contact, lead in rows %}
 <article class="panel task-card {% if task.status.value == 'OPEN' and task.due_at < now %}overdue{% endif %}">
   <div class="task-time"><b>{{ task.due_at | display_dt('%d.%m') }}</b><span>{{ task.due_at | display_dt('%H:%M') }}</span></div>
@@ -46,12 +46,12 @@
   </div>
   <div class="task-card-actions">
     <a class="btn ghost" href="/contacts/{{ contact.id }}">Карточка клиента</a>
-    {% if task.status.value != 'DONE' %}<button class="btn success" data-task-complete="{{ task.id }}">✓ Выполнено</button>{% endif %}
+    {% if task.status.value != 'DONE' %}<button class="btn success" type="button" data-task-complete="{{ task.id }}">✓ Выполнено</button>{% endif %}
   </div>
 </article>
 {% else %}
 <div class="empty-state panel">
-  <span class="empty-icon">📋</span>
+  <span class="empty-icon" aria-hidden="true"><i data-lucide="calendar-check"></i></span>
   <h3>Задач пока нет</h3>
   <p>Задачи создаются из карточки клиента или лида, когда нужно запланировать следующий контакт.</p>
   <a class="btn ghost btn-sm" href="/leads">Перейти к лидам →</a>

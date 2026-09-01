@@ -257,7 +257,7 @@
   const enhanceMotion = () => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const elements = document.querySelectorAll(
-      '[data-motion-root] > *, .cards > *, .kanban-stack > *, .kanban-col, .task-list-page > *, .catalog-grid > *, .lead-layout > .panel, .stage-actions > .stage-btn, .funnel-track-step, .quick-actions > *, .metrics > *'
+      '[data-motion-root] > *, .cards > *, .kanban-stack > *, .kanban-col, .task-list-page > *, .catalog-grid > *, .lead-layout > .panel, .stage-actions > .stage-btn, .funnel-track-step, .quick-actions > *, .metrics > *, .deal-grid > *'
     );
     if (!elements.length) return;
     document.documentElement.classList.add('motion-ready');

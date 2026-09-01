@@ -8,9 +8,9 @@
   {% if deal.status.value == 'WON' %}{% set ns.won = ns.won + 1 %}{% elif deal.status.value not in ['LOST'] %}{% set ns.open = ns.open + 1 %}{% endif %}
 {% endfor %}
 
-<section class="hero-status live deals-hero">
+<section class="hero-status live deals-hero" data-motion-root>
   <div>
-    <span class="eyebrow">REVENUE PIPELINE</span>
+    <span class="eyebrow">ВОРОНКА СДЕЛОК</span>
     <h2>{{ rows|length }} сделок · {{ ns.won }} WON</h2>
     <p>{{ ns.open }} в работе. Результат сделки учит систему отличать интерес от реальной покупки.</p>
   </div>
@@ -32,7 +32,7 @@
   <a class="btn ghost" href="/deals">Сбросить</a>
 </form>
 
-<div class="deal-grid">
+<div class="deal-grid" data-motion-root>
 {% for deal, lead, contact, competitor in rows %}
 <article class="deal-card status-border-{{ deal.status.value|lower }}">
   <div class="deal-card-head"><div><span class="tag status-{{ deal.status.value|lower }}">{{ deal_status_label(deal.status) }}</span><h3>{{ deal.product_name or product_label(deal.product_category) }}</h3></div><strong>{{ money(deal.final_amount or deal.amount) }} <small>сум</small></strong></div>
@@ -41,7 +41,7 @@
 </article>
 {% else %}
 <div class="empty-state panel deal-grid-empty">
-  <span class="empty-icon">🤝</span>
+  <span class="empty-icon" aria-hidden="true"><i data-lucide="handshake"></i></span>
   <h3>Сделок пока нет</h3>
   <p>Создайте первую сделку из карточки рабочего лида, чтобы фиксировать продажи и обучать систему на реальных чеках.</p>
   <a class="btn ghost btn-sm" href="/leads">Перейти к лидам →</a>

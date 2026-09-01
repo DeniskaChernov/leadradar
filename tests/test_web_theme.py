@@ -217,8 +217,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.11.1-dashboard" in base
-    assert "13.11.1-dashboard" in auth
+    assert "13.11.2-crm-pages" in base
+    assert "13.11.2-crm-pages" in auth
     assert "fonts.googleapis.com" in base
     assert 'href="/catalog"' in base
     assert 'href="/discovery"' in base
@@ -334,6 +334,9 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert ".radar-metrics" in css
     assert "leads-hero" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
     assert "contacts-hero" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
+    assert 'href="/agent"' in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
+    assert "ОЧЕРЕДЬ КОНТАКТОВ" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")
+    assert "ВОРОНКА СДЕЛОК" in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
     assert "tasks-hero" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")
     assert "deals-hero" in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
     assert "V3.5 · unified airy rhythm" in css

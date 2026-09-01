@@ -3265,4 +3265,24 @@ a:hover { color: #2445d9; }
   .main > .panel:first-child { animation: none; }
   .funnel-track-step.current i::after { animation: none; }
   .agent-chat-typing span { animation: none; opacity: .6; }
+  .task-card.overdue { animation: none; }
 }
+
+/* --- CRM pages motion v13.11.2 --- */
+.task-card {
+  transition: transform var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast), border-color var(--motion-fast);
+}
+.task-card:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(90, 70, 50, 0.10); }
+.task-card.overdue { border-color: rgba(225, 29, 72, 0.35); animation: overdue-pulse 2.8s ease-in-out infinite; }
+@keyframes overdue-pulse {
+  50% { box-shadow: inset 3px 0 #e11d48, 0 10px 24px rgba(225, 29, 72, 0.12); }
+}
+.deal-card {
+  transition: transform var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast);
+}
+.deal-card:hover { transform: translateY(-3px); box-shadow: 0 16px 36px rgba(73, 92, 190, 0.12); }
+.contacts-table-wrap tbody tr {
+  transition: background var(--motion-fast);
+}
+.contacts-table-wrap tbody tr:hover { background: rgba(229, 244, 255, 0.45); }
+.empty-state .empty-icon i { width: 28px; height: 28px; color: var(--primary); }

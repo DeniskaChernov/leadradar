@@ -3,7 +3,7 @@
 {% block heading %}Клиенты{% endblock %}
 {% block subheading %}Единая база людей, которых Lead Radar когда-либо видел{% endblock %}
 {% block content %}
-<section class="hero-status safe contacts-hero">
+<section class="hero-status safe contacts-hero" data-motion-root>
   <div>
     <span class="eyebrow">БАЗА КЛИЕНТОВ</span>
     <h2>{{ rows|length }} {% if rows|length == 1 %}клиент{% elif rows|length in [2,3,4] %}клиента{% else %}клиентов{% endif %} {% if q %}по запросу{% else %}в базе{% endif %}</h2>
@@ -11,7 +11,8 @@
   </div>
   <div class="hero-actions">
     <a class="btn primary" href="/radar">Новые сигналы</a>
-    <a class="btn ghost" href="/leads">Лиды</a>
+    <a class="btn" href="/leads">Лиды</a>
+    <a class="btn ghost" href="/agent">AI по базе</a>
   </div>
 </section>
 
@@ -21,7 +22,7 @@
   <a class="btn ghost" href="/contacts">Показать всех</a>
 </form>
 
-<div class="table-wrap"><table class="responsive-table"><thead><tr><th>Клиент</th><th>Сигналов</th><th>Источников</th><th>Лидов</th><th>Лучшая оценка</th><th>Задачи</th><th>Первый сигнал</th><th>Последняя активность</th></tr></thead><tbody>
+<div class="table-wrap contacts-table-wrap" data-motion-root><table class="responsive-table"><thead><tr><th>Клиент</th><th>Сигналов</th><th>Источников</th><th>Лидов</th><th>Лучшая оценка</th><th>Задачи</th><th>Первый сигнал</th><th>Последняя активность</th></tr></thead><tbody>
 {% for contact, signal_count, source_count, lead_count, max_score, task_count in rows %}<tr class="clickable" data-href="/contacts/{{ contact.id }}"><td data-label="Клиент"><a class="user" href="/contacts/{{ contact.id }}"><b>@{{ contact.username }}</b><small>{{ contact.display_name or 'Имя не указано' }}</small></a></td><td data-label="Сигналов">{{ signal_count }}</td><td data-label="Источников">{% if source_count > 1 %}<span class="tag success">{{ source_count }} · сравнивает рынок</span>{% else %}{{ source_count }}{% endif %}</td><td data-label="Лидов">{{ lead_count }}</td><td data-label="Оценка"><div class="lead-score {% if max_score >= settings.hot_lead_threshold %}hot{% elif max_score >= 50 %}warm{% endif %}">{{ max_score }}</div></td><td data-label="Задачи">{% if task_count %}<span class="tag pending">{{ task_count }} открыто</span>{% else %}<span class="muted">—</span>{% endif %}</td><td data-label="Первый сигнал">{{ contact.first_seen_at | display_dt('%d.%m.%Y %H:%M') }}</td><td data-label="Активность">{{ contact.last_seen_at | display_dt('%d.%m.%Y %H:%M') }}</td></tr>{% else %}<tr><td colspan="8" class="empty">Клиентов не найдено.</td></tr>{% endfor %}
 </tbody></table></div>
 {% endblock %}
