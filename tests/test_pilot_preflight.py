@@ -33,7 +33,8 @@ def test_arm_controlled_pilot_module_exposes_main():
     assert arm_controlled_pilot.DEFAULT_CREDITS == 5
 
 
-def test_restore_tier_a_competitors_module_exposes_main():
-    from scripts import restore_tier_a_competitors
+def test_restore_pilot_competitors_module_exposes_main():
+    from scripts import restore_pilot_competitors
 
-    assert callable(restore_tier_a_competitors.main)
+    assert callable(restore_pilot_competitors.main)
+    assert restore_pilot_competitors.RESTORE_TIERS == ("A", "B", "C")

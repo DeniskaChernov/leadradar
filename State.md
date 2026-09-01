@@ -11,4 +11,4 @@
 - live_readiness: READY FOR LIVE PILOT
 - pilot_preflight: OFFLINE READY
 - pilot_run: 2026-09-01T17:45+05 run#6 SUCCESS aiko.uz only 3 credits PROVIDER_CONFIRMED UNCERTAIN=0
-- pilot_note: tier A restored 2026-09-01T18:10+05 — 5 active (aiko/chinar/dafnamebel/mebel__house__/rona_rattan)
+- pilot_note: all tiers A/B/C restored — 16 active (restore_pilot_competitors)

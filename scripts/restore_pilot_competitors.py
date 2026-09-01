@@ -1,4 +1,4 @@
-# Восстановление мониторинга tier A после controlled pilot.
+# Восстановление мониторинга tier A/B/C после controlled pilot.
 # Не трогает operational_controls и не удаляет данные.
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from app.config import get_settings
 from app.db.models import Competitor
 from app.db.session import create_engine, create_session_factory
 
+RESTORE_TIERS = ("A", "B", "C")
+
 
 async def main() -> None:
     settings = get_settings()
@@ -18,29 +20,27 @@ async def main() -> None:
 
     async with factory() as session:
         restored = await session.execute(
-            update(Competitor).where(Competitor.tier == "A").values(active=True)
+            update(Competitor)
+            .where(Competitor.tier.in_(RESTORE_TIERS))
+            .values(active=True)
         )
-        active = (
-            await session.scalars(
-                select(Competitor.normalized_handle)
+        by_tier: dict[str, list[str]] = {tier: [] for tier in RESTORE_TIERS}
+        rows = (
+            await session.execute(
+                select(Competitor.tier, Competitor.normalized_handle)
                 .where(Competitor.active.is_(True))
-                .order_by(Competitor.normalized_handle)
+                .order_by(Competitor.tier, Competitor.normalized_handle)
             )
         ).all()
-        tier_a = (
-            await session.scalars(
-                select(Competitor.normalized_handle)
-                .where(Competitor.tier == "A")
-                .order_by(Competitor.normalized_handle)
-            )
-        ).all()
+        for tier, handle in rows:
+            bucket = by_tier.setdefault(str(tier), [])
+            bucket.append(handle)
         await session.commit()
 
     print(
-        "restore_tier_a_competitors:",
+        "restore_pilot_competitors:",
         f"restored={restored.rowcount}",
-        f"tier_a={list(tier_a)}",
-        f"active={list(active)}",
+        f"by_tier={by_tier}",
     )
     await engine.dispose()
 
