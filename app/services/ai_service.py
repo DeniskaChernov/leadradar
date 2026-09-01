@@ -1071,8 +1071,8 @@ class OpenAILeadAnalyzer:
                 instructions=system_prompt,
                 input=json.dumps(payload, ensure_ascii=False, default=str),
                 text_format=LeadAnalysis,
-                reasoning={"effort": "medium"},
-                max_output_tokens=900,
+                reasoning={"effort": "low"},
+                max_output_tokens=2000,
                 store=False,
                 prompt_cache_key="lead-radar-qualifier-v3",
             )
@@ -1121,7 +1121,7 @@ class OpenAILeadAnalyzer:
 
 class BudgetedCachedOpenAIAnalyzer:
     PROMPT_VERSION = "lead-v3.1-validated-history"
-    SCHEMA_VERSION = "lead-analysis-v3"
+    SCHEMA_VERSION = "lead-analysis-v3.2"
 
     def __init__(
         self,

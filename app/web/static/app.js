@@ -264,8 +264,20 @@
         entry.target.classList.add('is-visible');
         observer.unobserve(entry.target);
       });
-    }, { threshold: 0.06, rootMargin: '0px 0px -24px' });
+    }, { threshold: 0.01, rootMargin: '0px 0px -8px' });
     elements.forEach((element) => observer.observe(element));
+    // Сразу показать уже видимые блоки — иначе opacity:0 до первого callback IO.
+    requestAnimationFrame(() => {
+      const vh = window.innerHeight || document.documentElement.clientHeight;
+      elements.forEach((element) => {
+        if (element.classList.contains('is-visible')) return;
+        const rect = element.getBoundingClientRect();
+        if (rect.bottom > 0 && rect.top < vh) {
+          element.classList.add('is-visible');
+          observer.unobserve(element);
+        }
+      });
+    });
   };
 
   const restoreViewState = () => {

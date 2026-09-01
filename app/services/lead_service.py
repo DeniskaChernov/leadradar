@@ -268,7 +268,7 @@ class LeadService:
                     "urgency": analysis.urgency.value,
                     "buyer_role": analysis.buyer_role.value,
                     "intelligence_version": analysis.intelligence_version,
-                    "factors": analysis.factors,
+                    "factors": analysis.factors.model_dump(),
                     "evidence_ids": analysis.evidence_ids,
                 },
             )

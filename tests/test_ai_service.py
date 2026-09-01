@@ -42,7 +42,7 @@ async def test_openai_structured_response_parsing():
     assert responses.kwargs["model"] == "configured-model"
     assert responses.kwargs["text_format"] is LeadAnalysis
     assert responses.kwargs["store"] is False
-    assert responses.kwargs["reasoning"] == {"effort": "medium"}
+    assert responses.kwargs["reasoning"] == {"effort": "low"}
     assert responses.kwargs["prompt_cache_key"] == "lead-radar-qualifier-v3"
 
 
