@@ -120,6 +120,38 @@ class LeadRadarMCPGateway:
                 "properties": {"recipe_type": {"type": "string"}, "budget_usd": {"type": "number"}},
             },
         ),
+        "competitor.manage": MCPToolDefinition(
+            name="competitor.manage",
+            namespace="competitor",
+            description="Добавить или обновить конкурента (handle, active, tier).",
+            requires_approval=True,
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "handle": {"type": "string"},
+                    "active": {"type": "boolean"},
+                    "tier": {"type": "string"},
+                    "display_name": {"type": "string"},
+                    "category": {"type": "string"},
+                },
+                "required": ["handle"],
+            },
+        ),
+        "project.write_file": MCPToolDefinition(
+            name="project.write_file",
+            namespace="project",
+            description="Запись в allowlist-файлы проекта (State.md, exports/, docs/drafts/).",
+            requires_approval=True,
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "relative_path": {"type": "string"},
+                    "content": {"type": "string"},
+                    "mode": {"type": "string"},
+                },
+                "required": ["relative_path", "content"],
+            },
+        ),
     }
 
     def __init__(self, read_service: Any | None = None, write_service: Any | None = None) -> None:

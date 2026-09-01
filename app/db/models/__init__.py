@@ -1,4 +1,6 @@
 from app.db.models.entities import (
+    AgentChatMessage,
+    AgentChatSession,
     AIFeedback,
     AIRequest,
     AIRequestStatus,
@@ -67,6 +69,8 @@ __all__ = [
     "AIFeedback",
     "AIRequest",
     "AIRequestStatus",
+    "AgentChatMessage",
+    "AgentChatSession",
     "AnalysisCache",
     "AudienceMembership",
     "AudienceSegment",

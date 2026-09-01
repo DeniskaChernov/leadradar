@@ -43,7 +43,7 @@
     data.answer || '—',
   ].join('\n');
 
-  const escapeHtml = (value) => String(value)
+  const escapeHtml = (value) => String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
@@ -257,7 +257,7 @@
   const enhanceMotion = () => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const elements = document.querySelectorAll(
-      '[data-motion-root] > *, .cards > *, .kanban-stack > *, .task-list-page > *, .catalog-grid > *'
+      '[data-motion-root] > *, .cards > *, .kanban-stack > *, .kanban-col, .task-list-page > *, .catalog-grid > *, .lead-layout > .panel, .stage-actions > .stage-btn, .funnel-track-step'
     );
     if (!elements.length) return;
     document.documentElement.classList.add('motion-ready');
@@ -337,6 +337,11 @@
   enhanceClickableRows();
   enhanceMotion();
   restoreViewState();
+
+  const flashStageSuccess = (element) => {
+    if (!element) return;
+    element.classList.add('stage-success');
+  };
 
   const reloadSoon = (delay = 450, focusSelector = '') => {
     sessionStorage.setItem('lr:scroll-y', String(window.scrollY));
@@ -673,8 +678,18 @@
         return;
       }
       const form = agentPreset.closest('[data-agent-query]')
-        || document.querySelector('#agent-quick [data-agent-query]');
+        || document.querySelector('#agent-quick [data-agent-query]')
+        || document.querySelector('[data-agent-chat-form]');
       if (!form) return;
+      if (form.matches('[data-agent-chat-form]')) {
+        const textarea = form.querySelector('textarea[name="query"]');
+        if (textarea instanceof HTMLTextAreaElement) {
+          textarea.value = String(payload.query || '');
+          textarea.focus();
+        }
+        form.requestSubmit();
+        return;
+      }
       Object.entries(payload).forEach(([key, value]) => {
         const field = form.querySelector(`[name="${key}"]`);
         if (field instanceof HTMLInputElement) field.value = String(value);
@@ -752,6 +767,7 @@
       try {
         const data = await api(`/api/leads/${id}/${type}`, { method: 'POST', body: '{}' });
         toast(data.message || 'Лид обновлён');
+        flashStageSuccess(leadAction);
         reloadSoon();
       } catch (error) {
         toast(error.message, true);
@@ -769,7 +785,8 @@
           body: JSON.stringify({ status: stage.dataset.stage }),
         });
         toast(data.message || 'Стадия обновлена');
-        reloadSoon();
+        flashStageSuccess(stage);
+        reloadSoon(650);
       } catch (error) {
         toast(error.message, true);
         setLoading(stage, false);
@@ -806,12 +823,6 @@
     event.preventDefault();
     location.href = row.dataset.href;
   });
-
-  const escapeHtml = (value) => String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 
   const playChangeAlert = () => {
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
@@ -970,4 +981,144 @@
       refreshScanBudgetPreview(root);
     }
   });
+
+  const chatRoot = document.querySelector('[data-agent-chat-root]');
+  if (chatRoot) {
+    const messagesEl = chatRoot.querySelector('[data-agent-messages]');
+    const emptyEl = chatRoot.querySelector('[data-agent-empty]');
+    const typingEl = chatRoot.querySelector('[data-agent-typing]');
+    const sessionList = chatRoot.querySelector('[data-agent-session-list]');
+    const sessionInput = chatRoot.querySelector('[data-agent-session-id]');
+    const form = chatRoot.querySelector('[data-agent-chat-form]');
+    let activeSessionId = sessionInput?.value || '';
+
+    const emptyTemplate = emptyEl ? emptyEl.outerHTML : '';
+
+    const setTyping = (visible) => {
+      if (!typingEl) return;
+      typingEl.hidden = !visible;
+      typingEl.setAttribute('aria-hidden', String(!visible));
+    };
+
+    const renderMessages = (rows) => {
+      if (!messagesEl) return;
+      const list = rows || [];
+      if (!list.length) {
+        messagesEl.innerHTML = emptyTemplate;
+        return;
+      }
+      messagesEl.innerHTML = list.map((msg, index) => {
+        const role = msg.role === 'user' ? 'user' : 'assistant';
+        let extra = '';
+        if (msg.pending_status === 'pending' && msg.pending_action) {
+          extra = `<div class="agent-chat-approve"><button type="button" class="btn success tiny" data-agent-approve="${msg.id}">Подтвердить</button></div>`;
+        }
+        const delay = Math.min(index, 6) * 40;
+        return `<article class="agent-chat-msg ${role} msg-enter" style="--msg-delay:${delay}ms"><div class="agent-chat-bubble">${escapeHtml(msg.content || '')}</div>${extra}</article>`;
+      }).join('');
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    };
+
+    const loadSessions = async () => {
+      const data = await api('/api/agent/sessions', { method: 'GET' });
+      if (!sessionList) return;
+      const sessions = data.sessions || [];
+      if (!sessions.length) {
+        sessionList.innerHTML = '<p class="agent-session-empty muted">Нет сессий — начните новый чат</p>';
+        return;
+      }
+      sessionList.innerHTML = sessions.map((s) => (
+        `<button type="button" class="agent-session-item${String(s.id) === String(activeSessionId) ? ' active' : ''}" data-session-id="${s.id}">${escapeHtml(s.title || ('Чат #' + s.id))}</button>`
+      )).join('');
+    };
+
+    const loadMessages = async (sessionId) => {
+      if (!sessionId) return;
+      const data = await api(`/api/agent/sessions/${sessionId}/messages`, { method: 'GET' });
+      renderMessages(data.messages || []);
+    };
+
+    sessionList?.addEventListener('click', async (event) => {
+      const btn = event.target.closest('[data-session-id]');
+      if (!btn) return;
+      activeSessionId = btn.getAttribute('data-session-id') || '';
+      if (sessionInput) sessionInput.value = activeSessionId;
+      await loadSessions();
+      await loadMessages(activeSessionId);
+    });
+
+    chatRoot.querySelector('[data-agent-new-session]')?.addEventListener('click', async () => {
+      const created = await api('/api/agent/sessions', { method: 'POST', body: JSON.stringify({ title: 'Новый чат' }) });
+      activeSessionId = String(created.session_id);
+      if (sessionInput) sessionInput.value = activeSessionId;
+      await loadSessions();
+      renderMessages([]);
+    });
+
+    messagesEl?.addEventListener('click', async (event) => {
+      const btn = event.target.closest('[data-agent-approve]');
+      if (!btn) return;
+      const messageId = btn.getAttribute('data-agent-approve');
+      setLoading(btn, true);
+      try {
+        const result = await api('/api/agent/approve', {
+          method: 'POST',
+          body: JSON.stringify({ message_id: Number(messageId) }),
+        });
+        toast(result.ok ? 'Действие выполнено' : 'Ошибка выполнения', !result.ok);
+        await loadMessages(activeSessionId);
+      } catch (error) {
+        toast(error.message, true);
+      } finally {
+        setLoading(btn, false);
+      }
+    });
+
+    form?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const submit = form.querySelector('[type="submit"]');
+      const query = form.querySelector('textarea[name="query"]');
+      if (!(query instanceof HTMLTextAreaElement) || !query.value.trim()) return;
+      setLoading(submit, true);
+      setTyping(true);
+      try {
+        const payload = { query: query.value.trim() };
+        if (activeSessionId) payload.session_id = Number(activeSessionId);
+        const data = await api('/api/agent/chat', { method: 'POST', body: JSON.stringify(payload) });
+        activeSessionId = String(data.session_id);
+        if (sessionInput) sessionInput.value = activeSessionId;
+        query.value = '';
+        await loadSessions();
+        await loadMessages(activeSessionId);
+        toast(data.pending_action ? 'Нужно подтверждение' : (data.grounded ? 'Grounded ответ' : 'Ответ получен'));
+      } catch (error) {
+        toast(error.message, true);
+      } finally {
+        setTyping(false);
+        setLoading(submit, false);
+      }
+    });
+
+    form?.querySelector('textarea[name="query"]')?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.shiftKey) return;
+      event.preventDefault();
+      form.requestSubmit();
+    });
+
+    (async () => {
+      try {
+        await loadSessions();
+        if (!activeSessionId) {
+          const created = await api('/api/agent/sessions', { method: 'POST', body: JSON.stringify({ title: 'Lead Radar AI' }) });
+          activeSessionId = String(created.session_id);
+          if (sessionInput) sessionInput.value = activeSessionId;
+          await loadSessions();
+        } else {
+          await loadMessages(activeSessionId);
+        }
+      } catch (error) {
+        toast(error instanceof Error ? error.message : 'Не удалось загрузить чат', true);
+      }
+    })();
+  }
 })();

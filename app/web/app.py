@@ -1497,6 +1497,34 @@ def build_web_app(
         query = str(payload.get("query") or "").strip()
         if not query:
             raise HTTPException(status_code=400, detail="query is required")
+        session_id_raw = payload.get("session_id")
+        if session_id_raw not in (None, ""):
+            from app.services.agent_chat_orchestrator import AgentChatOrchestrator
+
+            orchestrator = AgentChatOrchestrator(
+                workflow.session_factory,
+                hot_threshold=settings.hot_lead_threshold,
+            )
+            try:
+                turn = await orchestrator.chat_turn(
+                    manager_id(request),
+                    query,
+                    session_id=_optional_int(session_id_raw, field="session_id"),
+                    context=payload,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            return {
+                "session_id": turn.session_id,
+                "message_id": turn.assistant_message_id,
+                "query": turn.query,
+                "answer": turn.answer,
+                "evidence_ids": list(turn.evidence_ids),
+                "grounded": turn.grounded,
+                "synthesis_mode": turn.synthesis_mode,
+                "pending_action": turn.pending_action,
+                "tool_calls": list(turn.tool_calls),
+            }
         service = AgentSessionService(
             workflow.session_factory,
             hot_threshold=settings.hot_lead_threshold,
@@ -1521,6 +1549,123 @@ def build_web_app(
                 for item in result.tool_calls
             ],
         }
+
+    @app.get("/agent", response_class=HTMLResponse)
+    async def agent_workspace(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="agent.html",
+            context=base_context(request),
+        )
+
+    @app.get("/api/agent/sessions")
+    async def agent_sessions_list(request: Request):
+        from app.services.agent_chat_service import AgentChatService
+
+        rows = await AgentChatService(workflow.session_factory).list_sessions(
+            manager_id(request),
+            limit=30,
+        )
+        return {
+            "sessions": [
+                {
+                    "id": row.id,
+                    "title": row.title,
+                    "updated_at": row.updated_at.isoformat(),
+                }
+                for row in rows
+            ]
+        }
+
+    @app.post("/api/agent/sessions")
+    async def agent_sessions_create(request: Request):
+        from app.services.agent_chat_service import AgentChatService
+
+        payload = await _json_or_form(request)
+        row = await AgentChatService(workflow.session_factory).create_session(
+            manager_id(request),
+            title=str(payload.get("title") or "Новый чат"),
+            context=payload,
+        )
+        return {"ok": True, "session_id": row.id, "title": row.title}
+
+    @app.get("/api/agent/sessions/{session_id}/messages")
+    async def agent_session_messages(request: Request, session_id: int):
+        from app.services.agent_chat_service import AgentChatService
+
+        chat = AgentChatService(workflow.session_factory)
+        session = await chat.get_session(session_id)
+        if session is None or session.manager_telegram_id != manager_id(request):
+            raise HTTPException(status_code=404, detail="session not found")
+        rows = await chat.list_messages(session_id, limit=200)
+        return {
+            "messages": [
+                {
+                    "id": row.id,
+                    "role": row.role,
+                    "content": row.content,
+                    "pending_action": row.pending_action_json,
+                    "pending_status": row.pending_status,
+                    "tool_calls": row.tool_calls_json,
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ]
+        }
+
+    @app.post("/api/agent/chat")
+    async def agent_chat_turn(request: Request):
+        from app.services.agent_chat_orchestrator import AgentChatOrchestrator
+
+        payload = await _json_or_form(request)
+        query = str(payload.get("query") or "").strip()
+        if not query:
+            raise HTTPException(status_code=400, detail="query is required")
+        session_id = payload.get("session_id")
+        orchestrator = AgentChatOrchestrator(
+            workflow.session_factory,
+            hot_threshold=settings.hot_lead_threshold,
+        )
+        try:
+            turn = await orchestrator.chat_turn(
+                manager_id(request),
+                query,
+                session_id=_optional_int(session_id, field="session_id"),
+                context=payload,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "ok": True,
+            "session_id": turn.session_id,
+            "message_id": turn.assistant_message_id,
+            "query": turn.query,
+            "answer": turn.answer,
+            "evidence_ids": list(turn.evidence_ids),
+            "grounded": turn.grounded,
+            "synthesis_mode": turn.synthesis_mode,
+            "pending_action": turn.pending_action,
+            "tool_calls": list(turn.tool_calls),
+        }
+
+    @app.post("/api/agent/approve")
+    async def agent_approve_action(request: Request):
+        from app.services.agent_chat_orchestrator import AgentChatOrchestrator
+
+        payload = await _json_or_form(request)
+        message_id = _required_positive_int(payload.get("message_id"), field="message_id")
+        orchestrator = AgentChatOrchestrator(
+            workflow.session_factory,
+            hot_threshold=settings.hot_lead_threshold,
+        )
+        try:
+            result = await orchestrator.approve_pending(
+                message_id,
+                manager_telegram_id=manager_id(request),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return result
 
     @app.post("/api/tasks/{task_id}/complete")
     async def complete_task(request: Request, task_id: int):
@@ -1839,7 +1984,31 @@ def _decimal_or_none(value: object) -> Decimal | None:
 def _int_or_none(value: object) -> int | None:
     if value in (None, ""):
         return None
-    return int(value)
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Некорректное числовое значение") from exc
+
+
+def _required_positive_int(value: object, *, field: str) -> int:
+    if value in (None, ""):
+        raise HTTPException(status_code=400, detail=f"{field} required")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"Некорректный {field}") from exc
+    if parsed <= 0:
+        raise HTTPException(status_code=400, detail=f"{field} required")
+    return parsed
+
+
+def _optional_int(value: object, *, field: str) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"Некорректный {field}") from exc
 
 
 def _human_workflow_error(exc: Exception) -> str:

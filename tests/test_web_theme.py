@@ -216,8 +216,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.9.2-pilot-ready" in base
-    assert "13.9.2-pilot-ready" in auth
+    assert "13.11.0-ui-polish" in base
+    assert "13.11.0-ui-polish" in auth
     assert "fonts.googleapis.com" in base
     assert 'href="/catalog"' in base
     assert 'href="/discovery"' in base
@@ -278,6 +278,13 @@ def test_radar_budget_ui_uses_credit_presets_truthful_max_and_result_facts():
     assert "Использовано за месяц" in javascript
     assert ".radar-budget-card" in css
     assert ".scan-result-grid" in css
+
+
+def test_app_js_has_single_escape_html_helper():
+    javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
+    assert javascript.count("const escapeHtml =") == 1
+    assert "data-stage" in javascript
+    assert "data-lead-action" in javascript
 
 
 def test_phase8_system_agent_export_and_telegram_workspaces():

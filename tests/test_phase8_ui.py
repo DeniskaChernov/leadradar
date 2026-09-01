@@ -101,6 +101,36 @@ async def test_contact_detail_renders_grounded_agent_panel(session_factory):
     assert agent.json()["grounded"] is True
 
 
+async def test_lead_stage_api_moves_funnel(session_factory):
+    lead_id = await create_lead(session_factory)
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        taken = await client.post(f"/api/leads/{lead_id}/take", json={})
+        contacted = await client.post(
+            f"/api/leads/{lead_id}/stage",
+            json={"status": "CONTACTED"},
+        )
+        qualified = await client.post(
+            f"/api/leads/{lead_id}/stage",
+            json={"status": "QUALIFIED"},
+        )
+
+    assert taken.status_code == 200
+    assert taken.json()["status"] == "TAKEN"
+    assert contacted.status_code == 200
+    assert contacted.json()["status"] == "CONTACTED"
+    assert qualified.status_code == 200
+    assert qualified.json()["status"] == "QUALIFIED"
+
+
 async def test_uncertain_notification_resolve_api(session_factory):
     from sqlalchemy import select
 

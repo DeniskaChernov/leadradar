@@ -59,14 +59,27 @@
 
 <div class="lead-layout">
   <div class="lead-main">
-    <section class="panel">
+    <section class="panel funnel-action-panel" data-motion-root>
       <div class="panel-head"><div><h2>Следующее действие</h2><p>Переводите лид по воронке только после реального действия менеджера</p></div></div>
+      {% set funnel_steps = ['NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION'] %}
+      {% set funnel_labels = ['Новый','В работе','Связались','Квалиф.','Предлож.','Переговоры'] %}
+      {% if lead.status.value in funnel_steps %}
+      <div class="funnel-track" role="img" aria-label="Прогресс по воронке: {{ lead_status_label(lead.status) }}">
+        {% for step in funnel_steps %}
+        {% set idx = loop.index0 %}
+        {% set current_idx = funnel_steps.index(lead.status.value) %}
+        <div class="funnel-track-step {% if idx < current_idx %}done{% elif idx == current_idx %}current{% endif %}">
+          <i></i><span>{{ funnel_labels[idx] }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
       <div class="stage-actions">
-        {% if lead.status.value == 'NEW' %}<button class="stage-btn primary" data-lead-action="take" data-lead-id="{{ lead.id }}"><span>1</span><div><b>Взять в работу</b><small>Закрепить лида за собой</small></div></button>{% endif %}
-        {% if lead.status.value in ['TAKEN'] %}<button class="stage-btn" data-stage="CONTACTED" data-lead-id="{{ lead.id }}"><span>2</span><div><b>Связались</b><small>Менеджер написал или позвонил</small></div></button>{% endif %}
-        {% if lead.status.value in ['TAKEN','CONTACTED'] %}<button class="stage-btn" data-stage="QUALIFIED" data-lead-id="{{ lead.id }}"><span>3</span><div><b>Интерес подтверждён</b><small>Понятно, что человеку действительно нужен товар</small></div></button>{% endif %}
-        {% if lead.status.value in ['CONTACTED','QUALIFIED','NEGOTIATION'] %}<button class="stage-btn" data-stage="OFFER_SENT" data-lead-id="{{ lead.id }}"><span>4</span><div><b>Отправили предложение</b><small>Цена, фото, каталог или конкретная модель</small></div></button>{% endif %}
-        {% if lead.status.value in ['CONTACTED','QUALIFIED','OFFER_SENT'] %}<button class="stage-btn" data-stage="NEGOTIATION" data-lead-id="{{ lead.id }}"><span>5</span><div><b>Переговоры</b><small>Обсуждаем детали и ведём к решению</small></div></button>{% endif %}
+        {% if lead.status.value == 'NEW' %}<button class="stage-btn primary" type="button" data-lead-action="take" data-lead-id="{{ lead.id }}"><span>1</span><div><b>Взять в работу</b><small>Закрепить лида за собой</small></div></button>{% endif %}
+        {% if lead.status.value in ['TAKEN'] %}<button class="stage-btn" type="button" data-stage="CONTACTED" data-lead-id="{{ lead.id }}"><span>2</span><div><b>Связались</b><small>Менеджер написал или позвонил</small></div></button>{% endif %}
+        {% if lead.status.value in ['TAKEN','CONTACTED'] %}<button class="stage-btn" type="button" data-stage="QUALIFIED" data-lead-id="{{ lead.id }}"><span>3</span><div><b>Интерес подтверждён</b><small>Понятно, что человеку действительно нужен товар</small></div></button>{% endif %}
+        {% if lead.status.value in ['CONTACTED','QUALIFIED','NEGOTIATION'] %}<button class="stage-btn" type="button" data-stage="OFFER_SENT" data-lead-id="{{ lead.id }}"><span>4</span><div><b>Отправили предложение</b><small>Цена, фото, каталог или конкретная модель</small></div></button>{% endif %}
+        {% if lead.status.value in ['CONTACTED','QUALIFIED','OFFER_SENT'] %}<button class="stage-btn" type="button" data-stage="NEGOTIATION" data-lead-id="{{ lead.id }}"><span>5</span><div><b>Переговоры</b><small>Обсуждаем детали и ведём к решению</small></div></button>{% endif %}
         {% if lead.status.value == 'ANALYZING' %}<div class="empty compact">Сигнал уже сохранён и отправлен менеджеру. Анализ интереса выполняется в фоне.</div>{% elif lead.status.value == 'AI_PENDING' %}<div class="empty compact">Нужна дополнительная проверка. Сигнал остаётся рабочим и не скрывается от менеджера.</div>{% endif %}
         {% if lead.status.value in ['WON','LOST','NOT_LEAD'] %}<div class="empty compact">Этот лид уже закрыт: <b>{{ lead_status_label(lead.status) }}</b>.</div>{% endif %}
       </div>

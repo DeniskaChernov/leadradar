@@ -1544,3 +1544,36 @@ class FxRatePolicy(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )
+
+
+class AgentChatSession(Base):
+    __tablename__ = "agent_chat_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    manager_telegram_id: Mapped[int] = mapped_column(Integer, index=True)
+    title: Mapped[str | None] = mapped_column(String(160))
+    context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, index=True
+    )
+
+
+class AgentChatMessage(Base):
+    __tablename__ = "agent_chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("agent_chat_sessions.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(16), index=True)
+    content: Mapped[str] = mapped_column(Text, default="")
+    tool_calls_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    pending_action_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    pending_status: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    evidence_ids_json: Mapped[list[int]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )

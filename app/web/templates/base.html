@@ -12,9 +12,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=13.9.2-pilot-ready">
+  <link rel="stylesheet" href="/static/app.css?v=13.11.0-ui-polish">
   <script defer src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
-  <script defer src="/static/app.js?v=13.9.2-pilot-ready"></script>
+  <script defer src="/static/app.js?v=13.11.0-ui-polish"></script>
 </head>
 <body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}" data-page="{{ active_path }}">
 <a class="skip-link" href="#main-content">Перейти к содержимому</a>
@@ -45,6 +45,7 @@
       <a class="nav {% if active_path.startswith('/leads') %}active{% endif %}" href="/leads" {% if active_path.startswith('/leads') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="zap"></i></span><b>Лиды</b></a>
       <a class="nav {% if active_path.startswith('/contacts') %}active{% endif %}" href="/contacts" {% if active_path.startswith('/contacts') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="users"></i></span><b>Клиенты</b></a>
       <a class="nav {% if active_path.startswith('/tasks') %}active{% endif %}" href="/tasks" {% if active_path.startswith('/tasks') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="circle-check-big"></i></span><b>Задачи</b></a>
+      <a class="nav {% if active_path.startswith('/agent') %}active{% endif %}" href="/agent" {% if active_path.startswith('/agent') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="bot"></i></span><b>AI-чат</b></a>
       </div>
       <button class="nav nav-more" type="button" data-more-toggle aria-expanded="false" aria-controls="more-navigation"><span aria-hidden="true"><i data-lucide="grid-2x2"></i></span><b>Ещё</b></button>
       <div class="nav-secondary" id="more-navigation" aria-label="Дополнительная навигация">
