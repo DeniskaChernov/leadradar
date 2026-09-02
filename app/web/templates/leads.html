@@ -87,10 +87,11 @@
 </nav>
 <div class="kanban kanban-wide" data-motion-root data-kanban-board>
 {% for stage in board_statuses %}
+{% set stage_rows = rows_by_stage.get(stage, []) %}
 <section class="kanban-col {% if stage in ['WON','LOST'] %}kanban-col-closed{% endif %}" data-kanban-stage="{{ stage }}">
-  <header><div><b>{{ lead_status_label(stage) }}</b><small>{% set col=namespace(count=0) %}{% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}{% set col.count = col.count + 1 %}{% endif %}{% endfor %}{{ col.count }} лидов</small></div></header>
+  <header><div><b>{{ lead_status_label(stage) }}</b><small>{{ stage_rows|length }} лидов</small></div></header>
   <div class="kanban-stack" data-kanban-drop>
-  {% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}
+  {% for lead, contact, comment, competitor, post, deal in stage_rows %}
     <article class="kanban-card {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %} {% if lead_is_off_catalog(lead) %}off-catalog{% endif %}" data-lead-card="{{ lead.id }}" data-lead-stage="{{ lead.status.value }}">
       <div class="kanban-card-head">
         <button type="button" class="kanban-drag-handle" draggable="true" aria-label="Перетащить карточку в другую колонку" data-kanban-drag-handle title="Перетащить">⠿</button>
@@ -107,7 +108,7 @@
         <a class="btn tiny ghost" href="/leads/{{ lead.id }}">Подробнее</a>
       </div>
     </article>
-  {% endif %}{% endfor %}
+  {% endfor %}
   </div>
 </section>
 {% endfor %}

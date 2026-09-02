@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from itertools import combinations
 
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import (
@@ -1221,53 +1221,77 @@ class WebQueryService:
                     .order_by(AudienceSegment.name)
                 )
             )
+            if not segments:
+                return []
+            segment_ids = [segment.id for segment in segments]
+            # Один batch вместо N+1: все active memberships + intelligence.
+            member_rows = (
+                await session.execute(
+                    select(
+                        AudienceMembership.segment_id,
+                        ContactIntelligence.activity_score,
+                        ContactIntelligence.value_score,
+                        ContactIntelligence.product_interests_json,
+                        ContactIntelligence.top_intents_json,
+                    )
+                    .join(
+                        ContactIntelligence,
+                        ContactIntelligence.contact_id == AudienceMembership.contact_id,
+                    )
+                    .where(
+                        AudienceMembership.segment_id.in_(segment_ids),
+                        AudienceMembership.active.is_(True),
+                    )
+                )
+            ).all()
+            member_counts: Counter[int] = Counter()
+            activity_sums: Counter[int] = Counter()
+            value_sums: Counter[int] = Counter()
+            products_by_segment: dict[int, Counter[str]] = {
+                segment_id: Counter() for segment_id in segment_ids
+            }
+            intents_by_segment: dict[int, Counter[str]] = {
+                segment_id: Counter() for segment_id in segment_ids
+            }
+            for (
+                segment_id,
+                activity_score,
+                value_score,
+                product_interests,
+                top_intents,
+            ) in member_rows:
+                member_counts[segment_id] += 1
+                activity_sums[segment_id] += int(activity_score or 0)
+                value_sums[segment_id] += int(value_score or 0)
+                if isinstance(product_interests, list):
+                    for row in product_interests:
+                        if not isinstance(row, dict) or row.get("value") is None:
+                            continue
+                        products_by_segment[segment_id][str(row["value"])] += int(
+                            row.get("count") or 0
+                        )
+                if isinstance(top_intents, list):
+                    for row in top_intents:
+                        if not isinstance(row, dict) or row.get("value") is None:
+                            continue
+                        intents_by_segment[segment_id][str(row["value"])] += int(
+                            row.get("count") or 0
+                        )
             result: list[dict] = []
             for segment in segments:
-                members = (
-                    (
-                        await session.execute(
-                            select(ContactIntelligence)
-                            .join(
-                                AudienceMembership,
-                                AudienceMembership.contact_id == ContactIntelligence.contact_id,
-                            )
-                            .where(
-                                AudienceMembership.segment_id == segment.id,
-                                AudienceMembership.active.is_(True),
-                            )
-                        )
-                    )
-                    .scalars()
-                    .all()
-                )
-                product_counts: Counter[str] = Counter()
-                intent_counts: Counter[str] = Counter()
-                for item in members:
-                    product_counts.update(
-                        {
-                            str(row["value"]): int(row["count"])
-                            for row in item.product_interests_json
-                        }
-                    )
-                    intent_counts.update(
-                        {str(row["value"]): int(row["count"]) for row in item.top_intents_json}
-                    )
+                members = member_counts[segment.id]
+                products = products_by_segment[segment.id]
+                intents = intents_by_segment[segment.id]
                 result.append(
                     {
                         "segment": segment,
-                        "members": len(members),
-                        "avg_activity": round(
-                            sum(item.activity_score for item in members) / len(members)
-                        )
-                        if members
-                        else 0,
-                        "avg_value": round(sum(item.value_score for item in members) / len(members))
-                        if members
-                        else 0,
-                        "top_product": product_counts.most_common(1)[0][0]
-                        if product_counts
-                        else None,
-                        "top_intent": intent_counts.most_common(1)[0][0] if intent_counts else None,
+                        "members": members,
+                        "avg_activity": (
+                            round(activity_sums[segment.id] / members) if members else 0
+                        ),
+                        "avg_value": (round(value_sums[segment.id] / members) if members else 0),
+                        "top_product": products.most_common(1)[0][0] if products else None,
+                        "top_intent": intents.most_common(1)[0][0] if intents else None,
                         "health": health_by_slug.get(segment.slug),
                     }
                 )
@@ -1416,52 +1440,54 @@ class WebQueryService:
 
     async def competitors(self) -> list[dict]:
         async with self.session_factory() as session:
-            competitors = (
+            competitors = list(
                 await session.scalars(
                     select(Competitor).order_by(Competitor.tier, Competitor.normalized_handle)
                 )
+            )
+            if not competitors:
+                return []
+            competitor_ids = [competitor.id for competitor in competitors]
+            stats_by_id = await self._competitor_stats_map(session, competitor_ids)
+            won_rows = (
+                await session.execute(
+                    select(Lead.competitor_id, func.count(Deal.id))
+                    .join(Deal, Deal.lead_id == Lead.id)
+                    .where(
+                        Lead.competitor_id.in_(competitor_ids),
+                        Deal.status == DealStatus.WON,
+                    )
+                    .group_by(Lead.competitor_id)
+                )
             ).all()
+            won_by_id = {int(competitor_id): int(count) for competitor_id, count in won_rows}
+            snapshot_rows = (
+                await session.execute(
+                    select(
+                        Lead.competitor_id,
+                        func.count(DealSaleSnapshot.id),
+                        func.sum(DealSaleSnapshot.sale_amount),
+                    )
+                    .join(Deal, Deal.lead_id == Lead.id)
+                    .join(DealSaleSnapshot, DealSaleSnapshot.deal_id == Deal.id)
+                    .where(
+                        Lead.competitor_id.in_(competitor_ids),
+                        Deal.status == DealStatus.WON,
+                        DealSaleSnapshot.sale_currency == "UZS",
+                    )
+                    .group_by(Lead.competitor_id)
+                )
+            ).all()
+            snapshot_by_id = {
+                int(competitor_id): (int(count or 0), amount)
+                for competitor_id, count, amount in snapshot_rows
+            }
             result = []
             for competitor in competitors:
-                stats = await self._competitor_stats(session, competitor)
-                won = int(
-                    await session.scalar(
-                        select(func.count(Deal.id))
-                        .join(Lead, Lead.id == Deal.lead_id)
-                        .where(
-                            Lead.competitor_id == competitor.id,
-                            Deal.status == DealStatus.WON,
-                        )
-                    )
-                    or 0
-                )
-                snapshot_count = int(
-                    await session.scalar(
-                        select(func.count(DealSaleSnapshot.id))
-                        .join(Deal, Deal.id == DealSaleSnapshot.deal_id)
-                        .join(Lead, Lead.id == Deal.lead_id)
-                        .where(
-                            Lead.competitor_id == competitor.id,
-                            Deal.status == DealStatus.WON,
-                            DealSaleSnapshot.sale_currency == "UZS",
-                        )
-                    )
-                    or 0
-                )
-                revenue = (
-                    await session.scalar(
-                        select(func.sum(DealSaleSnapshot.sale_amount))
-                        .join(Deal, Deal.id == DealSaleSnapshot.deal_id)
-                        .join(Lead, Lead.id == Deal.lead_id)
-                        .where(
-                            Lead.competitor_id == competitor.id,
-                            Deal.status == DealStatus.WON,
-                            DealSaleSnapshot.sale_currency == "UZS",
-                        )
-                    )
-                    if snapshot_count == won
-                    else None
-                )
+                stats = stats_by_id[competitor.id]
+                won = won_by_id.get(competitor.id, 0)
+                snapshot_count, snapshot_sum = snapshot_by_id.get(competitor.id, (0, None))
+                revenue = snapshot_sum if snapshot_count == won else None
                 if stats["comments"] < 10:
                     recommendation = "Набираем данные"
                     recommendation_tone = "muted"
@@ -2024,103 +2050,152 @@ class WebQueryService:
             }
 
     async def _competitor_stats(self, session: AsyncSession, competitor: Competitor) -> dict:
+        stats_map = await self._competitor_stats_map(session, [competitor.id])
+        return stats_map[competitor.id]
+
+    async def _competitor_stats_map(
+        self, session: AsyncSession, competitor_ids: list[int]
+    ) -> dict[int, dict]:
+        """Batch-метрики конкурентов: фиксированное число запросов вместо N+1."""
+        empty = {
+            "posts": [],
+            "comments": 0,
+            "leads": 0,
+            "commercial": 0,
+            "commercial_rate": 0.0,
+            "hot": 0,
+            "hot_rate": 0.0,
+            "unique_buyers": 0,
+            "multi_competitor": 0,
+            "price_rate": 0.0,
+            "availability_rate": 0.0,
+            "delivery_rate": 0.0,
+            "quantity_rate": 0.0,
+        }
+        if not competitor_ids:
+            return {}
+        result = {competitor_id: {**empty, "posts": []} for competitor_id in competitor_ids}
         posts = list(
             await session.scalars(
                 select(Post)
-                .where(Post.competitor_id == competitor.id)
+                .where(Post.competitor_id.in_(competitor_ids))
                 .order_by(desc(Post.published_at), desc(Post.id))
             )
         )
-        comments = int(
-            await session.scalar(
-                select(func.count(Comment.id)).where(Comment.competitor_id == competitor.id)
-            )
-            or 0
-        )
-        leads = int(
-            await session.scalar(
-                select(func.count(Lead.id)).where(Lead.competitor_id == competitor.id)
-            )
-            or 0
-        )
-        commercial = int(
-            await session.scalar(
-                select(func.count(Lead.id)).where(
-                    Lead.competitor_id == competitor.id,
-                    Lead.status != LeadStatus.NOT_LEAD,
-                    Lead.lead_score >= 50,
-                )
-            )
-            or 0
-        )
-        hot = int(
-            await session.scalar(
-                select(func.count(Lead.id)).where(
-                    Lead.competitor_id == competitor.id,
-                    Lead.lead_score >= self.hot_threshold,
-                    Lead.status != LeadStatus.NOT_LEAD,
-                )
-            )
-            or 0
-        )
-        unique_buyers = int(
-            await session.scalar(
-                select(func.count(func.distinct(Lead.contact_id))).where(
-                    Lead.competitor_id == competitor.id,
-                    Lead.status != LeadStatus.NOT_LEAD,
-                    Lead.lead_score >= 50,
-                )
-            )
-            or 0
-        )
-        intent_rows = (
+        for post in posts:
+            result[post.competitor_id]["posts"].append(post)
+
+        comment_rows = (
             await session.execute(
-                select(Lead.intent, func.count(Lead.id))
-                .where(
-                    Lead.competitor_id == competitor.id,
-                    Lead.status != LeadStatus.NOT_LEAD,
-                    Lead.lead_score >= 50,
-                )
-                .group_by(Lead.intent)
+                select(Comment.competitor_id, func.count(Comment.id))
+                .where(Comment.competitor_id.in_(competitor_ids))
+                .group_by(Comment.competitor_id)
             )
         ).all()
-        intents = Counter({str(intent): int(count) for intent, count in intent_rows})
+        for competitor_id, count in comment_rows:
+            result[int(competitor_id)]["comments"] = int(count)
+
+        commercial_case = case(
+            (and_(Lead.status != LeadStatus.NOT_LEAD, Lead.lead_score >= 50), 1),
+            else_=0,
+        )
+        hot_case = case(
+            (
+                and_(
+                    Lead.status != LeadStatus.NOT_LEAD,
+                    Lead.lead_score >= self.hot_threshold,
+                ),
+                1,
+            ),
+            else_=0,
+        )
+        unique_buyer_case = case(
+            (
+                and_(Lead.status != LeadStatus.NOT_LEAD, Lead.lead_score >= 50),
+                Lead.contact_id,
+            ),
+        )
+        lead_rows = (
+            await session.execute(
+                select(
+                    Lead.competitor_id,
+                    func.count(Lead.id),
+                    func.coalesce(func.sum(commercial_case), 0),
+                    func.coalesce(func.sum(hot_case), 0),
+                    func.count(func.distinct(unique_buyer_case)),
+                )
+                .where(Lead.competitor_id.in_(competitor_ids))
+                .group_by(Lead.competitor_id)
+            )
+        ).all()
+        for competitor_id, leads, commercial, hot, unique_buyers in lead_rows:
+            bucket = result[int(competitor_id)]
+            bucket["leads"] = int(leads)
+            bucket["commercial"] = int(commercial)
+            bucket["hot"] = int(hot)
+            bucket["unique_buyers"] = int(unique_buyers)
+
+        intent_rows = (
+            await session.execute(
+                select(Lead.competitor_id, Lead.intent, func.count(Lead.id))
+                .where(
+                    Lead.competitor_id.in_(competitor_ids),
+                    Lead.status != LeadStatus.NOT_LEAD,
+                    Lead.lead_score >= 50,
+                )
+                .group_by(Lead.competitor_id, Lead.intent)
+            )
+        ).all()
+        intents_by_id: dict[int, Counter[str]] = {
+            competitor_id: Counter() for competitor_id in competitor_ids
+        }
+        for competitor_id, intent, count in intent_rows:
+            intents_by_id[int(competitor_id)][str(intent)] += int(count)
+
         contact_source_counts = (
             select(Comment.contact_id, func.count(func.distinct(Comment.competitor_id)).label("n"))
             .group_by(Comment.contact_id)
             .subquery()
         )
-        multi_competitor = int(
-            await session.scalar(
-                select(func.count(func.distinct(Comment.contact_id)))
+        multi_rows = (
+            await session.execute(
+                select(Comment.competitor_id, func.count(func.distinct(Comment.contact_id)))
                 .join(
                     contact_source_counts,
                     contact_source_counts.c.contact_id == Comment.contact_id,
                 )
                 .where(
-                    Comment.competitor_id == competitor.id,
+                    Comment.competitor_id.in_(competitor_ids),
                     contact_source_counts.c.n >= 2,
                 )
+                .group_by(Comment.competitor_id)
             )
-            or 0
-        )
-        return {
-            "posts": posts,
-            "comments": comments,
-            "leads": leads,
-            "commercial": commercial,
-            "commercial_rate": round(commercial / comments * 100, 1) if comments else 0.0,
-            "hot": hot,
-            "hot_rate": round(hot / comments * 100, 1) if comments else 0.0,
-            "unique_buyers": unique_buyers,
-            "multi_competitor": multi_competitor,
-            "price_rate": round(intents["PRICE"] / comments * 100, 1) if comments else 0.0,
-            "availability_rate": (
+        ).all()
+        for competitor_id, count in multi_rows:
+            result[int(competitor_id)]["multi_competitor"] = int(count)
+
+        for competitor_id, bucket in result.items():
+            comments = int(bucket["comments"])
+            commercial = int(bucket["commercial"])
+            hot = int(bucket["hot"])
+            intents = intents_by_id[competitor_id]
+            bucket["commercial_rate"] = (
+                round(commercial / comments * 100, 1) if comments else 0.0
+            )
+            bucket["hot_rate"] = round(hot / comments * 100, 1) if comments else 0.0
+            bucket["price_rate"] = (
+                round(intents["PRICE"] / comments * 100, 1) if comments else 0.0
+            )
+            bucket["availability_rate"] = (
                 round(intents["AVAILABILITY"] / comments * 100, 1) if comments else 0.0
-            ),
-            "delivery_rate": (round(intents["DELIVERY"] / comments * 100, 1) if comments else 0.0),
-            "quantity_rate": (round(intents["QUANTITY"] / comments * 100, 1) if comments else 0.0),
-        }
+            )
+            bucket["delivery_rate"] = (
+                round(intents["DELIVERY"] / comments * 100, 1) if comments else 0.0
+            )
+            bucket["quantity_rate"] = (
+                round(intents["QUANTITY"] / comments * 100, 1) if comments else 0.0
+            )
+        return result
 
     @staticmethod
     def _competitor_opportunities(intents: Counter, products: Counter) -> list[dict[str, object]]:

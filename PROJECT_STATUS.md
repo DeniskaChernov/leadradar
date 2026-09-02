@@ -4,6 +4,10 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-02 (perf audit fix): убран cartesian product в quality report
+(Lead⨝Comment); batch `competitors()` / `audiences()`; kanban `/leads` группирует стадии в Python.
+Bench: competitors ~0.7s→~0.16s, audiences ~1.0s→~0.6s. `485+` suite зелёный на срезе 85.
+
 Контрольная точка 2026-09-02 (post-120 prep): UNCERTAIN reservations 134/137 reconciled
 (`spent=false`, reason=no provider credit); `live_readiness_check` → **READY FOR LIVE PILOT**;
 unseen PASS; integrity OK; Meta/Instagram/OpenAI live всё ещё OFF до явного разрешения.

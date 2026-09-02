@@ -1,7 +1,9 @@
+import warnings
 from datetime import UTC, datetime
 
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
+from sqlalchemy.exc import SAWarning
 
 from app.config import Settings
 from app.db.models import AIFeedback, Lead, LeadStatus
@@ -42,7 +44,9 @@ async def test_quality_report_service_builds_snapshot(session_factory):
         hot_threshold=70,
         rules_version="3.2",
     )
-    snapshot = await service.build_snapshot(timezone_name="UTC")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", SAWarning)
+        snapshot = await service.build_snapshot(timezone_name="UTC")
     assert snapshot.new_leads >= 1
     message = QualityReportService.format_message(snapshot, rules_version="3.2")
     assert "Lead Radar" in message

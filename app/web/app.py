@@ -484,6 +484,16 @@ def build_web_app(
         view: str = "board",
     ):
         rows = await queries.leads(q=q, status=status, quality=quality)
+        board_statuses = [
+            "NEW",
+            "TAKEN",
+            "CONTACTED",
+            "QUALIFIED",
+            "OFFER_SENT",
+            "NEGOTIATION",
+            "WON",
+            "LOST",
+        ]
         use_board = view == "board" and not status and quality not in {
             "not_lead",
             "off_catalog",
@@ -496,27 +506,25 @@ def build_web_app(
                 [lead.id for lead, *_rest in rows],
                 limit_per_lead=5,
             )
+        # Группировка в Python: шаблон не делает O(stages×rows).
+        rows_by_stage: dict[str, list] = {stage: [] for stage in board_statuses}
+        for row in rows:
+            stage = row[0].status.value
+            if stage in rows_by_stage:
+                rows_by_stage[stage].append(row)
         return templates.TemplateResponse(
             request=request,
             name="leads.html",
             context=base_context(
                 request,
                 rows=rows,
+                rows_by_stage=rows_by_stage,
                 q=q,
                 status_filter=status,
                 quality_filter=quality,
                 view=view if use_board else "list",
                 events_by_lead=events_by_lead,
-                board_statuses=[
-                    "NEW",
-                    "TAKEN",
-                    "CONTACTED",
-                    "QUALIFIED",
-                    "OFFER_SENT",
-                    "NEGOTIATION",
-                    "WON",
-                    "LOST",
-                ],
+                board_statuses=board_statuses,
             ),
         )
 

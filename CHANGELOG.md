@@ -2,6 +2,14 @@
 
 Формат: волны улучшений по `docs/SYSTEM_IMPROVEMENT_PLAN.md`. Полная история релизов — `RELEASE_NOTES.md`.
 
+## [13.29.2-perf] — 2026-09-02
+
+### Fixed
+- Quality report: JOIN Lead↔Comment для `fresh_signal_clause` (убран SAWarning cartesian product)
+- `/competitors`: batch `_competitor_stats_map` вместо N+1
+- `/audiences`: один batch membership+intelligence вместо N+1 по сегментам
+- `/leads` kanban: группировка `rows_by_stage` в Python (без O(stages×rows) в Jinja)
+
 ## [13.29.1-meta-export] — 2026-09-02
 
 ### Added

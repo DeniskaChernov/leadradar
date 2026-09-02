@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import AIFeedback, Lead, LeadStatus
+from app.db.models import AIFeedback, Comment, Lead, LeadStatus
 from app.services.signal_recency import fresh_signal_clause
 
 
@@ -103,9 +103,12 @@ class QualityReportService:
                 or 0
             )
             stale_rules = 0
+            # JOIN обязателен: fresh_signal_clause фильтрует Comment (без него — cartesian product).
             actionable = (
                 await session.execute(
-                    select(Lead.analysis_details).where(
+                    select(Lead.analysis_details)
+                    .join(Comment, Comment.id == Lead.comment_id)
+                    .where(
                         Lead.status.in_(
                             [
                                 LeadStatus.NEW,
