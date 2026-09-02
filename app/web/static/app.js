@@ -160,7 +160,7 @@
     if (input instanceof HTMLInputElement) input.focus();
   };
 
-  const toast = (message, bad = false) => {
+  const toast = (message, bad = false, options = {}) => {
     const el = document.getElementById('toast');
     if (!el) return;
     const text = el.querySelector('[data-toast-message]');
@@ -168,8 +168,28 @@
     else el.textContent = message;
     el.className = `toast show ${bad ? 'bad' : ''}`;
     el.querySelector('i')?.getAnimations().forEach((animation) => animation.cancel());
+    const undoBtn = el.querySelector('[data-toast-undo]');
+    if (undoBtn instanceof HTMLButtonElement) {
+      const undoAction = options.undo;
+      undoBtn.hidden = !undoAction;
+      undoBtn.onclick = undoAction
+        ? (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          undoAction();
+        }
+        : null;
+    }
     clearTimeout(window.__lrToastTimer);
-    window.__lrToastTimer = setTimeout(() => (el.className = 'toast'), 3200);
+    const duration = options.duration || (options.undo ? 8000 : 3200);
+    window.__lrToastTimer = setTimeout(() => {
+      el.className = 'toast';
+      if (undoBtn instanceof HTMLButtonElement) {
+        undoBtn.hidden = true;
+        undoBtn.onclick = null;
+      }
+    }, duration);
+    return duration;
   };
 
   const readResponse = async (response) => {
@@ -318,10 +338,14 @@
   const restoreViewState = () => {
     const key = sessionStorage.getItem('lr:focus');
     const y = Number(sessionStorage.getItem('lr:scroll-y') || 0);
+    const kanbanX = Number(sessionStorage.getItem('lr:kanban-x') || 0);
     sessionStorage.removeItem('lr:focus');
     sessionStorage.removeItem('lr:scroll-y');
+    sessionStorage.removeItem('lr:kanban-x');
     const apply = () => {
       if (y) window.scrollTo({ top: y, behavior: 'instant' });
+      const kanban = document.querySelector('[data-kanban-board]');
+      if (kanban && kanbanX) kanban.scrollLeft = kanbanX;
       if (!key) return;
       const el = document.querySelector(key);
       if (!el) return;
@@ -335,6 +359,86 @@
       }
     };
     requestAnimationFrame(apply);
+  };
+
+  const enhanceKanbanEventTips = () => {
+    document.querySelectorAll('[data-kanban-event-tip]').forEach((trigger) => {
+      const card = trigger.closest('.kanban-card');
+      const panel = card?.querySelector('.kanban-event-tip-panel');
+      if (!(panel instanceof HTMLElement)) return;
+      const close = () => {
+        panel.hidden = true;
+        trigger.setAttribute('aria-expanded', 'false');
+        card?.classList.remove('is-tip-open');
+      };
+      const open = () => {
+        document.querySelectorAll('.kanban-card.is-tip-open').forEach((other) => {
+          if (other === card) return;
+          other.classList.remove('is-tip-open');
+          other.querySelector('.kanban-event-tip-panel')?.setAttribute('hidden', '');
+          other.querySelector('[data-kanban-event-tip]')?.setAttribute('aria-expanded', 'false');
+        });
+        panel.hidden = false;
+        trigger.setAttribute('aria-expanded', 'true');
+        card?.classList.add('is-tip-open');
+      };
+      trigger.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (panel.hidden) open();
+        else close();
+      });
+      card?.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') close();
+      });
+    });
+    document.addEventListener('click', (event) => {
+      if (event.target.closest('[data-kanban-event-tip], .kanban-event-tip-panel')) return;
+      document.querySelectorAll('.kanban-card.is-tip-open').forEach((card) => {
+        card.classList.remove('is-tip-open');
+        card.querySelector('.kanban-event-tip-panel')?.setAttribute('hidden', '');
+        card.querySelector('[data-kanban-event-tip]')?.setAttribute('aria-expanded', 'false');
+      });
+    });
+  };
+
+  const enhanceKanbanMobile = () => {
+    const board = document.querySelector('[data-kanban-board]');
+    const nav = document.querySelector('[data-kanban-mobile-nav]');
+    if (!(board instanceof HTMLElement) || !(nav instanceof HTMLElement)) return;
+    const cols = [...board.querySelectorAll('.kanban-col')];
+    const pills = [...nav.querySelectorAll('[data-kanban-col]')];
+    if (!cols.length || !pills.length) return;
+    const mobileQuery = window.matchMedia('(max-width: 720px)');
+    const syncNav = () => {
+      nav.hidden = !mobileQuery.matches;
+      if (!mobileQuery.matches) return;
+      const center = board.scrollLeft + board.clientWidth / 2;
+      let active = 0;
+      cols.forEach((col, index) => {
+        const left = col.offsetLeft;
+        const right = left + col.offsetWidth;
+        if (center >= left && center < right) active = index;
+      });
+      pills.forEach((pill, index) => {
+        pill.classList.toggle('is-active', index === active);
+      });
+    };
+    pills.forEach((pill) => {
+      pill.addEventListener('click', (event) => {
+        event.preventDefault();
+        const index = Number(pill.dataset.kanbanCol || 0);
+        const col = cols[index];
+        if (!col) return;
+        col.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+        pills.forEach((item, pillIndex) => {
+          item.classList.toggle('is-active', pillIndex === index);
+        });
+      });
+    });
+    board.addEventListener('scroll', syncNav, { passive: true });
+    mobileQuery.addEventListener('change', syncNav);
+    syncNav();
   };
 
   const enhanceTables = () => {
@@ -408,6 +512,8 @@
   enhanceClickableRows();
   enhanceCompetitorBulkSelection();
   enhanceMotion();
+  enhanceKanbanEventTips();
+  enhanceKanbanMobile();
   restoreViewState();
 
   const flashStageSuccess = (element) => {
@@ -444,6 +550,10 @@
 
   const reloadSoon = (delay = 450, focusSelector = '') => {
     sessionStorage.setItem('lr:scroll-y', String(window.scrollY));
+    const kanban = document.querySelector('[data-kanban-board]');
+    if (kanban instanceof HTMLElement) {
+      sessionStorage.setItem('lr:kanban-x', String(kanban.scrollLeft));
+    }
     let focus = focusSelector;
     if (!focus) {
       const active = document.activeElement;
@@ -1035,6 +1145,32 @@
       setLoading(leadAction, true);
       try {
         const data = await api(`/api/leads/${id}/${type}`, { method: 'POST', body: '{}' });
+        if (type === 'not-lead') {
+          let undone = false;
+          let reloadTimer = 0;
+          toast(data.message || 'Отмечено как не лид', false, {
+            undo: async () => {
+              undone = true;
+              clearTimeout(reloadTimer);
+              setLoading(leadAction, true);
+              try {
+                const reopened = await api(`/api/leads/${id}/reopen`, { method: 'POST', body: '{}' });
+                toast(reopened.message || 'Лид возвращён в работу');
+                reloadSoon(300, focusKeyForElement(leadAction));
+              } catch (undoError) {
+                toast(undoError.message, true);
+                setLoading(leadAction, false);
+              }
+            },
+            duration: 8000,
+          });
+          flashStageSuccess(leadAction);
+          reloadTimer = window.setTimeout(() => {
+            if (!undone) reloadSoon(0, focusKeyForElement(leadAction));
+          }, 8000);
+          setLoading(leadAction, false);
+          return;
+        }
         toast(data.message || 'Лид обновлён');
         flashStageSuccess(leadAction);
         reloadSoon(450, focusKeyForElement(leadAction));

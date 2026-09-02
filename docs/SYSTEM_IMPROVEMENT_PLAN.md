@@ -30,8 +30,8 @@
 - [x] B6. Фильтр HOT + новые на доске
 - [x] B7. Сделки: связка WON из kanban переговоров
 - [x] B8. Задачи follow-up из карточки лида one-click
-- [ ] B9. История contact_events на kanban tooltip
-- [ ] B10. Mobile kanban swipe между колонками
+- [x] B9. История contact_events на kanban tooltip
+- [x] B10. Mobile kanban swipe между колонками
 - [x] B11. Экспорт воронки CSV
 - [x] B12. SLA-бейдж «просрочен next_action»
 - [x] B13. Назначение менеджера в UI
@@ -67,7 +67,7 @@
 - [ ] D10. Empty states lucide везде
 - [ ] D11. Loading skeletons для kanban
 - [x] D12. Confirm modal RU для destructive
-- [ ] D13. Toast stack + undo NOT_LEAD
+- [x] D13. Toast stack + undo NOT_LEAD
 - [x] D14. Focus restore после reloadSoon
 - [ ] D15. Keyboard shortcuts (/ search)
 - [ ] D16. Breadcrumbs на detail pages

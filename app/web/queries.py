@@ -816,6 +816,58 @@ class WebQueryService:
                 stmt = stmt.where(Lead.status != LeadStatus.NOT_LEAD)
             return (await session.execute(stmt)).all()
 
+    async def lead_recent_events(
+        self,
+        lead_ids: list[int],
+        *,
+        limit_per_lead: int = 5,
+    ) -> dict[int, list[ContactEvent]]:
+        """Последние CRM-события по лидам (batch, без N+1)."""
+        if not lead_ids:
+            return {}
+        limit_per_lead = max(1, min(limit_per_lead, 10))
+        async with self.session_factory() as session:
+            mappings = (
+                await session.execute(
+                    select(Lead.id, Lead.contact_id).where(Lead.id.in_(lead_ids))
+                )
+            ).all()
+            if not mappings:
+                return {}
+            contact_ids = {contact_id for _, contact_id in mappings}
+            contact_to_leads: dict[int, list[int]] = {}
+            for lead_id, contact_id in mappings:
+                contact_to_leads.setdefault(contact_id, []).append(lead_id)
+            events = (
+                await session.scalars(
+                    select(ContactEvent)
+                    .where(
+                        or_(
+                            ContactEvent.lead_id.in_(lead_ids),
+                            ContactEvent.contact_id.in_(contact_ids),
+                        )
+                    )
+                    .order_by(desc(ContactEvent.created_at))
+                    .limit(max(len(lead_ids) * limit_per_lead * 4, 80))
+                )
+            ).all()
+        buckets: dict[int, list[ContactEvent]] = {lead_id: [] for lead_id in lead_ids}
+        for event in events:
+            target_leads: set[int] = set()
+            if event.lead_id and event.lead_id in buckets:
+                target_leads.add(event.lead_id)
+            if event.contact_id in contact_to_leads:
+                for lead_id in contact_to_leads[event.contact_id]:
+                    if event.lead_id is None or event.lead_id == lead_id:
+                        target_leads.add(lead_id)
+            for lead_id in target_leads:
+                bucket = buckets[lead_id]
+                if len(bucket) >= limit_per_lead:
+                    continue
+                if not any(existing.id == event.id for existing in bucket):
+                    bucket.append(event)
+        return buckets
+
     async def manager_feedback_quality(self) -> dict[str, object]:
         """Live FP: менеджер сказал «не лид», модель дала HOT/высокий score."""
         async with self.session_factory() as session:

@@ -345,7 +345,21 @@ tr:hover td { background: rgba(255, 255, 255, 0.55); }
 .kanban-col header b { font-size: 14px; color: #0f172a; font-weight: 700; }
 .kanban-col header small { color: var(--muted); margin-top: 2px; font-size: 11px; }
 .kanban-stack { padding: 10px; display: grid; gap: 10px; }
-.kanban-card { color: var(--text); border: 1px solid rgba(255, 255, 255, 0.85); border-radius: 14px; padding: 0; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(16px); box-shadow: 0 6px 18px rgba(90, 70, 50, 0.06); transition: all .18s ease; display: grid; gap: 0; overflow: hidden; }
+.kanban-card { color: var(--text); border: 1px solid rgba(255, 255, 255, 0.85); border-radius: 14px; padding: 0; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(16px); box-shadow: 0 6px 18px rgba(90, 70, 50, 0.06); transition: all .18s ease; display: grid; gap: 0; overflow: visible; position: relative; }
+.kanban-card-head { display: flex; justify-content: flex-end; padding: 8px 10px 0; position: relative; z-index: 2; }
+.kanban-event-tip-trigger { border: 0; background: rgba(255,255,255,.85); border-radius: 999px; width: 28px; height: 28px; cursor: pointer; font-size: 13px; line-height: 1; box-shadow: 0 2px 8px rgba(90,70,50,.08); }
+.kanban-event-tip-trigger:hover, .kanban-event-tip-trigger:focus-visible { background: #fff; outline: 2px solid rgba(59,130,246,.35); }
+.kanban-event-tip-panel { position: absolute; top: 36px; right: 8px; min-width: min(260px, calc(100vw - 48px)); max-width: 280px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.9); background: rgba(255,255,255,.96); box-shadow: 0 14px 36px rgba(90,70,50,.16); z-index: 30; text-align: left; }
+.kanban-event-tip-panel b { display: block; font-size: 12px; margin-bottom: 6px; color: #0f172a; }
+.kanban-event-tip-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 180px; overflow: auto; }
+.kanban-event-tip-list li { display: grid; gap: 2px; font-size: 11px; color: #334155; }
+.kanban-event-tip-list small { color: #64748b; }
+.kanban-event-tip-list em { font-style: normal; color: #475569; }
+.kanban-event-tip-link { display: inline-block; margin-top: 8px; font-size: 11px; font-weight: 600; }
+.kanban-card.is-tip-open { z-index: 25; }
+.kanban-mobile-nav { display: none; gap: 6px; overflow-x: auto; padding: 0 2px 10px; scroll-snap-type: x proximity; }
+.kanban-mobile-pill { border: 1px solid rgba(255,255,255,.8); background: rgba(255,255,255,.55); border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: #334155; white-space: nowrap; scroll-snap-align: start; cursor: pointer; }
+.kanban-mobile-pill.is-active { background: #fff; color: #0f172a; box-shadow: 0 4px 14px rgba(90,70,50,.10); }
 .kanban-card-link { color: var(--text); display: block; padding: 13px 15px; text-decoration: none; }
 .kanban-card-link:hover { color: var(--text); }
 .kanban-card:hover { color: var(--text); border-color: #ffffff; transform: translateY(-2px); background: #ffffff; box-shadow: 0 12px 28px rgba(90, 70, 50, 0.12); }
@@ -537,8 +551,10 @@ tr:hover td { background: rgba(255, 255, 255, 0.55); }
 .empty.compact { padding: 20px 16px; font-size: 13px; margin: 8px 12px; border-radius: 14px; }
 .empty.inline-empty { border: 0; background: transparent; padding: 14px; }
 td.empty { border: 0; background: transparent; padding: 36px 20px; }
-.toast { position: fixed; right: 24px; bottom: 24px; max-width: min(440px, calc(100vw - 32px)); background: #ffffff; color: #0f172a; border: 1px solid rgba(255, 255, 255, 0.90); padding: 12px 16px; border-radius: 16px; opacity: 0; transform: translateY(10px); pointer-events: none; transition: .2s ease; z-index: 200; box-shadow: 0 16px 40px rgba(90, 70, 50, 0.16); font-weight: 600; font-size: 14px; }
-.toast.show { opacity: 1; transform: none; }
+.toast { position: fixed; right: 24px; bottom: 24px; max-width: min(440px, calc(100vw - 32px)); background: #ffffff; color: #0f172a; border: 1px solid rgba(255, 255, 255, 0.90); padding: 12px 16px; border-radius: 16px; opacity: 0; transform: translateY(10px); pointer-events: none; transition: .2s ease; z-index: 200; box-shadow: 0 16px 40px rgba(90, 70, 50, 0.16); font-weight: 600; font-size: 14px; display: grid; gap: 8px; }
+.toast.show { opacity: 1; transform: none; pointer-events: auto; }
+.toast-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.toast-undo { pointer-events: auto; flex-shrink: 0; }
 .toast.bad { background: rgba(255, 228, 230, 0.95); border-color: rgba(225, 29, 72, 0.40); color: #be123c; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 300; background: rgba(30, 35, 45, 0.45); backdrop-filter: blur(12px); display: grid; place-items: center; padding: 18px; }
 .modal-backdrop[hidden] { display: none; }
@@ -3501,6 +3517,14 @@ a:hover { color: #2445d9; }
 @media (max-width: 720px) {
   .funnel-track { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 10px; }
   .agent-hero-actions { justify-content: flex-start; }
+  .kanban-mobile-nav { display: flex; }
+  .kanban.kanban-wide {
+    grid-auto-columns: min(88vw, 320px);
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 14px;
+  }
+  .kanban-col { scroll-snap-stop: always; }
+  .kanban-event-tip-panel { right: 4px; left: 4px; max-width: none; min-width: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .agent-chat-msg.msg-enter,

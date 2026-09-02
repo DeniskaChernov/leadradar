@@ -233,8 +233,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.21.0-wave9" in base
-    assert "13.21.0-wave9" in auth
+    assert "13.22.0-wave10" in base
+    assert "13.22.0-wave10" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
@@ -385,6 +385,11 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "include_not_lead_high_score" in (PROJECT_ROOT / "app/web/templates/partials/lead_reanalyze_actions.html").read_text(encoding="utf-8")
     assert "feedback-learning" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
     assert "feedback-export" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
+    assert "lead_event_history_tip.html" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "kanban-event-tip-trigger" in (PROJECT_ROOT / "app/web/templates/partials/lead_event_history_tip.html").read_text(encoding="utf-8")
+    assert "kanban-mobile-nav" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "data-toast-undo" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "enhanceKanbanMobile" in (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
     assert "competitors-hero" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
     assert "lead_quality_badge.html" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
     assert "quality=garbage" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
@@ -439,7 +444,7 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "manager-feedback-quality" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
     assert "В радар активно" in (PROJECT_ROOT / "app/web/templates/discovery.html").read_text(encoding="utf-8")
     assert "data-agent-context" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
-    assert "13.21.0-wave9" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "13.22.0-wave10" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
     assert "/api/economics/export.csv" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
     assert "openai_usd_per_lead" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
     assert "proxy cache-hit" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")

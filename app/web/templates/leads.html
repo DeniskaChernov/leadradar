@@ -80,13 +80,21 @@
 {% else %}<div class="empty panel">Лидов с таким фильтром нет.</div>{% endfor %}
 </div>
 {% else %}
-<div class="kanban kanban-wide" data-motion-root>
+<nav class="kanban-mobile-nav" data-kanban-mobile-nav hidden aria-label="Навигация по колонкам воронки">
+  {% for stage in board_statuses %}
+  <button type="button" class="kanban-mobile-pill" data-kanban-col="{{ loop.index0 }}">{{ lead_status_label(stage) }}</button>
+  {% endfor %}
+</nav>
+<div class="kanban kanban-wide" data-motion-root data-kanban-board>
 {% for stage in board_statuses %}
 <section class="kanban-col {% if stage in ['WON','LOST'] %}kanban-col-closed{% endif %}">
   <header><div><b>{{ lead_status_label(stage) }}</b><small>{% set col=namespace(count=0) %}{% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}{% set col.count = col.count + 1 %}{% endif %}{% endfor %}{{ col.count }} лидов</small></div></header>
   <div class="kanban-stack">
   {% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}
     <article class="kanban-card {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %} {% if lead_is_off_catalog(lead) %}off-catalog{% endif %}" data-lead-card="{{ lead.id }}">
+      <div class="kanban-card-head">
+        {% include "partials/lead_event_history_tip.html" %}
+      </div>
       <a class="kanban-card-link" href="/leads/{{ lead.id }}">
         <div class="kanban-top"><b>@{{ contact.username }}</b><span>{% if lead.status.value in ['ANALYZING','AI_PENDING'] %}…{% else %}{{ lead.lead_score }}{% endif %}</span></div>
         <p>{{ comment.text[:120] }}{% if comment.text|length > 120 %}…{% endif %}</p>

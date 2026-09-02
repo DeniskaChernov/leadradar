@@ -2,6 +2,12 @@
 
 ## Текущая версия
 
+**WAVE10 · KANBAN CRM HISTORY · MOBILE SWIPE · UNDO NOT_LEAD**
+
+Контрольная точка 2026-09-02 (wave10): tooltip CRM `contact_events` на kanban-карточках;
+mobile pill-nav + scroll-snap между колонками; toast «Отменить» после NOT_LEAD (reopen API).
+UI **13.22.0-wave10**.
+
 **WAVE9 · PARENT «+» · FEEDBACK LOOP · NOT_LEAD REANALYZE · DAILY QUALITY REPORT**
 
 Контрольная точка 2026-09-02 (wave9): parent-comment context для reply «+» (ScrapeCreators/Bright Data + БД);

@@ -472,6 +472,12 @@ def build_web_app(
             "garbage",
             "hot",
         }
+        events_by_lead: dict[int, list] = {}
+        if use_board and rows:
+            events_by_lead = await queries.lead_recent_events(
+                [lead.id for lead, *_rest in rows],
+                limit_per_lead=5,
+            )
         return templates.TemplateResponse(
             request=request,
             name="leads.html",
@@ -482,6 +488,7 @@ def build_web_app(
                 status_filter=status,
                 quality_filter=quality,
                 view=view if use_board else "list",
+                events_by_lead=events_by_lead,
                 board_statuses=[
                     "NEW",
                     "TAKEN",
