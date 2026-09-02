@@ -1,26 +1,12 @@
 # Lead Radar — machine state
 
-- updated: 2026-09-02T11:50+05
-- commit: 08b9352 funnel+signal_scope; wave1 pending
-- plan: docs/SYSTEM_IMPROVEMENT_PLAN.md 120 actions
-- ui: 13.12.0-wave1 reanalyze-batch, economics/competitors plain hero
-- leads_funnel: kanban/list кнопки воронки; ui 13.11.7-leads-funnel
-- signal_scope: «+» → OpenAI по caption; цена без мебели → OpenAI; часы/телефоны → NOT_LEAD локально
-- signal_recency: INSTAGRAM_SIGNAL_MAX_AGE_DAYS=30 — ingest/analyze/backfill/radar только свежие; baseline analyze default off
-- ui_plain: одна кнопка «Оценить накопившееся», счётчик «нужна оценка», авто-оценка 10/цикл
-- ui: 13.11.6-plain-language
-- branch: main @ 3b48158 (PR #1 merged)
-- ui: 13.11.4-radar-poll-fix
-- fix: /radar idle poll больше не делает location.reload каждые 3.5s
-- design: hero-status на discovery/catalog/competitors/roadmap/audiences + detail heroes; glass KPI; empty-state lucide; RU health/budget labels
-- tests: 400 passed, 1 skipped (+signal recency)
-- ruff: clean
-- alembic_head: c4d5e6f7a8b9
-- uncertain_reservations: 0
-- live_readiness: READY FOR LIVE PILOT
-- pilot_preflight: OFFLINE READY
-- pilot_run: 2026-09-01T17:45+05 run#6 SUCCESS aiko.uz only 3 credits PROVIDER_CONFIRMED UNCERTAIN=0
-- competitors: 16 active tier A/B/C restored 2026-09-01T21:35+05
-- openai: limit 100, flush 23 pending done, 48/100 used today, AI_PENDING=0
-- openai_retry: AI_PENDING_RETRY_ENABLED=true in .env
-- monitor: MONITOR_SCHEDULE_ENABLED=true, INSTAGRAM_MANUAL_LIVE_SCAN_ONLY=false (2026-09-02)
+- updated: 2026-09-02T12:15+05
+- branch: codex/phase-c-budget-ledger-hardening
+- ui: 13.13.0-wave3 bulk leads + dashboard plain-help
+- wave2: lead_ui_helpers, quality filters, WON/LOST kanban, reclassify_leads.py, radar_plain_help
+- wave3: POST /api/leads/bulk-action, lead_bulk_actions partial, dashboard_plain_help
+- offline_pilot: defer_to_openai cases excluded from rule metrics (30 cases)
+- plan: docs/SYSTEM_IMPROVEMENT_PLAN.md ~25/120 [x]
+- signal_scope: «+» → OpenAI; off-catalog local NOT_LEAD
+- tests: pending full pytest after wave3
+- ruff: pending

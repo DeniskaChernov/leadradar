@@ -13,8 +13,8 @@
 - [ ] A7. Авто-переоценка после смены правил (version stamp)
 - [ ] A8. Parent-comment context для reply «+»
 - [ ] A9. Расширить off-catalog: украшения, обувь, техника
-- [ ] A10. UI-бейдж «Не наш ассортимент» на карточке лида
-- [ ] A11. Фильтр «мусорные лиды» на /leads
+- [x] A10. UI-бейдж «Не наш ассортимент» на карточке лида
+- [x] A11. Фильтр «мусорные лиды» на /leads
 - [ ] A12. Метрика false-positive rate в /system
 - [ ] A13. Feedback loop: NOT_LEAD → обучение правил
 - [ ] A14. Re-analyze NOT_LEAD с score>50 (опционально)
@@ -26,8 +26,8 @@
 - [x] B2. Toast «Сохранено · стадия»
 - [x] B3. Баннер WEB_MANAGER_ID / trust save
 - [ ] B4. Drag-and-drop kanban (optional phase 2)
-- [ ] B5. Bulk actions: взять / не лид
-- [ ] B6. Фильтр HOT + новые на доске
+- [x] B5. Bulk actions: взять / не лид
+- [x] B6. Фильтр HOT + новые на доске
 - [ ] B7. Сделки: связка WON из kanban переговоров
 - [ ] B8. Задачи follow-up из карточки лида one-click
 - [ ] B9. История contact_events на kanban tooltip
@@ -36,19 +36,19 @@
 - [ ] B12. SLA-бейдж «просрочен next_action»
 - [ ] B13. Назначение менеджера в UI
 - [ ] B14. Reopen NOT_LEAD из списка
-- [ ] B15. Воронка: колонки WON/LOST на доске
+- [x] B15. Воронка: колонки WON/LOST на доске
 
 ## C. Radar и мониторинг (12)
 
 - [x] C1. Idle poll без location.reload
 - [x] C2. Фильтр свежести 30 дней
 - [x] C3. Одна кнопка «Оценить накопившееся»
-- [ ] C4. Plain-language help на всех вкладках radar
+- [x] C4. Plain-language help на всех вкладках radar
 - [ ] C5. Счётчик «спорных» vs «архив» раздельно
 - [ ] C6. Preview стоимости scan до запуска (улучшить)
 - [ ] C7. Post-scan summary modal
 - [ ] C8. Competitor tier в строке radar feed
-- [ ] C9. Quick filter: только HOT actionable
+- [x] C9. Quick filter: только HOT actionable
 - [ ] C10. WebSocket/poll status bar global
 - [ ] C11. Pause search banner если LEAD_SEARCH_ENABLED=false
 - [ ] C12. Radar empty state с CTA «включить live»
@@ -60,7 +60,7 @@
 - [x] D3. Economics plain-language hero
 - [x] D4. Competitors plain-language hero
 - [ ] D5. Agent page: preset chips RU
-- [ ] D6. Единый `.plain-help` блок на всех hero
+- [x] D6. Единый `.plain-help` блок на всех hero
 - [ ] D7. Dark mode tokens (optional)
 - [ ] D8. Унифицировать `.btn.tiny` размеры
 - [ ] D9. Table mobile: все страницы responsive-table
@@ -105,7 +105,7 @@
 ## G. AI, agent, OpenAI (10)
 
 - [ ] G1. Agent: контекст лида в каждом preset
-- [ ] G2. Agent: «почему не лид» preset
+- [x] G2. Agent: «почему не лид» preset
 - [ ] G3. GPT queue progress в header
 - [ ] G4. OpenAI cost per analysis in lead detail
 - [ ] G5. Cache hit rate metric
@@ -117,7 +117,7 @@
 
 ## H. Данные и миграции (8)
 
-- [ ] H1. Script reclassify_existing_leads.py
+- [x] H1. Script reclassify_existing_leads.py
 - [ ] H2. Integrity: leads без comment
 - [ ] H3. Archive baseline comments UI filter
 - [ ] H4. contact_events compaction view

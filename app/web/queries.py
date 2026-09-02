@@ -715,6 +715,7 @@ class WebQueryService:
         *,
         q: str = "",
         status: str = "",
+        quality: str = "",
         contact_id: int | None = None,
         limit: int = 300,
         include_not_leads: bool = False,
@@ -743,12 +744,41 @@ class WebQueryService:
                 )
             if contact_id is not None:
                 stmt = stmt.where(Lead.contact_id == contact_id)
+            normalized_quality = quality.strip().lower()
+            if normalized_quality == "hot":
+                stmt = stmt.where(
+                    Lead.lead_score >= self.hot_threshold,
+                    Lead.status.notin_([LeadStatus.NOT_LEAD, LeadStatus.LOST]),
+                )
+            elif normalized_quality == "not_lead":
+                stmt = stmt.where(Lead.status == LeadStatus.NOT_LEAD)
+            elif normalized_quality == "off_catalog":
+                stmt = stmt.where(
+                    or_(
+                        Lead.status == LeadStatus.NOT_LEAD,
+                        func.lower(func.coalesce(Lead.ai_reason, "")).like("%вне каталога%"),
+                        Lead.analysis_details.astext.like("%Не наш ассортимент%"),
+                    )
+                )
+            elif normalized_quality == "garbage":
+                stmt = stmt.where(
+                    or_(
+                        Lead.status == LeadStatus.NOT_LEAD,
+                        func.lower(func.coalesce(Lead.ai_reason, "")).like("%вне каталога%"),
+                        Lead.analysis_details.astext.like("%Не наш ассортимент%"),
+                        Lead.intent.in_(["REACTION", "SPAM"]),
+                    )
+                )
             if status.strip():
                 try:
                     stmt = stmt.where(Lead.status == LeadStatus(status.strip().upper()))
                 except ValueError:
                     return []
-            elif not include_not_leads:
+            elif not include_not_leads and normalized_quality not in {
+                "not_lead",
+                "off_catalog",
+                "garbage",
+            }:
                 stmt = stmt.where(Lead.status != LeadStatus.NOT_LEAD)
             return (await session.execute(stmt)).all()
 

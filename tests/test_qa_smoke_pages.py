@@ -114,7 +114,7 @@ async def test_lead_funnel_api_chain(session_factory):
         ("/discovery", "ЦЕНТР РАЗВЕДКИ"),
         ("/analytics?days=7", "РЫНОЧНАЯ АНАЛИТИКА"),
         ("/catalog", "ИСТОЧНИК ИСТИНЫ"),
-        ("/audiences", "ИНТЕЛЛЕКТ АУДИТОРИЙ"),
+        ("/audiences", "ГРУППЫ СПРОСА"),
         ("/openings", "B2B ОТКРЫТИЯ"),
         ("/agent", "ОБОСНОВАННО"),
     ],
@@ -244,7 +244,7 @@ async def test_audience_detail_renders_with_real_slug(session_factory):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(f"/audiences/{slug}")
     assert response.status_code == 200
-    assert "ИНТЕЛЛЕКТ АУДИТОРИЙ" in response.text
+    assert "ГРУППЫ СПРОСА" in response.text
     assert "data-motion-root" in response.text
 
 

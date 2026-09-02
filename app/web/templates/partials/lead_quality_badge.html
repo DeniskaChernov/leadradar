@@ -1,0 +1,11 @@
+{# Бейдж качества лида — вне каталога, мусор, ожидание GPT #}
+{% set badge = lead_quality_badge(lead) %}
+{% if badge == 'off_catalog' %}
+<span class="tag danger lead-quality-badge">Не наш товар</span>
+{% elif badge == 'not_lead' %}
+<span class="tag muted-tag lead-quality-badge">Не лид</span>
+{% elif badge == 'ai_pending' %}
+<span class="tag warning lead-quality-badge">Ждёт GPT</span>
+{% elif badge == 'noise' %}
+<span class="tag muted-tag lead-quality-badge">Шум</span>
+{% endif %}

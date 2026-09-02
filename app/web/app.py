@@ -76,6 +76,10 @@ from app.web.labels import (
     URGENCY_LABELS,
     label,
 )
+from app.web.lead_ui_helpers import (
+    lead_is_off_catalog,
+    lead_quality_badge,
+)
 from app.web.queries import WebQueryService
 
 logger = logging.getLogger(__name__)
@@ -223,6 +227,8 @@ def build_web_app(
         budget_status_label=lambda value: label(BUDGET_STATUS_LABELS, value),
         money=lambda value: f"{float(value or 0):,.0f}".replace(",", " "),
         safe_attr=lambda obj, name, default=None: getattr(obj, name, default),
+        lead_is_off_catalog=lead_is_off_catalog,
+        lead_quality_badge=lead_quality_badge,
     )
     templates.env.filters["display_dt"] = lambda value, fmt="%d.%m %H:%M": format_display_dt(
         value, fmt, timezone=settings.web_display_timezone
@@ -439,8 +445,20 @@ def build_web_app(
         )
 
     @app.get("/leads", response_class=HTMLResponse)
-    async def leads(request: Request, q: str = "", status: str = "", view: str = "board"):
-        rows = await queries.leads(q=q, status=status)
+    async def leads(
+        request: Request,
+        q: str = "",
+        status: str = "",
+        quality: str = "",
+        view: str = "board",
+    ):
+        rows = await queries.leads(q=q, status=status, quality=quality)
+        use_board = view == "board" and not status and quality not in {
+            "not_lead",
+            "off_catalog",
+            "garbage",
+            "hot",
+        }
         return templates.TemplateResponse(
             request=request,
             name="leads.html",
@@ -449,7 +467,8 @@ def build_web_app(
                 rows=rows,
                 q=q,
                 status_filter=status,
-                view=view,
+                quality_filter=quality,
+                view=view if use_board else "list",
                 board_statuses=[
                     "NEW",
                     "TAKEN",
@@ -457,6 +476,8 @@ def build_web_app(
                     "QUALIFIED",
                     "OFFER_SENT",
                     "NEGOTIATION",
+                    "WON",
+                    "LOST",
                 ],
             ),
         )
@@ -1348,6 +1369,37 @@ def build_web_app(
                 f"Переоценено: {len(results)} · лидов: {new_leads} · не лид: {not_lead}"
                 + (f" · ждут GPT: {pending}" if pending else "")
             ),
+        }
+
+    @app.post("/api/leads/bulk-action")
+    async def bulk_lead_action(request: Request):
+        """Массово взять NEW или отметить NOT_LEAD по списку id (до 50)."""
+        payload = await _json_or_form(request)
+        action = str(payload.get("action") or "").strip().lower().replace("-", "_")
+        raw_ids = payload.get("lead_ids")
+        if action not in {"take", "not_lead"}:
+            raise HTTPException(status_code=400, detail="Допустимы action=take или action=not_lead")
+        if not isinstance(raw_ids, list) or not raw_ids:
+            raise HTTPException(status_code=400, detail="Нужен непустой список lead_ids")
+        lead_ids = [int(item) for item in raw_ids[:50]]
+        mgr = manager_id(request)
+        processed = 0
+        skipped = 0
+        for lead_id in lead_ids:
+            try:
+                if action == "take":
+                    await workflow.assign_manager(lead_id, mgr)
+                else:
+                    await workflow.mark_not_lead(lead_id, mgr)
+                processed += 1
+            except LeadWorkflowError:
+                skipped += 1
+        verb = "взято" if action == "take" else "не лид"
+        return {
+            "ok": True,
+            "processed": processed,
+            "skipped": skipped,
+            "message": f"Сохранено · {verb}: {processed}" + (f" · пропущено: {skipped}" if skipped else ""),
         }
 
     @app.post("/api/leads/{lead_id}/analyze")

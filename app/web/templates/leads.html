@@ -3,39 +3,43 @@
 {% block heading %}Лиды{% endblock %}
 {% block subheading %}Рабочая воронка от первого интереса до продажи{% endblock %}
 {% block content %}
-{% set ns = namespace(total=0, hot=0, new=0, active=0) %}
+{% set ns = namespace(total=0, hot=0, new=0, active=0, garbage=0) %}
 {% for lead, contact, comment, competitor, post, deal in rows %}
   {% set ns.total = ns.total + 1 %}
   {% if lead.lead_score >= settings.hot_lead_threshold %}{% set ns.hot = ns.hot + 1 %}{% endif %}
   {% if lead.status.value == 'NEW' %}{% set ns.new = ns.new + 1 %}{% endif %}
   {% if lead.status.value in ['TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION'] %}{% set ns.active = ns.active + 1 %}{% endif %}
+  {% if lead_quality_badge(lead) in ['off_catalog','not_lead','noise'] %}{% set ns.garbage = ns.garbage + 1 %}{% endif %}
 {% endfor %}
+{% set query_suffix = '' %}
+{% if q %}{% set query_suffix = query_suffix ~ '&q=' ~ (q|urlencode) %}{% endif %}
+{% set show_list = status_filter or quality_filter %}
 
 <section class="hero-status leads-hero {% if safe_mode %}safe{% else %}live{% endif %}" data-motion-root>
   <div>
     <span class="eyebrow">ВОРОНКА ЛИДОВ</span>
     <h2>{{ ns.total }} лидов · {{ ns.hot }} HOT</h2>
-    <p>{{ ns.new }} новых · {{ ns.active }} в активной работе</p>
+    <p>{{ ns.new }} новых · {{ ns.active }} в работе{% if quality_filter == 'garbage' %} · фильтр: подозрительные{% endif %}</p>
   </div>
   <div class="hero-actions">
-    <a class="btn primary" href="/leads?status=NEW">Новые ({{ ns.new }})</a>
-    <a class="btn" href="/radar?kind=hot">HOT сигналы</a>
+    <a class="btn primary" href="/leads?status=NEW{{ query_suffix }}">Новые ({{ ns.new }})</a>
+    <a class="btn" href="/leads?quality=hot{{ query_suffix }}">HOT</a>
     {% include "partials/lead_reanalyze_actions.html" %}
     <button class="btn ghost" type="button" data-agent-open>AI по лидам</button>
   </div>
 </section>
 
 {% if not settings.web_auth_enabled and not settings.web_manager_id %}
-<section class="panel leads-save-warning"><div class="alert danger"><b>Изменения воронки не сохранятся</b><span>Добавьте <code>WEB_MANAGER_ID=1</code> в <code>.env</code> и перезапустите сервер. Без этого API вернёт ошибку 403.</span></div></section>
+<section class="panel leads-save-warning"><div class="alert danger"><b>Изменения воронки не сохранятся</b><span>Добавьте <code>WEB_MANAGER_ID=1</code> в <code>.env</code> и перезапустите сервер.</span></div></section>
 {% else %}
-<section class="panel leads-save-trust compact"><div class="alert ok"><b>Каждый шаг сохраняется в базу</b><span>После нажатия кнопки вы увидите «Сохранено» — запись попадёт в историю клиента.</span></div></section>
+<section class="panel leads-save-trust compact"><div class="alert ok"><b>Каждый шаг сохраняется в базу</b><span>«Не наш товар» и «Не лид» — после переоценки правилами и GPT.</span></div></section>
 {% endif %}
 
 <form class="filters leads-filters" method="get" aria-label="Фильтр лидов">
   <input name="q" value="{{ q }}" aria-label="Поиск лидов" placeholder="Клиент, комментарий, товар или конкурент">
   <select name="status" aria-label="Стадия лида">
-    <option value="">Все рабочие стадии</option>
-    {% for s in ['ANALYZING','AI_PENDING','NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}
+    <option value="">Все стадии</option>
+    {% for s in ['ANALYZING','AI_PENDING','NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST','NOT_LEAD'] %}
     <option value="{{ s }}" {% if status_filter==s %}selected{% endif %}>{{ lead_status_label(s) }}</option>
     {% endfor %}
   </select>
@@ -44,19 +48,27 @@
 </form>
 
 <div class="filters segmented-control leads-view-toggle" aria-label="Быстрый фильтр">
-  <a class="btn {% if not status_filter %}ghost{% endif %}" href="/leads{% if q %}?q={{ q|urlencode }}{% endif %}" {% if not status_filter %}aria-current="page"{% endif %}>Доска</a>
+  <a class="btn {% if show_list %}ghost{% endif %}" href="/leads{% if q %}?q={{ q|urlencode }}{% endif %}" {% if not show_list %}aria-current="page"{% endif %}>Доска</a>
   <a class="btn {% if status_filter != 'NEW' %}ghost{% endif %}" href="/leads?status=NEW{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'NEW' %}aria-current="page"{% endif %}>Новые</a>
-  <a class="btn {% if status_filter != 'NEGOTIATION' %}ghost{% endif %}" href="/leads?status=NEGOTIATION{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'NEGOTIATION' %}aria-current="page"{% endif %}>Переговоры</a>
+  <a class="btn {% if quality_filter != 'hot' %}ghost{% endif %}" href="/leads?quality=hot{% if q %}&q={{ q|urlencode }}{% endif %}" {% if quality_filter == 'hot' %}aria-current="page"{% endif %}>HOT</a>
+  <a class="btn {% if quality_filter != 'garbage' %}ghost{% endif %}" href="/leads?quality=garbage{% if q %}&q={{ q|urlencode }}{% endif %}" {% if quality_filter == 'garbage' %}aria-current="page"{% endif %}>Подозрительные</a>
+  <a class="btn {% if quality_filter != 'not_lead' %}ghost{% endif %}" href="/leads?quality=not_lead{% if q %}&q={{ q|urlencode }}{% endif %}" {% if quality_filter == 'not_lead' %}aria-current="page"{% endif %}>Не лид</a>
   <a class="btn {% if status_filter != 'WON' %}ghost{% endif %}" href="/leads?status=WON{% if q %}&q={{ q|urlencode }}{% endif %}" {% if status_filter == 'WON' %}aria-current="page"{% endif %}>Продажа</a>
 </div>
 
-{% if status_filter %}
+{% if show_list %}
+{% include "partials/lead_bulk_actions.html" %}
 <div class="cards leads-cards">
 {% for lead, contact, comment, competitor, post, deal in rows %}
-<article class="lead-card {% if lead.lead_score >= settings.hot_lead_threshold %}is-hot{% endif %}">
+<article class="lead-card {% if lead.lead_score >= settings.hot_lead_threshold %}is-hot{% endif %} {% if lead_is_off_catalog(lead) %}is-off-catalog{% endif %}">
   <div class="lead-card-top"><div><a href="/contacts/{{ contact.id }}"><b>@{{ contact.username }}</b></a><small>@{{ competitor.normalized_handle }}</small></div><div class="big-score">{% if lead.status.value in ['ANALYZING','AI_PENDING'] %}…{% else %}{{ lead.lead_score }}{% endif %}</div></div>
   <blockquote>{{ comment.text or 'Пустой комментарий' }}</blockquote>
-  <div class="lead-tags"><span class="tag">{{ intent_label(lead.intent) }}</span><span class="tag">{{ product_label(lead.product_category) }}</span><span class="tag status-{{ lead.status.value|lower }}">{{ lead_status_label(lead.status) }}</span></div>
+  <div class="lead-tags">
+    {% include "partials/lead_quality_badge.html" %}
+    <span class="tag">{{ intent_label(lead.intent) }}</span>
+    <span class="tag">{{ product_label(lead.product_category) }}</span>
+    <span class="tag status-{{ lead.status.value|lower }}">{{ lead_status_label(lead.status) }}</span>
+  </div>
   <p class="reason">{{ lead.ai_reason or 'Объяснение ещё не сформировано.' }}</p>
   <div class="card-actions lead-funnel-actions">
     {% include "partials/lead_funnel_quick_action.html" %}
@@ -64,20 +76,20 @@
     <a class="btn ghost" href="/contacts/{{ contact.id }}">История клиента</a>
   </div>
 </article>
-{% else %}<div class="empty panel">Лидов с таким статусом нет.</div>{% endfor %}
+{% else %}<div class="empty panel">Лидов с таким фильтром нет.</div>{% endfor %}
 </div>
 {% else %}
-<div class="kanban" data-motion-root>
+<div class="kanban kanban-wide" data-motion-root>
 {% for stage in board_statuses %}
-<section class="kanban-col">
+<section class="kanban-col {% if stage in ['WON','LOST'] %}kanban-col-closed{% endif %}">
   <header><div><b>{{ lead_status_label(stage) }}</b><small>{% set col=namespace(count=0) %}{% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}{% set col.count = col.count + 1 %}{% endif %}{% endfor %}{{ col.count }} лидов</small></div></header>
   <div class="kanban-stack">
   {% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}
-    <article class="kanban-card {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %}" data-lead-card="{{ lead.id }}">
+    <article class="kanban-card {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %} {% if lead_is_off_catalog(lead) %}off-catalog{% endif %}" data-lead-card="{{ lead.id }}">
       <a class="kanban-card-link" href="/leads/{{ lead.id }}">
         <div class="kanban-top"><b>@{{ contact.username }}</b><span>{% if lead.status.value in ['ANALYZING','AI_PENDING'] %}…{% else %}{{ lead.lead_score }}{% endif %}</span></div>
         <p>{{ comment.text[:120] }}{% if comment.text|length > 120 %}…{% endif %}</p>
-        <small>{{ intent_label(lead.intent) }} · {{ product_label(lead.product_category) }}</small>
+        <small>{% include "partials/lead_quality_badge.html" %} {{ intent_label(lead.intent) }} · {{ product_label(lead.product_category) }}</small>
         <div class="kanban-source"><span>@{{ competitor.normalized_handle }}</span>{% if lead.next_action_at %}<em>⏱ {{ lead.next_action_at | display_dt }}</em>{% endif %}</div>
       </a>
       <div class="kanban-card-actions lead-funnel-actions">

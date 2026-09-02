@@ -143,7 +143,7 @@ async def test_market_pages_render_and_candidate_promotion_api(session_factory):
         )
 
     assert competitors.status_code == 200
-    assert "Мы больше не ограничены AIKO" in competitors.text
+    assert "КОНКУРЕНТЫ В РАДАРЕ" in competitors.text
     assert discovery.status_code == 200
     assert "Lazuno Ok" in discovery.text
     assert roadmap.status_code == 200

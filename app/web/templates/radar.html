@@ -18,6 +18,7 @@
   </div>
 </section>
 {% include "partials/signal_review_help.html" %}
+{% include "partials/radar_plain_help.html" %}
 <section class="panel ops-arm-card">
   <div class="panel-head"><div><h2>Управление Live</h2><p>Тумблеры пишутся в БД. Master unlock остаётся в .env</p></div>
     <span class="tag {% if ops.radar_live_armed %}success{% else %}muted-tag{% endif %}">{% if ops.radar_live_armed %}Radar включён{% else %}Radar выключен{% endif %}</span>

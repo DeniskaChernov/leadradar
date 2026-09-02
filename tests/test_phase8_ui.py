@@ -152,6 +152,30 @@ async def test_reanalyze_batch_api(session_factory):
     assert "message" in body
     assert lead_id  # lead создан и должен попасть в выборку NEW
 
+
+async def test_bulk_lead_action_api(session_factory):
+    lead_id = await create_lead(session_factory)
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/leads/bulk-action",
+            json={"action": "take", "lead_ids": [lead_id]},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["processed"] == 1
+    assert "Сохранено" in body["message"]
+
 async def test_uncertain_notification_resolve_api(session_factory):
     from sqlalchemy import select
 

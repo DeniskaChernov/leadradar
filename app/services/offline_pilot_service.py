@@ -27,6 +27,7 @@ class PilotCase:
     expected_intent: str | None = None
     expected_is_rattan: bool | None = None
     expected_layer: str | None = None
+    defer_to_openai: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +157,7 @@ class OfflinePilotService:
                         caption=str(row.get("post_caption") or ""),
                         expected_is_lead=bool(row["expected_is_lead"]),
                         expected_intent=str(row["expected_intent"]),
+                        defer_to_openai=bool(row.get("defer_to_openai")),
                     )
                 )
         for row_index, row in enumerate(rattan_rows):
@@ -200,6 +202,10 @@ class OfflinePilotService:
                         previous_interests=[],
                     )
                 )
+                if case.defer_to_openai:
+                    assert result is None, case.case_id
+                    predictions.append({"id": case.case_id, "deferred": True})
+                    continue
                 actual_is_lead = bool(result and result.is_lead)
                 actual_intent = result.intent.value if result else "OTHER"
                 lead_expected.append(bool(case.expected_is_lead))
@@ -240,7 +246,7 @@ class OfflinePilotService:
         digest_payload = json.dumps(predictions, sort_keys=True, ensure_ascii=False)
         return OfflinePilotReport(
             corpus_size=len(corpus),
-            lead_cases=len(lead_expected),
+            lead_cases=sum(1 for case in corpus if case.family == "lead"),
             rattan_cases=len(rattan_expected),
             lead_metrics=self._binary_metrics(lead_expected, lead_actual),
             lead_intent_accuracy=self._ratio(intent_matches),

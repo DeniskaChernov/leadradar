@@ -752,6 +752,38 @@
       return;
     }
 
+    const leadBulk = event.target.closest('[data-lead-bulk]');
+    if (leadBulk) {
+      event.preventDefault();
+      event.stopPropagation();
+      const action = leadBulk.dataset.leadBulk;
+      let leadIds = [];
+      try {
+        leadIds = JSON.parse(leadBulk.dataset.leadIds || '[]');
+      } catch {
+        toast('Некорректный список лидов', true);
+        return;
+      }
+      if (!leadIds.length) return;
+      if (leadBulk.dataset.confirm) {
+        const proceed = await confirmAction('Массовое действие', leadBulk.dataset.confirm);
+        if (!proceed) return;
+      }
+      setLoading(leadBulk, true);
+      try {
+        const data = await api('/api/leads/bulk-action', {
+          method: 'POST',
+          body: JSON.stringify({ action, lead_ids: leadIds }),
+        });
+        toast(data.message || 'Готово');
+        reloadSoon();
+      } catch (error) {
+        toast(error.message, true);
+        setLoading(leadBulk, false);
+      }
+      return;
+    }
+
     const leadAction = event.target.closest('[data-lead-action]');
     if (leadAction) {
       event.preventDefault();
