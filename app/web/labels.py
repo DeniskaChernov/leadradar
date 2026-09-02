@@ -128,6 +128,7 @@ EVENT_LABELS = {
     "LEAD_REOPENED": "Лид возвращён в работу",
     "SIGNIFICANT_CHANGE": "Лид стал горячее",
     "AUDIENCE_EXPORT_PREVIEW": "Dry-run экспорта аудитории",
+    "AUDIENCE_EXPORT": "Экспорт аудитории в Meta",
 }
 
 CHANGE_TYPE_LABELS = {

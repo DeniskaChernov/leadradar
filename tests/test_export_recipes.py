@@ -108,6 +108,58 @@ async def test_export_recipe_dry_run(session_factory):
         assert preview_event.payload_json["recipe_slug"] == "high_intent_dining"
 
 
+async def test_export_recipe_confirmed_export_uploads_custom_audience(
+    session_factory, monkeypatch
+):
+    cs = ContactService(session_factory)
+    engine = AudienceEngine(session_factory, hot_threshold=70)
+    sig = await cs.persist_signal(make_post(), make_comment("exp-live-1"))
+    await LeadService(
+        session_factory, QualifiedB2CAnalyzer(), hot_threshold=70, audience_engine=engine
+    ).process_signal(sig)
+
+    async with session_factory() as session:
+        contact = await session.get(Contact, sig.contact_id)
+        assert contact is not None
+        contact.phone = "+998901112233"
+        contact.qualification_updated_at = datetime.now(UTC)
+        await session.commit()
+    await engine.recalculate_contact(sig.contact_id)
+
+    class FakeMeta:
+        connected = True
+
+        async def create_custom_audience(self, *, name, phone_hashes, description=""):
+            assert phone_hashes
+            assert all(len(item) == 64 for item in phone_hashes)
+            return {
+                "audience_id": "aud_99",
+                "status": "PAUSED",
+                "uploaded": len(phone_hashes),
+            }
+
+    service = ExportRecipeService(session_factory, meta_ads=FakeMeta())  # type: ignore[arg-type]
+    res = await service.run_export_recipe("high_intent_dining", dry_run=False, manager_id=42)
+    assert res["dry_run"] is False
+    assert res["meta_audience_id"] == "aud_99"
+    assert res["exported_count"] >= 1
+
+    async with session_factory() as session:
+        intel = await session.scalar(
+            select(ContactIntelligence).where(ContactIntelligence.contact_id == sig.contact_id)
+        )
+        assert intel is not None
+        assert intel.export_eligibility == ExportEligibility.EXPORTED
+        export_event = await session.scalar(
+            select(ContactEvent).where(
+                ContactEvent.contact_id == sig.contact_id,
+                ContactEvent.event_type == ContactEventType.AUDIENCE_EXPORT,
+            )
+        )
+        assert export_event is not None
+        assert export_event.payload_json["meta_audience_id"] == "aud_99"
+
+
 async def test_export_recipe_confirmed_export_is_blocked_while_meta_not_connected(
     session_factory,
 ):

@@ -2,12 +2,14 @@
 export_recipe_service.py — Phase 9 Meta Catalog Mapping & Audience Export Recipes
 
 Provides first-party eligible export recipes, Meta Catalog taxonomy mapping,
-dry-run preview, and audit logging. Strictly enforces ExportEligibility gating.
+dry-run preview, confirmed Custom Audience export behind fail-closed Meta gate,
+and audit logging. Strictly enforces ExportEligibility gating.
 """
 
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
@@ -104,13 +106,25 @@ RECIPES: dict[str, ExportRecipe] = {
 
 
 class ExportRecipeService:
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        meta_ads: MetaAdsService | None = None,
+    ) -> None:
         self.session_factory = session_factory
+        self.meta_ads = meta_ads
 
     @staticmethod
     def _hash(value: str) -> str:
         """Standard SHA-256 hash for privacy-safe dry runs and Meta hashing."""
         return hashlib.sha256(value.strip().lower().encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _phone_hash_for_meta(cls, phone: str) -> str | None:
+        digits = re.sub(r"\D+", "", phone or "")
+        if len(digits) < 8:
+            return None
+        return hashlib.sha256(digits.encode("utf-8")).hexdigest()
 
     async def run_export_recipe(
         self,
@@ -122,18 +136,102 @@ class ExportRecipeService:
         recipe = RECIPES.get(recipe_slug)
         if recipe is None:
             raise ValueError(f"Unknown export recipe: {recipe_slug}")
-        if not dry_run:
-            meta_ads = MetaAdsService(get_settings())
-            if not meta_ads.connected:
-                raise RuntimeError(
-                    "NOT_CONNECTED · подтверждённый Meta export недоступен; используйте dry-run"
-                )
-            raise RuntimeError(
-                "NOT_CONNECTED · Meta Custom Audience export ещё не реализован; используйте dry-run"
-            )
 
         meta_category = CatalogMapper.get_meta_category(recipe.product_category)
+        rows, eligible_rows = await self._load_recipe_rows(recipe)
+        total_matched = len(rows)
+        eligible_count = len(eligible_rows)
+        ineligible_count = total_matched - eligible_count
+        sample_hashes = [
+            self._hash(contact.phone or contact.username or str(contact.id))
+            for contact, _intel in eligible_rows[:5]
+        ]
 
+        if dry_run:
+            await self._audit_preview(
+                recipe=recipe,
+                manager_id=manager_id,
+                rows=rows,
+                eligible_rows=eligible_rows,
+                total_matched=total_matched,
+                eligible_count=eligible_count,
+                ineligible_count=ineligible_count,
+                meta_category=meta_category,
+            )
+            return {
+                "recipe_slug": recipe.slug,
+                "recipe_name": recipe.name,
+                "dry_run": True,
+                "total_matched": total_matched,
+                "eligible_count": eligible_count,
+                "ineligible_count": ineligible_count,
+                "meta_catalog_category": meta_category,
+                "sample_privacy_hashes": sample_hashes,
+                "message": (
+                    f"Dry-run: найдено {total_matched}; first-party eligible: {eligible_count}; "
+                    f"ineligible: {ineligible_count}. Meta dry-run only."
+                ),
+            }
+
+        meta_ads = self.meta_ads or MetaAdsService(get_settings())
+        if not meta_ads.connected:
+            raise RuntimeError(
+                "NOT_CONNECTED · подтверждённый Meta export недоступен; используйте dry-run"
+            )
+        phone_hashes: list[str] = []
+        exportable: list[tuple[Contact, ContactIntelligence]] = []
+        for contact, intel in eligible_rows:
+            digest = self._phone_hash_for_meta(contact.phone or "")
+            if digest is None:
+                continue
+            phone_hashes.append(digest)
+            exportable.append((contact, intel))
+        if not phone_hashes:
+            raise RuntimeError(
+                "Нет first-party контактов с телефоном для Custom Audience export"
+            )
+
+        result = await meta_ads.create_custom_audience(
+            name=f"Lead Radar · {recipe.name}",
+            phone_hashes=phone_hashes,
+            description=recipe.description,
+        )
+        if result.get("error"):
+            raise RuntimeError(
+                f"{result.get('error')} · {result.get('message') or 'Meta Custom Audience failed'}"
+            )
+
+        await self._mark_exported(
+            recipe=recipe,
+            manager_id=manager_id,
+            exportable=exportable,
+            meta_result=result,
+            meta_category=meta_category,
+            total_matched=total_matched,
+            eligible_count=eligible_count,
+            ineligible_count=ineligible_count,
+        )
+        return {
+            "recipe_slug": recipe.slug,
+            "recipe_name": recipe.name,
+            "dry_run": False,
+            "total_matched": total_matched,
+            "eligible_count": eligible_count,
+            "ineligible_count": ineligible_count,
+            "exported_count": len(exportable),
+            "meta_catalog_category": meta_category,
+            "meta_audience_id": result.get("audience_id"),
+            "meta_status": result.get("status"),
+            "sample_privacy_hashes": sample_hashes,
+            "message": (
+                f"Custom Audience PAUSED · id={result.get('audience_id')} · "
+                f"uploaded={len(exportable)}"
+            ),
+        }
+
+    async def _load_recipe_rows(
+        self, recipe: ExportRecipe
+    ) -> tuple[list[tuple[Contact, ContactIntelligence]], list[tuple[Contact, ContactIntelligence]]]:
         async with self.session_factory() as session:
             stmt = select(Contact, ContactIntelligence).join(
                 ContactIntelligence, ContactIntelligence.contact_id == Contact.id
@@ -161,53 +259,88 @@ class ExportRecipeService:
             if recipe.min_value_score > 0:
                 stmt = stmt.where(ContactIntelligence.value_score >= recipe.min_value_score)
 
-            rows = (await session.execute(stmt)).all()
-
-            total_matched = len(rows)
+            rows = list((await session.execute(stmt)).all())
             eligible_rows = [
                 (c, intel)
                 for c, intel in rows
                 if intel.export_eligibility == ExportEligibility.FIRST_PARTY_ELIGIBLE
             ]
-            eligible_count = len(eligible_rows)
-            ineligible_count = total_matched - eligible_count
+            return rows, eligible_rows
 
-            sample_hashes = [
-                self._hash(contact.phone or contact.username or str(contact.id))
-                for contact, _intel in eligible_rows[:5]
-            ]
-            audit_contact_id = None
-            if eligible_rows:
-                audit_contact_id = eligible_rows[0][0].id
-            elif rows:
-                audit_contact_id = rows[0][0].id
-            if audit_contact_id is not None:
-                await ContactEventRepository(session).add(
-                    audit_contact_id,
-                    ContactEventType.AUDIENCE_EXPORT_PREVIEW,
+    async def _audit_preview(
+        self,
+        *,
+        recipe: ExportRecipe,
+        manager_id: int,
+        rows: list[tuple[Contact, ContactIntelligence]],
+        eligible_rows: list[tuple[Contact, ContactIntelligence]],
+        total_matched: int,
+        eligible_count: int,
+        ineligible_count: int,
+        meta_category: str,
+    ) -> None:
+        audit_contact_id = None
+        if eligible_rows:
+            audit_contact_id = eligible_rows[0][0].id
+        elif rows:
+            audit_contact_id = rows[0][0].id
+        if audit_contact_id is None:
+            return
+        async with self.session_factory() as session:
+            await ContactEventRepository(session).add(
+                audit_contact_id,
+                ContactEventType.AUDIENCE_EXPORT_PREVIEW,
+                manager_telegram_id=manager_id,
+                payload={
+                    "action": "AUDIENCE_EXPORT_PREVIEW",
+                    "recipe_slug": recipe.slug,
+                    "dry_run": True,
+                    "total_matched": total_matched,
+                    "eligible_count": eligible_count,
+                    "ineligible_count": ineligible_count,
+                    "meta_catalog_category": meta_category,
+                },
+            )
+            await session.commit()
+
+    async def _mark_exported(
+        self,
+        *,
+        recipe: ExportRecipe,
+        manager_id: int,
+        exportable: list[tuple[Contact, ContactIntelligence]],
+        meta_result: dict[str, Any],
+        meta_category: str,
+        total_matched: int,
+        eligible_count: int,
+        ineligible_count: int,
+    ) -> None:
+        async with self.session_factory() as session:
+            events = ContactEventRepository(session)
+            for contact, _intel in exportable:
+                intel = await session.scalar(
+                    select(ContactIntelligence).where(
+                        ContactIntelligence.contact_id == contact.id
+                    )
+                )
+                if intel is None:
+                    continue
+                intel.export_eligibility = ExportEligibility.EXPORTED
+                await events.add(
+                    contact.id,
+                    ContactEventType.AUDIENCE_EXPORT,
                     manager_telegram_id=manager_id,
                     payload={
-                        "action": "AUDIENCE_EXPORT_PREVIEW",
+                        "action": "AUDIENCE_EXPORT",
                         "recipe_slug": recipe.slug,
-                        "dry_run": True,
+                        "dry_run": False,
+                        "meta_audience_id": meta_result.get("audience_id"),
+                        "meta_status": meta_result.get("status"),
+                        "meta_catalog_category": meta_category,
                         "total_matched": total_matched,
                         "eligible_count": eligible_count,
                         "ineligible_count": ineligible_count,
-                        "meta_catalog_category": meta_category,
+                        "exported_count": len(exportable),
                     },
                 )
-                await session.commit()
-            return {
-                "recipe_slug": recipe.slug,
-                "recipe_name": recipe.name,
-                "dry_run": True,
-                "total_matched": total_matched,
-                "eligible_count": eligible_count,
-                "ineligible_count": ineligible_count,
-                "meta_catalog_category": meta_category,
-                "sample_privacy_hashes": sample_hashes,
-                "message": (
-                    f"Dry-run: найдено {total_matched}; first-party eligible: {eligible_count}; "
-                    f"ineligible: {ineligible_count}. Meta NOT_CONNECTED."
-                ),
-            }
+            await session.commit()

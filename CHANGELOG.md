@@ -2,6 +2,13 @@
 
 Формат: волны улучшений по `docs/SYSTEM_IMPROVEMENT_PLAN.md`. Полная история релизов — `RELEASE_NOTES.md`.
 
+## [13.29.1-meta-export] — 2026-09-02
+
+### Added
+- Meta Custom Audience confirmed export: PAUSED audience + PHONE_SHA256 upload (`MetaAdsService.create_custom_audience`)
+- Fail-closed without Meta live unlock; dry-run unchanged
+- Pilot recommendation: `@aiko.uz` + `@chinar.uz`, ≤10 credits/scan
+
 ## [13.29.0-docs] — 2026-09-02
 
 ### Changed

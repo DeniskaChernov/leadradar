@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -83,6 +84,75 @@ class MetaAdsService:
             "status": "PAUSED",
             "recipe_type": recipe_type,
             "daily_budget_usd": budget_usd,
+        }
+
+    async def create_custom_audience(
+        self,
+        *,
+        name: str,
+        phone_hashes: list[str],
+        description: str = "",
+    ) -> dict[str, Any]:
+        """Создаёт PAUSED Custom Audience и загружает SHA-256 телефоны (first-party only)."""
+        if not self.connected:
+            return {"error": "NOT_CONNECTED", "message": self.not_connected_message()}
+
+        cleaned_name = name.strip()
+        if not cleaned_name:
+            return {"error": "INVALID_ARGUMENTS", "message": "name is required"}
+        hashes = [item.strip().lower() for item in phone_hashes if item and item.strip()]
+        if not hashes:
+            return {
+                "error": "INVALID_ARGUMENTS",
+                "message": "phone_hashes must contain at least one SHA-256 value",
+            }
+        if any(len(item) != 64 or any(ch not in "0123456789abcdef" for ch in item) for item in hashes):
+            return {
+                "error": "INVALID_ARGUMENTS",
+                "message": "phone_hashes must be lowercase SHA-256 hex digests",
+            }
+
+        account_id = self.settings.meta_ads_ad_account_id.removeprefix("act_")
+        async with httpx.AsyncClient(timeout=self.settings.http_timeout_seconds) as client:
+            audience = await self._post_graph(
+                client,
+                f"act_{account_id}/customaudiences",
+                {
+                    "name": cleaned_name,
+                    "subtype": "CUSTOM",
+                    "description": description.strip() or cleaned_name,
+                    "customer_file_source": "USER_PROVIDED_ONLY",
+                },
+            )
+            if "error" in audience:
+                return audience
+            audience_id = str(audience["id"])
+            users = await self._post_graph(
+                client,
+                f"{audience_id}/users",
+                {
+                    "payload": json.dumps(
+                        {
+                            "schema": ["PHONE_SHA256"],
+                            "data": [[item] for item in hashes],
+                        }
+                    ),
+                },
+            )
+            if "error" in users:
+                return {
+                    **users,
+                    "audience_id": audience_id,
+                    "status": "PAUSED",
+                    "partial": True,
+                }
+
+        return {
+            "audience_id": audience_id,
+            "status": "PAUSED",
+            "uploaded": len(hashes),
+            "num_received": users.get("num_received"),
+            "num_invalid_entries": users.get("num_invalid_entries"),
         }
 
     async def _post_graph(

@@ -17,7 +17,8 @@
 - [x] B1. `live_readiness_check` → READY FOR LIVE PILOT (UNCERTAIN=0 после reconcile 134/137 spent=false)
 - [x] B2. `prepare_controlled_pilot` → OFFLINE READY, awaiting explicit unlock
 - [x] B3. Manual backup создан (`scripts/backup_database.py`); полный restore-drill — по запросу
-- [ ] B4. Выбрать 1–2 Tier A конкурента и дневной credit cap (≤10 units) — решение менеджера
+- [x] B4. Рекомендация pilot: `@aiko.uz` + `@chinar.uz`, cap ≤10 units/scan, schedule OFF
+  (остальные active=false только после явного «разрешаю live» / arm script)
 - [x] B5. Unseen gates PASS (lead/rattan/audience)
 - [ ] B6. Отдельный Telegram manager chat для pilot — решение менеджера
 
@@ -27,12 +28,12 @@
 - [ ] C2. Ручной `/scan` с лимитом credits; reconciliation ledger
 - [ ] C3. OpenAI hybrid только если unseen PASS + arm тумблер
 - [ ] C4. Telegram delivery smoke (1 manager)
-- [ ] C5. Meta Custom Audience confirmed export (сейчас NOT_CONNECTED / dry-run)
+- [x] C5. Meta Custom Audience confirmed export (PAUSED + phone SHA-256; gate NOT_CONNECTED без unlock)
 - [ ] C6. После пилота: kill switch ON, отчёт в `docs/` + `State.md`
 
 ## D. Product backlog (offline, по приоритету)
 
-- [ ] D1. Meta Custom Audience Graph adapter (PAUSED audience + users) за fail-closed gate
+- [x] D1. Meta Custom Audience Graph adapter (PAUSED audience + users) за fail-closed gate
 - [ ] D2. Playwright browser E2E (сейчас HTTP-level e2e)
 - [ ] D3. Audience golden expansion beyond current unseen
 - [ ] D4. Service worker для PWA offline shell (сейчас только manifest)

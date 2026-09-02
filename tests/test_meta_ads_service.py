@@ -56,13 +56,33 @@ async def test_meta_ads_post_graph_parses_success_payload():
 
 
 @pytest.mark.asyncio
-async def test_meta_ads_post_graph_surfaces_graph_errors():
+async def test_meta_ads_create_custom_audience_not_connected():
+    service = MetaAdsService(Settings(_env_file=None, meta_ads_live_calls_enabled=False))
+    result = await service.create_custom_audience(name="Test", phone_hashes=["a" * 64])
+    assert result["error"] == "NOT_CONNECTED"
+
+
+@pytest.mark.asyncio
+async def test_meta_ads_create_custom_audience_paused_upload(monkeypatch):
     service = MetaAdsService(_live_settings())
+    calls: list[str] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(400, json={"error": {"message": "Invalid token"}})
+    async def fake_post_graph(client, path, payload):
+        calls.append(path)
+        if path.endswith("/customaudiences"):
+            return {"id": "aud_1"}
+        if path.endswith("/users"):
+            return {"num_received": 1, "num_invalid_entries": 0}
+        return {"error": "META_API_ERROR", "message": f"unexpected {path}"}
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        payload = await service._post_graph(client, "act_123/campaigns", {"name": "x"})
-    assert payload["error"] == "META_API_ERROR"
-    assert "Invalid token" in payload["message"]
+    monkeypatch.setattr(service, "_post_graph", fake_post_graph)
+    result = await service.create_custom_audience(
+        name="Lead Radar · dining",
+        phone_hashes=["b" * 64],
+        description="test",
+    )
+    assert result["audience_id"] == "aud_1"
+    assert result["status"] == "PAUSED"
+    assert result["uploaded"] == 1
+    assert any(path.endswith("/customaudiences") for path in calls)
+    assert any(path.endswith("/users") for path in calls)
