@@ -87,3 +87,20 @@ async def test_radar_feed_exposes_pipeline_counters(session_factory):
     assert payload["analysis_in_flight"] == 0
     assert payload["cycle_running"] is False
     assert payload["ai_analysis_max_concurrency"] >= 1
+    assert "scan_progress" in payload
+    assert payload["scan_progress"]["phase"] == "idle"
+
+
+async def test_scan_progress_api_returns_idle_snapshot(session_factory):
+    app = await _hot_lead_app(session_factory, with_pipeline=False)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/scan/progress")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["cycle_running"] is False
+    assert payload["progress"]["phase"] == "idle"
+    assert payload["progress"]["percent"] == 0
+    assert "last_stats" in payload
+    assert payload["last_stats"] is None

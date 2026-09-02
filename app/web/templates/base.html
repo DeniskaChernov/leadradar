@@ -12,9 +12,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=13.14.0-wave4">
+  <link rel="stylesheet" href="/static/app.css?v=13.16.0-scan-summary">
   <script defer src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
-  <script defer src="/static/app.js?v=13.14.0-wave4"></script>
+  <script defer src="/static/app.js?v=13.16.0-scan-summary"></script>
 </head>
 <body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}" data-page="{{ active_path }}">
 <a class="skip-link" href="#main-content">Перейти к содержимому</a>
@@ -69,17 +69,18 @@
       {% else %}
       <div class="safe-chip live"><span>◉</span><div><b>Live-мониторинг</b><small>Внешние API разрешены</small></div></div>
       {% endif %}
-      <div class="side-status">
-        <span class="pulse {% if snapshot.last_error %}bad{% elif snapshot.cycle_running %}busy{% endif %}"></span>
+      <div class="side-status" data-scan-side-status>
+        <span class="pulse {% if snapshot.last_error %}bad{% elif snapshot.cycle_running %}busy{% endif %}" data-scan-side-pulse></span>
         <div>
-          <b>{% if snapshot.cycle_running %}Идёт проверка{% elif snapshot.last_error %}Нужна проверка{% else %}Система готова{% endif %}</b>
-          <small>Циклов в этой сессии: {{ snapshot.cycles_completed }}</small>
+          <b data-scan-side-title>{% if snapshot.cycle_running %}Идёт проверка{% elif snapshot.last_error %}Нужна проверка{% else %}Система готова{% endif %}</b>
+          <small data-scan-side-detail>{% if snapshot.cycle_running and snapshot.progress.percent %}{{ snapshot.progress.percent }}% · {{ snapshot.progress.phase_label }}{% else %}Циклов в этой сессии: {{ snapshot.cycles_completed }}{% endif %}</small>
         </div>
       </div>
     </div>
   </aside>
 
   <main class="main" id="main-content" tabindex="-1">
+    <div class="main-sticky-head">
     <header class="topbar">
       <div class="top-title">
         <h1>{% block heading %}Lead Radar{% endblock %}</h1>
@@ -115,6 +116,19 @@
         <button class="btn primary" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %} data-scan-cap="{{ settings.instagram_max_units_per_scan }}">{% if search_paused %}Поиск приостановлен{% elif active_path.startswith('/radar') %}Запустить Radar{% else %}Проверить сейчас{% endif %}</button>
       </div>
     </header>
+    <div class="scan-progress-banner" data-scan-progress-banner {% if not snapshot.cycle_running %}hidden{% endif %} aria-live="polite">
+      <span class="pulse busy"></span>
+      <div class="scan-progress-banner-copy">
+        <b data-scan-banner-title>Идёт проверка Instagram</b>
+        <small data-scan-banner-detail>{{ snapshot.progress.detail or 'Сбор комментариев…' }}</small>
+      </div>
+      <div class="scan-progress-banner-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ snapshot.progress.percent or 0 }}">
+        <i data-scan-banner-fill style="width: {{ snapshot.progress.percent or 0 }}%"></i>
+      </div>
+      <strong data-scan-banner-percent>{{ snapshot.progress.percent or 0 }}%</strong>
+      <a class="btn tiny ghost" href="/radar">Открыть Радар</a>
+    </div>
+    </div>
 
     <section class="content" data-motion-root>
       {% if snapshot.last_error %}
@@ -144,6 +158,24 @@
     <div class="modal-actions">
       <button class="btn ghost" type="button" data-scan-quick-cancel>Отмена</button>
       <button class="btn primary" type="button" data-scan-quick-go>Запустить</button>
+    </div>
+  </div>
+</div>
+<div id="scan-summary" class="modal-backdrop" hidden>
+  <div class="modal scan-summary-modal" role="dialog" aria-modal="true" aria-labelledby="scan-summary-title">
+    <h3 id="scan-summary-title">Проверка завершена</h3>
+    <p class="muted" data-scan-summary-subtitle>Итог последнего запуска Radar</p>
+    <div class="scan-summary-grid" data-scan-summary-grid>
+      <div><span>Конкуренты</span><b data-scan-sum-competitors>0</b></div>
+      <div><span>Reels</span><b data-scan-sum-reels>0</b></div>
+      <div><span>Комментарии</span><b data-scan-sum-comments>0</b></div>
+      <div><span>Лиды</span><b data-scan-sum-leads>0</b></div>
+      <div><span>Ошибки</span><b data-scan-sum-errors>0</b></div>
+      <div><span>Лимит credits</span><b data-scan-sum-budget>—</b></div>
+    </div>
+    <div class="modal-actions">
+      <a class="btn ghost" href="/radar" data-scan-summary-radar>Открыть Радар</a>
+      <button class="btn primary" type="button" data-scan-summary-ok>Понятно</button>
     </div>
   </div>
 </div>

@@ -6,9 +6,14 @@ import inspect
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
-from app.services.instagram_monitor import CycleStats, InstagramMonitor
+from app.services.instagram_monitor import CycleStats
 from app.services.monitor_run_service import MonitorRunService
+from app.services.scan_progress import ScanProgress, ScanProgressTracker
+
+if TYPE_CHECKING:
+    from app.services.instagram_monitor import InstagramMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +28,7 @@ class RuntimeSnapshot:
     last_cycle_completed_at: datetime | None
     last_stats: CycleStats | None
     last_error: str | None
+    progress: ScanProgress
 
 
 class MonitorController:
@@ -39,6 +45,7 @@ class MonitorController:
         self._requested_credit_budget: int | None = None
         self._effective_credit_budget: int | None = None
         self._task: asyncio.Task[CycleStats] | None = None
+        self._progress = ScanProgressTracker()
 
     def start_cycle(
         self,
@@ -59,6 +66,7 @@ class MonitorController:
             else:
                 # Scheduler path: never inherit a prior manual Deep-scan cap.
                 provider.restore_default_scan_budget()
+        self._progress.reset()
         self._task = asyncio.create_task(self._execute_cycle(), name=f"monitor:{trigger}")
         self._task.add_done_callback(_consume_task_exception)
         return True
@@ -71,6 +79,9 @@ class MonitorController:
 
     def snapshot(self) -> RuntimeSnapshot:
         running = self._task is not None and not self._task.done()
+        progress = self._progress.snapshot()
+        if not running and progress.phase not in {"idle", "done"}:
+            progress = ScanProgress()
         return RuntimeSnapshot(
             started_at=self.started_at,
             cycle_running=running,
@@ -80,6 +91,7 @@ class MonitorController:
             last_cycle_completed_at=self.last_cycle_completed_at,
             last_stats=self.last_stats,
             last_error=self.last_error,
+            progress=progress,
         )
 
     async def stop(self) -> None:
@@ -102,12 +114,21 @@ class MonitorController:
         try:
             force = (self._cycle_trigger or "") in {"web", "manual", "bot", "once"}
             parameters = inspect.signature(self.monitor.run_cycle).parameters
+            kwargs: dict[str, Any] = {}
             if "force" in parameters:
-                stats = await self.monitor.run_cycle(force=force)
-            else:
-                stats = await self.monitor.run_cycle()
+                kwargs["force"] = force
+            if "progress" in parameters:
+                kwargs["progress"] = self._progress
+            stats = await self.monitor.run_cycle(**kwargs)
             self.last_stats = stats
             self.cycles_completed += 1
+            self._progress.set_done()
+            self._progress.update_stats(
+                competitors_checked=stats.competitors_checked,
+                reels_found=stats.reels_found,
+                comments_created=stats.comments_created,
+                leads_created=stats.leads_created,
+            )
             if run_id is not None and self.run_service is not None:
                 await self.run_service.finish_success(run_id, stats)
             logger.info(

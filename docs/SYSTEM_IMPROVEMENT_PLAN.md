@@ -46,10 +46,10 @@
 - [x] C4. Plain-language help на всех вкладках radar
 - [x] C5. Счётчик «спорных» vs «архив» раздельно
 - [ ] C6. Preview стоимости scan до запуска (улучшить)
-- [ ] C7. Post-scan summary modal
+- [x] C7. Post-scan summary modal
 - [ ] C8. Competitor tier в строке radar feed
 - [x] C9. Quick filter: только HOT actionable
-- [ ] C10. WebSocket/poll status bar global
+- [x] C10. WebSocket/poll status bar global
 - [x] C11. Pause search banner если LEAD_SEARCH_ENABLED=false
 - [ ] C12. Radar empty state с CTA «включить live»
 

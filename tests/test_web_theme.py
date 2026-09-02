@@ -226,8 +226,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.14.0-wave4" in base
-    assert "13.14.0-wave4" in auth
+    assert "13.16.0-scan-summary" in base
+    assert "13.16.0-scan-summary" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
@@ -392,6 +392,17 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "data-lead-followup" in javascript
     assert "/api/leads/" in javascript and "follow-up" in javascript
     assert ".leads-bulk-bar" in css
+    assert "showScanSummary" in javascript
+    assert "scan-summary" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert ".scan-summary-grid" in css
+    assert "main-sticky-head" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "data-scan-progress-banner" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert ".main-sticky-head" in css
+    assert "data-scan-progress-block" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "applyScanProgress" in javascript
+    assert "/api/scan/progress" in javascript
+    assert ".scan-progress-banner" in css
+    assert ".scan-progress-track" in css
     assert "contacts-hero" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert 'href="/agent"' in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert "ОЧЕРЕДЬ КОНТАКТОВ" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")

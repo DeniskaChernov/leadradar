@@ -964,34 +964,226 @@
     }
   };
 
-  const updateRadarLiveBanner = (payload) => {
-    const banner = document.querySelector('[data-radar-live]');
-    if (!banner) return;
+  const applyScanProgress = (payload) => {
+    const progress = payload.progress || payload.scan_progress || {};
     const busy = Boolean(payload.cycle_running)
       || Number(payload.analysis_queue || 0) > 0
       || Number(payload.analysis_in_flight || 0) > 0;
-    banner.hidden = !busy;
-    const title = banner.querySelector('[data-radar-live-title]');
-    const detail = banner.querySelector('[data-radar-live-detail]');
-    if (!title || !detail) return;
-    if (payload.cycle_running) {
-      title.textContent = 'Идёт проверка Instagram';
-      detail.textContent = 'Сбор комментариев и Reels…';
-    } else if (Number(payload.analysis_in_flight || 0) > 0) {
-      title.textContent = 'Идёт умная оценка';
-      detail.textContent = `В работе: ${payload.analysis_in_flight}, в очереди: ${payload.analysis_queue || 0}`;
-    } else if (Number(payload.analysis_queue || 0) > 0) {
-      title.textContent = 'Очередь оценки';
-      detail.textContent = `Ждут: ${payload.analysis_queue}`;
+    const percent = Number(progress.percent || 0);
+    const phaseLabel = progress.phase_label || '';
+    const detail = progress.detail || '';
+    const handle = progress.current_handle ? `@${progress.current_handle}` : '';
+
+    const banner = document.querySelector('[data-scan-progress-banner]');
+    if (banner) {
+      banner.hidden = !payload.cycle_running;
+      const title = banner.querySelector('[data-scan-banner-title]');
+      const detailEl = banner.querySelector('[data-scan-banner-detail]');
+      const fill = banner.querySelector('[data-scan-banner-fill]');
+      const pct = banner.querySelector('[data-scan-banner-percent]');
+      const bar = banner.querySelector('[role="progressbar"]');
+      if (title) title.textContent = phaseLabel || 'Идёт проверка Instagram';
+      if (detailEl) {
+        detailEl.textContent = [detail, handle].filter(Boolean).join(' · ') || 'Сбор комментариев…';
+      }
+      if (fill) fill.style.width = `${percent}%`;
+      if (pct) pct.textContent = `${percent}%`;
+      if (bar) bar.setAttribute('aria-valuenow', String(percent));
     }
+
+    const sideTitle = document.querySelector('[data-scan-side-title]');
+    const sideDetail = document.querySelector('[data-scan-side-detail]');
+    const sidePulse = document.querySelector('[data-scan-side-pulse]');
+    if (sideTitle && sideDetail) {
+      if (payload.cycle_running) {
+        sideTitle.textContent = 'Идёт проверка';
+        sideDetail.textContent = `${percent}% · ${phaseLabel || 'Instagram'}${handle ? ` · ${handle}` : ''}`;
+        if (sidePulse) {
+          sidePulse.classList.add('busy');
+          sidePulse.classList.remove('bad');
+        }
+      } else if (payload.last_error) {
+        sideTitle.textContent = 'Нужна проверка';
+        sideDetail.textContent = String(payload.last_error).slice(0, 80);
+        if (sidePulse) {
+          sidePulse.classList.add('bad');
+          sidePulse.classList.remove('busy');
+        }
+      } else if (Number(payload.analysis_in_flight || 0) > 0 || Number(payload.analysis_queue || 0) > 0) {
+        sideTitle.textContent = 'Оценка сигналов';
+        sideDetail.textContent = `В работе: ${payload.analysis_in_flight || 0} · очередь: ${payload.analysis_queue || 0}`;
+        if (sidePulse) {
+          sidePulse.classList.add('busy');
+          sidePulse.classList.remove('bad');
+        }
+      }
+    }
+
+    const live = document.querySelector('[data-radar-live]');
+    if (live) {
+      live.hidden = !busy;
+      const title = live.querySelector('[data-radar-live-title]');
+      const detailEl = live.querySelector('[data-radar-live-detail]');
+      const pct = live.querySelector('[data-radar-live-percent]');
+      const block = live.querySelector('[data-scan-progress-block]');
+      if (payload.cycle_running) {
+        if (title) title.textContent = phaseLabel || 'Идёт проверка Instagram';
+        if (detailEl) {
+          detailEl.textContent = [detail, handle].filter(Boolean).join(' · ') || 'Сбор комментариев и Reels…';
+        }
+        if (pct) {
+          pct.hidden = false;
+          pct.textContent = `${percent}%`;
+        }
+        if (block) {
+          block.hidden = false;
+          const fill = block.querySelector('[data-scan-progress-fill]');
+          const bar = block.querySelector('[data-scan-progress-bar]');
+          const phase = block.querySelector('[data-scan-progress-phase]');
+          const handleEl = block.querySelector('[data-scan-progress-handle]');
+          if (fill) fill.style.width = `${percent}%`;
+          if (bar) bar.setAttribute('aria-valuenow', String(percent));
+          if (phase) phase.textContent = phaseLabel || 'Проверка';
+          if (handleEl) handleEl.textContent = handle;
+          const setStat = (sel, value) => {
+            const el = block.querySelector(sel);
+            if (el) el.textContent = String(value ?? 0);
+          };
+          setStat('[data-scan-stat-competitors]', progress.competitors_checked);
+          setStat('[data-scan-stat-reels]', progress.reels_found);
+          setStat('[data-scan-stat-comments]', progress.comments_created);
+          setStat('[data-scan-stat-leads]', progress.leads_created);
+        }
+      } else if (Number(payload.analysis_in_flight || 0) > 0) {
+        if (title) title.textContent = 'Идёт умная оценка';
+        if (detailEl) {
+          detailEl.textContent = `В работе: ${payload.analysis_in_flight}, в очереди: ${payload.analysis_queue || 0}`;
+        }
+        if (pct) pct.hidden = true;
+        if (block) block.hidden = true;
+      } else if (Number(payload.analysis_queue || 0) > 0) {
+        if (title) title.textContent = 'Очередь оценки';
+        if (detailEl) detailEl.textContent = `Ждут: ${payload.analysis_queue}`;
+        if (pct) pct.hidden = true;
+        if (block) block.hidden = true;
+      }
+    }
+
+    document.querySelectorAll('[data-scan]').forEach((btn) => {
+      if (!(btn instanceof HTMLButtonElement)) return;
+      if (payload.cycle_running) {
+        if (!btn.dataset.scanBusy) {
+          btn.dataset.scanBusy = '1';
+          btn.dataset.wasDisabled = btn.disabled ? '1' : '0';
+          btn.dataset.scanLabel = btn.textContent || '';
+        }
+        btn.disabled = true;
+        btn.textContent = `Проверка ${percent}%`;
+      } else if (btn.dataset.scanBusy) {
+        btn.textContent = btn.dataset.scanLabel || btn.textContent;
+        btn.disabled = btn.dataset.wasDisabled === '1';
+        delete btn.dataset.scanBusy;
+        delete btn.dataset.scanLabel;
+        delete btn.dataset.wasDisabled;
+      }
+    });
+
+    return busy;
+  };
+
+  const updateRadarLiveBanner = (payload) => {
+    applyScanProgress(payload);
   };
 
   let radarPollTimer = null;
   let radarPollBusy = false;
+  let scanProgressTimer = null;
+  let scanProgressBusy = false;
+  let cycleWasRunning = false;
+  let scanSummaryShownForCycle = false;
   let radarWasBusy = (() => {
     const banner = document.querySelector('[data-radar-live]');
-    return banner ? !banner.hidden : false;
+    const strip = document.querySelector('[data-scan-progress-banner]');
+    return (banner && !banner.hidden) || (strip && !strip.hidden);
   })();
+
+  const showScanSummary = (payload) => {
+    if (scanSummaryShownForCycle) return;
+    scanSummaryShownForCycle = true;
+    const stats = payload.last_stats || {};
+    const progress = payload.progress || payload.scan_progress || {};
+    const competitors = Number(stats.competitors_checked ?? progress.competitors_checked ?? 0);
+    const reels = Number(stats.reels_found ?? progress.reels_found ?? 0);
+    const comments = Number(stats.comments_created ?? progress.comments_created ?? 0);
+    const leads = Number(stats.leads_created ?? progress.leads_created ?? 0);
+    const errors = Number(stats.errors ?? 0);
+    const budgetStop = Number(stats.budget_stops ?? 0) > 0;
+
+    toast(
+      payload.last_error
+        ? `Проверка остановилась · ${String(payload.last_error).slice(0, 80)}`
+        : `Готово · ${comments} комм. · ${leads} лидов · ${competitors} ист.`,
+      Boolean(payload.last_error)
+    );
+
+    const root = document.getElementById('scan-summary');
+    if (!root) {
+      if ((document.body.dataset.page || '').startsWith('/radar')) reloadSoon(800);
+      return;
+    }
+    const setText = (sel, value) => {
+      const el = root.querySelector(sel);
+      if (el) el.textContent = String(value);
+    };
+    setText('[data-scan-sum-competitors]', competitors);
+    setText('[data-scan-sum-reels]', reels);
+    setText('[data-scan-sum-comments]', comments);
+    setText('[data-scan-sum-leads]', leads);
+    setText('[data-scan-sum-errors]', errors);
+    setText('[data-scan-sum-budget]', budgetStop ? 'достигнут' : 'ок');
+    const subtitle = root.querySelector('[data-scan-summary-subtitle]');
+    if (subtitle) {
+      subtitle.textContent = payload.last_error
+        ? `Завершено с ошибкой: ${String(payload.last_error).slice(0, 120)}`
+        : 'Итог последнего запуска Radar';
+    }
+
+    const previouslyFocused = document.activeElement;
+    const ok = root.querySelector('[data-scan-summary-ok]');
+    root.hidden = false;
+    requestAnimationFrame(() => root.classList.add('is-open'));
+    const close = () => {
+      root.classList.remove('is-open');
+      document.removeEventListener('keydown', onKeydown);
+      root.removeEventListener('click', onBackdrop);
+      if (ok) ok.onclick = null;
+      setTimeout(() => {
+        root.hidden = true;
+        if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+        if ((document.body.dataset.page || '').startsWith('/radar')) reloadSoon(400);
+      }, 180);
+    };
+    const onKeydown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close();
+      }
+    };
+    const onBackdrop = (event) => {
+      if (event.target === root) close();
+    };
+    if (ok) ok.onclick = close;
+    root.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKeydown);
+    if (ok instanceof HTMLElement) ok.focus();
+  };
+
+  const noteCycleTransition = (payload) => {
+    const running = Boolean(payload.cycle_running);
+    if (running) scanSummaryShownForCycle = false;
+    if (cycleWasRunning && !running) showScanSummary(payload);
+    cycleWasRunning = running;
+  };
 
   const pollRadarFeed = async () => {
     if (radarPollBusy) return;
@@ -1001,12 +1193,14 @@
       notifyNewRadarChanges(feed);
       renderRadarFeed(feed);
       updateRadarLiveBanner(feed);
+      noteCycleTransition(feed);
       const stillBusy = feed.cycle_running
         || Number(feed.analysis_queue || 0) > 0
         || Number(feed.analysis_in_flight || 0) > 0;
-      // Полный reload только после завершения проверки/очереди, а не в простое.
+      // Reload после затишья очереди, если summary уже закрыт.
       if (radarWasBusy && !stillBusy) {
-        reloadSoon(800);
+        const summary = document.getElementById('scan-summary');
+        if (!summary || summary.hidden) reloadSoon(800);
       }
       radarWasBusy = stillBusy;
     } catch (_error) {
@@ -1016,17 +1210,43 @@
     }
   };
 
+  const pollScanProgress = async () => {
+    if (scanProgressBusy) return;
+    if ((document.body.dataset.page || '').startsWith('/radar')) return;
+    scanProgressBusy = true;
+    try {
+      const payload = await api('/api/scan/progress', { method: 'GET' });
+      applyScanProgress(payload);
+      noteCycleTransition(payload);
+      radarWasBusy = Boolean(payload.cycle_running)
+        || Number(payload.analysis_queue || 0) > 0
+        || Number(payload.analysis_in_flight || 0) > 0;
+    } catch (_error) {
+      /* тихий poll */
+    } finally {
+      scanProgressBusy = false;
+    }
+  };
+
   const startRadarPolling = () => {
     if (!(document.body.dataset.page || '').startsWith('/radar')) return;
     pollRadarFeed();
     if (radarPollTimer) clearInterval(radarPollTimer);
-    radarPollTimer = setInterval(pollRadarFeed, 3500);
+    radarPollTimer = setInterval(pollRadarFeed, 2000);
+  };
+
+  const startGlobalScanProgressPolling = () => {
+    pollScanProgress();
+    if (scanProgressTimer) clearInterval(scanProgressTimer);
+    scanProgressTimer = setInterval(pollScanProgress, 2000);
   };
 
   if ((document.body.dataset.page || '').startsWith('/radar')) {
     startRadarPolling();
     const budgetRoot = document.querySelector('.radar-budget-card');
     if (budgetRoot) refreshScanBudgetPreview(budgetRoot);
+  } else {
+    startGlobalScanProgressPolling();
   }
 
   document.addEventListener('change', (event) => {

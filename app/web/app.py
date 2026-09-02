@@ -2097,10 +2097,58 @@ def build_web_app(
         snapshot = controller.snapshot()
         payload["cycle_running"] = snapshot.cycle_running
         payload["last_error"] = snapshot.last_error
+        payload["scan_progress"] = snapshot.progress.to_dict()
+        payload["last_stats"] = (
+            {
+                "competitors_checked": snapshot.last_stats.competitors_checked,
+                "reels_found": snapshot.last_stats.reels_found,
+                "comments_created": snapshot.last_stats.comments_created,
+                "leads_created": snapshot.last_stats.leads_created,
+                "errors": snapshot.last_stats.errors,
+                "budget_stops": snapshot.last_stats.budget_stops,
+                "hot_notifications": snapshot.last_stats.hot_notifications,
+            }
+            if snapshot.last_stats is not None
+            else None
+        )
+        payload["cycles_completed"] = snapshot.cycles_completed
         if analysis_pipeline is not None:
             payload["analysis_queue"] = analysis_pipeline.pending_count
             payload["analysis_in_flight"] = analysis_pipeline.in_flight_count
             payload["ai_analysis_max_concurrency"] = ops_control.snapshot().ai_analysis_max_concurrency
+        else:
+            payload["analysis_queue"] = 0
+            payload["analysis_in_flight"] = 0
+        return payload
+
+    @app.get("/api/scan/progress")
+    async def scan_progress_api():
+        """Лёгкий endpoint для live-прогресса проверки на любой странице."""
+        snapshot = controller.snapshot()
+        payload = {
+            "ok": True,
+            "cycle_running": snapshot.cycle_running,
+            "cycle_trigger": snapshot.cycle_trigger,
+            "last_error": snapshot.last_error,
+            "progress": snapshot.progress.to_dict(),
+            "cycles_completed": snapshot.cycles_completed,
+            "last_stats": (
+                {
+                    "competitors_checked": snapshot.last_stats.competitors_checked,
+                    "reels_found": snapshot.last_stats.reels_found,
+                    "comments_created": snapshot.last_stats.comments_created,
+                    "leads_created": snapshot.last_stats.leads_created,
+                    "errors": snapshot.last_stats.errors,
+                    "budget_stops": snapshot.last_stats.budget_stops,
+                    "hot_notifications": snapshot.last_stats.hot_notifications,
+                }
+                if snapshot.last_stats is not None
+                else None
+            ),
+        }
+        if analysis_pipeline is not None:
+            payload["analysis_queue"] = analysis_pipeline.pending_count
+            payload["analysis_in_flight"] = analysis_pipeline.in_flight_count
         else:
             payload["analysis_queue"] = 0
             payload["analysis_in_flight"] = 0
@@ -2115,6 +2163,7 @@ def build_web_app(
             "cycle_running": snapshot.cycle_running,
             "cycles_completed": snapshot.cycles_completed,
             "last_error": snapshot.last_error,
+            "scan_progress": snapshot.progress.to_dict(),
             "radar_live_armed": ops_control.radar_live_armed(),
             "openai_live_armed": ops_control.openai_live_armed(),
             "master_live_ready": master_live_ready(),

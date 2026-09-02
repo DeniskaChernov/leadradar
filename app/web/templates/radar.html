@@ -53,7 +53,26 @@
 <section class="panel radar-live-panel" id="radar-live-status" data-radar-live {% if not snapshot.cycle_running %}hidden{% endif %}>
   <div class="radar-live-row">
     <span class="pulse busy"></span>
-    <div><b data-radar-live-title>{% if snapshot.cycle_running %}Идёт проверка Instagram{% else %}OpenAI разбирает очередь{% endif %}</b><small data-radar-live-detail>Обновление каждые несколько секунд</small></div>
+    <div class="radar-live-copy">
+      <b data-radar-live-title>{% if snapshot.cycle_running %}Идёт проверка Instagram{% else %}OpenAI разбирает очередь{% endif %}</b>
+      <small data-radar-live-detail>Обновление каждые несколько секунд</small>
+    </div>
+    <strong class="radar-live-percent" data-radar-live-percent hidden>0%</strong>
+  </div>
+  <div class="scan-progress" data-scan-progress-block hidden>
+    <div class="scan-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-scan-progress-bar>
+      <i data-scan-progress-fill style="width:0%"></i>
+    </div>
+    <div class="scan-progress-meta">
+      <span data-scan-progress-phase>Подготовка</span>
+      <span data-scan-progress-handle></span>
+    </div>
+    <div class="scan-progress-stats">
+      <span>Конкуренты <b data-scan-stat-competitors>0</b></span>
+      <span>Reels <b data-scan-stat-reels>0</b></span>
+      <span>Комментарии <b data-scan-stat-comments>0</b></span>
+      <span>Лиды <b data-scan-stat-leads>0</b></span>
+    </div>
   </div>
 </section>
 <section class="panel radar-feed-panel" id="radar-feed">

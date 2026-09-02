@@ -71,6 +71,25 @@ async def test_controller_prevents_overlapping_cycles_and_tracks_status():
     assert snapshot.last_error is None
 
 
+async def test_controller_exposes_live_progress_while_running():
+    monitor = BlockingMonitor()
+    controller = MonitorController(monitor)  # type: ignore[arg-type]
+
+    assert controller.start_cycle("manual") is True
+    await monitor.started.wait()
+    snap = controller.snapshot()
+    assert snap.cycle_running is True
+    assert snap.progress.phase == "prepare"
+    assert snap.progress.percent >= 1
+
+    monitor.release.set()
+    await controller.wait_current()
+    done = controller.snapshot()
+    assert done.cycle_running is False
+    assert done.progress.phase == "done"
+    assert done.progress.percent == 100
+
+
 async def test_controller_exposes_cycle_failure():
     controller = MonitorController(FailingMonitor())  # type: ignore[arg-type]
 
