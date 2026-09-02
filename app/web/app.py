@@ -28,6 +28,7 @@ from app.services.crm_service import CRMService
 from app.services.deployment_readiness_service import inspect_offline_readiness
 from app.services.discovery_service import DiscoveryService
 from app.services.export_recipe_service import ExportRecipeService
+from app.services.feedback_learning_service import FeedbackLearningService
 from app.services.fx_policy_service import FxPolicyService
 from app.services.independent_quality_gates_service import IndependentQualityGatesService
 from app.services.lead_analysis_pipeline import LeadAnalysisPipeline
@@ -828,6 +829,15 @@ def build_web_app(
         )
         quality_gates = quality_gates_service.snapshot()
         manager_feedback_quality = await queries.manager_feedback_quality()
+        feedback_learning_service = FeedbackLearningService(
+            workflow.session_factory,
+            hot_threshold=settings.hot_lead_threshold,
+        )
+        feedback_learning = await feedback_learning_service.snapshot(days=30)
+        feedback_learning_rows = await feedback_learning_service.false_positive_rows(
+            limit=10,
+            days=30,
+        )
         rules_reanalyze = await queries.rules_reanalyze_status(
             settings.lead_analysis_version
         )
@@ -923,6 +933,8 @@ def build_web_app(
                 intelligence_quality=intelligence_quality,
                 quality_gates=quality_gates,
                 manager_feedback_quality=manager_feedback_quality,
+                feedback_learning=feedback_learning,
+                feedback_learning_rows=feedback_learning_rows,
                 rules_reanalyze=rules_reanalyze,
                 pricing_configs=pricing_configs,
                 fx_policies=fx_policies,
@@ -1465,15 +1477,28 @@ def build_web_app(
 
     @app.post("/api/leads/reanalyze-batch")
     async def reanalyze_leads_batch(request: Request):
-        """Переоценить свежие лиды NEW/AI_PENDING новыми правилами + GPT."""
+        """Переоценить свежие лиды NEW/AI_PENDING или спорные NOT_LEAD новыми правилами + GPT."""
         payload = await _json_or_form(request)
         limit = max(1, min(int(payload.get("limit") or 25), 100))
+        include_not_lead = payload.get("include_not_lead_high_score") in {
+            True,
+            "true",
+            "1",
+        }
+        min_not_lead_score = max(0, min(int(payload.get("min_not_lead_score") or 50), 100))
         use_openai = openai_spend_allowed()
         service = hybrid_lead_service if use_openai else local_lead_service
-        results = await service.reanalyze_batch(limit)
+        results = await service.reanalyze_batch(
+            limit,
+            include_not_lead_high_score=include_not_lead,
+            min_not_lead_score=min_not_lead_score,
+        )
         not_lead = sum(item.status == LeadStatus.NOT_LEAD for item in results)
         pending = sum(item.status == LeadStatus.AI_PENDING for item in results)
         new_leads = sum(item.status == LeadStatus.NEW for item in results)
+        scope = "NEW/AI_PENDING"
+        if include_not_lead:
+            scope += f" + NOT_LEAD≥{min_not_lead_score}"
         return {
             "ok": True,
             "processed": len(results),
@@ -1481,12 +1506,25 @@ def build_web_app(
             "still_new": new_leads,
             "pending": pending,
             "openai_used": use_openai,
+            "include_not_lead_high_score": include_not_lead,
             "rules_version": settings.lead_analysis_version,
             "message": (
-                f"Переоценено (правила {settings.lead_analysis_version}): {len(results)}"
+                f"Переоценено ({scope}, правила {settings.lead_analysis_version}): {len(results)}"
                 f" · лидов: {new_leads} · не лид: {not_lead}"
                 + (f" · ждут GPT: {pending}" if pending else "")
             ),
+        }
+
+    @app.get("/api/system/feedback-export")
+    async def feedback_export():
+        """Экспорт HOT false-positive кейсов для offline eval."""
+        service = FeedbackLearningService(
+            workflow.session_factory,
+            hot_threshold=settings.hot_lead_threshold,
+        )
+        return {
+            "rules_version": settings.lead_analysis_version,
+            "cases": await service.export_cases(limit=50, days=30),
         }
 
     @app.post("/api/leads/bulk-action")

@@ -2,6 +2,13 @@
 
 ## Текущая версия
 
+**WAVE9 · PARENT «+» · FEEDBACK LOOP · NOT_LEAD REANALYZE · DAILY QUALITY REPORT**
+
+Контрольная точка 2026-09-02 (wave9): parent-comment context для reply «+» (ScrapeCreators/Bright Data + БД);
+FeedbackLearningService + секция /system + `GET /api/system/feedback-export`; reanalyze NOT_LEAD≥50 (API+UI);
+daily quality report в Telegram admin (`QUALITY_REPORT_ENABLED`, idempotency `daily_quality_report_logs`).
+UI **13.21.0-wave9**. **428 passed, 1 skipped**.
+
 **WAVE4 · QUALITY FILTERS · BULK FUNNEL · OFF-CATALOG EXPAND · SLA · FOLLOW-UP**
 
 Контрольная точка 2026-09-02 (wave4): off-catalog расширен (украшения/обувь/техника);

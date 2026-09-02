@@ -149,6 +149,11 @@ class BrightDataProvider(HTTPInstagramProvider):
         profile_url = _optional_string(row.get("comment_user_url")) or (
             f"https://www.instagram.com/{username}/"
         )
+        parent_id = _optional_string(
+            row.get("parent_comment_id")
+            or row.get("reply_to_comment_id")
+            or row.get("parent_id")
+        )
         return InstagramComment(
             platform_comment_id=_first_string(row, "comment_id"),
             platform_user_id=_optional_string(row.get("comment_user_id")),
@@ -157,6 +162,7 @@ class BrightDataProvider(HTTPInstagramProvider):
             profile_url=profile_url,
             text=_first_string(row, "comment", allow_empty=True),
             created_at=parse_datetime(row.get("comment_date")),
+            parent_platform_comment_id=parent_id,
             raw_data=row,
         )
 

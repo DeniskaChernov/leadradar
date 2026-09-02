@@ -11,14 +11,14 @@
 - [x] A5. API batch-переоценка лидов NEW
 - [x] A6. Кнопка «Переоценить лиды» в Системе
 - [x] A7. Авто-переоценка после смены правил (version stamp)
-- [ ] A8. Parent-comment context для reply «+»
+- [x] A8. Parent-comment context для reply «+»
 - [x] A9. Расширить off-catalog: украшения, обувь, техника
 - [x] A10. UI-бейдж «Не наш ассортимент» на карточке лида
 - [x] A11. Фильтр «мусорные лиды» на /leads
 - [x] A12. Метрика false-positive rate в /system
-- [ ] A13. Feedback loop: NOT_LEAD → обучение правил
-- [ ] A14. Re-analyze NOT_LEAD с score>50 (опционально)
-- [ ] A15. Daily quality report в Telegram admin
+- [x] A13. Feedback loop: NOT_LEAD → обучение правил
+- [x] A14. Re-analyze NOT_LEAD с score>50 (опционально)
+- [x] A15. Daily quality report в Telegram admin
 
 ## B. Воронка лидов и CRM (15)
 

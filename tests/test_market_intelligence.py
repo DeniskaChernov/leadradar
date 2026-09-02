@@ -73,14 +73,14 @@ async def test_market_candidate_can_be_promoted_paused(session_factory):
     await service.sync_catalog()
     async with session_factory() as session:
         candidate = await session.scalar(
-            select(MarketCandidate).where(MarketCandidate.display_name == "Lazuno Ok")
+            select(MarketCandidate).where(MarketCandidate.display_name == "Rotan")
         )
         assert candidate is not None
         candidate_id = candidate.id
 
-    competitor = await service.promote_candidate(candidate_id, handle="lazuno.ok", active=False)
+    competitor = await service.promote_candidate(candidate_id, handle="rotan.uz", active=False)
 
-    assert competitor.normalized_handle == "lazuno.ok"
+    assert competitor.normalized_handle == "rotan.uz"
     assert competitor.active is False
     async with session_factory() as session:
         candidate = await session.get(MarketCandidate, candidate_id)
@@ -96,21 +96,21 @@ async def test_concurrent_candidate_promotion_creates_one_competitor(
     await first.sync_catalog()
     async with file_session_factory() as session:
         candidate = await session.scalar(
-            select(MarketCandidate).where(MarketCandidate.display_name == "Lazuno Ok")
+            select(MarketCandidate).where(MarketCandidate.display_name == "Rotan")
         )
         assert candidate is not None
         candidate_id = candidate.id
 
     promoted = await asyncio.gather(
-        first.promote_candidate(candidate_id, handle="lazuno.race", active=False),
-        second.promote_candidate(candidate_id, handle="lazuno.race", active=False),
+        first.promote_candidate(candidate_id, handle="rotan.race", active=False),
+        second.promote_candidate(candidate_id, handle="rotan.race", active=False),
     )
 
     assert promoted[0].id == promoted[1].id
     async with file_session_factory() as session:
         count = await session.scalar(
             select(func.count(Competitor.id)).where(
-                Competitor.normalized_handle == "lazuno.race"
+                Competitor.normalized_handle == "rotan.race"
             )
         )
     assert count == 1
@@ -144,8 +144,9 @@ async def test_market_pages_render_and_candidate_promotion_api(session_factory):
 
     assert competitors.status_code == 200
     assert "КОНКУРЕНТЫ В РАДАРЕ" in competitors.text
+    assert "lazuno.uz" in competitors.text
     assert discovery.status_code == 200
-    assert "Lazuno Ok" in discovery.text
+    assert "Rotan" in discovery.text
     assert roadmap.status_code == 200
     assert "Стадия 3 из 7" in roadmap.text
     assert promoted.status_code == 200

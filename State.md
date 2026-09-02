@@ -1,7 +1,8 @@
 # Lead Radar — machine state
 
-- updated: 2026-09-02T15:25+05
-- ui: 13.20.0-wave8
-- feature: wave8 E6$/lead E7 econ CSV E9 ROI G4 cost G5 cache-hit G7 analyze NEW G10 GPT-off D14 focus B13 assign
-- tests: 421 passed, 1 skipped; ruff clean
-- branch: codex/phase-c-budget-ledger-hardening
+- updated: 2026-09-02T16:10+05
+- ui: 13.21.0-wave9
+- wave9: A8 parent+ A13 feedback A14 reanalyze-NOT_LEAD A15 quality-report
+- competitors: +sellamenza.uz +pantera_mebel_uz +lazuno.uz (uncommitted)
+- tests: 428 passed wave9; ruff clean
+- migrations: b9c0d1e2f3a4 parent_comment + c1d2e3f4a5b6 quality_report_logs

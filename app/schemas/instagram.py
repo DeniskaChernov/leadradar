@@ -39,6 +39,7 @@ class InstagramComment(BaseModel):
     profile_url: str
     text: str
     created_at: datetime | None = None
+    parent_platform_comment_id: str | None = None
     raw_data: dict[str, Any] = Field(default_factory=dict)
 
 

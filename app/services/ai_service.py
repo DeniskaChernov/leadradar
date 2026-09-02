@@ -66,6 +66,7 @@ class LeadAnalysisContext:
     username: str
     previous_signals: list[ValidatedPreviousSignal]
     previous_interests: list[str]
+    parent_comment: str = ""
     known_customer_context: dict[str, str | int | None] = field(default_factory=dict)
     evidence_ids: list[int] = field(default_factory=list)
     public_signal_id: int | None = None
@@ -357,7 +358,26 @@ class RuleBasedLeadAnalyzer:
             )
 
         if re.fullmatch(r"\+{1,3}[?!.,…🙏]*", raw.replace(" ", "")):
-            # «+» — сигнал для OpenAI: смысл определяется по описанию Reel, не локально.
+            parent = self._norm(context.parent_comment or "")
+            caption = self._norm(context.post_caption or "")
+            if parent:
+                combined = f"{parent}\n{caption}".strip()
+                if self._has_furniture_context(combined) and (
+                    self._has_price_or_purchase_signal(parent)
+                    or self._caption_has_commercial_plus_cta(caption)
+                ):
+                    product = self._product(f"{parent} {caption}")
+                    return self._result(
+                        True,
+                        72,
+                        Intent.PRICE,
+                        product,
+                        language,
+                        "Ответ «+» на коммерческий вопрос в родительском комментарии.",
+                        context,
+                        evidence=[f"Родительский комментарий: {parent[:120]}"],
+                    )
+            # «+» без parent или без явного контекста — OpenAI по caption Reel.
             return None
 
         designer_markers = (
@@ -832,6 +852,28 @@ class RuleBasedLeadAnalyzer:
         return not self._has_furniture_context(combined)
 
     @staticmethod
+    def _has_price_or_purchase_signal(text: str) -> bool:
+        lowered = (text or "").lower()
+        markers = (
+            "сколько",
+            "qancha",
+            "нарх",
+            "narx",
+            "цена",
+            "стоим",
+            "прайс",
+            "price",
+            "buyurtma",
+            "заказ",
+            "купить",
+            "комплект",
+            "стол",
+            "stul",
+            "stol",
+        )
+        return any(marker in lowered for marker in markers)
+
+    @staticmethod
     def _caption_has_commercial_plus_cta(caption: str) -> bool:
         if "+" not in caption and "плюс" not in caption:
             return False
@@ -1240,7 +1282,8 @@ class OpenAILeadAnalyzer:
             "across competitors, buyer role (B2C, HoReCa/B2B, Designer), and manager-entered CRM context. "
             "The business sells furniture and artificial rattan only. Reject leads about watches, phones, cars, "
             "clothing, cosmetics, and other off-catalog products even if the comment asks for a price. "
-            "A plus sign is a signal to interpret using the Reel caption: commercial when the post explicitly "
+            "A plus sign is a signal to interpret using the Reel caption and, when present, "
+            "ParentComment on a reply thread: commercial when the parent or post explicitly "
             "invites a plus for price, catalog, or contact; otherwise not a lead. Praise, "
             "emoji, congratulations, job requests, and unrelated conversation are not leads. "
             "Negation overrides keyword matches. Distinguish active purchase intent from research, "

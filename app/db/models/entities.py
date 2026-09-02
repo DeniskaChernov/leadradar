@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
@@ -10,6 +10,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -507,6 +508,8 @@ class Comment(Base):
     created_at_platform: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     is_baseline: Mapped[bool] = mapped_column(Boolean, default=False)
+    parent_platform_comment_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    parent_comment_text: Mapped[str | None] = mapped_column(Text)
     raw_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     contact: Mapped[Contact] = relationship(back_populates="comments")
@@ -1146,6 +1149,23 @@ class AIFeedback(Base):
     )
 
     lead: Mapped[Lead] = relationship(back_populates="feedback")
+
+
+class DailyQualityReportLog(Base):
+    __tablename__ = "daily_quality_report_logs"
+    __table_args__ = (
+        UniqueConstraint(
+            "report_date",
+            "report_timezone",
+            name="uq_daily_quality_report_day_tz",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_date: Mapped[date] = mapped_column(Date, index=True)
+    report_timezone: Mapped[str] = mapped_column(String(64))
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    snapshot_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
 class NotificationLog(Base):

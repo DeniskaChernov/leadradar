@@ -6,3 +6,10 @@
   data-payload='{"limit":25}'
   data-reload="1"
 >Переоценить лиды (25)</button>
+<button
+  class="btn secondary"
+  type="button"
+  data-api-action="/api/leads/reanalyze-batch"
+  data-payload='{"limit":25,"include_not_lead_high_score":true,"min_not_lead_score":50}'
+  data-reload="1"
+>Переоценить NOT_LEAD ≥50 (25)</button>

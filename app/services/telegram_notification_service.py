@@ -134,6 +134,19 @@ class TelegramLeadNotifier:
         async with self._delivery_lock:
             return await self._flush_pending()
 
+    async def send_admin_digest(self, text: str) -> int:
+        """Разовый digest admin-чатам (quality report и т.п.)."""
+        if not self.delivery_enabled or not self.admin_chat_ids:
+            return 0
+        sent = 0
+        for chat_id in self.admin_chat_ids:
+            try:
+                await self.bot.send_message(chat_id, text, disable_web_page_preview=True)
+                sent += 1
+            except Exception:
+                logger.exception("telegram_admin_digest_failed chat_id=%s", chat_id)
+        return sent
+
     async def _effective_policy(self, lead_id: int) -> NotificationPolicy:
         async with self.session_factory() as session:
             configured = await session.scalar(

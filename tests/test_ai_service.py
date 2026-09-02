@@ -266,6 +266,41 @@ def test_commercial_plus_defers_to_openai_for_caption_context():
         assert result is None
 
 
+def test_plus_reply_with_parent_price_question_is_lead():
+    analyzer = RuleBasedLeadAnalyzer()
+    result = analyzer.classify(
+        LeadAnalysisContext(
+            competitor="aiko.uz",
+            post_caption="Новая коллекция обеденных столов",
+            comment="+",
+            parent_comment="Сколько стоит этот стол?",
+            username="buyer",
+            previous_signals=[],
+            previous_interests=[],
+        )
+    )
+    assert result is not None
+    assert result.is_lead is True
+    assert result.intent == Intent.PRICE
+    assert result.lead_score >= 70
+
+
+def test_plus_reply_without_parent_still_defers():
+    analyzer = RuleBasedLeadAnalyzer()
+    result = analyzer.classify(
+        LeadAnalysisContext(
+            competitor="aiko.uz",
+            post_caption="Новая коллекция обеденных столов",
+            comment="+",
+            parent_comment="",
+            username="buyer",
+            previous_signals=[],
+            previous_interests=[],
+        )
+    )
+    assert result is None
+
+
 def test_watch_price_question_is_rejected_without_openai():
     analyzer = RuleBasedLeadAnalyzer()
     result = analyzer.classify(

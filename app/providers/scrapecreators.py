@@ -166,7 +166,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             page_limit = max(1, min(page_limit, int(max_pages)))
 
         while pages < page_limit:
-            params = {"url": post.url, "include_replies": "false"}
+            params = {"url": post.url, "include_replies": "true"}
             if cursor:
                 params["cursor"] = cursor
             payload = await self._request_json(
@@ -241,6 +241,13 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         if not isinstance(user, dict):
             raise ProviderResponseError("ScrapeCreators comment has no user")
         username = _required_string(user, "username")
+        parent_id = _optional_string(
+            item.get("parent_comment_id")
+            or item.get("replied_to_comment_id")
+            or item.get("parent_id")
+        )
+        if parent_id is None and isinstance(item.get("parent"), dict):
+            parent_id = _optional_string(item["parent"].get("id") or item["parent"].get("pk"))
         return InstagramComment(
             platform_comment_id=_required_string(item, "id"),
             platform_user_id=_optional_string(user.get("id") or user.get("pk")),
@@ -249,6 +256,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             profile_url=f"https://www.instagram.com/{username}/",
             text=_required_string(item, "text", allow_empty=True),
             created_at=parse_datetime(item.get("created_at")),
+            parent_platform_comment_id=parent_id,
             raw_data=item,
         )
 

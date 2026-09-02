@@ -213,6 +213,49 @@
   </div>
 </section>
 
+<section class="panel feedback-learning" aria-labelledby="feedback-learning-title">
+  <div class="panel-head">
+    <div>
+      <span class="eyebrow">FEEDBACK LOOP · OFFLINE</span>
+      <h2 id="feedback-learning-title">Обучение из NOT_LEAD</h2>
+      <p>HOT false-positive из AIFeedback для ручного переноса в eval-фикстуры. Правила в рантайме не меняются.</p>
+    </div>
+    <a class="btn secondary" href="/api/system/feedback-export">Export JSON</a>
+  </div>
+  <div class="mini-metrics">
+    <span><b>{{ feedback_learning.hot_false_positives }}</b> HOT→не лид за {{ feedback_learning.days }} дн.</span>
+    <span><b>{{ feedback_learning.reviewed }}</b> отзывов</span>
+    <span><b>{{ feedback_learning.reopened_after_not_lead }}</b> reopen после «не лид»</span>
+  </div>
+  {% if feedback_learning.top_intents %}
+  <div class="mini-metrics">
+    {% for item in feedback_learning.top_intents %}
+    <span><code>{{ item.intent }}</code> · {{ item.count }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <p class="muted">{{ feedback_learning.export_hint }}</p>
+  {% if feedback_learning_rows %}
+  <div class="table-wrap embedded system-table-wrap">
+    <table class="responsive-table system-table">
+      <thead><tr><th>Lead</th><th>Score</th><th>Intent</th><th>Комментарий</th></tr></thead>
+      <tbody>
+        {% for row in feedback_learning_rows %}
+        <tr>
+          <td data-label="Lead"><a href="/leads/{{ row.lead_id }}">#{{ row.lead_id }}</a></td>
+          <td data-label="Score">{{ row.predicted_score }}</td>
+          <td data-label="Intent"><code>{{ row.predicted_intent }}</code></td>
+          <td data-label="Комментарий">{{ row.comment_preview }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Пока нет HOT false-positive за последние 30 дней.</p>
+  {% endif %}
+</section>
+
 <section class="panel intelligence-quality">
   <div class="panel-head"><div><span class="eyebrow">ОФЛАЙН-ПРОВЕРКА · {{ intelligence_quality.dataset_version }}</span><h2>Качество локального интеллекта</h2><p>Фиксированный RU / UZ Latin / UZ Cyrillic набор работает без базы, сети и AI-токенов. Это проверка регрессий, а не заявление о production accuracy.</p></div><span class="tag {% if intelligence_quality.passed %}status-contacted{% else %}neutral{% endif %}">{% if intelligence_quality.passed %}внутренний gate пройден{% else %}gate заблокирован{% endif %}</span></div>
   <div class="mini-metrics">

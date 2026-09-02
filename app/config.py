@@ -93,6 +93,9 @@ class Settings(BaseSettings):
     telegram_notification_max_attempts: int = Field(default=3, ge=1, le=10)
     telegram_notification_flush_interval_seconds: int = Field(default=30, ge=10, le=3600)
     telegram_notification_lease_seconds: int = Field(default=120, ge=30, le=1800)
+    quality_report_enabled: bool = False
+    quality_report_hour: int = Field(default=9, ge=0, le=23)
+    quality_report_poll_seconds: int = Field(default=300, ge=60, le=3600)
     notification_policy: str = "ALL_NEW_COMMENTS"
     external_kill_switch: bool = True
 
