@@ -4,6 +4,10 @@
 
 **PERSISTENT AI CHAT · FUNNEL UX · QA 55 · LIVE PILOT READY · SIGNAL RECENCY**
 
+Контрольная точка 2026-09-02 (plain UX): одна кнопка «Оценить накопившееся» (`/api/signals/review-all`);
+счётчик «нужна оценка» (свежие, без архива >30д); авто-оценка до 10 комментариев за цикл мониторинга.
+UI **13.11.5-plain-signals**. **403 passed, 1 skipped**.
+
 Контрольная точка 2026-09-01 (signal recency): фильтр `INSTAGRAM_SIGNAL_MAX_AGE_DAYS=30`
 на ingest, backfill, AI retry и radar feed; baseline/historical analyze выключены по
 умолчанию; OpenAI flush script; radar poll fix (**13.11.4-radar-poll-fix**). Tier A/B/C

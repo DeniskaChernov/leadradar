@@ -5,18 +5,16 @@
 {% block content %}
 <section class="hero-status {% if safe_mode %}safe{% else %}live{% endif %}" data-motion-root>
   <div>
-    <span class="eyebrow">{% if safe_mode %}БЕЗ LIVE · ГОТОВО{% else %}ПОДГОТОВКА LIVE{% endif %}</span>
-    <h2>{% if safe_mode %}База и CRM работают без расхода credits{% else %}Готовим контролируемый пилот радара{% endif %}</h2>
-    <p>{% if safe_mode %}Live ScrapeCreators выключен. Разбор сигналов, задачи и сделки доступны. Запуск Radar — только с подтверждением лимита 5–10 credits.{% else %}Новые комментарии сохраняются в базу. Запускайте проверку с /radar или кнопкой «Проверить сейчас» с явным cap.{% endif %}</p>
+    <span class="eyebrow">{% if safe_mode %}БЕЗ LIVE · CRM РАБОТАЕТ{% else %}LIVE · РАДАР ВКЛЮЧЁН{% endif %}</span>
+    <h2>{% if safe_mode %}База и CRM без расхода credits{% else %}Система собирает комментарии и готова к работе{% endif %}</h2>
+    <p>{% if safe_mode %}Внешний Instagram выключен — можно вести лиды и задачи. Для сбора новых комментариев включите Live на Радаре.{% else %}Новые комментарии подтягиваются автоматически. Если в счётчике «нужна оценка» есть цифра — нажмите «Оценить накопившееся» или дождитесь фоновой оценки (до 10 за цикл).{% endif %}</p>
   </div>
   <div class="hero-actions">
-    <a class="btn primary" href="/radar">Открыть Radar</a>
-    <button class="btn" type="button" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Разобрать локально</button>
-    <button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-async-retry="1">Повторить очередь AI</button>
+    <a class="btn primary" href="/radar">Открыть Радар</a>
+    {% include "partials/signal_review_buttons.html" %}
   </div>
 </section>
-
-<section class="alert info compact-help"><b>Разбор сигналов</b><span>«Разобрать локально» — только правила, без OpenAI. «Повторить очередь AI» — hybrid/GPT, если OpenAI live включён на /system или /radar; иначе снова только правила.</span></section>
+{% include "partials/signal_review_help.html" %}
 
 <section class="quick-actions panel" aria-label="Быстрые действия" data-motion-root>
   <a class="quick-action" href="/radar"><span class="quick-action-icon"><i data-lucide="radar"></i></span><b>Radar</b><small>Бюджет и запуск проверки</small></a>
@@ -29,7 +27,7 @@
 </section>
 
 <section class="operations-strip panel">
-  <div><span class="op-icon" aria-hidden="true"><i data-lucide="scan-search"></i></span><div><b>{{ counts.unprocessed + counts.ai_pending }} сигналов требуют разбора</b><small>{{ counts.unprocessed }} не классифицировано · {{ counts.ai_pending }} ждут AI</small></div></div>
+  <div><span class="op-icon" aria-hidden="true"><i data-lucide="scan-search"></i></span><div><b>{{ counts.unprocessed_actionable + counts.ai_pending }} нужна оценка</b><small>{{ counts.unprocessed_actionable }} свежих без лида · {{ counts.ai_pending }} ждут GPT{% if counts.unprocessed > counts.unprocessed_actionable %} · {{ counts.unprocessed - counts.unprocessed_actionable }} в архиве{% endif %}</small></div></div>
   <div><span class="op-icon" aria-hidden="true"><i data-lucide="bell-ring"></i></span><div><b>{% if telegram_manager_count %}Уведомления: {{ telegram_manager_count }} менеджер{% if telegram_manager_count != 1 %}ов{% endif %}{% else %}Telegram не настроен{% endif %}</b><small>{{ counts.notifications_pending }} в очереди · {{ counts.notifications_failed }} ошибок · <a href="/system#uncertain-notifications">{{ counts.notifications_uncertain }} сверка</a></small></div></div>
   <button class="btn tiny" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %}>Проверить сейчас</button>
 </section>
@@ -37,7 +35,7 @@
 <div class="metrics dashboard-metrics" data-motion-root>
   <a class="metric" href="/contacts"><span>Клиенты</span><strong>{{ counts.contacts }}</strong><small>уникальных профилей</small></a>
   <a class="metric" href="/radar"><span>Сигналы</span><strong>{{ counts.comments }}</strong><small>+{{ counts.new_comments_24h }} за 24ч</small></a>
-  <a class="metric" href="/radar?kind=pending"><span>Ждут разбора</span><strong>{{ counts.unprocessed + counts.ai_pending }}</strong><small>очередь + AI</small></a>
+  <a class="metric" href="/radar?kind=pending"><span>Нужна оценка</span><strong>{{ counts.unprocessed_actionable + counts.ai_pending }}</strong><small>свежие + GPT</small></a>
   <a class="metric accent" href="/leads"><span>Горячие</span><strong>{{ counts.hot }}</strong><small>от {{ settings.hot_lead_threshold }}/100</small></a>
   <a class="metric change" href="/#changes"><span>Стали горячее</span><strong>{{ counts.significant_changes_24h }}</strong><small>за 24 часа</small></a>
   <a class="metric warn" href="/tasks"><span>Связаться</span><strong>{{ counts.tasks_today }}</strong><small>{{ counts.tasks_due }} просрочено</small></a>

@@ -44,6 +44,7 @@ class CycleStats:
     budget_deferred_candidates: int = 0
     avoided_requests: int = 0
     comments_skipped_stale: int = 0
+    fresh_backfilled: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +89,7 @@ class InstagramMonitor:
         retry_pending_batch_size: int = 5,
         retry_pending_cooldown_seconds: int = 3600,
         max_signal_age_days: int = 30,
+        auto_analyze_fresh_batch_size: int = 0,
         analysis_pipeline: LeadAnalysisPipeline | None = None,
     ) -> None:
         self.session_factory = session_factory
@@ -107,6 +109,7 @@ class InstagramMonitor:
         self.retry_pending_batch_size = retry_pending_batch_size
         self.retry_pending_cooldown_seconds = retry_pending_cooldown_seconds
         self.max_signal_age_days = max(0, max_signal_age_days)
+        self.auto_analyze_fresh_batch_size = max(0, auto_analyze_fresh_batch_size)
         self.analysis_pipeline = analysis_pipeline
         self.adaptive_monitoring = AdaptiveMonitoringService(
             session_factory,
@@ -145,6 +148,17 @@ class InstagramMonitor:
                     "pending_lead_notification_failed lead_id=%s error_type=%s",
                     lead.lead_id,
                     type(exc).__name__,
+                )
+        if self.auto_analyze_fresh_batch_size > 0:
+            try:
+                fresh = await self.lead_service.backfill_unanalyzed_comments(
+                    self.auto_analyze_fresh_batch_size
+                )
+                stats.fresh_backfilled += len(fresh)
+            except Exception as exc:
+                stats.errors += 1
+                logger.exception(
+                    "fresh_backfill_failed error_type=%s", type(exc).__name__
                 )
         if self.analyze_baseline_comments and self.historical_analysis_batch_size > 0:
             try:

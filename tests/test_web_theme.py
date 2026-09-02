@@ -27,6 +27,9 @@ def test_lead_detail_and_radar_expose_deep_responsive_analysis():
         encoding="utf-8"
     )
     radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    signal_buttons = (
+        PROJECT_ROOT / "app/web/templates/partials/signal_review_buttons.html"
+    ).read_text(encoding="utf-8")
 
     assert "AI-РАЗБОР СИГНАЛА" in lead_detail
     assert "recommended_action" in lead_detail
@@ -38,7 +41,9 @@ def test_lead_detail_and_radar_expose_deep_responsive_analysis():
     assert 'data-lucide="circle-help"' in lead_detail
     assert 'data-label="AI-оценка"' in radar
     assert "РАДАР СИГНАЛОВ" in radar
-    assert "Повторить очередь AI" in radar
+    assert "partials/signal_review_buttons.html" in radar
+    assert "Оценить накопившееся" in signal_buttons
+    assert "/api/signals/review-all" in signal_buttons
 
 
 def test_v41_signal_first_states_and_notification_modes_are_manager_readable():
@@ -220,8 +225,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.11.4-radar-poll-fix" in base
-    assert "13.11.4-radar-poll-fix" in auth
+    assert "13.11.5-plain-signals" in base
+    assert "13.11.5-plain-signals" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
@@ -334,10 +339,10 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "АССИСТЕНТ · ТОЛЬКО БАЗА" in system
     assert "system-hero" in system
     assert "system-toc" in system
-    assert "retry-pending" in system
+    assert "review-all" in system or "signal_review_buttons" in system
     assert "responsive-table system-table" in system
     assert "system-run-history" in system
-    assert "/api/leads/retry-pending" in radar
+    assert "partials/signal_review_buttons.html" in radar
     assert "rattan-metrics" in (PROJECT_ROOT / "app/web/templates/rattan.html").read_text(encoding="utf-8")
     assert ".rattan-metrics" in css
     assert 'name="contact_id"' in contact_detail

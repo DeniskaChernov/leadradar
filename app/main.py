@@ -192,6 +192,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             retry_pending_batch_size=settings.ai_pending_retry_batch_size,
             retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
             max_signal_age_days=settings.instagram_signal_max_age_days,
+            auto_analyze_fresh_batch_size=settings.instagram_auto_analyze_fresh_batch_size,
             analysis_pipeline=LeadAnalysisPipeline(
                 lead_service,
                 NullLeadNotifier(),
@@ -244,6 +245,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             retry_pending_batch_size=settings.ai_pending_retry_batch_size,
             retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
             max_signal_age_days=settings.instagram_signal_max_age_days,
+            auto_analyze_fresh_batch_size=settings.instagram_auto_analyze_fresh_batch_size,
             analysis_pipeline=LeadAnalysisPipeline(
                 lead_service,
                 NullLeadNotifier(),
@@ -343,6 +345,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         retry_pending_batch_size=settings.ai_pending_retry_batch_size,
         retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
         max_signal_age_days=settings.instagram_signal_max_age_days,
+        auto_analyze_fresh_batch_size=settings.instagram_auto_analyze_fresh_batch_size,
         analysis_pipeline=LeadAnalysisPipeline(
             lead_service,
             notifier,

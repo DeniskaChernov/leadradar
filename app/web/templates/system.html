@@ -10,15 +10,15 @@
 <section class="hero-status system-hero safe" data-motion-root>
   <div>
     <span class="eyebrow">КАБИНА СИСТЕМЫ</span>
-    <h2>Диагностика, AI и расходы</h2>
-    <p>Локальный разбор · hybrid retry AI_PENDING · OpenAI live · quality gates</p>
+    <h2>Диагностика, оценка лидов и расходы</h2>
+    <p>Те же кнопки оценки, что на Обзоре и Радаре. Ниже — лимиты, тумблеры и диагностика.</p>
   </div>
   <div class="hero-actions">
-    <button class="btn primary" type="button" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Локальный разбор</button>
-    <button class="btn" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-async-retry="1">Повторить очередь AI</button>
-    <a class="btn ghost" href="/radar?kind=pending">Очередь</a>
+    {% include "partials/signal_review_buttons.html" %}
+    <a class="btn ghost" href="/radar?kind=pending">Спорные лиды</a>
   </div>
 </section>
+{% include "partials/signal_review_help.html" %}
 
 <nav class="system-toc panel" aria-label="Разделы системной страницы">
   <a href="#ops-arm">Live тумблеры</a>
@@ -312,7 +312,7 @@
 <div class="integration-grid">{% for name, item in integrations.items() %}<div class="integration"><span class="pulse {% if item.enabled %}{% elif item.configured %}busy{% else %}bad{% endif %}"></span><div><b>{{ name }}</b><small>{% if item.enabled %}работает{% elif item.configured %}настроен, но расход выключен{% else %}не настроен{% endif %}</small><p>{{ item.detail }}</p></div></div>{% endfor %}</div>
 
 <div class="grid two system-actions">
-<section class="panel action-form-card"><h3>Разобрать сохранённую историю</h3><p>Сначала сработают бесплатные локальные правила. Неоднозначные комментарии останутся в очереди AI, если OpenAI-запросы выключены.</p><div class="form-row"><button class="btn primary" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Обработать до 100 сигналов</button><a class="btn ghost" href="/radar?kind=pending">Посмотреть очередь AI</a></div></section>
+<section class="panel action-form-card"><h3>Оценить накопившиеся комментарии</h3><p>Один раз после первого скана у конкурента в базе лежит «история» — комментарии без оценки. Нажмите «Оценить комментарии» выше: бесплатные правила создадут лиды. Затем при необходимости — «Умный разбор GPT».</p><div class="form-row"><a class="btn ghost" href="/radar?kind=pending">Спорные лиды в Радаре</a></div></section>
 <section class="panel action-form-card"><h3>Как тестировать без потерь</h3><ol class="plain-steps"><li>Оставить <code>INSTAGRAM_LIVE_CALLS_ENABLED=false</code>.</li><li>Проверить интерфейс и логику на mock и сохранённой базе.</li><li>Перед контрольным тестом включить live-запросы, поставить маленький дневной лимит и только тогда задать <code>EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS</code>.</li><li>После теста снова выключить live-режим.</li></ol></section>
 </div>
 

@@ -2,6 +2,8 @@
 
 - updated: 2026-09-01T20:20+05
 - signal_recency: INSTAGRAM_SIGNAL_MAX_AGE_DAYS=30 — ingest/analyze/backfill/radar только свежие; baseline analyze default off
+- ui_plain: одна кнопка «Оценить накопившееся», счётчик «нужна оценка», авто-оценка 10/цикл
+- ui: 13.11.5-plain-signals
 - branch: main @ 3b48158 (PR #1 merged)
 - ui: 13.11.4-radar-poll-fix
 - fix: /radar idle poll больше не делает location.reload каждые 3.5s

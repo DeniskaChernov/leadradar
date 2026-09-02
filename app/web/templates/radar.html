@@ -7,16 +7,17 @@
   <div>
     <span class="eyebrow">РАДАР СИГНАЛОВ</span>
     <h2>{{ overview.total }} сигналов · {{ overview.hot }} HOT</h2>
-    <p>{{ overview.unprocessed + overview.pending }} ждут разбора · {{ overview.qualified }} в воронке лидов</p>
+    <p>{{ overview.unprocessed_actionable + overview.pending }} нужна оценка · {{ overview.qualified }} в воронке{% if overview.unprocessed > overview.unprocessed_actionable %} · {{ overview.unprocessed - overview.unprocessed_actionable }} в архиве{% endif %}</p>
   </div>
   <div class="hero-actions">
     <a class="btn primary" href="/leads">Лиды ({{ overview.qualified }})</a>
     <a class="btn" href="/radar?kind=hot">HOT</a>
     <a class="btn" href="/radar?kind=new">Новые</a>
-    <button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-async-retry="1">Повторить очередь AI</button>
-    <button class="btn ghost" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Проверить</button>
+    {% include "partials/signal_review_buttons.html" %}
+    <button class="btn ghost" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Проверить Instagram</button>
   </div>
 </section>
+{% include "partials/signal_review_help.html" %}
 <section class="panel ops-arm-card">
   <div class="panel-head"><div><h2>Управление Live</h2><p>Тумблеры пишутся в БД. Master unlock остаётся в .env</p></div>
     <span class="tag {% if ops.radar_live_armed %}success{% else %}muted-tag{% endif %}">{% if ops.radar_live_armed %}Radar включён{% else %}Radar выключен{% endif %}</span>
@@ -38,7 +39,7 @@
       <button class="btn {% if ops.openai_live_armed %}ghost{% else %}primary{% endif %}" type="submit" {% if not settings.openai_live_enabled %}disabled{% endif %}>{% if ops.openai_live_armed %}Выключить OpenAI{% else %}Включить OpenAI анализ{% endif %}</button>
     </form>
   </div>
-  <p class="muted">Hybrid: сначала локальные правила; GPT только для неоднозначных сигналов и только если OpenAI live разрешён. Расход OpenAI сейчас: {% if openai_spend_allowed %}разрешён{% else %}заблокирован{% endif %}.</p>
+  <p>Hybrid: сначала бесплатные правила; GPT только для спорных лидов и только если тумблер OpenAI ниже включён. Сейчас GPT: {% if openai_spend_allowed %}можно использовать{% else %}выключен — работают только правила{% endif %}.</p>
 </section>
 <section class="panel radar-live-panel" id="radar-live-status" data-radar-live {% if not snapshot.cycle_running %}hidden{% endif %}>
   <div class="radar-live-row">
@@ -121,7 +122,7 @@
 {% endif %}
 <div class="metrics radar-metrics">
   <a class="metric" href="/radar"><span>Все сигналы</span><strong>{{ overview.total }}</strong><small>в базе</small></a>
-  <a class="metric warn" href="/radar?kind=pending"><span>Не разобраны</span><strong>{{ overview.unprocessed + overview.pending }}</strong><small>очередь + AI</small></a>
+  <a class="metric warn" href="/radar?kind=pending"><span>Нужна оценка</span><strong>{{ overview.unprocessed_actionable + overview.pending }}</strong><small>свежие + GPT</small></a>
   <a class="metric" href="/leads"><span>Лиды</span><strong>{{ overview.qualified }}</strong><small>воронка</small></a>
   <a class="metric accent" href="/radar?kind=hot"><span>HOT</span><strong>{{ overview.hot }}</strong><small>от {{ settings.hot_lead_threshold }}/100</small></a>
   <div class="metric muted-metric"><span>Отсеяно</span><strong>{{ overview.rejected }}</strong><small>Не лид</small></div>
@@ -134,7 +135,7 @@
     <option value="new" {% if kind_filter=='new' %}selected{% endif %}>Новые</option>
     <option value="history" {% if kind_filter=='history' %}selected{% endif %}>Исторические</option>
     <option value="hot" {% if kind_filter=='hot' %}selected{% endif %}>Горячие</option>
-    <option value="pending" {% if kind_filter=='pending' %}selected{% endif %}>Ждут разбора</option>
+    <option value="pending" {% if kind_filter=='pending' %}selected{% endif %}>Нужна оценка</option>
   </select>
   <button class="btn">Применить</button><a class="btn ghost" href="/radar">Сбросить</a>
 </form>
@@ -147,7 +148,7 @@
   <td data-label="Комментарий" class="comment-cell"><b>{{ comment.text or 'Пустой комментарий' }}</b><small>{% if comment.is_baseline %}<span class="tag neutral">история</span>{% else %}<span class="tag live">новый</span>{% endif %} {{ (comment.created_at_platform or comment.discovered_at) | display_dt }}</small></td>
   <td data-label="Источник"><b>@{{ competitor.normalized_handle }}</b><small><a target="_blank" rel="noopener" href="{{ post.url }}">Открыть Reel ↗</a></small></td>
   <td data-label="Контекст Reel" class="context">{{ post.caption[:165] or 'Описание Reel не получено' }}{% if post.caption|length > 165 %}…{% endif %}</td>
-  <td data-label="AI-оценка">{% if lead and lead.status.value == 'ANALYZING' %}<span class="tag pending">Анализируем</span><small>Сигнал уже сохранён и виден менеджеру</small>{% elif lead and lead.status.value == 'AI_PENDING' %}<span class="tag pending">Нужна дополнительная проверка</span><small>Очередь OpenAI · сигнал рабочий</small>{% elif lead %}<div class="score-line"><div class="lead-score {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead.lead_score >= 50 %}warm{% endif %}">{{ lead.lead_score }}</div><div><b>{{ intent_label(lead.intent) }}</b><small>{{ product_label(lead.product_category) }} · {{ ai_source_label(lead.ai_source) }}</small></div></div>{% else %}<span class="tag pending">Ещё не разобран</span>{% endif %}</td>
+  <td data-label="AI-оценка">{% if lead and lead.status.value == 'ANALYZING' %}<span class="tag pending">Анализируем</span><small>Сигнал уже сохранён и виден менеджеру</small>{% elif lead and lead.status.value == 'AI_PENDING' %}<span class="tag pending">Нужна дополнительная проверка</span><small>Очередь OpenAI · сигнал рабочий</small>{% elif lead %}<div class="score-line"><div class="lead-score {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead.lead_score >= 50 %}warm{% endif %}">{{ lead.lead_score }}</div><div><b>{{ intent_label(lead.intent) }}</b><small>{{ product_label(lead.product_category) }} · {{ ai_source_label(lead.ai_source) }}</small></div></div>{% else %}<span class="tag pending">Нет оценки</span>{% endif %}</td>
   <td data-label="Действие">{% if lead %}<a class="btn tiny" href="/leads/{{ lead.id }}">Открыть лид</a><small class="human-status">{{ lead_status_label(lead.status) }}</small>{% else %}<a class="btn tiny ghost" href="/contacts/{{ contact.id }}">Карточка клиента</a>{% endif %}</td>
 </tr>
 {% else %}<tr><td colspan="6" class="empty">По этим условиям ничего не найдено.</td></tr>{% endfor %}

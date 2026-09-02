@@ -304,6 +304,18 @@ class WebQueryService:
             },
         }
 
+    async def _comments_without_lead_count(
+        self, session: AsyncSession, *, fresh_only: bool
+    ) -> int:
+        stmt = (
+            select(func.count(Comment.id))
+            .outerjoin(Lead, Lead.comment_id == Comment.id)
+            .where(Lead.id.is_(None))
+        )
+        if fresh_only:
+            stmt = stmt.where(fresh_signal_clause(max_age_days=self.signal_max_age_days))
+        return int(await session.scalar(stmt) or 0)
+
     async def dashboard(self) -> dict:
         now = datetime.now(UTC)
         last_24h = now - timedelta(hours=24)
@@ -338,13 +350,11 @@ class WebQueryService:
                 )
                 or 0
             )
-            counts["unprocessed"] = int(
-                await session.scalar(
-                    select(func.count(Comment.id))
-                    .outerjoin(Lead, Lead.comment_id == Comment.id)
-                    .where(Lead.id.is_(None))
-                )
-                or 0
+            counts["unprocessed"] = await self._comments_without_lead_count(
+                session, fresh_only=False
+            )
+            counts["unprocessed_actionable"] = await self._comments_without_lead_count(
+                session, fresh_only=True
             )
             counts["notifications_pending"] = int(
                 await session.scalar(
@@ -536,13 +546,9 @@ class WebQueryService:
     async def signal_overview(self) -> dict[str, int]:
         async with self.session_factory() as session:
             total = int(await session.scalar(select(func.count(Comment.id))) or 0)
-            unprocessed = int(
-                await session.scalar(
-                    select(func.count(Comment.id))
-                    .outerjoin(Lead, Lead.comment_id == Comment.id)
-                    .where(Lead.id.is_(None))
-                )
-                or 0
+            unprocessed = await self._comments_without_lead_count(session, fresh_only=False)
+            unprocessed_actionable = await self._comments_without_lead_count(
+                session, fresh_only=True
             )
             hot = int(
                 await session.scalar(
@@ -576,6 +582,7 @@ class WebQueryService:
         return {
             "total": total,
             "unprocessed": unprocessed,
+            "unprocessed_actionable": unprocessed_actionable,
             "qualified": qualified,
             "hot": hot,
             "rejected": rejected,

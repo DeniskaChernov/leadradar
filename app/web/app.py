@@ -134,6 +134,7 @@ def build_web_app(
         settings.hot_lead_threshold,
         audience_engine=local_audience_engine,
         change_detector=change_detector,
+        signal_max_age_days=settings.instagram_signal_max_age_days,
     )
     openai_analyzer = None
     if settings.openai_api_key:
@@ -156,6 +157,7 @@ def build_web_app(
         settings.hot_lead_threshold,
         audience_engine=local_audience_engine,
         change_detector=change_detector,
+        signal_max_age_days=settings.instagram_signal_max_age_days,
     )
     delivery_allowed_by_config = bool(settings.telegram_bot_token) and (
         settings.instagram_provider not in {"mock", "replay"}
@@ -1222,6 +1224,52 @@ def build_web_app(
             ),
         }
 
+    @app.post("/api/signals/review-all")
+    async def review_all_signals(request: Request):
+        """Одна кнопка: свежие комментарии → лиды по правилам → очередь GPT для спорных."""
+        payload = await _json_or_form(request)
+        limit = max(1, min(int(payload.get("limit") or 100), 500))
+        gpt_limit = max(1, min(int(payload.get("gpt_limit") or 10), 50))
+        results = await local_lead_service.backfill_unanalyzed_comments(limit)
+        rules_pending = sum(item.status == LeadStatus.AI_PENDING for item in results)
+        gpt_queued = 0
+        gpt_processed = 0
+        use_openai = openai_spend_allowed()
+        if use_openai:
+            if analysis_pipeline is not None:
+                gpt_queued = await analysis_pipeline.enqueue_retry_batch(
+                    gpt_limit, cooldown_seconds=0
+                )
+            else:
+                retry_results = await hybrid_lead_service.retry_pending(
+                    gpt_limit, cooldown_seconds=0
+                )
+                gpt_processed = len(retry_results)
+        parts: list[str] = []
+        if results:
+            parts.append(f"Оценено комментариев: {len(results)}")
+        else:
+            parts.append("Свежих комментариев без оценки не осталось")
+        if rules_pending:
+            parts.append(f"спорных после правил: {rules_pending}")
+        if use_openai:
+            if gpt_queued:
+                parts.append(f"в очередь GPT: {gpt_queued}")
+            elif gpt_processed:
+                parts.append(f"GPT дожал: {gpt_processed}")
+        elif rules_pending:
+            parts.append("включите OpenAI для GPT-оценки спорных")
+        return {
+            "ok": True,
+            "processed": len(results),
+            "rules_pending": rules_pending,
+            "gpt_queued": gpt_queued,
+            "gpt_processed": gpt_processed,
+            "openai_used": use_openai,
+            "async": bool(gpt_queued),
+            "message": ". ".join(parts) + ".",
+        }
+
     @app.post("/api/history/analyze-local")
     async def analyze_history_local(request: Request):
         payload = await _json_or_form(request)
@@ -1233,8 +1281,8 @@ def build_web_app(
             "processed": len(results),
             "pending": pending,
             "message": (
-                f"Локально разобрано сигналов: {len(results)}. "
-                f"Неоднозначных оставлено на AI: {pending}. OpenAI не вызывался."
+                f"Оценено комментариев: {len(results)}. "
+                f"Спорных (нужен GPT): {pending}. OpenAI не вызывался."
             ),
         }
 
@@ -1251,8 +1299,8 @@ def build_web_app(
                 "async": True,
                 "openai_used": True,
                 "message": (
-                    f"В очередь OpenAI поставлено: {queued}. "
-                    "Разбор идёт в фоне — следите за лентой на Radar."
+                    f"В очередь GPT поставлено: {queued}. "
+                    "Оценка идёт в фоне — обновите Радар через минуту."
                 ),
             }
         service = hybrid_lead_service if use_openai else local_lead_service
@@ -1260,14 +1308,14 @@ def build_web_app(
         still_pending = sum(item.status == LeadStatus.AI_PENDING for item in results)
         if use_openai:
             message = (
-                f"Hybrid/OpenAI: разобрано {len(results)}. "
-                f"Осталось AI_PENDING: {still_pending}."
+                f"Умный разбор: обработано {len(results)}. "
+                f"Ещё ждут GPT: {still_pending}."
             )
         else:
             message = (
-                f"Локальные правила: разобрано {len(results)}. "
-                f"Осталось AI_PENDING: {still_pending}. "
-                "OpenAI выключен — включите тумблер OpenAI для GPT-разбора."
+                f"Только правила: обработано {len(results)}. "
+                f"Спорных осталось: {still_pending}. "
+                "Включите OpenAI на Радаре для GPT-оценки."
             )
         return {
             "ok": True,

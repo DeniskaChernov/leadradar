@@ -43,9 +43,9 @@
   {% if lead.status.value == 'AI_PENDING' %}
   <div class="empty-box">
     <span class="empty-icon" aria-hidden="true"><i data-lucide="circle-help"></i></span>
-    <b>Нужна дополнительная проверка</b>
-    <span>Сигнал остаётся рабочим. Hybrid: правила, затем GPT если OpenAI live включён.</span>
-    <button class="btn primary" type="button" data-api-action="/api/leads/{{ lead.id }}/analyze" data-payload='{}' data-reload="1">Прогнать hybrid-разбор</button>
+    <b>Система не уверена в оценке</b>
+    <span>Лид уже виден менеджеру. Нажмите ниже — сначала сработают правила, при необходимости подключится GPT (если включён).</span>
+    <button class="btn primary" type="button" data-api-action="/api/leads/{{ lead.id }}/analyze" data-payload='{}' data-reload="1">Дожать оценку через GPT</button>
   </div>
   {% endif %}
 </section>
