@@ -2494,6 +2494,33 @@ body::after { animation: ambient-drift-b 22s ease-in-out infinite alternate; }
 }
 .tag.danger { color: #be123c; border-color: rgba(225, 29, 72, 0.28); background: rgba(255, 228, 230, 0.72); }
 
+.gpt-queue-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(217, 119, 6, 0.28);
+  background: rgba(254, 243, 199, 0.85);
+  color: #92400e;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+}
+.gpt-queue-chip[hidden] { display: none !important; }
+.gpt-queue-chip .pulse { width: 8px; height: 8px; }
+.gpt-queue-chip strong { font-size: 13px; }
+.discovery-promote-handle { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.discovery-promote-handle input[name="handle"] {
+  min-width: 140px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+}
+.agent-context-bar { margin-bottom: 12px; }
+.rules-reanalyze-alert .alert { display: grid; gap: 10px; }
+.manager-feedback-quality { margin-bottom: 16px; }
+
 .mobile-nav-backdrop { display: none; }
 
 @media (max-width: 940px) and (min-width: 721px) {

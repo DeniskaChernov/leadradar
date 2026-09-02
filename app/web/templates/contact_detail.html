@@ -148,7 +148,7 @@
   </div>
 
   <aside class="contact-side">
-    <section class="panel lead-agent-panel compact action-form-card" aria-labelledby="contact-agent-title">
+    <section class="panel lead-agent-panel compact action-form-card" aria-labelledby="contact-agent-title" data-agent-context data-contact-id="{{ contact.id }}"{% if leads %} data-lead-id="{{ leads[0].id }}"{% endif %}>
       <span class="eyebrow">AI · ОБОСНОВАННО</span>
       <h3 id="contact-agent-title">Ассистент по клиенту</h3>
       <p class="muted">@{{ contact.username }} · клиент #{{ contact.id }}{% if leads %} · lead #{{ leads[0].id }}{% endif %}</p>

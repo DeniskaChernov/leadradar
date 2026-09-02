@@ -40,7 +40,24 @@
         <div class="candidate-links">{% if candidate.website_url %}<a href="{{ candidate.website_url }}" target="_blank" rel="noopener">Сайт ↗</a>{% endif %}{% if candidate.instagram_handle %}<a href="https://instagram.com/{{ candidate.instagram_handle }}" target="_blank" rel="noopener">@{{ candidate.instagram_handle }} ↗</a>{% endif %}{% if candidate.source_url %}<a href="{{ candidate.source_url }}" target="_blank" rel="noopener">Источник ↗</a>{% endif %}</div>
         <div class="candidate-actions">
           {% if candidate.status != 'REVIEWED' %}<button class="btn tiny ghost" data-api-action="/api/discovery/candidates/{{ candidate.id }}/status" data-payload='{"status":"REVIEWED"}' data-reload="1">Проверено</button>{% endif %}
-          {% if candidate.instagram_handle %}<form data-api-form action="/api/market-candidates/{{ candidate.id }}/promote" data-reload="1"><input type="hidden" name="handle" value="{{ candidate.instagram_handle }}"><input type="hidden" name="active" value="false"><button class="btn tiny primary" type="submit">В радар на паузу</button></form>{% else %}<span class="muted">Нужен Instagram для радара</span>{% endif %}
+          {% if candidate.instagram_handle %}
+          <form data-api-form action="/api/market-candidates/{{ candidate.id }}/promote" data-reload="1" class="inline-form">
+            <input type="hidden" name="handle" value="{{ candidate.instagram_handle }}">
+            <input type="hidden" name="active" value="false">
+            <button class="btn tiny primary" type="submit">В радар на паузу</button>
+          </form>
+          <form data-api-form action="/api/market-candidates/{{ candidate.id }}/promote" data-reload="1" class="inline-form">
+            <input type="hidden" name="handle" value="{{ candidate.instagram_handle }}">
+            <input type="hidden" name="active" value="true">
+            <button class="btn tiny" type="submit">В радар активно</button>
+          </form>
+          {% else %}
+          <form data-api-form action="/api/market-candidates/{{ candidate.id }}/promote" data-reload="1" class="inline-form discovery-promote-handle">
+            <input name="handle" placeholder="instagram_handle" required aria-label="Instagram handle для {{ candidate.display_name }}">
+            <input type="hidden" name="active" value="false">
+            <button class="btn tiny primary" type="submit">Добавить на паузу</button>
+          </form>
+          {% endif %}
           {% if candidate.status != 'REJECTED' %}<button class="btn tiny ghost" data-api-action="/api/discovery/candidates/{{ candidate.id }}/status" data-payload='{"status":"REJECTED"}' data-reload="1">Не подходит</button>{% endif %}
         </div>
       </article>

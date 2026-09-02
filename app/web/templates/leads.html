@@ -24,6 +24,7 @@
   <div class="hero-actions">
     <a class="btn primary" href="/leads?status=NEW{{ query_suffix }}">Новые ({{ ns.new }})</a>
     <a class="btn" href="/leads?quality=hot{{ query_suffix }}">HOT</a>
+    <a class="btn ghost" href="/api/leads/export.csv?q={{ q|urlencode }}{% if status_filter %}&status={{ status_filter|urlencode }}{% endif %}{% if quality_filter %}&quality={{ quality_filter|urlencode }}{% endif %}">CSV</a>
     {% include "partials/lead_reanalyze_actions.html" %}
     <button class="btn ghost" type="button" data-agent-open>AI по лидам</button>
   </div>

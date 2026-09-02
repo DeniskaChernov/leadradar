@@ -112,7 +112,7 @@
   </div>
 
   <aside class="lead-side">
-    <section class="panel lead-agent-panel compact" aria-labelledby="lead-agent-title">
+    <section class="panel lead-agent-panel compact" aria-labelledby="lead-agent-title" data-agent-context data-lead-id="{{ lead.id }}" data-contact-id="{{ contact.id }}">
       <div class="panel-head compact"><div><span class="eyebrow">АССИСТЕНТ · БАЗА</span><h2 id="lead-agent-title">Ассистент по лиду</h2><p>Ответ из БД и evidence_ids без GPT.</p></div><span class="tag status-contacted">без GPT</span></div>
       <div class="agent-presets inline" role="group" aria-label="Быстрые вопросы по лиду">
         <button class="agent-preset" type="button" data-agent-preset='{"query":"Объясни оценку лида","lead_id":"{{ lead.id }}"}'>Оценка</button>

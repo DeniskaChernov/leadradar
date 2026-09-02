@@ -661,6 +661,23 @@ class WebQueryService:
             ],
         }
 
+    async def gpt_queue_counts(self) -> dict[str, int]:
+        """Лёгкий счётчик очереди GPT для global header."""
+        async with self.session_factory() as session:
+            analyzing = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.ANALYZING)
+                )
+                or 0
+            )
+            ai_pending = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.AI_PENDING)
+                )
+                or 0
+            )
+        return {"analyzing": analyzing, "ai_pending": ai_pending}
+
     async def signals(
         self,
         *,
@@ -781,6 +798,78 @@ class WebQueryService:
             }:
                 stmt = stmt.where(Lead.status != LeadStatus.NOT_LEAD)
             return (await session.execute(stmt)).all()
+
+    async def manager_feedback_quality(self) -> dict[str, object]:
+        """Live FP: менеджер сказал «не лид», модель дала HOT/высокий score."""
+        async with self.session_factory() as session:
+            reviewed = int(
+                await session.scalar(
+                    select(func.count(AIFeedback.id)).where(
+                        AIFeedback.manager_is_lead.is_not(None)
+                    )
+                )
+                or 0
+            )
+            false_positives = int(
+                await session.scalar(
+                    select(func.count(AIFeedback.id)).where(
+                        AIFeedback.manager_is_lead.is_(False),
+                        AIFeedback.predicted_score >= self.hot_threshold,
+                    )
+                )
+                or 0
+            )
+            manager_not_lead = int(
+                await session.scalar(
+                    select(func.count(AIFeedback.id)).where(
+                        AIFeedback.manager_is_lead.is_(False)
+                    )
+                )
+                or 0
+            )
+        rate = (
+            round(false_positives / reviewed, 4) if reviewed > 0 else None
+        )
+        return {
+            "reviewed": reviewed,
+            "manager_not_lead": manager_not_lead,
+            "hot_false_positives": false_positives,
+            "hot_false_positive_rate": rate,
+        }
+
+    async def rules_reanalyze_status(self, current_version: str) -> dict[str, object]:
+        """Сколько actionable лидов без stamp текущей версии правил."""
+        version = (current_version or "").strip() or "3.2"
+        async with self.session_factory() as session:
+            actionable = (
+                await session.execute(
+                    select(Lead.id, Lead.analysis_details)
+                    .join(Comment, Comment.id == Lead.comment_id)
+                    .where(
+                        Lead.status.in_(
+                            [
+                                LeadStatus.NEW,
+                                LeadStatus.AI_PENDING,
+                                LeadStatus.ANALYZING,
+                            ]
+                        ),
+                        fresh_signal_clause(max_age_days=self.signal_max_age_days),
+                    )
+                )
+            ).all()
+        stale = 0
+        for _lead_id, details in actionable:
+            stamped = None
+            if isinstance(details, dict):
+                stamped = details.get("rules_version")
+            if stamped != version:
+                stale += 1
+        return {
+            "current_version": version,
+            "actionable_total": len(actionable),
+            "stale_count": stale,
+            "needs_reanalyze": stale > 0,
+        }
 
     async def lead_detail(self, lead_id: int) -> dict | None:
         async with self.session_factory() as session:

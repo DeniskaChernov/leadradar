@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -7,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -142,6 +144,7 @@ def build_web_app(
         audience_engine=local_audience_engine,
         change_detector=change_detector,
         signal_max_age_days=settings.instagram_signal_max_age_days,
+        rules_version=settings.lead_analysis_version,
     )
     openai_analyzer = None
     if settings.openai_api_key:
@@ -165,6 +168,7 @@ def build_web_app(
         audience_engine=local_audience_engine,
         change_detector=change_detector,
         signal_max_age_days=settings.instagram_signal_max_age_days,
+        rules_version=settings.lead_analysis_version,
     )
     delivery_allowed_by_config = bool(settings.telegram_bot_token) and (
         settings.instagram_provider not in {"mock", "replay"}
@@ -490,6 +494,54 @@ def build_web_app(
             ),
         )
 
+    @app.get("/api/leads/export.csv")
+    async def export_leads_csv(
+        q: str = "",
+        status: str = "",
+        quality: str = "",
+    ):
+        """CSV воронки: только публичные Instagram-поля, без телефонов/email."""
+        rows = await queries.leads(q=q, status=status, quality=quality, limit=1000)
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(
+            [
+                "lead_id",
+                "username",
+                "display_name",
+                "competitor",
+                "status",
+                "score",
+                "intent",
+                "product",
+                "comment",
+                "created_at",
+                "deal_status",
+            ]
+        )
+        for lead, contact, comment, competitor, _post, deal in rows:
+            writer.writerow(
+                [
+                    lead.id,
+                    contact.username,
+                    contact.display_name or "",
+                    competitor.normalized_handle,
+                    lead.status.value,
+                    lead.lead_score,
+                    lead.intent or "",
+                    lead.product_category or "",
+                    (comment.text or "").replace("\n", " ").strip()[:500],
+                    lead.created_at.isoformat() if lead.created_at else "",
+                    deal.status.value if deal is not None else "",
+                ]
+            )
+        payload = buffer.getvalue()
+        return StreamingResponse(
+            iter([payload]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="leads-funnel.csv"'},
+        )
+
     @app.get("/leads/{lead_id}", response_class=HTMLResponse)
     async def lead_detail(request: Request, lead_id: int):
         data = await queries.lead_detail(lead_id)
@@ -733,6 +785,10 @@ def build_web_app(
             hot_threshold=settings.hot_lead_threshold
         )
         quality_gates = quality_gates_service.snapshot()
+        manager_feedback_quality = await queries.manager_feedback_quality()
+        rules_reanalyze = await queries.rules_reanalyze_status(
+            settings.lead_analysis_version
+        )
         pricing_configs = await pricing_service.list_active()
         fx_policies = await fx_policy_service.list_active()
         notification_modes = {
@@ -824,6 +880,8 @@ def build_web_app(
                 ai_safety=ai_safety,
                 intelligence_quality=intelligence_quality,
                 quality_gates=quality_gates,
+                manager_feedback_quality=manager_feedback_quality,
+                rules_reanalyze=rules_reanalyze,
                 pricing_configs=pricing_configs,
                 fx_policies=fx_policies,
                 export_recipes=export_recipes,
@@ -1381,8 +1439,10 @@ def build_web_app(
             "still_new": new_leads,
             "pending": pending,
             "openai_used": use_openai,
+            "rules_version": settings.lead_analysis_version,
             "message": (
-                f"Переоценено: {len(results)} · лидов: {new_leads} · не лид: {not_lead}"
+                f"Переоценено (правила {settings.lead_analysis_version}): {len(results)}"
+                f" · лидов: {new_leads} · не лид: {not_lead}"
                 + (f" · ждут GPT: {pending}" if pending else "")
             ),
         }
@@ -1985,7 +2045,11 @@ def build_web_app(
             return {
                 "ok": True,
                 "competitor_id": competitor.id,
-                "message": f"@{competitor.normalized_handle} добавлен в радар на {'активный мониторинг' if competitor.active else 'паузу'}",
+                "message": (
+                    f"@{competitor.normalized_handle} добавлен в радар на "
+                    f"{'активный мониторинг' if competitor.active else 'паузу'}. "
+                    f"Открыть: /competitors/{competitor.id}"
+                ),
             }
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2195,6 +2259,10 @@ def build_web_app(
         else:
             payload["analysis_queue"] = 0
             payload["analysis_in_flight"] = 0
+        feed = await queries.gpt_queue_counts()
+        payload["ai_pending"] = int(feed.get("ai_pending") or 0)
+        payload["analyzing"] = int(feed.get("analyzing") or 0)
+        payload["gpt_queue_total"] = payload["ai_pending"] + payload["analyzing"]
         return payload
 
     @app.get("/health")

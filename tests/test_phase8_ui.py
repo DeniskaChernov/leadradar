@@ -253,6 +253,50 @@ async def test_bulk_competitors_active_api(session_factory):
     assert noop.json()["changed"] == 0
 
 
+async def test_leads_export_csv_and_scan_progress_gpt_queue(session_factory):
+    lead_id = await create_lead(session_factory)
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        export = await client.get("/api/leads/export.csv")
+        progress = await client.get("/api/scan/progress")
+        system = await client.get("/system")
+        discovery = await client.get("/discovery")
+
+    assert export.status_code == 200
+    assert "text/csv" in export.headers.get("content-type", "")
+    body = export.text
+    assert "lead_id" in body
+    assert str(lead_id) in body
+    assert "username" in body
+
+    assert progress.status_code == 200
+    progress_body = progress.json()
+    assert "ai_pending" in progress_body
+    assert "analyzing" in progress_body
+    assert "gpt_queue_total" in progress_body
+
+    assert system.status_code == 200
+    assert "manager-feedback-quality" in system.text
+    assert "HOT → не лид" in system.text or "HOT FP" in system.text
+    assert "Правила обновились" in system.text or "rules_reanalyze" in system.text or "v3.2" in system.text or "текущие правила" in system.text
+
+    assert discovery.status_code == 200
+    from pathlib import Path
+
+    discovery_tpl = Path("app/web/templates/discovery.html").read_text(encoding="utf-8")
+    assert "В радар активно" in discovery_tpl
+    assert "discovery-promote-handle" in discovery_tpl
+    assert "discovery-import" in discovery.text
+
+
 async def test_uncertain_notification_resolve_api(session_factory):
     from sqlalchemy import select
 

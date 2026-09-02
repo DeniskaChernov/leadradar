@@ -71,13 +71,30 @@
     container.appendChild(meta);
   };
 
+  const readAgentContext = (extra = {}) => {
+    const ctx = { ...extra };
+    const node = document.querySelector('[data-agent-context]')
+      || document.querySelector('[data-agent-chat-root]');
+    if (node?.dataset.leadId) ctx.lead_id = Number(node.dataset.leadId);
+    if (node?.dataset.contactId) ctx.contact_id = Number(node.dataset.contactId);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('lead_id')) ctx.lead_id = Number(params.get('lead_id'));
+    if (params.get('contact_id')) ctx.contact_id = Number(params.get('contact_id'));
+    if (ctx.lead_id != null && !Number.isFinite(ctx.lead_id)) delete ctx.lead_id;
+    if (ctx.contact_id != null && !Number.isFinite(ctx.contact_id)) delete ctx.contact_id;
+    return ctx;
+  };
+
   const runAgentQuery = async (form, submitButton) => {
     const targetSelector = form.dataset.agentTarget || '#agent-query-result';
     const output = document.querySelector(targetSelector);
     const plainOutput = output?.matches('pre.agent-result') ? output : null;
     setLoading(submitButton, true);
     try {
-      const payload = formPayload(form, submitButton);
+      const payload = {
+        ...readAgentContext(),
+        ...formPayload(form, submitButton),
+      };
       const data = await api('/api/agent/query', {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -765,6 +782,11 @@
       } catch (_) {
         return;
       }
+      payload = { ...readAgentContext(), ...payload };
+      if (agentPreset.dataset.agentNeedsLead === '1' && !payload.lead_id) {
+        toast('Откройте /agent?lead_id=… или карточку лида', true);
+        return;
+      }
       const form = agentPreset.closest('[data-agent-query]')
         || document.querySelector('#agent-quick [data-agent-query]')
         || document.querySelector('[data-agent-chat-form]');
@@ -775,11 +797,19 @@
           textarea.value = String(payload.query || '');
           textarea.focus();
         }
+        if (payload.lead_id) form.dataset.pendingLeadId = String(payload.lead_id);
+        if (payload.contact_id) form.dataset.pendingContactId = String(payload.contact_id);
         form.requestSubmit();
         return;
       }
       Object.entries(payload).forEach(([key, value]) => {
-        const field = form.querySelector(`[name="${key}"]`);
+        let field = form.querySelector(`[name="${key}"]`);
+        if (!field && (key === 'lead_id' || key === 'contact_id')) {
+          field = document.createElement('input');
+          field.type = 'hidden';
+          field.name = key;
+          form.appendChild(field);
+        }
         if (field instanceof HTMLInputElement) field.value = String(value);
       });
       const submit = form.querySelector('[type="submit"]');
@@ -1096,7 +1126,24 @@
     }
   };
 
+  const applyGptQueueChip = (payload) => {
+    const chip = document.querySelector('[data-gpt-queue]');
+    if (!chip) return;
+    const total = Number(payload.gpt_queue_total != null
+      ? payload.gpt_queue_total
+      : (Number(payload.ai_pending || 0) + Number(payload.analyzing || 0)));
+    const count = chip.querySelector('[data-gpt-queue-count]');
+    const label = chip.querySelector('[data-gpt-queue-label]');
+    chip.hidden = total <= 0;
+    if (count) count.textContent = String(total);
+    if (label) {
+      label.textContent = Number(payload.analyzing || 0) > 0 ? 'GPT…' : 'GPT';
+    }
+    chip.classList.toggle('is-busy', total > 0);
+  };
+
   const applyScanProgress = (payload) => {
+    applyGptQueueChip(payload);
     const progress = payload.progress || payload.scan_progress || {};
     const busy = Boolean(payload.cycle_running)
       || Number(payload.analysis_queue || 0) > 0
@@ -1494,7 +1541,18 @@
       setLoading(submit, true);
       setTyping(true);
       try {
-        const payload = { query: query.value.trim() };
+        const payload = {
+          query: query.value.trim(),
+          ...readAgentContext(),
+        };
+        if (form.dataset.pendingLeadId) {
+          payload.lead_id = Number(form.dataset.pendingLeadId);
+          delete form.dataset.pendingLeadId;
+        }
+        if (form.dataset.pendingContactId) {
+          payload.contact_id = Number(form.dataset.pendingContactId);
+          delete form.dataset.pendingContactId;
+        }
         if (activeSessionId) payload.session_id = Number(activeSessionId);
         const data = await api('/api/agent/chat', { method: 'POST', body: JSON.stringify(payload) });
         activeSessionId = String(data.session_id);

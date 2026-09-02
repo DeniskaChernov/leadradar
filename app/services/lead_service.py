@@ -71,6 +71,7 @@ class LeadService:
         change_detector: SignificantChangeDetector | None = None,
         *,
         signal_max_age_days: int = 30,
+        rules_version: str = "3.2",
     ) -> None:
         self.session_factory = session_factory
         self.analyzer = analyzer
@@ -78,6 +79,7 @@ class LeadService:
         self.audience_engine = audience_engine
         self.change_detector = change_detector
         self.signal_max_age_days = max(0, signal_max_age_days)
+        self.rules_version = (rules_version or "3.2").strip() or "3.2"
 
     async def process_signal(
         self, signal: PersistedSignal, *, allow_baseline: bool = False
@@ -244,6 +246,7 @@ class LeadService:
             lead.ai_reason = analysis.reason
             lead.analysis_details = analysis.model_dump(mode="json")
             lead.analysis_details["vertical"] = lead.vertical.value
+            lead.analysis_details["rules_version"] = self.rules_version
             if taxonomy:
                 lead.analysis_details["rattan_taxonomy"] = taxonomy
             lead.language = analysis.language

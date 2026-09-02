@@ -185,6 +185,32 @@
   {% endif %}
 </section>
 
+</section>
+
+{% if rules_reanalyze and rules_reanalyze.needs_reanalyze %}
+<section class="panel compact rules-reanalyze-alert">
+  <div class="alert warn">
+    <b>Правила обновились · {{ rules_reanalyze.current_version }}</b>
+    <span>{{ rules_reanalyze.stale_count }} из {{ rules_reanalyze.actionable_total }} свежих лидов ещё без stamp этой версии. Переоценка идемпотентна и пишет новый stamp.</span>
+    {% include "partials/lead_reanalyze_actions.html" %}
+  </div>
+</section>
+{% endif %}
+
+<section class="panel manager-feedback-quality" aria-labelledby="manager-fp-title">
+  <div class="panel-head"><div><span class="eyebrow">PRODUCTION FEEDBACK</span><h2 id="manager-fp-title">False-positive по решению менеджера</h2><p>Считается из AIFeedback: модель дала HOT, менеджер отметил «не лид». Offline challenge ниже — отдельно.</p></div>
+    <span class="tag {% if manager_feedback_quality.reviewed == 0 %}neutral{% elif (manager_feedback_quality.hot_false_positive_rate or 0) <= 0.1 %}success{% else %}warning{% endif %}">
+      {% if manager_feedback_quality.reviewed == 0 %}нет отзывов{% else %}{{ '%.1f'|format((manager_feedback_quality.hot_false_positive_rate or 0) * 100) }}% HOT FP{% endif %}
+    </span>
+  </div>
+  <div class="mini-metrics">
+    <span><b>{{ manager_feedback_quality.reviewed }}</b> отзывов менеджера</span>
+    <span><b>{{ manager_feedback_quality.manager_not_lead }}</b> «не лид»</span>
+    <span><b>{{ manager_feedback_quality.hot_false_positives }}</b> HOT → не лид</span>
+    <span><b>v{{ settings.lead_analysis_version }}</b> текущие правила</span>
+  </div>
+</section>
+
 <section class="panel intelligence-quality">
   <div class="panel-head"><div><span class="eyebrow">ОФЛАЙН-ПРОВЕРКА · {{ intelligence_quality.dataset_version }}</span><h2>Качество локального интеллекта</h2><p>Фиксированный RU / UZ Latin / UZ Cyrillic набор работает без базы, сети и AI-токенов. Это проверка регрессий, а не заявление о production accuracy.</p></div><span class="tag {% if intelligence_quality.passed %}status-contacted{% else %}neutral{% endif %}">{% if intelligence_quality.passed %}внутренний gate пройден{% else %}gate заблокирован{% endif %}</span></div>
   <div class="mini-metrics">

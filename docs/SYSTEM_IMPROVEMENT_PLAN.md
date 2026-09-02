@@ -10,12 +10,12 @@
 - [x] A4. Фикстуры watch_price + eval 218 сценариев
 - [x] A5. API batch-переоценка лидов NEW
 - [x] A6. Кнопка «Переоценить лиды» в Системе
-- [ ] A7. Авто-переоценка после смены правил (version stamp)
+- [x] A7. Авто-переоценка после смены правил (version stamp)
 - [ ] A8. Parent-comment context для reply «+»
 - [x] A9. Расширить off-catalog: украшения, обувь, техника
 - [x] A10. UI-бейдж «Не наш ассортимент» на карточке лида
 - [x] A11. Фильтр «мусорные лиды» на /leads
-- [ ] A12. Метрика false-positive rate в /system
+- [x] A12. Метрика false-positive rate в /system
 - [ ] A13. Feedback loop: NOT_LEAD → обучение правил
 - [ ] A14. Re-analyze NOT_LEAD с score>50 (опционально)
 - [ ] A15. Daily quality report в Telegram admin
@@ -32,7 +32,7 @@
 - [x] B8. Задачи follow-up из карточки лида one-click
 - [ ] B9. История contact_events на kanban tooltip
 - [ ] B10. Mobile kanban swipe между колонками
-- [ ] B11. Экспорт воронки CSV
+- [x] B11. Экспорт воронки CSV
 - [x] B12. SLA-бейдж «просрочен next_action»
 - [ ] B13. Назначение менеджера в UI
 - [x] B14. Reopen NOT_LEAD из списка
@@ -94,7 +94,7 @@
 - [x] F1. Competitors hero короче + KPI glass
 - [x] F2. Рекомендация tier auto-suggest UI
 - [x] F3. Bulk pause/resume competitors
-- [ ] F4. Discovery → add competitor flow
+- [x] F4. Discovery → add competitor flow
 - [ ] F5. Overlap graph visual
 - [ ] F6. Commercial rate trend per competitor
 - [x] F7. Last scan error badge
@@ -104,9 +104,9 @@
 
 ## G. AI, agent, OpenAI (10)
 
-- [ ] G1. Agent: контекст лида в каждом preset
+- [x] G1. Agent: контекст лида в каждом preset
 - [x] G2. Agent: «почему не лид» preset
-- [ ] G3. GPT queue progress в header
+- [x] G3. GPT queue progress в header
 - [ ] G4. OpenAI cost per analysis in lead detail
 - [ ] G5. Cache hit rate metric
 - [ ] G6. Prompt version display
