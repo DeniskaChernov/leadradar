@@ -4,6 +4,10 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-02 (bugfix high+med): WON/LOST только через сделку; AI-статусы
+на kanban; dashboard revenue None→«—»; TAKEN→feedback; Meta invalid fail-closed;
+ops live_refresh из БД; kanban dropInFlight. UI **13.29.3-bugfix**.
+
 Контрольная точка 2026-09-02 (perf audit fix): убран cartesian product в quality report
 (Lead⨝Comment); batch `competitors()` / `audiences()`; kanban `/leads` группирует стадии в Python.
 Bench: competitors ~0.7s→~0.16s, audiences ~1.0s→~0.6s. `485+` suite зелёный на срезе 85.

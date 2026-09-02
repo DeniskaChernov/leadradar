@@ -44,6 +44,16 @@ class OperationalControlService:
     def openai_live_armed(self) -> bool:
         return self._cache.openai_live_armed
 
+    async def radar_live_armed_fresh(self) -> bool:
+        """Актуальное значение из БД — для spend gate (multi-worker safe)."""
+        snap = await self.load()
+        return snap.radar_live_armed
+
+    async def openai_live_armed_fresh(self) -> bool:
+        """Актуальное значение из БД — для OpenAI spend gate."""
+        snap = await self.load()
+        return snap.openai_live_armed
+
     async def load(self) -> OperationalSnapshot:
         async with self.session_factory() as session:
             row = await session.get(OperationalControl, 1)

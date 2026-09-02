@@ -121,6 +121,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         settings,
         usage_service,
         live_gate=ops_control.radar_live_armed,
+        live_refresh=ops_control.radar_live_armed_fresh,
     )
     rules = RuleBasedLeadAnalyzer()
     openai_analyzer = None
@@ -135,6 +136,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             lease_seconds=settings.ai_request_lease_seconds,
             max_attempts=settings.ai_request_max_attempts,
             live_gate=ops_control.openai_live_armed,
+            live_refresh=ops_control.openai_live_armed_fresh,
         )
     analyzer = (
         HybridLeadAnalyzer(rules, openai_analyzer, mode=settings.ai_mode)

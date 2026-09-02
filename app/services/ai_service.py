@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import socket
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar, Protocol
@@ -1364,12 +1364,14 @@ class BudgetedCachedOpenAIAnalyzer:
         lease_seconds: int = 180,
         max_attempts: int = 3,
         live_gate: Callable[[], bool] | None = None,
+        live_refresh: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         self.inner = inner
         self.session_factory = session_factory
         self.usage = usage
         self._master_enabled = enabled
         self._live_gate = live_gate
+        self._live_refresh = live_refresh
         self.daily_limit = daily_limit
         self.analysis_version = analysis_version
         self.lease_seconds = lease_seconds
@@ -1394,6 +1396,13 @@ class BudgetedCachedOpenAIAnalyzer:
             return bool(self._live_gate())
         return True
 
+    async def _live_enabled(self) -> bool:
+        if not self._master_enabled:
+            return False
+        if self._live_refresh is not None:
+            return bool(await self._live_refresh())
+        return self.enabled
+
     def context_fingerprint(self, context: LeadAnalysisContext) -> str:
         return self.fingerprint_service.fingerprint(context)
 
@@ -1413,7 +1422,7 @@ class BudgetedCachedOpenAIAnalyzer:
                 "AI анализ для данного контекста уже выполняется другим процессом."
             )
 
-        if not self.enabled:
+        if not await self._live_enabled():
             await self._release_request_claim(
                 request_id,
                 claim_token,

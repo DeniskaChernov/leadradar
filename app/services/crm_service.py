@@ -29,11 +29,11 @@ from app.services.rattan_vertical_service import sync_business_vertical_enrollme
 ALLOWED_STAGE_TRANSITIONS: dict[LeadStatus, set[LeadStatus]] = {
     LeadStatus.ANALYZING: {LeadStatus.TAKEN, LeadStatus.NOT_LEAD},
     LeadStatus.NEW: {LeadStatus.TAKEN, LeadStatus.NOT_LEAD},
-    LeadStatus.TAKEN: {LeadStatus.CONTACTED, LeadStatus.QUALIFIED, LeadStatus.LOST, LeadStatus.NOT_LEAD},
-    LeadStatus.CONTACTED: {LeadStatus.QUALIFIED, LeadStatus.OFFER_SENT, LeadStatus.NEGOTIATION, LeadStatus.LOST},
-    LeadStatus.QUALIFIED: {LeadStatus.OFFER_SENT, LeadStatus.NEGOTIATION, LeadStatus.LOST},
-    LeadStatus.OFFER_SENT: {LeadStatus.NEGOTIATION, LeadStatus.WON, LeadStatus.LOST},
-    LeadStatus.NEGOTIATION: {LeadStatus.OFFER_SENT, LeadStatus.WON, LeadStatus.LOST},
+    LeadStatus.TAKEN: {LeadStatus.CONTACTED, LeadStatus.QUALIFIED, LeadStatus.NOT_LEAD},
+    LeadStatus.CONTACTED: {LeadStatus.QUALIFIED, LeadStatus.OFFER_SENT, LeadStatus.NEGOTIATION},
+    LeadStatus.QUALIFIED: {LeadStatus.OFFER_SENT, LeadStatus.NEGOTIATION},
+    LeadStatus.OFFER_SENT: {LeadStatus.NEGOTIATION},
+    LeadStatus.NEGOTIATION: {LeadStatus.OFFER_SENT},
     LeadStatus.AI_PENDING: {LeadStatus.TAKEN, LeadStatus.NOT_LEAD},
     LeadStatus.WON: set(),
     LeadStatus.LOST: set(),
@@ -54,6 +54,12 @@ class CRMService:
                 raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
             if target == lead.status:
                 return lead
+            # WON/LOST только через win_deal/lose_deal — нужны Deal + SaleSnapshot.
+            if target in {LeadStatus.WON, LeadStatus.LOST}:
+                raise LeadWorkflowError(
+                    "Продажу и отказ закрывайте через карточку сделки "
+                    "(сумма, товар или причина) — не перетаскиванием на доске"
+                )
             allowed = ALLOWED_STAGE_TRANSITIONS.get(lead.status, set())
             if target not in allowed:
                 raise LeadWorkflowError(
@@ -62,23 +68,46 @@ class CRMService:
             previous = lead.status
             lead.status = target
             contact = await session.get(Contact, lead.contact_id)
+            assigned_now = False
             if lead.assigned_manager_telegram_id is None and target not in {LeadStatus.NOT_LEAD}:
                 lead.assigned_manager_telegram_id = manager_id
                 if contact is not None:
                     contact.assigned_manager_telegram_id = manager_id
+                assigned_now = True
             if target == LeadStatus.CONTACTED and contact is not None:
                 contact.last_contacted_at = datetime.now(UTC)
-            event_type = {
-                LeadStatus.CONTACTED: ContactEventType.CONTACTED,
-                LeadStatus.OFFER_SENT: ContactEventType.OFFER_SENT,
-                LeadStatus.NEGOTIATION: ContactEventType.NEGOTIATION_STARTED,
-            }.get(target, ContactEventType.LEAD_STATUS_CHANGED)
+            # NEW/AI_* → TAKEN через stage = то же, что «взять в работу».
+            if target == LeadStatus.TAKEN and previous in {
+                LeadStatus.NEW,
+                LeadStatus.AI_PENDING,
+                LeadStatus.ANALYZING,
+            }:
+                feedback = await session.scalar(
+                    select(AIFeedback).where(AIFeedback.lead_id == lead.id)
+                )
+                if feedback is not None:
+                    feedback.manager_is_lead = True
+                event_type = ContactEventType.MANAGER_ASSIGNED
+                payload = {
+                    "from": previous.value,
+                    "to": target.value,
+                    "manager_telegram_id": manager_id,
+                    "via": "stage",
+                    "assigned_now": assigned_now,
+                }
+            else:
+                event_type = {
+                    LeadStatus.CONTACTED: ContactEventType.CONTACTED,
+                    LeadStatus.OFFER_SENT: ContactEventType.OFFER_SENT,
+                    LeadStatus.NEGOTIATION: ContactEventType.NEGOTIATION_STARTED,
+                }.get(target, ContactEventType.LEAD_STATUS_CHANGED)
+                payload = {"from": previous.value, "to": target.value}
             await ContactEventRepository(session).add(
                 lead.contact_id,
                 event_type,
                 lead_id=lead.id,
                 manager_telegram_id=manager_id,
-                payload={"from": previous.value, "to": target.value},
+                payload=payload,
             )
             await session.commit()
             return lead

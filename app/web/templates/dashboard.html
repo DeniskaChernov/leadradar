@@ -43,7 +43,7 @@
   <a class="metric accent" href="/leads"><span>Горячие</span><strong>{{ counts.hot }}</strong><small>от {{ settings.hot_lead_threshold }}/100</small></a>
   <a class="metric change" href="/#changes"><span>Стали горячее</span><strong>{{ counts.significant_changes_24h }}</strong><small>за 24 часа</small></a>
   <a class="metric warn" href="/tasks"><span>Связаться</span><strong>{{ counts.tasks_today }}</strong><small>{{ counts.tasks_due }} просрочено</small></a>
-  <a class="metric success" href="/deals?status=WON"><span>Продажи</span><strong>{{ counts.won }}</strong><small>{{ money(counts.revenue) }} сум</small></a>
+  <a class="metric success" href="/deals?status=WON"><span>Продажи</span><strong>{{ counts.won }}</strong><small>{% if counts.revenue is not none %}{{ money(counts.revenue) }} сум{% else %}—{% endif %}</small></a>
 </div>
 
 <div class="dashboard-grid">

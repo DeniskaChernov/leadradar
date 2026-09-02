@@ -121,10 +121,15 @@ class ExportRecipeService:
 
     @classmethod
     def _phone_hash_for_meta(cls, phone: str) -> str | None:
+        """E.164 digits -> SHA-256. Uzbekistan: 998XXXXXXXXX (12 digits)."""
         digits = re.sub(r"\D+", "", phone or "")
-        if len(digits) < 8:
+        if digits.startswith("998") and len(digits) == 12:
+            normalized = digits
+        elif len(digits) == 9 and digits.startswith("9"):
+            normalized = f"998{digits}"
+        else:
             return None
-        return hashlib.sha256(digits.encode("utf-8")).hexdigest()
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
     async def run_export_recipe(
         self,
@@ -142,10 +147,11 @@ class ExportRecipeService:
         total_matched = len(rows)
         eligible_count = len(eligible_rows)
         ineligible_count = total_matched - eligible_count
-        sample_hashes = [
-            self._hash(contact.phone or contact.username or str(contact.id))
-            for contact, _intel in eligible_rows[:5]
-        ]
+        sample_hashes = []
+        for contact, _intel in eligible_rows[:5]:
+            digest = self._phone_hash_for_meta(contact.phone or "")
+            if digest is not None:
+                sample_hashes.append(digest)
 
         if dry_run:
             await self._audit_preview(

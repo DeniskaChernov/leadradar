@@ -2,6 +2,18 @@
 
 Формат: волны улучшений по `docs/SYSTEM_IMPROVEMENT_PLAN.md`. Полная история релизов — `RELEASE_NOTES.md`.
 
+## [13.29.3-bugfix] — 2026-09-02
+
+### Fixed
+- `move_lead` / kanban: нельзя закрыть WON/LOST без Deal (только win_deal/lose_deal)
+- Kanban: колонки `ANALYZING` / `AI_PENDING` снова на доске
+- Dashboard: при `revenue=None` показывается «—», не «0 сум»
+- DnD: WON/LOST не drop-target; закрытые карточки без drag-handle; `dropInFlight` против гонок
+- NEW/AI_* → TAKEN через stage: `MANAGER_ASSIGNED` + `AIFeedback.manager_is_lead`
+- Meta Custom Audience: `num_invalid_entries` / short receive → ошибка, без EXPORTED
+- Meta phone hash: единый E.164 UZ `998XXXXXXXXX` (dry-run sample = upload)
+- Ops spend gate: `live_refresh` читает БД перед Instagram/OpenAI spend (multi-worker)
+
 ## [13.29.2-perf] — 2026-09-02
 
 ### Fixed

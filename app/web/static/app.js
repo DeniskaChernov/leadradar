@@ -488,6 +488,7 @@
 
     let draggedCard = null;
     let fromStage = '';
+    let dropInFlight = false;
 
     const clearDropTargets = () => {
       board.querySelectorAll('.kanban-col.is-drop-target').forEach((col) => {
@@ -495,12 +496,19 @@
       });
     };
 
+    const CLOSED_STAGES = new Set(['WON', 'LOST']);
+
     board.querySelectorAll('[data-kanban-drag-handle]').forEach((handle) => {
       handle.addEventListener('dragstart', (event) => {
         const card = handle.closest('[data-lead-card]');
         if (!(card instanceof HTMLElement)) return;
+        const stage = card.dataset.leadStage || '';
+        if (CLOSED_STAGES.has(stage) || dropInFlight) {
+          event.preventDefault();
+          return;
+        }
         draggedCard = card;
-        fromStage = card.dataset.leadStage || '';
+        fromStage = stage;
         card.classList.add('is-dragging');
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('text/plain', card.dataset.leadCard || '');
@@ -517,9 +525,11 @@
       const col = stack.closest('[data-kanban-stage]');
       if (!(col instanceof HTMLElement)) return;
       const targetStage = col.dataset.kanbanStage || '';
+      if (CLOSED_STAGES.has(targetStage)) return;
 
       stack.addEventListener('dragover', (event) => {
-        if (!draggedCard || !targetStage || targetStage === fromStage) return;
+        if (!draggedCard || dropInFlight || !targetStage || targetStage === fromStage) return;
+        if (CLOSED_STAGES.has(targetStage)) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
         col.classList.add('is-drop-target');
@@ -533,9 +543,11 @@
       stack.addEventListener('drop', async (event) => {
         event.preventDefault();
         col.classList.remove('is-drop-target');
-        if (!draggedCard || !targetStage || targetStage === fromStage) return;
+        if (dropInFlight || !draggedCard || !targetStage || targetStage === fromStage) return;
+        if (CLOSED_STAGES.has(targetStage)) return;
         const leadId = draggedCard.dataset.leadCard;
         if (!leadId) return;
+        dropInFlight = true;
         board.classList.add('is-loading');
         try {
           const data = await api(`/api/leads/${leadId}/stage`, {
@@ -545,6 +557,7 @@
           toast(data.message || 'Стадия обновлена');
           reloadSoon(450, `[data-lead-card="${leadId}"]`);
         } catch (error) {
+          dropInFlight = false;
           toast(error.message, true);
           board.classList.remove('is-loading');
         }

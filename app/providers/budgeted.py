@@ -20,6 +20,7 @@ from app.services.usage_service import ExternalBudgetExceeded, ExternalUsageServ
 
 T = TypeVar("T")
 LiveGate = Callable[[], bool]
+LiveRefresh = Callable[[], Awaitable[bool]]
 
 
 class LiveCallsDisabledError(ProviderUsageBlockedError):
@@ -106,11 +107,13 @@ class BudgetedInstagramProvider(InstagramProvider):
         daily_limit: int,
         scan_budget: ScanBudget | None = None,
         live_gate: LiveGate | None = None,
+        live_refresh: LiveRefresh | None = None,
     ) -> None:
         self.inner = inner
         self.usage = usage
         self._master_enabled = enabled
         self._live_gate = live_gate
+        self._live_refresh = live_refresh
         self.daily_limit = daily_limit
         self.scan_budget = scan_budget
         self.name = inner.name
@@ -147,7 +150,15 @@ class BudgetedInstagramProvider(InstagramProvider):
         }
 
     async def _ensure_enabled(self, *, units: int = 1) -> None:
-        if not self.enabled:
+        # Перед spend всегда сверяем тумблер с БД (не только in-process cache).
+        if self._live_refresh is not None:
+            armed = await self._live_refresh()
+            if not self._master_enabled or not armed:
+                raise LiveCallsDisabledError(
+                    "Реальные Instagram-запросы выключены. "
+                    "Включайте их только перед контрольным тестом."
+                )
+        elif not self.enabled:
             raise LiveCallsDisabledError(
                 "Реальные Instagram-запросы выключены. "
                 "Включайте их только перед контрольным тестом."

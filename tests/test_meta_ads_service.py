@@ -86,3 +86,24 @@ async def test_meta_ads_create_custom_audience_paused_upload(monkeypatch):
     assert result["uploaded"] == 1
     assert any(path.endswith("/customaudiences") for path in calls)
     assert any(path.endswith("/users") for path in calls)
+
+
+@pytest.mark.asyncio
+async def test_meta_ads_create_custom_audience_rejects_invalid_entries(monkeypatch):
+    service = MetaAdsService(_live_settings())
+
+    async def fake_post_graph(client, path, payload):
+        if path.endswith("/customaudiences"):
+            return {"id": "aud_bad"}
+        if path.endswith("/users"):
+            return {"num_received": 0, "num_invalid_entries": 1}
+        return {"error": "META_API_ERROR", "message": f"unexpected {path}"}
+
+    monkeypatch.setattr(service, "_post_graph", fake_post_graph)
+    result = await service.create_custom_audience(
+        name="Lead Radar · bad",
+        phone_hashes=["c" * 64],
+    )
+    assert result["error"] == "META_INVALID_ENTRIES"
+    assert result["audience_id"] == "aud_bad"
+    assert result.get("partial") is True

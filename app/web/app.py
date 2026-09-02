@@ -162,6 +162,7 @@ def build_web_app(
             lease_seconds=settings.ai_request_lease_seconds,
             max_attempts=settings.ai_request_max_attempts,
             live_gate=ops_control.openai_live_armed,
+            live_refresh=ops_control.openai_live_armed_fresh,
             worker_id="web-hybrid",
         )
     hybrid_mode = settings.ai_mode if settings.ai_mode in {"rules", "hybrid", "openai"} else "hybrid"
@@ -485,6 +486,8 @@ def build_web_app(
     ):
         rows = await queries.leads(q=q, status=status, quality=quality)
         board_statuses = [
+            "ANALYZING",
+            "AI_PENDING",
             "NEW",
             "TAKEN",
             "CONTACTED",
@@ -1212,6 +1215,8 @@ def build_web_app(
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=400, detail="max_credits должен быть целым") from exc
         is_live = settings.instagram_provider not in {"mock", "replay"}
+        if is_live:
+            await ops_control.load()
         if is_live and not radar_spend_allowed():
             raise HTTPException(
                 status_code=409,

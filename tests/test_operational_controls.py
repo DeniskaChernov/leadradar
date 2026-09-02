@@ -117,3 +117,28 @@ async def test_ops_ai_concurrency_persists(session_factory):
     assert resp.status_code == 200
     assert resp.json()["ai_analysis_max_concurrency"] == 7
     assert ops.snapshot().ai_analysis_max_concurrency == 7
+
+
+async def test_ops_fresh_gate_reads_database(session_factory):
+    """live_refresh видит disarm даже если другой процесс обновил БД."""
+    from app.db.models import OperationalControl
+
+    ops_a = OperationalControlService(session_factory)
+    await ops_a.load()
+    await ops_a.set_radar_live(True, manager_id=1)
+    assert await ops_a.radar_live_armed_fresh() is True
+
+    ops_b = OperationalControlService(session_factory)
+    await ops_b.load()
+    assert ops_b.radar_live_armed() is True
+
+    async with session_factory() as session:
+        row = await session.get(OperationalControl, 1)
+        assert row is not None
+        row.radar_live_armed = False
+        await session.commit()
+
+    # Кэш процесса B ещё True, но fresh читает БД.
+    assert ops_b.radar_live_armed() is True
+    assert await ops_b.radar_live_armed_fresh() is False
+    assert ops_b.radar_live_armed() is False

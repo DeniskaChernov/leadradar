@@ -147,6 +147,27 @@ class MetaAdsService:
                     "partial": True,
                 }
 
+            num_invalid = int(users.get("num_invalid_entries") or 0)
+            num_received = users.get("num_received")
+            received_count = int(num_received) if num_received is not None else None
+            if num_invalid > 0 or (
+                received_count is not None and received_count < len(hashes)
+            ):
+                return {
+                    "error": "META_INVALID_ENTRIES",
+                    "message": (
+                        f"Meta отклонила часть телефонов: invalid={num_invalid}, "
+                        f"received={received_count if received_count is not None else 'unknown'}/"
+                        f"{len(hashes)}. EXPORTED не выставляем."
+                    ),
+                    "audience_id": audience_id,
+                    "status": "PAUSED",
+                    "uploaded": len(hashes),
+                    "num_received": num_received,
+                    "num_invalid_entries": num_invalid,
+                    "partial": True,
+                }
+
         return {
             "audience_id": audience_id,
             "status": "PAUSED",
