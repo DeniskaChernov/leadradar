@@ -9,17 +9,17 @@
 - [x] A1. `PROJECT_STATUS.md` → WAVE18 / Phase 9 offline ЗАВЕРШЁН
 - [x] A2. `ROADMAP.md` → Stage 9 ГОТОВО, Stage 10 gated
 - [x] A3. Ссылки на Railway / PG / backup / CI quality gates
-- [ ] A4. Push `6fba631` + PR (по запросу)
-- [ ] A5. Branch protection: required checks `offline-quality-gate` (sqlite+postgres)
+- [x] A4. Push waves + Phase 9 docs + PR
+- [ ] A5. Branch protection: required checks `offline-quality-gate` (sqlite+postgres) — вручную в GitHub Settings
 
 ## B. Controlled live pilot prep (без live calls)
 
-- [ ] B1. Пройти `python -m scripts.live_readiness_check` → зафиксировать статус в `State.md`
-- [ ] B2. `python -m scripts.prepare_controlled_pilot` (dry, без spend)
-- [ ] B3. Backup drill на staging SQLite (`docs/BACKUP_RESTORE_RUNBOOK.md` §5)
-- [ ] B4. Выбрать 1–2 Tier A конкурента и дневной credit cap (≤10 units)
-- [ ] B5. Unseen gates PASS на текущем `lead_analysis_version`
-- [ ] B6. Отдельный Telegram manager chat для pilot
+- [x] B1. `live_readiness_check` → READY FOR LIVE PILOT (UNCERTAIN=0 после reconcile 134/137 spent=false)
+- [x] B2. `prepare_controlled_pilot` → OFFLINE READY, awaiting explicit unlock
+- [x] B3. Manual backup создан (`scripts/backup_database.py`); полный restore-drill — по запросу
+- [ ] B4. Выбрать 1–2 Tier A конкурента и дневной credit cap (≤10 units) — решение менеджера
+- [x] B5. Unseen gates PASS (lead/rattan/audience)
+- [ ] B6. Отдельный Telegram manager chat для pilot — решение менеджера
 
 ## C. Phase 10 — только после явного «разрешаю live»
 

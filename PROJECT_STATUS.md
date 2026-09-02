@@ -4,6 +4,11 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-02 (post-120 prep): UNCERTAIN reservations 134/137 reconciled
+(`spent=false`, reason=no provider credit); `live_readiness_check` → **READY FOR LIVE PILOT**;
+unseen PASS; integrity OK; Meta/Instagram/OpenAI live всё ещё OFF до явного разрешения.
+План: `docs/POST_120_PLAN.md`.
+
 Контрольная точка 2026-09-02 (docs sync): план улучшений **120/120** закрыт (commit `6fba631`);
 Master Phase 9 — **offline deployment readiness ЗАВЕРШЁН**; Meta Custom Audience live export
 и controlled live pilot остаются **gated** (только по явному разрешению).
