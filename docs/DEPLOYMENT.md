@@ -16,7 +16,7 @@ Railway и Docker по умолчанию используют **web-only**.
 | `GET /health` | Liveness (процесс жив) | `200`, `ok: true` |
 | `GET /ready` | Readiness (БД + Alembic head + drift) | `200` если готов, иначе `503` |
 
-Railway: `healthcheckPath=/ready` в `railway.json`.
+Railway: `healthcheckPath=/ready` в `railway.json`. Подробнее: `docs/RAILWAY.md`.
 
 ## Обязательные переменные (production)
 
@@ -34,6 +34,25 @@ INSTAGRAM_PROVIDER=replay
 ```
 
 Railway автоматически задаёт `PORT` — приложение читает его и переопределяет `WEB_PORT`.
+
+## WEB_MANAGER_ID (локальная разработка)
+
+`WEB_MANAGER_ID` — Telegram user id менеджера, от имени которого выполняются mutating `POST /api/*`
+когда `WEB_AUTH_ENABLED=false` (типичный локальный dev без Mini App auth).
+
+```env
+WEB_MANAGER_ID=123456789
+```
+
+| Режим | Поведение |
+|-------|-----------|
+| `WEB_AUTH_ENABLED=true` | Auth через Telegram initData; `WEB_MANAGER_ID` не обязателен |
+| `WEB_AUTH_ENABLED=false` + `WEB_MANAGER_ID=0` | Mutating API → **403**, UI показывает баннер на `/leads` |
+| `WEB_AUTH_ENABLED=false` + `WEB_MANAGER_ID>0` | Mutating API разрешены от имени указанного manager id |
+
+Production: используйте `WEB_AUTH_ENABLED=true` и HTTPS `WEB_PUBLIC_URL`. `WEB_MANAGER_ID` —
+только для dev/staging без auth. Значение берётся из `@userinfobot` или Telegram profile id
+администратора.
 
 ## Meta Ads (optional live)
 
@@ -56,6 +75,7 @@ Windows dev: Ctrl+C через `KeyboardInterrupt`.
 - URL `postgres://` нормализуется в `postgresql+asyncpg://` (`app/db/session.py`).
 - SQLite backup на старте пропускается для PostgreSQL.
 - Backup/restore для PG — через managed layer провайдера (см. `docs/BACKUP_RESTORE_RUNBOOK.md` для SQLite).
+- Чеклист cutover: `docs/POSTGRESQL_MIGRATION_CHECKLIST.md`.
 
 ## Стартовая последовательность
 
@@ -70,6 +90,7 @@ Windows dev: Ctrl+C через `KeyboardInterrupt`.
 
 - Text (default): стандартный формат Python logging.
 - JSON: `LOG_FORMAT=json` для structured logs в production.
+- Sentry: `SENTRY_DSN=` + `pip install sentry-sdk` (см. `init_error_monitoring` в `app/main.py`).
 
 ## Откат
 

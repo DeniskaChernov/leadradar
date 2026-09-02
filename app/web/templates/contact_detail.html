@@ -3,6 +3,11 @@
 {% block heading %}@{{ contact.username }}{% endblock %}
 {% block subheading %}Вся история клиента, интерес, задачи и сделки в одном месте{% endblock %}
 {% block content %}
+<div class="detail-back-bar">
+  {% set breadcrumbs = [{"href": "/contacts", "label": "Клиенты"}, {"label": "@" ~ contact.username}] %}
+  {% include "partials/breadcrumbs.html" %}
+  <span class="pill primary">Карточка клиента</span>
+</div>
 <div class="hero-status safe contact-header" data-motion-root>
   <div class="profile-avatar">{{ (contact.display_name or contact.username)[:1]|upper }}</div>
   <div>
@@ -121,28 +126,31 @@
           {% endif %}
         </div>
       </div>
-      {% else %}<div class="empty-box"><span class="empty-icon">💬</span><b>Сигналов нет</b><span>Активность клиента пока не зафиксирована в комментариях.</span></div>{% endfor %}
+      {% else %}<div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="message-circle"></i></span><b>Сигналов нет</b><span>Активность клиента пока не зафиксирована в комментариях.</span></div>{% endfor %}
       </div>
     </section>
 
     <section class="panel">
-      <div class="panel-head"><div><h2>CRM-история</h2><p>Ничего не перезаписывается молча: действия менеджеров остаются в хронологии</p></div></div>
+      <div class="panel-head"><div><h2>CRM-история</h2><p>Ничего не перезаписывается молча: действия менеджеров остаются в хронологии{% if event_groups|length != events|length %} · сжато {{ events|length - event_groups|length }} повторов{% endif %}</p></div></div>
       <div class="event-list rich-events">
-      {% for event in events %}
-        <div class="event">
-          <span>{{ event.created_at | display_dt }}</span>
+      {% for group in event_groups %}
+        {% set event = group.latest %}
+        <div class="event{% if group.count > 1 %} event-compact{% endif %}">
+          <span>{{ event.created_at | display_dt }}{% if group.count > 1 %}<small class="event-compact-count">×{{ group.count }}</small>{% endif %}</span>
           <div>
-            <b>{{ event_label(event.event_type) }}</b>
+            <b>{{ event_label(event.event_type) }}{% if group.count > 1 %} <span class="tag neutral">{{ group.count }} за день</span>{% endif %}</b>
             {% if event.payload_json.get('text') %}<p>{{ event.payload_json.get('text') }}</p>
             {% elif event.payload_json.get('reason') %}<p>{{ event.payload_json.get('reason') }}</p>
             {% elif event.payload_json.get('to') %}<p>{{ lead_status_label(event.payload_json.get('to')) }}</p>
             {% elif event.payload_json.get('note') %}<p>{{ event.payload_json.get('note') }}</p>
             {% elif event.payload_json.get('changed') %}
               <p>{% for key, value in event.payload_json.get('changed').items() %}<span class="event-change">{{ qualification_field_label(key) }}: {{ value if value not in [None,''] else 'очищено' }}</span>{% endfor %}</p>
+            {% elif group.count > 1 %}
+              <p class="muted">С {{ group.first.created_at | display_dt('%d.%m %H:%M') }} по {{ event.created_at | display_dt('%d.%m %H:%M') }}</p>
             {% endif %}
           </div>
         </div>
-      {% else %}<div class="empty-box"><span class="empty-icon">📝</span><b>Истории действий пока нет</b><span>Все взаимодействия менеджера с клиентом будут сохраняться здесь.</span></div>{% endfor %}
+      {% else %}<div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="scroll-text"></i></span><b>Истории действий пока нет</b><span>Все взаимодействия менеджера с клиентом будут сохраняться здесь.</span></div>{% endfor %}
       </div>
     </section>
   </div>
@@ -183,10 +191,10 @@
     <section class="panel"><div class="panel-head"><div><h2>Задачи</h2></div><a href="/tasks">Все →</a></div>
       {% set open_count = namespace(value=0) %}
       {% for task in tasks %}{% if task.status.value == 'OPEN' %}{% set open_count.value = open_count.value + 1 %}<div class="task-row"><div><b>{{ task.due_at | display_dt('%d.%m.%Y %H:%M') }}</b><p>{{ task.note or 'Связаться с клиентом' }}</p></div><div class="task-row-actions"><button class="icon-btn" data-task-complete="{{ task.id }}" title="Выполнено">✓</button><button class="icon-btn muted-action" data-api-action="/api/tasks/{{ task.id }}/cancel" data-payload='{}' data-reload="1" title="Отменить">×</button></div></div>{% endif %}{% endfor %}
-      {% if open_count.value == 0 %}<div class="empty-box"><span class="empty-icon">✅</span><b>Открытых задач нет</b><span>Запланируйте следующий шаг для работы с клиентом.</span></div>{% endif %}
+      {% if open_count.value == 0 %}<div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="circle-check"></i></span><b>Открытых задач нет</b><span>Запланируйте следующий шаг для работы с клиентом.</span></div>{% endif %}
     </section>
 
-    <section class="panel"><div class="panel-head"><div><h2>Сделки</h2></div><a href="/deals">Все →</a></div>{% for deal in deals %}<div class="deal-row"><span class="tag status-{{ deal.status.value|lower }}">{{ deal_status_label(deal.status) }}</span><div><b>{{ deal.product_name or product_label(deal.product_category) }}</b><small>{% if deal.lost_reason %}{{ deal.lost_reason }}{% endif %}</small></div><strong>{{ money(deal.final_amount or deal.amount) }} сум</strong></div>{% else %}<div class="empty-box"><span class="empty-icon">🤝</span><b>Сделок пока нет</b><span>Сделка появится при переводе клиента на стадию согласования или оплаты.</span></div>{% endfor %}</section>
+    <section class="panel"><div class="panel-head"><div><h2>Сделки</h2></div><a href="/deals">Все →</a></div>{% for deal in deals %}<div class="deal-row"><span class="tag status-{{ deal.status.value|lower }}">{{ deal_status_label(deal.status) }}</span><div><b>{{ deal.product_name or product_label(deal.product_category) }}</b><small>{% if deal.lost_reason %}{{ deal.lost_reason }}{% endif %}</small></div><strong>{{ money(deal.final_amount or deal.amount) }} сум</strong></div>{% else %}<div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="handshake"></i></span><b>Сделок пока нет</b><span>Сделка появится при переводе клиента на стадию согласования или оплаты.</span></div>{% endfor %}</section>
   </aside>
 </div>
 {% endblock %}

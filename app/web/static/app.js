@@ -69,6 +69,12 @@
       .join(' · ') || '—';
     meta.innerHTML = `<span><b>Tools</b> ${tools}</span><span><b>Evidence</b> ${(data.evidence_ids || []).join(', ') || '—'}</span>`;
     container.appendChild(meta);
+    if (getAgentContactId() && data.answer && String(data.answer).trim()) {
+      const actions = document.createElement('div');
+      actions.className = 'agent-result-actions';
+      actions.innerHTML = '<button type="button" class="btn ghost tiny" data-agent-save-note>В заметку</button>';
+      container.appendChild(actions);
+    }
   };
 
   const readAgentContext = (extra = {}) => {
@@ -83,6 +89,33 @@
     if (ctx.lead_id != null && !Number.isFinite(ctx.lead_id)) delete ctx.lead_id;
     if (ctx.contact_id != null && !Number.isFinite(ctx.contact_id)) delete ctx.contact_id;
     return ctx;
+  };
+
+  const getAgentContactId = () => readAgentContext().contact_id;
+
+  const saveAgentAnswerToNote = async (text, button) => {
+    const contactId = getAgentContactId();
+    if (!contactId) {
+      toast('Нужен контекст клиента (lead или contact)', true);
+      return;
+    }
+    const trimmed = String(text || '').trim();
+    if (!trimmed) {
+      toast('Нечего сохранять', true);
+      return;
+    }
+    setLoading(button, true);
+    try {
+      await api(`/api/contacts/${contactId}/notes`, {
+        method: 'POST',
+        body: JSON.stringify({ text: `AI: ${trimmed}` }),
+      });
+      toast('Сохранено в заметку');
+    } catch (error) {
+      toast(error.message, true);
+    } finally {
+      setLoading(button, false);
+    }
   };
 
   const runAgentQuery = async (form, submitButton) => {
@@ -217,7 +250,13 @@
     fetchOptions.headers = headers;
     const response = await fetch(url, fetchOptions);
     const data = await readResponse(response);
-    if (!response.ok) throw new Error(data.detail || data.message || 'Не удалось выполнить действие');
+    if (!response.ok) {
+      if (response.status === 429) {
+        const retryAfter = Number(response.headers.get('Retry-After') || data.retry_after || 30);
+        throw new Error(`Слишком много запросов к AI. Подождите ${retryAfter} сек.`);
+      }
+      throw new Error(data.detail || data.message || 'Не удалось выполнить действие');
+    }
     return data;
   };
 
@@ -441,6 +480,78 @@
     syncNav();
   };
 
+  const enhanceKanbanDragDrop = () => {
+    const board = document.querySelector('[data-kanban-board]');
+    if (!(board instanceof HTMLElement)) return;
+    const desktopQuery = window.matchMedia('(min-width: 721px)');
+    if (!desktopQuery.matches) return;
+
+    let draggedCard = null;
+    let fromStage = '';
+
+    const clearDropTargets = () => {
+      board.querySelectorAll('.kanban-col.is-drop-target').forEach((col) => {
+        col.classList.remove('is-drop-target');
+      });
+    };
+
+    board.querySelectorAll('[data-kanban-drag-handle]').forEach((handle) => {
+      handle.addEventListener('dragstart', (event) => {
+        const card = handle.closest('[data-lead-card]');
+        if (!(card instanceof HTMLElement)) return;
+        draggedCard = card;
+        fromStage = card.dataset.leadStage || '';
+        card.classList.add('is-dragging');
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', card.dataset.leadCard || '');
+      });
+      handle.addEventListener('dragend', () => {
+        draggedCard?.classList.remove('is-dragging');
+        draggedCard = null;
+        fromStage = '';
+        clearDropTargets();
+      });
+    });
+
+    board.querySelectorAll('[data-kanban-drop]').forEach((stack) => {
+      const col = stack.closest('[data-kanban-stage]');
+      if (!(col instanceof HTMLElement)) return;
+      const targetStage = col.dataset.kanbanStage || '';
+
+      stack.addEventListener('dragover', (event) => {
+        if (!draggedCard || !targetStage || targetStage === fromStage) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        col.classList.add('is-drop-target');
+      });
+
+      stack.addEventListener('dragleave', (event) => {
+        if (stack.contains(event.relatedTarget)) return;
+        col.classList.remove('is-drop-target');
+      });
+
+      stack.addEventListener('drop', async (event) => {
+        event.preventDefault();
+        col.classList.remove('is-drop-target');
+        if (!draggedCard || !targetStage || targetStage === fromStage) return;
+        const leadId = draggedCard.dataset.leadCard;
+        if (!leadId) return;
+        board.classList.add('is-loading');
+        try {
+          const data = await api(`/api/leads/${leadId}/stage`, {
+            method: 'POST',
+            body: JSON.stringify({ status: targetStage }),
+          });
+          toast(data.message || 'Стадия обновлена');
+          reloadSoon(450, `[data-lead-card="${leadId}"]`);
+        } catch (error) {
+          toast(error.message, true);
+          board.classList.remove('is-loading');
+        }
+      });
+    });
+  };
+
   const enhanceEconomicsBudgetSim = () => {
     const root = document.querySelector('[data-economics-budget-sim]');
     if (!(root instanceof HTMLElement)) return;
@@ -565,13 +676,30 @@
     sync();
   };
 
+  const enhanceGlobalSearchShortcut = () => {
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target?.isContentEditable) return;
+      const searchInput = document.querySelector(
+        '.filters input[name="q"], .contacts-filters input[name="q"], .tasks-filters input[name="q"], .deals-filters input[name="q"], .radar-filters input[name="q"]',
+      );
+      if (!(searchInput instanceof HTMLInputElement)) return;
+      event.preventDefault();
+      searchInput.focus();
+      searchInput.select();
+    });
+  };
+
   enhanceNavigation();
   enhanceTables();
   enhanceClickableRows();
   enhanceCompetitorBulkSelection();
+  enhanceGlobalSearchShortcut();
   enhanceMotion();
   enhanceKanbanEventTips();
   enhanceKanbanMobile();
+  enhanceKanbanDragDrop();
   enhanceEconomicsBudgetSim();
   initKanbanLoadingState();
   restoreViewState();
@@ -929,7 +1057,7 @@
 
   document.addEventListener('click', async (event) => {
     const tracked = event.target.closest(
-      '[data-lead-action],[data-stage],[data-api-action],[data-lead-bulk],[data-competitor-bulk],[data-task-complete],[data-lead-followup],[data-discovery-import]'
+      '[data-lead-action],[data-stage],[data-api-action],[data-lead-bulk],[data-competitor-bulk],[data-task-complete],[data-lead-followup],[data-discovery-import],[data-competitor-import]'
     );
     if (tracked) lastActionEl = tracked;
     const button = event.target.closest('.btn');
@@ -947,6 +1075,39 @@
         await api('/logout', { method: 'POST', body: '{}' });
       } finally {
         location.href = '/auth';
+      }
+      return;
+    }
+
+    const competitorImport = event.target.closest('[data-competitor-import]');
+    if (competitorImport) {
+      const input = document.getElementById('competitor-import-file');
+      const file = input?.files?.[0];
+      if (!file) {
+        toast('Сначала выберите CSV или XLSX файл', true);
+        return;
+      }
+      const old = competitorImport.textContent;
+      competitorImport.disabled = true;
+      competitorImport.textContent = 'Импортирую…';
+      try {
+        const response = await fetch(`/api/competitors/import?filename=${encodeURIComponent(file.name)}`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+          },
+          body: file,
+        });
+        const data = await readResponse(response);
+        if (!response.ok) throw new Error(data.detail || 'Не удалось импортировать файл');
+        toast(data.message || 'Импорт завершён');
+        reloadSoon(900);
+      } catch (error) {
+        toast(error.message, true);
+        competitorImport.disabled = false;
+        competitorImport.textContent = old;
       }
       return;
     }
@@ -994,6 +1155,14 @@
     if (agentOpen) {
       event.preventDefault();
       openAgentQuickModal();
+      return;
+    }
+
+    const agentSaveNote = event.target.closest('[data-agent-save-note]');
+    if (agentSaveNote) {
+      event.preventDefault();
+      const bubble = agentSaveNote.closest('.agent-chat-msg, .agent-result-rich')?.querySelector('.agent-chat-bubble, .agent-result-body');
+      await saveAgentAnswerToNote(bubble?.textContent || '', agentSaveNote);
       return;
     }
 
@@ -1722,6 +1891,9 @@
         if (msg.pending_status === 'pending' && msg.pending_action) {
           extra = `<div class="agent-chat-approve"><button type="button" class="btn success tiny" data-agent-approve="${msg.id}">Подтвердить</button></div>`;
         }
+        if (role === 'assistant' && msg.content && getAgentContactId()) {
+          extra = `<div class="agent-chat-actions"><button type="button" class="btn ghost tiny" data-agent-save-note>В заметку</button></div>${extra}`;
+        }
         const delay = Math.min(index, 6) * 40;
         return `<article class="agent-chat-msg ${role} msg-enter" style="--msg-delay:${delay}ms"><div class="agent-chat-bubble">${escapeHtml(msg.content || '')}</div>${extra}</article>`;
       }).join('');
@@ -1765,6 +1937,12 @@
     });
 
     messagesEl?.addEventListener('click', async (event) => {
+      const saveBtn = event.target.closest('[data-agent-save-note]');
+      if (saveBtn) {
+        const bubble = saveBtn.closest('.agent-chat-msg, .agent-result-rich')?.querySelector('.agent-chat-bubble, .agent-result-body');
+        await saveAgentAnswerToNote(bubble?.textContent || '', saveBtn);
+        return;
+      }
       const btn = event.target.closest('[data-agent-approve]');
       if (!btn) return;
       const messageId = btn.getAttribute('data-agent-approve');

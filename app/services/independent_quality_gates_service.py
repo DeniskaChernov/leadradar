@@ -81,6 +81,7 @@ class QualityGateReport:
 @dataclass(frozen=True, slots=True)
 class IndependentQualityGatesSnapshot:
     generated_at: datetime
+    rules_version: str
     lead_unseen: QualityGateReport
     rattan_unseen: QualityGateReport
     audience_unseen: QualityGateReport
@@ -96,6 +97,22 @@ class IndependentQualityGatesSnapshot:
             and self.audience_unseen.passed
         )
 
+    def openai_live_allowed(self) -> tuple[bool, str]:
+        """После смены rules_version live GPT разрешён только при PASS unseen gates."""
+        if self.passed:
+            return True, ""
+        blocked = [
+            gate.label
+            for gate in (self.lead_unseen, self.rattan_unseen, self.audience_unseen)
+            if not gate.passed
+        ]
+        return (
+            False,
+            "Unseen quality gates не пройдены для правил "
+            f"{self.rules_version}: {', '.join(blocked)}. "
+            "Исправьте классификатор и прогоните pytest перед arm OpenAI.",
+        )
+
 
 class IndependentQualityGatesService:
     """Оффлайн-оценка независимых наборов без БД и внешних вызовов."""
@@ -108,7 +125,7 @@ class IndependentQualityGatesService:
         self.fixtures_dir = Path(fixtures_dir)
         self.lead_analyzer = RuleBasedLeadAnalyzer()
 
-    def snapshot(self) -> IndependentQualityGatesSnapshot:
+    def snapshot(self, *, rules_version: str = "3.2") -> IndependentQualityGatesSnapshot:
         now = datetime.now(UTC)
         lead_unseen = self.evaluate_lead_unseen()
         rattan_unseen = self.evaluate_rattan_unseen()
@@ -120,6 +137,7 @@ class IndependentQualityGatesService:
         )
         return IndependentQualityGatesSnapshot(
             generated_at=now,
+            rules_version=(rules_version or "3.2").strip() or "3.2",
             lead_unseen=lead_unseen,
             rattan_unseen=rattan_unseen,
             audience_unseen=audience_unseen,

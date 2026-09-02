@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -1144,10 +1145,12 @@ class WebQueryService:
                     .limit(30)
                 )
             )
+            event_groups = self.compact_contact_events(events)
             return {
                 "contact": contact,
                 "signals": signals,
                 "events": events,
+                "event_groups": event_groups,
                 "deals": deals,
                 "leads": leads,
                 "tasks": tasks,
@@ -1158,6 +1161,46 @@ class WebQueryService:
                 "audiences": audiences,
                 "significant_changes": significant_changes,
             }
+
+    @staticmethod
+    def compact_contact_events(events: list[ContactEvent]) -> list[dict[str, object]]:
+        """Сжимает однотипные CRM-события внутри одного дня в компактные группы."""
+        compactable = frozenset(
+            {
+                ContactEventType.LEAD_SCORE_CHANGED,
+                ContactEventType.COMMENT_FOUND,
+                ContactEventType.SIGNIFICANT_CHANGE,
+            }
+        )
+        groups: list[dict[str, object]] = []
+        for event in events:
+            day = event.created_at.astimezone(UTC).strftime("%Y-%m-%d") if event.created_at else ""
+            can_compact = event.event_type in compactable
+            if (
+                groups
+                and can_compact
+                and groups[-1]["compactable"]
+                and groups[-1]["event_type"] == event.event_type
+                and groups[-1]["day"] == day
+            ):
+                groups[-1]["count"] = int(groups[-1]["count"]) + 1
+                groups[-1]["latest"] = event
+                cast_events = groups[-1]["events"]
+                assert isinstance(cast_events, list)
+                cast_events.append(event)
+            else:
+                groups.append(
+                    {
+                        "event_type": event.event_type,
+                        "day": day,
+                        "compactable": can_compact,
+                        "count": 1,
+                        "first": event,
+                        "latest": event,
+                        "events": [event],
+                    }
+                )
+        return groups
 
     async def audiences(self, vertical: str = "FURNITURE") -> list[dict]:
         quality = await AudienceQualityService(self.session_factory).snapshot(vertical)
@@ -1538,6 +1581,7 @@ class WebQueryService:
                 overlaps = [{"competitor": item, "contacts": count} for item, count in overlap_rows]
             gap = await self.demand_gap_score(competitor_id)
             heatmap = await self.demand_heatmap(competitor_id=competitor_id, days=30)
+            commercial_trend = await self._competitor_commercial_trend(session, competitor_id)
             return {
                 "competitor": competitor,
                 **stats,
@@ -1549,6 +1593,7 @@ class WebQueryService:
                 "overlaps": overlaps,
                 "demand_gap": gap,
                 "heatmap": heatmap,
+                "commercial_trend": commercial_trend,
                 "public_response_observable": False,
             }
 
@@ -1578,6 +1623,167 @@ class WebQueryService:
             }
             for (left, right), count in pair_counts.most_common(20)
         ]
+
+    async def competitor_overlap_graph(self) -> dict[str, object]:
+        overlaps = await self.competitor_overlap_network()
+        if not overlaps:
+            return {"nodes": [], "edges": [], "max_weight": 1, "width": 300, "height": 240}
+
+        nodes_map: dict[int, dict[str, object]] = {}
+        edges: list[dict[str, object]] = []
+        max_weight = 1
+        for pair in overlaps:
+            nodes_map[pair["left_id"]] = {"id": pair["left_id"], "label": pair["left"]}
+            nodes_map[pair["right_id"]] = {"id": pair["right_id"], "label": pair["right"]}
+            edges.append(
+                {
+                    "source_id": pair["left_id"],
+                    "target_id": pair["right_id"],
+                    "weight": pair["contacts"],
+                }
+            )
+            max_weight = max(max_weight, int(pair["contacts"]))
+
+        nodes_list = list(nodes_map.values())
+        node_count = len(nodes_list)
+        center_x, center_y, radius = 150.0, 120.0, 85.0
+        positioned: list[dict[str, object]] = []
+        for index, node in enumerate(nodes_list):
+            angle = (2 * math.pi * index / node_count) - math.pi / 2
+            positioned.append(
+                {
+                    **node,
+                    "x": round(center_x + radius * math.cos(angle), 1),
+                    "y": round(center_y + radius * math.sin(angle), 1),
+                }
+            )
+
+        node_by_id = {int(node["id"]): node for node in positioned}
+        positioned_edges: list[dict[str, object]] = []
+        for edge in edges:
+            source = node_by_id.get(int(edge["source_id"]))
+            target = node_by_id.get(int(edge["target_id"]))
+            if source is None or target is None:
+                continue
+            positioned_edges.append(
+                {
+                    **edge,
+                    "x1": source["x"],
+                    "y1": source["y"],
+                    "x2": target["x"],
+                    "y2": target["y"],
+                }
+            )
+
+        return {
+            "nodes": positioned,
+            "edges": positioned_edges,
+            "max_weight": max_weight,
+            "width": 300,
+            "height": 240,
+        }
+
+    async def _competitor_commercial_trend(
+        self,
+        session: AsyncSession,
+        competitor_id: int,
+        weeks: int = 8,
+    ) -> list[dict[str, object]]:
+        now = datetime.now(UTC)
+        series: list[dict[str, object]] = []
+        for offset in range(weeks - 1, -1, -1):
+            week_end = now - timedelta(days=offset * 7)
+            week_start = week_end - timedelta(days=7)
+            comments = int(
+                await session.scalar(
+                    select(func.count(Comment.id)).where(
+                        Comment.competitor_id == competitor_id,
+                        Comment.discovered_at >= week_start,
+                        Comment.discovered_at < week_end,
+                    )
+                )
+                or 0
+            )
+            commercial = int(
+                await session.scalar(
+                    select(func.count(Lead.id))
+                    .join(Comment, Comment.id == Lead.comment_id)
+                    .where(
+                        Lead.competitor_id == competitor_id,
+                        Lead.status != LeadStatus.NOT_LEAD,
+                        Lead.lead_score >= 50,
+                        Comment.discovered_at >= week_start,
+                        Comment.discovered_at < week_end,
+                    )
+                )
+                or 0
+            )
+            series.append(
+                {
+                    "label": week_start.strftime("%d.%m"),
+                    "comments": comments,
+                    "commercial": commercial,
+                    "rate": round(commercial / comments * 100, 1) if comments else 0.0,
+                    "is_current": offset == 0,
+                }
+            )
+        return series
+
+    async def competitor_compare(self, left_id: int, right_id: int) -> dict | None:
+        async with self.session_factory() as session:
+            left = await session.get(Competitor, left_id)
+            right = await session.get(Competitor, right_id)
+            if left is None or right is None:
+                return None
+            left_stats = await self._competitor_stats(session, left)
+            right_stats = await self._competitor_stats(session, right)
+            left_contacts = set(
+                await session.scalars(
+                    select(Comment.contact_id)
+                    .where(Comment.competitor_id == left_id)
+                    .distinct()
+                )
+            )
+            right_contacts = set(
+                await session.scalars(
+                    select(Comment.contact_id)
+                    .where(Comment.competitor_id == right_id)
+                    .distinct()
+                )
+            )
+            shared_buyers = len(left_contacts & right_contacts)
+            metrics = (
+                ("comments", "Комментариев", "comments"),
+                ("commercial", "Коммерческих", "commercial"),
+                ("commercial_rate", "Доля коммерческих, %", "commercial_rate"),
+                ("unique_buyers", "Уникальных покупателей", "unique_buyers"),
+                ("hot", "HOT лидов", "hot"),
+                ("hot_rate", "HOT, %", "hot_rate"),
+                ("multi_competitor", "Сравнивают рынок", "multi_competitor"),
+                ("price_rate", "Вопросы о цене, %", "price_rate"),
+                ("availability_rate", "Наличие, %", "availability_rate"),
+                ("delivery_rate", "Доставка, %", "delivery_rate"),
+            )
+            rows = [
+                {
+                    "key": key,
+                    "label": label,
+                    "left": left_stats[left_key],
+                    "right": right_stats[right_key],
+                }
+                for key, label, left_key in metrics
+                for right_key in [left_key]
+            ]
+            return {
+                "left": left,
+                "right": right,
+                "left_stats": left_stats,
+                "right_stats": right_stats,
+                "left_trend": await self._competitor_commercial_trend(session, left_id),
+                "right_trend": await self._competitor_commercial_trend(session, right_id),
+                "shared_buyers": shared_buyers,
+                "rows": rows,
+            }
 
     async def competitor_intelligence_overview(self) -> dict[str, int | float]:
         async with self.session_factory() as session:

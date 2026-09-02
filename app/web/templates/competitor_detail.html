@@ -4,7 +4,8 @@
 {% block subheading %}Коммерческий спрос, публикации и возможности на основе наблюдаемых данных{% endblock %}
 {% block content %}
 <div class="detail-back-bar">
-  <a class="btn ghost btn-sm" href="/competitors">← Назад ко всем конкурентам</a>
+  {% set breadcrumbs = [{"href": "/competitors", "label": "Конкуренты"}, {"label": "@" ~ competitor.normalized_handle}] %}
+  {% include "partials/breadcrumbs.html" %}
   <span class="pill primary">Аналитика игрока рынка</span>
 </div>
 
@@ -19,6 +20,21 @@
     <strong>{{ commercial_rate }}%</strong>
     <span>доля коммерческого интереса</span>
     <small>{{ commercial }} из {{ comments }} комментариев</small>
+    {% if commercial_trend %}
+    <div class="commercial-trend-panel">
+      <p>Тренд доли коммерческих за {{ commercial_trend|length }} нед.</p>
+      {% set trend_max = namespace(v=1) %}
+      {% for point in commercial_trend %}{% if point.rate > trend_max.v %}{% set trend_max.v = point.rate %}{% endif %}{% endfor %}
+      <svg class="commercial-trend-sparkline" viewBox="0 0 128 36" role="img" aria-label="Тренд доли коммерческих комментариев">
+        {% for point in commercial_trend %}
+        {% set bar_h = ((point.rate / trend_max.v) * 28)|round|int %}
+        <rect x="{{ loop.index0 * 16 }}" y="{{ 34 - (bar_h if bar_h > 0 else 1) }}" width="12" height="{{ bar_h if bar_h > 0 else 1 }}" rx="2" class="{% if point.is_current %}is-current{% endif %}"></rect>
+        {% else %}
+        <text x="4" y="22" class="trend-empty">нет данных</text>
+        {% endfor %}
+      </svg>
+    </div>
+    {% endif %}
   </div>
 </section>
 
@@ -55,7 +71,7 @@
     </div>
     {% else %}
     <div class="empty-box">
-      <span class="empty-icon">🎯</span>
+      <span class="empty-icon" aria-hidden="true"><i data-lucide="target"></i></span>
       <b>Возможности формируются</b>
       <span>Коммерческих вопросов пока недостаточно для автоматической выработки рекомендаций.</span>
     </div>
@@ -84,7 +100,7 @@
           </div>
         {% else %}
           <div class="empty-box">
-            <span class="empty-icon">💡</span>
+            <span class="empty-icon" aria-hidden="true"><i data-lucide="lightbulb"></i></span>
             <b>Нет данных</b>
             <span>Намерения будут рассчитаны по мере поступления сигналов.</span>
           </div>
@@ -100,7 +116,7 @@
           </div>
         {% else %}
           <div class="empty-box">
-            <span class="empty-icon">🪑</span>
+            <span class="empty-icon" aria-hidden="true"><i data-lucide="armchair"></i></span>
             <b>Нет данных</b>
             <span>Категории товаров пока не зафиксированы.</span>
           </div>
@@ -147,7 +163,7 @@
         </div>
         {% else %}
         <div class="empty-box">
-          <span class="empty-icon">📊</span>
+          <span class="empty-icon" aria-hidden="true"><i data-lucide="bar-chart-2"></i></span>
           <b>Нет данных</b>
           <span>Статистика спроса за 30 дней ещё формируется.</span>
         </div>
@@ -163,7 +179,7 @@
           </div>
         {% else %}
           <div class="empty-box">
-            <span class="empty-icon">📈</span>
+            <span class="empty-icon" aria-hidden="true"><i data-lucide="trending-up"></i></span>
             <b>Нет данных</b>
             <span>Динамика намерений пока не накоплена.</span>
           </div>
@@ -220,7 +236,7 @@
   </div>
   {% else %}
   <div class="empty-state">
-    <span class="empty-icon">🎬</span>
+    <span class="empty-icon" aria-hidden="true"><i data-lucide="clapperboard"></i></span>
     <h3>Публикаций пока нет</h3>
     <p>Отслеживаемые Reels и комментарии появятся здесь после следующего цикла мониторинга.</p>
   </div>
@@ -249,7 +265,7 @@
     </div>
     {% else %}
     <div class="empty-box">
-      <span class="empty-icon">💬</span>
+      <span class="empty-icon" aria-hidden="true"><i data-lucide="message-circle"></i></span>
       <b>Вопросов пока нет</b>
       <span>Коммерческие комментарии появятся здесь по мере обнаружения.</span>
     </div>
@@ -274,7 +290,7 @@
     </div>
     {% else %}
     <div class="empty-box">
-      <span class="empty-icon">🤝</span>
+      <span class="empty-icon" aria-hidden="true"><i data-lucide="handshake"></i></span>
       <b>Пересечений пока нет</b>
       <span>Пересечения покупателей будут рассчитаны при обнаружении общих контактов.</span>
     </div>

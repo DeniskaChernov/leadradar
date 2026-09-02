@@ -28,11 +28,53 @@
   </div>
 </section>
 
+{% if rows|length >= 2 %}
+<section class="panel competitor-compare-bar compact">
+  <div class="panel-head compact"><div><h2>Сравнить двух конкурентов</h2><p>Side-by-side метрики наблюдаемого спроса</p></div></div>
+  <form class="filters competitors-compare-form" method="get" action="/competitors/compare" aria-label="Быстрое сравнение конкурентов">
+    <select name="left" required aria-label="Конкурент A">
+      {% for item in rows %}<option value="{{ item.competitor.id }}">{{ item.competitor.display_name or '@' ~ item.competitor.normalized_handle }}</option>{% endfor %}
+    </select>
+    <select name="right" required aria-label="Конкурент B">
+      {% for item in rows %}<option value="{{ item.competitor.id }}" {% if loop.index == 2 %}selected{% endif %}>{{ item.competitor.display_name or '@' ~ item.competitor.normalized_handle }}</option>{% endfor %}
+    </select>
+    <button class="btn primary" type="submit">Сравнить</button>
+  </form>
+</section>
+{% endif %}
+
+<details class="panel competitor-import-panel">
+  <summary><div><b>Импорт конкурентов из CSV/XLSX</b><span>Колонки: company, instagram, tier, vertical. Новые — на паузе, без API.</span></div></summary>
+  <div class="import-drop">
+    <input id="competitor-import-file" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Файл конкурентов CSV или XLSX">
+    <button class="btn primary" type="button" data-competitor-import>Импортировать в радар</button>
+  </div>
+</details>
+
 <section class="panel overlap-panel">
   <div class="panel-head"><div><h2>Пересечение спроса</h2><p>Один и тот же публичный аккаунт оставлял сигналы у нескольких наблюдаемых компаний.</p></div></div>
+  {% if overlap_graph.nodes %}
+  <div class="overlap-graph-wrap">
+    <svg class="overlap-graph-svg" viewBox="0 0 {{ overlap_graph.width }} {{ overlap_graph.height }}" role="img" aria-label="Граф пересечений спроса между конкурентами">
+      {% for edge in overlap_graph.edges %}
+      <line x1="{{ edge.x1 }}" y1="{{ edge.y1 }}" x2="{{ edge.x2 }}" y2="{{ edge.y2 }}" class="{% if edge.weight >= overlap_graph.max_weight %}is-strong{% endif %}" stroke-width="{{ 1 + (edge.weight / overlap_graph.max_weight * 2)|round(1) }}"></line>
+      {% endfor %}
+      {% for node in overlap_graph.nodes %}
+      <a href="/competitors/{{ node.id }}">
+        <circle class="overlap-graph-node" cx="{{ node.x }}" cy="{{ node.y }}" r="16"></circle>
+        <text class="overlap-graph-label" x="{{ node.x }}" y="{{ node.y + 28 }}" text-anchor="middle">@{{ node.label }}</text>
+      </a>
+      {% endfor %}
+    </svg>
+    <div class="overlap-list">
+      {% for pair in overlaps %}<a href="/competitors/{{ pair.left_id }}"><b>@{{ pair.left }} + @{{ pair.right }}</b><span>{{ pair.contacts }} общих контакт{% if pair.contacts != 1 %}ов{% endif %}</span></a>{% endfor %}
+    </div>
+  </div>
+  {% else %}
   <div class="overlap-list">
     {% for pair in overlaps %}<a href="/competitors/{{ pair.left_id }}"><b>@{{ pair.left }} + @{{ pair.right }}</b><span>{{ pair.contacts }} общих контакт{% if pair.contacts != 1 %}ов{% endif %}</span></a>{% else %}<div class="empty-state compact"><span class="empty-icon" aria-hidden="true"><i data-lucide="git-merge"></i></span><b>Пересечений пока нет</b><span>Они появятся после сигналов минимум у двух компаний.</span></div>{% endfor %}
   </div>
+  {% endif %}
 </section>
 
 <div class="market-toolbar">

@@ -4,7 +4,8 @@
 {% block subheading %}Кто входит в сегмент и какое маркетинговое решение следует принять{% endblock %}
 {% block content %}
 <div class="detail-back-bar">
-  <a class="btn ghost btn-sm" href="/audiences{% if selected_vertical %}?vertical={{ selected_vertical }}{% endif %}">← Назад ко всем аудиториям</a>
+  {% set breadcrumbs = [{"href": "/audiences" ~ ("?vertical=" ~ selected_vertical if selected_vertical else ""), "label": "Аудитории"}, {"label": segment.name}] %}
+  {% include "partials/breadcrumbs.html" %}
   <span class="pill primary">{{ segment.audience_family }} · {{ segment.audience_level }}</span>
 </div>
 
@@ -95,7 +96,7 @@
       </div>
     {% else %}
       <div class="empty-box">
-        <span class="empty-icon">💬</span>
+        <span class="empty-icon" aria-hidden="true"><i data-lucide="message-circle"></i></span>
         <b>Нет явных вопросов</b>
         <span>Коммерческие сигналы с конкретными вопросами для этой аудитории ещё накапливаются.</span>
       </div>
@@ -112,7 +113,7 @@
       </div>
     {% else %}
       <div class="empty-box">
-        <span class="empty-icon">🪑</span>
+        <span class="empty-icon" aria-hidden="true"><i data-lucide="armchair"></i></span>
         <b>Товары не определены</b>
         <span>Категории товаров будут определены после поступления релевантных комментариев.</span>
       </div>
@@ -129,7 +130,7 @@
       </div>
     {% else %}
       <div class="empty-box">
-        <span class="empty-icon">📍</span>
+        <span class="empty-icon" aria-hidden="true"><i data-lucide="map-pin"></i></span>
         <b>Источники не зафиксированы</b>
         <span>Пока нет сигналов у отслеживаемых конкурентов по данному сегменту.</span>
       </div>
@@ -146,7 +147,7 @@
       </div>
     {% else %}
       <div class="empty-box">
-        <span class="empty-icon">🛡️</span>
+        <span class="empty-icon" aria-hidden="true"><i data-lucide="shield"></i></span>
         <b>Возражений нет</b>
         <span>Клиенты не выражали явных сомнений или препятствий к покупке.</span>
       </div>
@@ -200,7 +201,7 @@
   </div>
   {% else %}
   <div class="empty-state">
-    <span class="empty-icon">👥</span>
+    <span class="empty-icon" aria-hidden="true"><i data-lucide="users"></i></span>
     <h3>В этом сегменте пока нет контактов</h3>
     <p>Контакты попадают сюда автоматически при обнаружении соответствующих запросов в комментариях.</p>
     <a class="btn ghost btn-sm" href="/radar">Перейти в радар сигналов →</a>

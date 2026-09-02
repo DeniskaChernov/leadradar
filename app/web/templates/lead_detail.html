@@ -4,10 +4,13 @@
 {% block subheading %}@{{ contact.username }} · {{ lead_status_label(lead.status) }}{% endblock %}
 {% block content %}
 <div class="detail-back-bar">
-  <a class="btn ghost btn-sm" href="/leads">← Назад ко всем лидам</a>
+  {% set breadcrumbs = [{"href": "/leads", "label": "Лиды"}, {"label": "#" ~ lead.id}] %}
+  {% include "partials/breadcrumbs.html" %}
   <span class="pill primary">Карточка лида #{{ lead.id }}</span>
+  <button class="btn ghost btn-sm" type="button" onclick="window.print()" aria-label="Печать карточки лида">Печать</button>
 </div>
 
+<article class="lead-print-sheet">
 {% set ai = lead.analysis_details or {} %}
 {% set openai_cost = openai_cost or {'events': 0, 'known_spend_usd': 0, 'input_tokens': 0, 'output_tokens': 0} %}
 <div class="hero-status lead-hero {% if lead.lead_score >= settings.hot_lead_threshold %}hot live{% else %}safe{% endif %}" data-motion-root>
@@ -192,4 +195,5 @@
     </section>
   </aside>
 </div>
+</article>
 {% endblock %}

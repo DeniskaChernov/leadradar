@@ -37,3 +37,28 @@ $env:PYTHONPATH="."
 python scripts/check_data_integrity.py
 python -m pytest -q
 ```
+
+## 5. Restore Drill (ежеквартально)
+
+Цель: убедиться, что backup реально восстанавливается, а не только создаётся.
+
+### Шаги (staging / локальная копия prod)
+
+1. Зафиксировать текущее состояние: `python scripts/check_data_integrity.py` → OK.
+2. Создать manual backup: `python scripts/backup_database.py`.
+3. Внести контрольное изменение (например, создать тестового конкурента на паузе).
+4. Восстановить backup: `python scripts/restore_database.py .backups/<latest>.db --force`.
+5. Проверить, что контрольное изменение исчезло.
+6. Прогнать `check_data_integrity` + `pytest -q`.
+7. Записать результат в `State.md`: `backup-drill: OK|FAIL YYYY-MM-DD`.
+
+### PostgreSQL
+
+Managed PG: drill через snapshot/PITR провайдера (Railway/Neon). SQLite runbook выше —
+только для локального/staging SQLite.
+
+### Критерий успеха
+
+- Restore завершился без ошибок.
+- Integrity scan → 0 duplicates.
+- `GET /ready` → 200 после перезапуска web.

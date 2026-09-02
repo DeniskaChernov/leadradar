@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     web_auth_enabled: bool = False
     telegram_init_data_max_age_seconds: int = Field(default=300, ge=60, le=3600)
     log_level: str = "INFO"
+    sentry_dsn: str = ""
     http_timeout_seconds: float = Field(default=60.0, gt=0)
     http_max_attempts: int = Field(default=3, ge=1, le=5)
     telegram_notification_max_attempts: int = Field(default=3, ge=1, le=10)

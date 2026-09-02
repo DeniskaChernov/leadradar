@@ -148,6 +148,8 @@ class OfflinePilotService:
         rattan_rows = self._load_json("rattan_vertical_v2_golden.json")
         cases: list[PilotCase] = []
         for row in lead_rows:
+            if row.get("defer_to_openai"):
+                continue
             for variant_index, transform in enumerate(self.VARIANTS):
                 cases.append(
                     PilotCase(

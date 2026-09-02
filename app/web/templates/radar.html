@@ -162,7 +162,7 @@
   <a class="metric accent" href="/radar?kind=hot"><span>HOT</span><strong>{{ overview.hot }}</strong><small>от {{ settings.hot_lead_threshold }}/100</small></a>
   <div class="metric muted-metric"><span>Отсеяно</span><strong>{{ overview.rejected }}</strong><small>Не лид</small></div>
 </div>
-<form class="filters radar-filters" method="get">
+<form class="filters radar-filters" method="get" aria-label="Фильтры радара сигналов">
   <input name="q" value="{{ q }}" aria-label="Поиск по радару" placeholder="Имя, username, комментарий или товар">
   <select name="competitor" aria-label="Фильтр по конкуренту"><option value="">Все конкуренты</option>{% for item in competitors %}<option value="{{ item.competitor.normalized_handle }}" {% if competitor_filter == item.competitor.normalized_handle %}selected{% endif %}>@{{ item.competitor.normalized_handle }}</option>{% endfor %}</select>
   <select name="kind" aria-label="Тип сигнала">
@@ -175,7 +175,7 @@
   </select>
   <button class="btn">Применить</button><a class="btn ghost" href="/radar">Сбросить</a>
 </form>
-<div class="table-wrap"><table class="radar-table">
+<div class="table-wrap"><table class="responsive-table radar-table">
 <thead><tr><th>Клиент</th><th>Что написал</th><th>Где нашли</th><th>Контекст Reel</th><th>Оценка</th><th>Что делать</th></tr></thead>
 <tbody>
 {% for comment, contact, competitor, post, lead in rows %}

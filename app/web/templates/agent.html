@@ -19,14 +19,17 @@
     <button class="btn ghost" type="button" data-agent-preset='{"query":"Объясни оценку лида"}' data-agent-needs-lead="1">Оценка лида</button>
   </div>
 </section>
-{% set agent_lead_id = request.query_params.get('lead_id', '') %}
 {% if agent_lead_id %}
-<section class="panel compact agent-context-bar" data-agent-context data-lead-id="{{ agent_lead_id }}">
-  <div class="alert ok"><b>Контекст лида #{{ agent_lead_id }}</b><span>Presets и чат передают lead_id в tools. <a href="/leads/{{ agent_lead_id }}">Открыть карточку →</a></span></div>
+<section class="panel compact agent-context-bar" data-agent-context data-lead-id="{{ agent_lead_id }}"{% if agent_contact_id %} data-contact-id="{{ agent_contact_id }}"{% endif %}>
+  <div class="alert ok"><b>Контекст лида #{{ agent_lead_id }}</b><span>Presets и чат передают lead_id в tools.{% if agent_contact_id %} Ответы можно сохранить в заметку клиента.{% endif %} <a href="/leads/{{ agent_lead_id }}">Открыть карточку →</a></span></div>
+</section>
+{% elif agent_contact_id %}
+<section class="panel compact agent-context-bar" data-agent-context data-contact-id="{{ agent_contact_id }}">
+  <div class="alert ok"><b>Контекст клиента #{{ agent_contact_id }}</b><span>Ответы ассистента можно сохранить в заметку. <a href="/contacts/{{ agent_contact_id }}">Открыть карточку →</a></span></div>
 </section>
 {% endif %}
 
-<section class="panel agent-chat-shell" data-agent-chat-root data-motion-root{% if agent_lead_id %} data-lead-id="{{ agent_lead_id }}"{% endif %}>
+<section class="panel agent-chat-shell" data-agent-chat-root data-motion-root{% if agent_lead_id %} data-lead-id="{{ agent_lead_id }}"{% endif %}{% if agent_contact_id %} data-contact-id="{{ agent_contact_id }}"{% endif %}>
   <div class="agent-chat-layout">
     <aside class="agent-chat-sidebar">
       <div class="panel-head compact">

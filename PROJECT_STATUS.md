@@ -4,8 +4,17 @@
 
 **WAVE11 · PROMPT VERSION · BUDGET SIM · KANBAN SKELETON · INTEGRITY**
 
-Контрольная точка 2026-09-02 (wave11): G6 prompt/schema на /system и карточке лида; E10 budget simulation slider на /economics; D11 kanban loading skeleton; H2 orphan leads integrity; H3 baseline archive filter на Radar.
-UI **13.23.0-wave11**.
+Контрольная точка 2026-09-02 (wave18): B4 drag-and-drop kanban на /leads.
+UI **13.29.0-wave18**. План: **120/120** ✅
+
+Контрольная точка 2026-09-02 (wave17): I5 unseen gate→openai-live; I4 watch golden cases; D7 dark mode; I2 e2e funnel; I6 queue load; J2 state script; J5 shutdown test.
+
+Контрольная точка 2026-09-02 (wave16): D20 design tokens doc; H5 backup drill; H6 PG migration checklist; I7 plus→OpenAI regression; I10 Bugbot PR; J7 Sentry hook; J8 Railway doc.
+
+Контрольная точка 2026-09-02 (wave15): D18 PWA manifest+icons; H7 interest_evidence dedup; H8 recalc error handling; J3 WEB_MANAGER_ID doc; J10 CHANGELOG; I9 CI quality gates doc+PR template.
+
+Контрольная точка 2026-09-02 (wave14): D17 print lead card; F9 competitor compare; F10 CSV import; J4 extended /ready; J9 junk leads runbook.
+UI **13.26.0-wave14**. План: **97/120**.
 
 **WAVE10 · KANBAN CRM HISTORY · MOBILE SWIPE · UNDO NOT_LEAD**
 

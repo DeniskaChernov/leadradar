@@ -38,7 +38,7 @@
 <section class="panel" id="signals">
   <div class="panel-head"><div><h2>Коммерческие сигналы ротанга</h2><p>Только из источников портфеля</p></div></div>
   {% if rattan_rows %}
-  <div class="table-wrap embedded"><table class="rattan-table"><thead><tr><th>Контакт</th><th>Текст</th><th>Категория</th><th>Источник</th></tr></thead><tbody>
+  <div class="table-wrap embedded"><table class="responsive-table rattan-table"><thead><tr><th>Контакт</th><th>Текст</th><th>Категория</th><th>Источник</th></tr></thead><tbody>
   {% for lead, comment, contact, competitor, signal, evidence in rattan_rows %}<tr><td data-label="Контакт"><a href="/contacts/{{ lead.contact_id }}">{% if contact.username %}@{{ contact.username }}{% else %}Контакт #{{ contact.id }}{% endif %}</a></td><td data-label="Сигнал">{{ comment.text }}</td><td data-label="Категория"><span class="tag neutral">{{ evidence.topic or lead.product_category or 'Не определено' }}</span></td><td data-label="Источник">@{{ competitor.normalized_handle }}</td></tr>{% endfor %}
   </tbody></table></div>
   {% else %}

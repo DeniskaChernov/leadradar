@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Сравнение конкурентов · Lead Radar{% endblock %}
+{% block heading %}Сравнение конкурентов{% endblock %}
+{% block subheading %}Side-by-side метрики наблюдаемого спроса{% endblock %}
+{% block content %}
+<div class="detail-back-bar">
+  {% set breadcrumbs = [{"href": "/competitors", "label": "Конкуренты"}, {"label": "Сравнение"}] %}
+  {% include "partials/breadcrumbs.html" %}
+  <span class="pill primary">A/B разведка</span>
+</div>
+
+<section class="panel competitor-compare-picker compact">
+  <form class="filters competitors-compare-form" method="get" action="/competitors/compare" aria-label="Выбор пары конкурентов для сравнения">
+    <label>Компания A
+      <select name="left" required aria-label="Конкурент A">
+        {% for item in competitor_options %}
+        <option value="{{ item.competitor.id }}" {% if item.competitor.id == compare.left.id %}selected{% endif %}>{{ item.competitor.display_name or '@' ~ item.competitor.normalized_handle }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Компания B
+      <select name="right" required aria-label="Конкурент B">
+        {% for item in competitor_options %}
+        <option value="{{ item.competitor.id }}" {% if item.competitor.id == compare.right.id %}selected{% endif %}>{{ item.competitor.display_name or '@' ~ item.competitor.normalized_handle }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="btn primary" type="submit">Обновить сравнение</button>
+    <a class="btn ghost" href="/competitors">← К списку</a>
+  </form>
+</section>
+
+<section class="hero-status safe competitor-compare-hero" data-motion-root>
+  <div>
+    <span class="eyebrow">ПАРНОЕ СРАВНЕНИЕ</span>
+    <h2>@{{ compare.left.normalized_handle }} vs @{{ compare.right.normalized_handle }}</h2>
+    <p>Только сохранённые публичные комментарии. Общих контактов: <b>{{ compare.shared_buyers }}</b>.</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn ghost" href="/competitors/{{ compare.left.id }}">Карточка A</a>
+    <a class="btn ghost" href="/competitors/{{ compare.right.id }}">Карточка B</a>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Метрики</h2><p>Наблюдаемый коммерческий спрос side-by-side</p></div></div>
+  <div class="table-wrap embedded">
+    <table class="responsive-table competitor-compare-table">
+      <thead>
+        <tr>
+          <th>Метрика</th>
+          <th>@{{ compare.left.normalized_handle }}</th>
+          <th>@{{ compare.right.normalized_handle }}</th>
+          <th>Δ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in compare.rows %}
+        {% set delta = (row.left - row.right) if row.left is number and row.right is number else none %}
+        <tr>
+          <td data-label="Метрика"><b>{{ row.label }}</b></td>
+          <td data-label="A"><strong>{{ row.left }}</strong></td>
+          <td data-label="B"><strong>{{ row.right }}</strong></td>
+          <td data-label="Δ">{% if delta is not none %}{% if delta > 0 %}+{% endif %}{{ delta|round(1) if delta != delta|int else delta }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="grid two competitor-compare-trends">
+  {% for side, trend, competitor in [('A', compare.left_trend, compare.left), ('B', compare.right_trend, compare.right)] %}
+  <section class="panel compact">
+    <div class="panel-head compact"><div><h3>Тренд {{ side }} · @{{ competitor.normalized_handle }}</h3></div></div>
+    <div class="commercial-trend-panel">
+      {% set trend_max = namespace(v=1) %}
+      {% for point in trend %}{% if point.rate > trend_max.v %}{% set trend_max.v = point.rate %}{% endif %}{% endfor %}
+      <svg class="commercial-trend-sparkline" viewBox="0 0 128 36" role="img" aria-label="Тренд доли коммерческих {{ side }}">
+        {% for point in trend %}
+        {% set bar_h = ((point.rate / trend_max.v) * 28)|round|int %}
+        <rect x="{{ loop.index0 * 16 }}" y="{{ 34 - (bar_h if bar_h > 0 else 1) }}" width="12" height="{{ bar_h if bar_h > 0 else 1 }}" rx="2" class="{% if point.is_current %}is-current{% endif %}"></rect>
+        {% else %}
+        <text x="4" y="22" class="trend-empty">нет данных</text>
+        {% endfor %}
+      </svg>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

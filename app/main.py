@@ -97,6 +97,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         print(f"Database backup: {backup}")
     await upgrade_database()
     configure_logging(settings)
+    init_error_monitoring(settings)
     engine = create_engine(settings)
     session_factory = create_session_factory(engine)
     market_service = MarketIntelligenceService(session_factory)
@@ -601,6 +602,22 @@ def configure_logging(settings: Settings) -> None:
         format=fmt,
         force=True,
     )
+
+
+def init_error_monitoring(settings: Settings) -> None:
+    """Подключает Sentry при наличии DSN и установленного sentry-sdk."""
+    dsn = settings.sentry_dsn.strip()
+    if not dsn:
+        return
+    try:
+        import sentry_sdk
+    except ImportError:
+        logging.getLogger(__name__).warning(
+            "sentry_dsn_configured sentry_sdk_missing hint=pip install sentry-sdk"
+        )
+        return
+    sentry_sdk.init(dsn=dsn, traces_sample_rate=0.0)
+    logging.getLogger(__name__).info("sentry_initialized")
 
 
 def main() -> None:

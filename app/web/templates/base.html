@@ -3,18 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f4f7ff">
   <meta name="csrf-token" content="{{ csrf_token }}">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
   <title>{% block title %}Lead Radar{% endblock %}</title>
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=13.23.0-wave11">
+  <link rel="stylesheet" href="/static/app.css?v=13.29.0-wave18">
   <script defer src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
-  <script defer src="/static/app.js?v=13.23.0-wave11"></script>
+  <script defer src="/static/app.js?v=13.29.0-wave18"></script>
 </head>
 <body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}" data-page="{{ active_path }}">
 <a class="skip-link" href="#main-content">Перейти к содержимому</a>

@@ -16,6 +16,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import Settings
 from app.db.models import Lead, LeadStatus, NotificationPolicy
+from app.services.agent_rate_limit_service import agent_rate_limiter
 from app.services.ai_service import (
     BudgetedCachedOpenAIAnalyzer,
     HybridLeadAnalyzer,
@@ -24,6 +25,7 @@ from app.services.ai_service import (
 )
 from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.audience_service import AudienceEngine
+from app.services.competitor_import_service import CompetitorImportService
 from app.services.crm_service import CRMService
 from app.services.deployment_readiness_service import inspect_offline_readiness
 from app.services.discovery_service import DiscoveryService
@@ -133,6 +135,7 @@ def build_web_app(
     market_service = MarketIntelligenceService(workflow.session_factory)
     meta_audience_service = MetaAudiencePlanningService(workflow.session_factory)
     discovery_service = DiscoveryService(workflow.session_factory)
+    competitor_import_service = CompetitorImportService(workflow.session_factory)
     product_catalog_service = ProductCatalogService(workflow.session_factory)
     local_audience_engine = AudienceEngine(workflow.session_factory, settings.hot_lead_threshold)
     change_detector = SignificantChangeDetector(
@@ -381,6 +384,16 @@ def build_web_app(
 
     def manager_id(request: Request) -> int:
         return int(getattr(request.state, "manager_id", local_manager_id()))
+
+    def enforce_agent_rate_limit(request: Request) -> None:
+        limit = agent_rate_limiter.check(manager_id(request))
+        if limit.allowed:
+            return
+        raise HTTPException(
+            status_code=429,
+            detail=f"Слишком много запросов к AI. Подождите {limit.retry_after_seconds} сек.",
+            headers={"Retry-After": str(limit.retry_after_seconds)},
+        )
 
     @app.get("/auth", response_class=HTMLResponse)
     async def auth_page(request: Request):
@@ -746,6 +759,7 @@ def build_web_app(
         overview = await queries.market_overview()
         intelligence_overview = await queries.competitor_intelligence_overview()
         overlaps = await queries.competitor_overlap_network()
+        overlap_graph = await queries.competitor_overlap_graph()
         return templates.TemplateResponse(
             request=request,
             name="competitors.html",
@@ -755,6 +769,7 @@ def build_web_app(
                 market_overview=overview,
                 intelligence_overview=intelligence_overview,
                 overlaps=overlaps,
+                overlap_graph=overlap_graph,
                 categories=COMPETITOR_CATEGORY_LABELS,
             ),
         )
@@ -782,6 +797,22 @@ def build_web_app(
                     "ROLE_CHANGED": "Изменился сегмент",
                 },
             ),
+        )
+
+    @app.get("/competitors/compare", response_class=HTMLResponse)
+    async def competitors_compare(request: Request):
+        left_raw = request.query_params.get("left")
+        right_raw = request.query_params.get("right")
+        if not left_raw or not right_raw or not left_raw.isdigit() or not right_raw.isdigit():
+            raise HTTPException(status_code=400, detail="Укажите left и right — ID конкурентов")
+        data = await queries.competitor_compare(int(left_raw), int(right_raw))
+        if data is None:
+            raise HTTPException(status_code=404, detail="Один из конкурентов не найден")
+        all_rows = await queries.competitors()
+        return templates.TemplateResponse(
+            request=request,
+            name="competitor_compare.html",
+            context=base_context(request, compare=data, competitor_options=all_rows),
         )
 
     @app.get("/competitors/{competitor_id}", response_class=HTMLResponse)
@@ -840,7 +871,9 @@ def build_web_app(
         intelligence_quality = intelligence_challenge.evaluate(
             hot_threshold=settings.hot_lead_threshold
         )
-        quality_gates = quality_gates_service.snapshot()
+        quality_gates = quality_gates_service.snapshot(
+            rules_version=settings.lead_analysis_version
+        )
         manager_feedback_quality = await queries.manager_feedback_quality()
         feedback_learning_service = FeedbackLearningService(
             workflow.session_factory,
@@ -1255,6 +1288,13 @@ def build_web_app(
             raise HTTPException(status_code=409, detail="OPENAI_API_KEY не задан.")
         payload = await _json_or_form(request)
         armed = str(payload.get("armed", "")).lower() in {"1", "true", "yes", "on"}
+        if armed:
+            gates = quality_gates_service.snapshot(
+                rules_version=settings.lead_analysis_version
+            )
+            allowed, reason = gates.openai_live_allowed()
+            if not allowed:
+                raise HTTPException(status_code=409, detail=reason)
         snap = await ops_control.set_openai_live(armed, manager_id=manager_id(request))
         return {
             "ok": True,
@@ -1865,6 +1905,7 @@ def build_web_app(
     async def agent_query_endpoint(request: Request):
         from app.services.agent_session_service import AgentSessionService
 
+        enforce_agent_rate_limit(request)
         payload = await _json_or_form(request)
         query = str(payload.get("query") or "").strip()
         if not query:
@@ -1924,10 +1965,25 @@ def build_web_app(
 
     @app.get("/agent", response_class=HTMLResponse)
     async def agent_workspace(request: Request):
+        lead_id_raw = request.query_params.get("lead_id")
+        contact_id_raw = request.query_params.get("contact_id")
+        agent_lead_id = int(lead_id_raw) if lead_id_raw and lead_id_raw.isdigit() else None
+        agent_contact_id = (
+            int(contact_id_raw) if contact_id_raw and contact_id_raw.isdigit() else None
+        )
+        if agent_lead_id is not None and agent_contact_id is None:
+            async with workflow.session_factory() as session:
+                lead = await session.get(Lead, agent_lead_id)
+                if lead is not None:
+                    agent_contact_id = lead.contact_id
         return templates.TemplateResponse(
             request=request,
             name="agent.html",
-            context=base_context(request),
+            context=base_context(
+                request,
+                agent_lead_id=agent_lead_id,
+                agent_contact_id=agent_contact_id,
+            ),
         )
 
     @app.get("/api/agent/sessions")
@@ -1989,6 +2045,7 @@ def build_web_app(
     async def agent_chat_turn(request: Request):
         from app.services.agent_chat_orchestrator import AgentChatOrchestrator
 
+        enforce_agent_rate_limit(request)
         payload = await _json_or_form(request)
         query = str(payload.get("query") or "").strip()
         if not query:
@@ -2122,6 +2179,24 @@ def build_web_app(
             }
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
+
+    @app.post("/api/competitors/import")
+    async def import_competitors_csv(request: Request, filename: str = "competitors.csv"):
+        try:
+            result = await competitor_import_service.import_file(filename, await request.body())
+            return {
+                "ok": True,
+                "total_rows": result.total_rows,
+                "created": result.created,
+                "updated": result.updated,
+                "skipped": result.skipped,
+                "message": (
+                    f"Импорт конкурентов: {result.created} новых на паузе, "
+                    f"{result.updated} уже были в базе, {result.skipped} пропущено."
+                ),
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/competitors")
     async def add_competitor(request: Request):
@@ -2410,14 +2485,34 @@ def build_web_app(
 
     @app.get("/ready")
     async def ready():
+        from sqlalchemy import func, select
+
+        from app.db.models import Competitor
+
         state = await inspect_offline_readiness(settings)
         payload = {
             "ok": state.ready,
             "database_healthy": state.database_healthy,
             "migration_at_head": state.migration_at_head,
             "migration_drift_free": state.migration_drift_free,
+            "backup_present": state.backup_present,
+            "uncertain_reservations": state.uncertain_reservations,
+            "web_enabled": settings.web_enabled,
+            "radar_live_armed": ops_control.radar_live_armed(),
+            "openai_live_armed": ops_control.openai_live_armed(),
             "blocks": list(state.offline_blocks),
         }
+        if analysis_pipeline is not None:
+            payload["analysis_queue"] = analysis_pipeline.pending_count
+            payload["analysis_in_flight"] = analysis_pipeline.in_flight_count
+        async with workflow.session_factory() as session:
+            payload["active_competitors"] = int(
+                await session.scalar(select(func.count(Competitor.id)).where(Competitor.active))
+                or 0
+            )
+            payload["competitors_total"] = int(
+                await session.scalar(select(func.count(Competitor.id))) or 0
+            )
         status_code = 200 if state.ready else 503
         return JSONResponse(payload, status_code=status_code)
 
