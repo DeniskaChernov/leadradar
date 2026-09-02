@@ -2,6 +2,12 @@
 
 Формат: волны улучшений по `docs/SYSTEM_IMPROVEMENT_PLAN.md`. Полная история релизов — `RELEASE_NOTES.md`.
 
+## [13.29.0-docs] — 2026-09-02
+
+### Changed
+- Phase 9 отмечена **offline ЗАВЕРШЁН** в `PROJECT_STATUS.md` / `ROADMAP.md`
+- Добавлен `docs/POST_120_PLAN.md` и обновлён `docs/LIVE_PILOT_CHECKLIST.md`
+
 ## [13.29.0-wave18] — 2026-09-02
 
 ### Added

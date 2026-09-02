@@ -1,29 +1,49 @@
-# Lead Radar V6 — Controlled Live Pilot Checklist
+# Lead Radar — Controlled Live Pilot Checklist
 
-## Pre-Pilot Preparation
-- [ ] 1. Run readiness check: `python -m scripts.live_readiness_check`
-- [ ] 2. Create manual backup: `python scripts/backup_database.py`
-- [ ] 3. Verify target competitors in `.env` (e.g. `COMPETITORS=aiko.uz,chinar.uz`)
-- [ ] 4. Verify budget limits:
-  - `OPENAI_DAILY_REQUEST_LIMIT=25`
-  - `INSTAGRAM_DAILY_REQUEST_LIMIT=100`
+**Gate:** выполнять только после явного разрешения. Offline prep (раздел 0) — без live.
+
+См. также: `docs/POST_120_PLAN.md`, `docs/DEPLOYMENT.md`, `scripts/live_readiness_check.py`.
+
+## 0. Offline prep (без внешних вызовов)
+
+- [ ] 1. Unseen gates PASS на `/system`
+- [ ] 2. `python -m ruff check .` и `python -m pytest -q`
+- [ ] 3. `python -m scripts.check_data_integrity`
+- [ ] 4. `python -m scripts.live_readiness_check` → записать результат в `State.md`
+- [ ] 5. `python -m scripts.prepare_controlled_pilot` (dry)
+- [ ] 6. Manual backup: `python scripts/backup_database.py`
+- [ ] 7. Выбраны 1–2 конкурента; `INSTAGRAM_MAX_UNITS_PER_SCAN` ≤ 8–10
+- [ ] 8. Отдельный Telegram manager chat id в env
+
+## 1. Unlock (только с разрешением)
+
+- [ ] 1. `EXTERNAL_KILL_SWITCH=false`
+- [ ] 2. `EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS`
+- [ ] 3. `INSTAGRAM_LIVE_CALLS_ENABLED=true` (если нужен Radar)
+- [ ] 4. `OPENAI_LIVE_CALLS_ENABLED=true` (если нужен hybrid GPT) + arm тумблер на `/system`
+- [ ] 5. Бюджеты:
+  - `OPENAI_DAILY_REQUEST_LIMIT=25` (или меньше)
+  - `INSTAGRAM_DAILY_REQUEST_LIMIT` с жёстким дневным cap
   - `INSTAGRAM_MAX_UNITS_PER_SCAN=8`
-- [ ] 5. Set security unlock flag: `EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS`
-- [ ] 6. Enable live OpenAI calls if desired: `OPENAI_LIVE_CALLS_ENABLED=true`
-- [ ] 7. Launch application:
-  ```bash
-  python -m app.main
-  ```
+- [ ] 6. Запуск: `python -m app.main` или `--web-only` + bot отдельно
 
-## Live Monitoring Drill
-- [ ] 1. Trigger manual scan via Telegram bot: `/scan`
-- [ ] 2. Verify immediate Telegram notification received (`🔔 Новый сигнал`).
-- [ ] 3. Verify message is edited after AI analysis finishes (`🔥 HOT 91/100`).
-- [ ] 4. Open Web App: `http://127.0.0.1:8000/`
-- [ ] 5. Verify venue openings page: `http://127.0.0.1:8000/openings`
-- [ ] 6. Test AI Agent assistant drawer by asking *"Why is this lead HOT?"*
+## 2. Live smoke
 
-## Rollback Procedure
-If live pilot needs to be paused or restored:
-- [ ] 1. Pause scan schedule: set `LEAD_SEARCH_ENABLED=false` in `.env`
-- [ ] 2. Restore database if needed: `python scripts/restore_database.py`
+- [ ] 1. Ручной scan (`/scan` или UI) — проверить ledger credits
+- [ ] 2. Telegram: новый сигнал → edit после анализа
+- [ ] 3. Web: `/leads` funnel (take → stage), kanban drag-drop
+- [ ] 4. `/economics` — confirmed vs estimated credits
+- [ ] 5. Agent drawer: grounded вопрос по HOT-лиду
+- [ ] 6. Reconciliation: нет `UNCERTAIN` без разбора
+
+## 3. Rollback
+
+- [ ] 1. `EXTERNAL_KILL_SWITCH=true` (или выключить live flags)
+- [ ] 2. Disarm OpenAI/Radar тумблеры на `/system`
+- [ ] 3. При необходимости: `python scripts/restore_database.py`
+- [ ] 4. Запись итога в `State.md` + короткий отчёт в `docs/`
+
+## 4. Meta (опционально, отдельное разрешение)
+
+- [ ] Dry-run export recipe на `/system`
+- [ ] Confirmed Custom Audience export — **не реализован** (NOT_CONNECTED); не включать без adapter

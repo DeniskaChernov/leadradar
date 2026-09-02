@@ -2,7 +2,12 @@
 
 ## Текущая версия
 
-**WAVE11 · PROMPT VERSION · BUDGET SIM · KANBAN SKELETON · INTEGRITY**
+**WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
+
+Контрольная точка 2026-09-02 (docs sync): план улучшений **120/120** закрыт (commit `6fba631`);
+Master Phase 9 — **offline deployment readiness ЗАВЕРШЁН**; Meta Custom Audience live export
+и controlled live pilot остаются **gated** (только по явному разрешению).
+UI **13.29.0-wave18**.
 
 Контрольная точка 2026-09-02 (wave18): B4 drag-and-drop kanban на /leads.
 UI **13.29.0-wave18**. План: **120/120** ✅
@@ -123,24 +128,29 @@ P0/P1 закрыты в коде:
 - Alembic: короткие CHECK-токены под PG 63 chars; `d9e4b1c82a70` normalize на Postgres;
   `alembic/env.py` не падает на исторический CHECK name drift.
 
-**Phase 9 не завершена.** Meta live OFF. Live pilot — только по явному разрешению.
+**Phase 9 offline завершена.** Meta live OFF. Live pilot — только по явному разрешению.
+Post-120 план: `docs/POST_120_PLAN.md`.
 
-## Master Phase 9 — Deployment readiness (offline, в процессе)
+## Master Phase 9 — Deployment readiness (offline ЗАВЕРШЁН)
 
 - `GET /ready` — readiness probe: DB ping + Alembic head + drift check (`503` при блокерах);
 - `GET /health` — liveness без DB check (как раньше);
 - `PORT` env переопределяет `WEB_PORT` (Railway);
 - `LOG_FORMAT=json` — structured logs в production;
+- `SENTRY_DSN` + `init_error_monitoring()` — optional hook;
 - `DeploymentReadinessService` — общая логика для `/ready` и `live_readiness_check.py`;
-- `railway.json`: `--web-only`, `healthcheckPath=/ready`;
+- `railway.json` + `docs/RAILWAY.md`: `--web-only`, `healthcheckPath=/ready`;
 - `Dockerfile`: `HEALTHCHECK`, default `--web-only`;
-- `docs/DEPLOYMENT.md` — runbook env/probes/rollback;
+- `docs/DEPLOYMENT.md` — runbook env/probes/WEB_MANAGER_ID/rollback;
+- `docs/BACKUP_RESTORE_RUNBOOK.md` — restore drill;
+- `docs/POSTGRESQL_MIGRATION_CHECKLIST.md` — PG cutover;
 - `meta.create_campaign_draft` — `MetaAdsService` Graph API (campaign + adset PAUSED) при live unlock;
 - PostgreSQL CI matrix в GitHub Actions (sqlite + postgres);
-- SIGTERM/SIGINT graceful shutdown для full-stack и web-only;
+- SIGTERM/SIGINT graceful shutdown (Linux/containers); Windows — KeyboardInterrupt → clean exit;
 - bug-hunt pass 3: monitor errors logged; MCP catch-all INTERNAL; export `ineligible_count`;
-- полный offline gate: **310 tests passed**; внешних вызовов: **0**.
-- backlog: Meta Custom Audience confirmed export; SIGTERM на Windows dev.
+- полный offline gate: **483+ tests passed**; внешних вызовов: **0**.
+- **Gated (Phase 10 / explicit unlock):** Meta Custom Audience confirmed export;
+  Instagram/OpenAI/Telegram live delivery; controlled credit pilot.
 
 ## Master Phase 8 — UI final hardening (завершён offline)
 
