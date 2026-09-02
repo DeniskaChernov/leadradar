@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlparse
@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import Settings
-from app.db.models import LeadStatus, NotificationPolicy
+from app.db.models import Lead, LeadStatus, NotificationPolicy
 from app.services.ai_service import (
     BudgetedCachedOpenAIAnalyzer,
     HybridLeadAnalyzer,
@@ -78,6 +78,7 @@ from app.web.labels import (
 )
 from app.web.lead_ui_helpers import (
     lead_is_off_catalog,
+    lead_next_action_overdue,
     lead_quality_badge,
 )
 from app.web.queries import WebQueryService
@@ -228,6 +229,7 @@ def build_web_app(
         money=lambda value: f"{float(value or 0):,.0f}".replace(",", " "),
         safe_attr=lambda obj, name, default=None: getattr(obj, name, default),
         lead_is_off_catalog=lead_is_off_catalog,
+        lead_next_action_overdue=lead_next_action_overdue,
         lead_quality_badge=lead_quality_badge,
     )
     templates.env.filters["display_dt"] = lambda value, fmt="%d.%m %H:%M": format_display_dt(
@@ -1401,6 +1403,36 @@ def build_web_app(
             "skipped": skipped,
             "message": f"Сохранено · {verb}: {processed}" + (f" · пропущено: {skipped}" if skipped else ""),
         }
+
+    @app.post("/api/leads/{lead_id}/follow-up")
+    async def schedule_lead_follow_up(request: Request, lead_id: int):
+        """One-click задача: связаться через N часов (по умолчанию 24)."""
+        if crm is None:
+            raise HTTPException(status_code=503, detail="CRM недоступен")
+        payload = await _json_or_form(request)
+        hours = max(1, min(int(payload.get("hours") or 24), 168))
+        note = str(payload.get("note") or "Связаться с клиентом").strip() or "Связаться с клиентом"
+        async with queries.session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="Лид не найден")
+            contact_id = lead.contact_id
+        due_at = datetime.now(UTC) + timedelta(hours=hours)
+        try:
+            task = await crm.schedule_contact(
+                contact_id,
+                manager_id(request),
+                due_at=due_at,
+                note=note,
+                lead_id=lead_id,
+            )
+            return {
+                "ok": True,
+                "task_id": task.id,
+                "message": f"Сохранено · напоминание через {hours} ч",
+            }
+        except LeadWorkflowError as exc:
+            raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
 
     @app.post("/api/leads/{lead_id}/analyze")
     async def analyze_lead_now(request: Request, lead_id: int):

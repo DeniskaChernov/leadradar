@@ -283,6 +283,34 @@ def test_watch_price_question_is_rejected_without_openai():
     assert result.intent == Intent.OTHER
 
 
+def test_jewelry_and_shoes_price_are_off_catalog():
+    analyzer = RuleBasedLeadAnalyzer()
+    jewelry = analyzer.classify(
+        LeadAnalysisContext(
+            competitor="aiko.uz",
+            post_caption="Новая коллекция золотых браслетов и серёг",
+            comment="Сколько стоит?",
+            username="buyer",
+            previous_signals=[],
+            previous_interests=[],
+        )
+    )
+    shoes = analyzer.classify(
+        LeadAnalysisContext(
+            competitor="aiko.uz",
+            post_caption="Кроссовки Nike Air новая коллекция",
+            comment="Narxi qancha?",
+            username="buyer",
+            previous_signals=[],
+            previous_interests=[],
+        )
+    )
+    assert jewelry is not None and jewelry.is_lead is False
+    assert "Не наш ассортимент" in (jewelry.risk_flags or [])
+    assert shoes is not None and shoes.is_lead is False
+    assert "Не наш ассортимент" in (shoes.risk_flags or [])
+
+
 def test_generic_price_without_furniture_context_defers_to_openai():
     analyzer = RuleBasedLeadAnalyzer()
     result = analyzer.classify(

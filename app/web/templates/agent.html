@@ -9,10 +9,13 @@
     <h2>Чат с доступом к вашей базе</h2>
     <p>Лиды, конкуренты, экономика — только из БД. Изменения файлов и конкурентов — после вашего «Подтвердить».</p>
   </div>
-  <div class="hero-actions agent-hero-actions">
-    <button class="btn ghost" type="button" data-agent-preset='{"query":"Покажи hot лиды за сегодня"}'>HOT лиды</button>
+  <div class="hero-actions agent-hero-actions" role="group" aria-label="Быстрые вопросы">
+    <button class="btn ghost" type="button" data-agent-preset='{"query":"Покажи горячие лиды за сегодня"}'>HOT сегодня</button>
+    <button class="btn ghost" type="button" data-agent-preset='{"query":"Сколько лидов ждут оценки и GPT"}'>Очередь оценки</button>
     <button class="btn ghost" type="button" data-agent-preset='{"query":"Список активных конкурентов tier A"}'>Конкуренты A</button>
     <button class="btn ghost" type="button" data-agent-preset='{"query":"Статус радара и последний scan"}'>Радар</button>
+    <button class="btn ghost" type="button" data-agent-preset='{"query":"Сколько credits потратили за 7 дней"}'>Расход credits</button>
+    <button class="btn ghost" type="button" data-agent-preset='{"query":"Какие лиды помечены как не наш товар"}'>Не наш товар</button>
   </div>
 </section>
 

@@ -73,7 +73,7 @@
   <div class="panel-head"><div><span class="eyebrow">СТОИМОСТЬ ВОРОНКИ</span><h2 id="economics-funnel-title">Стоимость воронки</h2><p>USD и ScrapeCreators credits на исход за {{ page.days }} дн.</p></div></div>
   <div class="metrics economics-metrics">
     <div class="metric"><span>ScrapeCreators credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.known_credits }}{% else %}—{% endif %}</strong><small>{{ page.credits.credit_events }} cost-событий</small></div>
-    <div class="metric"><span>Подтверждённые credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.confirmed_credits }}{% else %}—{% endif %}</strong><small>PROVIDER_CONFIRMED</small></div>
+    <div class="metric"><span>Подтверждённые credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.confirmed_credits }}{% else %}—{% endif %}</strong><small>провайдер подтвердил</small></div>
     <div class="metric"><span>Оценочные credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.estimated_credits }}{% else %}—{% endif %}</strong><small>без ответа провайдера</small></div>
     <div class="metric"><span>Точность credits</span><strong>{% if credit_accuracy is not none %}{{ credit_accuracy }}%{% else %}—{% endif %}</strong><small>доля подтверждённых</small></div>
     <div class="metric"><span>credits / сигнал</span><strong>{{ ratio(page.credits.credits_per_signal) }}</strong><small>{{ economics.signals_count }} сигналов</small></div>

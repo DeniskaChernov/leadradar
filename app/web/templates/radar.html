@@ -7,7 +7,7 @@
   <div>
     <span class="eyebrow">РАДАР СИГНАЛОВ</span>
     <h2>{{ overview.total }} сигналов · {{ overview.hot }} HOT</h2>
-    <p>{{ overview.unprocessed_actionable + overview.pending }} нужна оценка · {{ overview.qualified }} в воронке{% if overview.unprocessed > overview.unprocessed_actionable %} · {{ overview.unprocessed - overview.unprocessed_actionable }} в архиве{% endif %}</p>
+    <p>{{ overview.pending }} ждут GPT · {{ overview.unprocessed_actionable }} спорных без оценки · {{ overview.qualified }} в воронке{% if overview.unprocessed > overview.unprocessed_actionable %} · {{ overview.unprocessed - overview.unprocessed_actionable }} в архиве{% endif %}</p>
   </div>
   <div class="hero-actions">
     <a class="btn primary" href="/leads">Лиды ({{ overview.qualified }})</a>
@@ -19,6 +19,14 @@
 </section>
 {% include "partials/signal_review_help.html" %}
 {% include "partials/radar_plain_help.html" %}
+{% if search_paused %}
+<section class="panel compact radar-search-paused">
+  <div class="alert warn">
+    <b>Поиск лидов приостановлен</b>
+    <span>LEAD_SEARCH_ENABLED=false — Instagram-scan и фоновый мониторинг не запускают новый поиск. CRM и оценка уже собранных сигналов работают.</span>
+  </div>
+</section>
+{% endif %}
 <section class="panel ops-arm-card">
   <div class="panel-head"><div><h2>Управление Live</h2><p>Тумблеры пишутся в БД. Master unlock остаётся в .env</p></div>
     <span class="tag {% if ops.radar_live_armed %}success{% else %}muted-tag{% endif %}">{% if ops.radar_live_armed %}Radar включён{% else %}Radar выключен{% endif %}</span>
@@ -123,7 +131,8 @@
 {% endif %}
 <div class="metrics radar-metrics">
   <a class="metric" href="/radar"><span>Все сигналы</span><strong>{{ overview.total }}</strong><small>в базе</small></a>
-  <a class="metric warn" href="/radar?kind=pending"><span>Нужна оценка</span><strong>{{ overview.unprocessed_actionable + overview.pending }}</strong><small>свежие + GPT</small></a>
+  <a class="metric warn" href="/radar?kind=pending"><span>Спорные</span><strong>{{ overview.unprocessed_actionable + overview.pending }}</strong><small>{{ overview.unprocessed_actionable }} без лида · {{ overview.pending }} GPT</small></a>
+  <div class="metric muted-metric"><span>Архив</span><strong>{{ [0, overview.unprocessed - overview.unprocessed_actionable]|max }}</strong><small>старше окна свежести</small></div>
   <a class="metric" href="/leads"><span>Лиды</span><strong>{{ overview.qualified }}</strong><small>воронка</small></a>
   <a class="metric accent" href="/radar?kind=hot"><span>HOT</span><strong>{{ overview.hot }}</strong><small>от {{ settings.hot_lead_threshold }}/100</small></a>
   <div class="metric muted-metric"><span>Отсеяно</span><strong>{{ overview.rejected }}</strong><small>Не лид</small></div>

@@ -1,14 +1,31 @@
-{# Следующий шаг воронки для карточки лида (kanban / список). Ожидает переменную lead. #}
+{# Следующий шаг воронки для карточки лида (kanban / список). Ожидает lead; deal опционален. #}
 {% if lead.status.value == 'NEW' %}
 <button class="btn tiny primary" type="button" data-lead-action="take" data-lead-id="{{ lead.id }}">Взять в работу</button>
 {% elif lead.status.value == 'TAKEN' %}
 <button class="btn tiny primary" type="button" data-stage="CONTACTED" data-lead-id="{{ lead.id }}">Связались</button>
+<button class="btn tiny ghost" type="button" data-lead-followup="{{ lead.id }}">Напомнить завтра</button>
 {% elif lead.status.value == 'CONTACTED' %}
 <button class="btn tiny primary" type="button" data-stage="QUALIFIED" data-lead-id="{{ lead.id }}">Интерес подтверждён</button>
+<button class="btn tiny ghost" type="button" data-lead-followup="{{ lead.id }}">Напомнить завтра</button>
 {% elif lead.status.value == 'QUALIFIED' %}
 <button class="btn tiny primary" type="button" data-stage="OFFER_SENT" data-lead-id="{{ lead.id }}">Отправили предложение</button>
+<button class="btn tiny ghost" type="button" data-lead-followup="{{ lead.id }}">Напомнить завтра</button>
 {% elif lead.status.value == 'OFFER_SENT' %}
 <button class="btn tiny primary" type="button" data-stage="NEGOTIATION" data-lead-id="{{ lead.id }}">Переговоры</button>
+<button class="btn tiny ghost" type="button" data-lead-followup="{{ lead.id }}">Напомнить завтра</button>
 {% elif lead.status.value == 'NEGOTIATION' %}
-<a class="btn tiny" href="/leads/{{ lead.id }}#funnel">Закрыть сделку →</a>
+  {% if deal and (deal.final_amount or deal.amount) %}
+  <button
+    class="btn tiny success"
+    type="button"
+    data-api-action="/api/deals/{{ deal.id }}/win"
+    data-payload='{"product_name":{{ (deal.product_name or "Продажа")|tojson }},"amount":"{{ deal.final_amount or deal.amount }}","quantity":{{ deal.quantity or 1 }},"currency":"UZS"}'
+    data-reload="1"
+  >Продажа</button>
+  {% else %}
+  <a class="btn tiny primary" href="/leads/{{ lead.id }}#deal-box">Закрыть сделку →</a>
+  {% endif %}
+  <button class="btn tiny ghost" type="button" data-lead-followup="{{ lead.id }}">Напомнить завтра</button>
+{% elif lead.status.value == 'NOT_LEAD' %}
+<button class="btn tiny" type="button" data-lead-action="reopen" data-lead-id="{{ lead.id }}">Вернуть в работу</button>
 {% endif %}

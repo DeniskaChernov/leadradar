@@ -2,7 +2,16 @@
 
 ## Текущая версия
 
-**PERSISTENT AI CHAT · FUNNEL UX · QA 55 · LIVE PILOT READY · SIGNAL RECENCY**
+**WAVE4 · QUALITY FILTERS · BULK FUNNEL · OFF-CATALOG EXPAND · SLA · FOLLOW-UP**
+
+Контрольная точка 2026-09-02 (wave4): off-catalog расширен (украшения/обувь/техника);
+kanban NEGOTIATION → продажа при известной сумме; `POST /api/leads/{id}/follow-up`;
+SLA «Просрочен контакт»; reopen NOT_LEAD; Radar спорные vs архив + banner search pause;
+Agent RU presets; economics «провайдер подтвердил». UI **13.14.0-wave4**.
+
+Контрольная точка 2026-09-02 (wave2/3): quality badges + garbage filters, WON/LOST kanban,
+bulk take/not-lead, radar/dashboard plain-help, `scripts/reclassify_leads.py`.
+UI **13.13.0-wave3**. Commit `961071a`.
 
 Контрольная точка 2026-09-02 (plain UX): одна кнопка «Оценить накопившееся» (`/api/signals/review-all`);
 счётчик «нужна оценка» (свежие, без архива >30д); авто-оценка до 10 комментариев за цикл мониторинга.

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app.db.models import Lead, LeadStatus
 
 
@@ -25,6 +27,19 @@ def lead_is_garbage(lead: Lead) -> bool:
     if lead_is_off_catalog(lead):
         return True
     return str(lead.intent or "") in {"REACTION", "SPAM"}
+
+
+def lead_next_action_overdue(lead: Lead, *, now: datetime | None = None) -> bool:
+    """True, если next_action_at в прошлом (SLA просрочен)."""
+    due = lead.next_action_at
+    if due is None:
+        return False
+    if due.tzinfo is None:
+        due = due.replace(tzinfo=UTC)
+    clock = now or datetime.now(UTC)
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=UTC)
+    return due < clock
 
 
 def lead_quality_badge(lead: Lead) -> str | None:

@@ -226,8 +226,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.13.0-wave3" in base
-    assert "13.13.0-wave3" in auth
+    assert "13.14.0-wave4" in base
+    assert "13.14.0-wave4" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
@@ -382,7 +382,15 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "WON" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
     assert "lead_bulk_actions.html" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
     assert "dashboard_plain_help" in (PROJECT_ROOT / "app/web/templates/dashboard.html").read_text(encoding="utf-8")
-    assert "data-lead-bulk" in javascript
+    assert "data-lead-followup" in (PROJECT_ROOT / "app/web/templates/partials/lead_funnel_quick_action.html").read_text(encoding="utf-8")
+    assert "Вернуть в работу" in (PROJECT_ROOT / "app/web/templates/partials/lead_funnel_quick_action.html").read_text(encoding="utf-8")
+    assert "Просрочен контакт" in (PROJECT_ROOT / "app/web/templates/partials/lead_quality_badge.html").read_text(encoding="utf-8")
+    assert "Спорные" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "LEAD_SEARCH_ENABLED=false" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "провайдер подтвердил" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert "Очередь оценки" in (PROJECT_ROOT / "app/web/templates/agent.html").read_text(encoding="utf-8")
+    assert "data-lead-followup" in javascript
+    assert "/api/leads/" in javascript and "follow-up" in javascript
     assert ".leads-bulk-bar" in css
     assert "contacts-hero" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert 'href="/agent"' in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")

@@ -7,12 +7,12 @@
 - [x] A1. «+» → OpenAI по caption Reel
 - [x] A2. Off-catalog (часы, телефоны) → NOT_LEAD локально
 - [x] A3. Цена без контекста мебели → defer OpenAI
-- [x] A4. Фикстуры watch_price + eval 208 сценариев
+- [x] A4. Фикстуры watch_price + eval 218 сценариев
 - [x] A5. API batch-переоценка лидов NEW
 - [x] A6. Кнопка «Переоценить лиды» в Системе
 - [ ] A7. Авто-переоценка после смены правил (version stamp)
 - [ ] A8. Parent-comment context для reply «+»
-- [ ] A9. Расширить off-catalog: украшения, обувь, техника
+- [x] A9. Расширить off-catalog: украшения, обувь, техника
 - [x] A10. UI-бейдж «Не наш ассортимент» на карточке лида
 - [x] A11. Фильтр «мусорные лиды» на /leads
 - [ ] A12. Метрика false-positive rate в /system
@@ -28,14 +28,14 @@
 - [ ] B4. Drag-and-drop kanban (optional phase 2)
 - [x] B5. Bulk actions: взять / не лид
 - [x] B6. Фильтр HOT + новые на доске
-- [ ] B7. Сделки: связка WON из kanban переговоров
-- [ ] B8. Задачи follow-up из карточки лида one-click
+- [x] B7. Сделки: связка WON из kanban переговоров
+- [x] B8. Задачи follow-up из карточки лида one-click
 - [ ] B9. История contact_events на kanban tooltip
 - [ ] B10. Mobile kanban swipe между колонками
 - [ ] B11. Экспорт воронки CSV
-- [ ] B12. SLA-бейдж «просрочен next_action»
+- [x] B12. SLA-бейдж «просрочен next_action»
 - [ ] B13. Назначение менеджера в UI
-- [ ] B14. Reopen NOT_LEAD из списка
+- [x] B14. Reopen NOT_LEAD из списка
 - [x] B15. Воронка: колонки WON/LOST на доске
 
 ## C. Radar и мониторинг (12)
@@ -44,13 +44,13 @@
 - [x] C2. Фильтр свежести 30 дней
 - [x] C3. Одна кнопка «Оценить накопившееся»
 - [x] C4. Plain-language help на всех вкладках radar
-- [ ] C5. Счётчик «спорных» vs «архив» раздельно
+- [x] C5. Счётчик «спорных» vs «архив» раздельно
 - [ ] C6. Preview стоимости scan до запуска (улучшить)
 - [ ] C7. Post-scan summary modal
 - [ ] C8. Competitor tier в строке radar feed
 - [x] C9. Quick filter: только HOT actionable
 - [ ] C10. WebSocket/poll status bar global
-- [ ] C11. Pause search banner если LEAD_SEARCH_ENABLED=false
+- [x] C11. Pause search banner если LEAD_SEARCH_ENABLED=false
 - [ ] C12. Radar empty state с CTA «включить live»
 
 ## D. UI/UX и дизайн (20)
@@ -59,7 +59,7 @@
 - [x] D2. Cache-bust 13.11.7-leads-funnel
 - [x] D3. Economics plain-language hero
 - [x] D4. Competitors plain-language hero
-- [ ] D5. Agent page: preset chips RU
+- [x] D5. Agent page: preset chips RU
 - [x] D6. Единый `.plain-help` блок на всех hero
 - [ ] D7. Dark mode tokens (optional)
 - [ ] D8. Унифицировать `.btn.tiny` размеры
@@ -79,7 +79,7 @@
 ## E. Экономика и бюджет (10)
 
 - [x] E1. Economics hero: «сколько потратили / сколько лидов»
-- [ ] E2. Plain labels вместо PROVIDER_CONFIRMED
+- [x] E2. Plain labels вместо PROVIDER_CONFIRMED
 - [ ] E3. График burn 7d sparkline
 - [ ] E4. Alert если credits < 20% месяца
 - [ ] E5. Cost per HOT lead KPI
@@ -141,7 +141,7 @@
 
 ## J. Ops, deploy, docs (10)
 
-- [ ] J1. PROJECT_STATUS sync
+- [x] J1. PROJECT_STATUS sync
 - [ ] J2. State.md machine notes auto
 - [ ] J3. DEPLOYMENT.md WEB_MANAGER_ID
 - [ ] J4. Health /ready расширенный
@@ -154,4 +154,4 @@
 
 ---
 
-**Текущий спринт (волна 1):** A5–A6, D3–D4, E1, F1, I3, J1.
+**Текущий спринт (волна 4):** A9, B7–B8, B12, B14, C5, C11, D5, E2, J1.

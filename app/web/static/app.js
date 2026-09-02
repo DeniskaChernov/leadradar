@@ -784,6 +784,26 @@
       return;
     }
 
+    const leadFollowup = event.target.closest('[data-lead-followup]');
+    if (leadFollowup) {
+      event.preventDefault();
+      event.stopPropagation();
+      const id = leadFollowup.dataset.leadFollowup;
+      setLoading(leadFollowup, true);
+      try {
+        const data = await api(`/api/leads/${id}/follow-up`, {
+          method: 'POST',
+          body: JSON.stringify({ hours: 24 }),
+        });
+        toast(data.message || 'Напоминание создано');
+        reloadSoon();
+      } catch (error) {
+        toast(error.message, true);
+        setLoading(leadFollowup, false);
+      }
+      return;
+    }
+
     const leadAction = event.target.closest('[data-lead-action]');
     if (leadAction) {
       event.preventDefault();

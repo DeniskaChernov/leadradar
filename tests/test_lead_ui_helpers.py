@@ -1,5 +1,11 @@
+from datetime import UTC, datetime, timedelta
+
 from app.db.models import Lead, LeadStatus
-from app.web.lead_ui_helpers import lead_is_off_catalog, lead_quality_badge
+from app.web.lead_ui_helpers import (
+    lead_is_off_catalog,
+    lead_next_action_overdue,
+    lead_quality_badge,
+)
 
 
 def test_lead_is_off_catalog_from_risk_flags():
@@ -41,3 +47,18 @@ def test_lead_quality_badge_none_for_commercial():
         ai_reason="Пользователь спрашивает цену товара.",
     )
     assert lead_quality_badge(lead) is None
+
+
+def test_lead_next_action_overdue():
+    lead = Lead(
+        contact_id=1,
+        comment_id=1,
+        competitor_id=1,
+        intent="PRICE",
+        lead_score=80,
+        status=LeadStatus.CONTACTED,
+        next_action_at=datetime.now(UTC) - timedelta(hours=2),
+    )
+    assert lead_next_action_overdue(lead) is True
+    lead.next_action_at = datetime.now(UTC) + timedelta(hours=2)
+    assert lead_next_action_overdue(lead) is False
