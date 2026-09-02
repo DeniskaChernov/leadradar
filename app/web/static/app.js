@@ -410,9 +410,34 @@
     return selected.value;
   };
 
+  const formatScanPreviewMeta = (preview) => {
+    if (!preview.is_live) {
+      return {
+        meta: 'Offline-режим: credits не расходуются.',
+        plan: '',
+        block: '',
+      };
+    }
+    const requested = preview.requested_credits;
+    const effective = preview.effective_max_credits;
+    let meta = `Макс. на scan: ${effective} credits · `
+      + `месяц: ${preview.used_this_month}/${preview.monthly_hard_limit ?? '—'} · `
+      + `сегодня: ${preview.daily_remaining}`;
+    if (preview.clamped) {
+      meta += ` · запрос ${requested} урезан до ${effective}`;
+    }
+    const plan = `План: ~${preview.estimated_competitors_reachable || 0} конкурентов · `
+      + `~${preview.estimated_comment_pages || 0} стр. комментариев`
+      + (preview.expected_min_units != null ? ` · минимум ${preview.expected_min_units} credits` : '');
+    const block = Array.isArray(preview.blocking_reasons) && preview.blocking_reasons.length
+      ? preview.blocking_reasons.join(' ')
+      : '';
+    return { meta, plan, block };
+  };
+
   const refreshScanBudgetPreview = async (root = document) => {
     const credits = readScanBudgetSelection(root);
-    if (!credits) return;
+    if (!credits) return null;
     try {
       const preview = await api(
         `/api/scan/preview?max_credits=${encodeURIComponent(credits)}`,
@@ -421,6 +446,9 @@
       const maxEl = root.querySelector('[data-budget-max]');
       const monthlyEl = root.querySelector('[data-budget-monthly]');
       const dailyEl = root.querySelector('[data-budget-daily]');
+      const planEl = root.querySelector('[data-budget-plan]');
+      const clampEl = root.querySelector('[data-budget-clamp]');
+      const clampValue = root.querySelector('[data-budget-clamp-value]');
       if (maxEl) maxEl.textContent = `${preview.effective_max_credits} credits`;
       if (monthlyEl && preview.monthly_remaining != null) {
         monthlyEl.textContent = String(preview.monthly_remaining);
@@ -428,38 +456,55 @@
       if (dailyEl && preview.daily_remaining != null) {
         dailyEl.textContent = String(preview.daily_remaining);
       }
+      if (planEl) {
+        planEl.textContent = `План: ~${preview.estimated_competitors_reachable || 0} конкурентов · `
+          + `~${preview.estimated_comment_pages || 0} стр. комментариев`
+          + (preview.expected_min_units != null ? ` · минимум ${preview.expected_min_units} credits` : '');
+      }
+      if (clampEl) {
+        clampEl.hidden = !preview.clamped;
+        if (clampValue) clampValue.textContent = String(preview.effective_max_credits);
+      }
+      const meta = root.querySelector('[data-scan-quick-meta]');
+      const planQuick = root.querySelector('[data-scan-quick-plan]');
+      const blockQuick = root.querySelector('[data-scan-quick-block]');
+      if (meta || planQuick || blockQuick) {
+        const formatted = formatScanPreviewMeta(preview);
+        if (meta) {
+          meta.textContent = formatted.meta;
+          meta.hidden = false;
+        }
+        if (planQuick) {
+          planQuick.textContent = formatted.plan;
+          planQuick.hidden = !formatted.plan;
+        }
+        if (blockQuick) {
+          blockQuick.textContent = formatted.block;
+          blockQuick.hidden = !formatted.block;
+        }
+      }
+      return preview;
     } catch (_error) {
-      /* preview недоступен offline */
+      return null;
     }
   };
 
   const openScanQuickModal = () => new Promise((resolve) => {
     const root = document.getElementById('scan-quick');
     if (!root) return resolve(null);
-    const meta = root.querySelector('[data-scan-quick-meta]');
     const cancel = root.querySelector('[data-scan-quick-cancel]');
     const go = root.querySelector('[data-scan-quick-go]');
     const previouslyFocused = document.activeElement;
     root.hidden = false;
     requestAnimationFrame(() => root.classList.add('is-open'));
-    api('/api/scan/preview?max_credits=10', { method: 'GET' })
-      .then((preview) => {
-        if (!meta) return;
-        if (!preview.is_live) {
-          meta.textContent = 'Offline-режим: credits не расходуются.';
-          meta.hidden = false;
-          return;
-        }
-        meta.textContent = `Макс. на scan: ${preview.effective_max_credits} credits · `
-          + `месяц: ${preview.used_this_month}/${preview.monthly_hard_limit} · `
-          + `сегодня: ${preview.daily_remaining}`;
-        meta.hidden = false;
-      })
-      .catch(() => {
-        if (meta) meta.hidden = true;
-      });
+    refreshScanBudgetPreview(root);
+    const onChange = () => refreshScanBudgetPreview(root);
+    root.addEventListener('change', onChange);
+    root.addEventListener('input', onChange);
     const close = (value) => {
       root.classList.remove('is-open');
+      root.removeEventListener('change', onChange);
+      root.removeEventListener('input', onChange);
       cancel.onclick = null;
       go.onclick = null;
       document.removeEventListener('keydown', onKeydown);

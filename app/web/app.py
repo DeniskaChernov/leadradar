@@ -1011,6 +1011,14 @@ def build_web_app(
             "estimated_comment_pages": max(
                 0, effective - min(plan["active_competitors"], effective)
             ),
+            "expected_min_units": plan.get("expected_min_units"),
+            "comment_candidates": plan.get("comment_candidates"),
+            "clamped": bool(
+                is_live and requested > effective and radar_spend_allowed()
+            ),
+            "month_credits_low": bool(
+                budget is not None and getattr(budget, "month_credits_low", False)
+            ),
             "can_start": not blocking_reasons and (effective > 0 or not is_live),
             "blocking_reasons": blocking_reasons,
             "plan": plan,

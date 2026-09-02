@@ -100,12 +100,15 @@
     {% endif %}
   </div>
 </section>
-<section class="panel radar-budget-card" aria-labelledby="radar-budget-title">
+<section class="panel radar-budget-card" id="radar-budget-card" aria-labelledby="radar-budget-title" style="scroll-margin-top: 96px">
   <div class="radar-budget-head">
     <div><span class="eyebrow">ЛИМИТ CREDITS</span><h2 id="radar-budget-title">Бюджет проверки</h2></div>
-    <span class="tag {% if scan_budget.budget_status == 'HEALTHY' %}success{% elif scan_budget.budget_status in ['WATCH','UNKNOWN'] %}warning{% else %}danger{% endif %}">{% if scan_budget.budget_status == 'HEALTHY' %}В норме{% elif scan_budget.budget_status == 'WATCH' %}Наблюдение{% elif scan_budget.budget_status == 'UNKNOWN' %}Неизвестно{% elif scan_budget.budget_status == 'NOT_CONFIGURED' %}Не задан{% elif scan_budget.budget_status == 'DANGER' %}Опасно{% else %}{{ scan_budget.budget_status }}{% endif %}</span>
+    <span class="tag {% if scan_budget.budget_status == 'HEALTHY' and not scan_budget.month_credits_low %}success{% elif scan_budget.budget_status in ['WATCH','UNKNOWN'] or scan_budget.month_credits_low %}warning{% else %}danger{% endif %}">{% if scan_budget.month_credits_low %}&lt;20% месяца{% elif scan_budget.budget_status == 'HEALTHY' %}В норме{% elif scan_budget.budget_status == 'WATCH' %}Наблюдение{% elif scan_budget.budget_status == 'UNKNOWN' %}Неизвестно{% elif scan_budget.budget_status == 'NOT_CONFIGURED' %}Не задан{% elif scan_budget.budget_status == 'DANGER' %}Опасно{% else %}{{ scan_budget.budget_status }}{% endif %}</span>
   </div>
   {% if scan_budget.is_live and scan_budget.live_enabled %}
+  {% if scan_budget.month_credits_low %}
+  <div class="alert warn"><b>Месячный лимит почти исчерпан</b><span>Осталось {{ scan_budget.monthly_remaining }} credits из {{ scan_budget.monthly_hard_limit }}. Подробности: <a href="/economics">Экономика</a>.</span></div>
+  {% endif %}
   <div class="radar-budget-metrics">
     <div><small>Остаток</small><b>{% if scan_budget.credits_remaining is not none %}{{ '{:,}'.format(scan_budget.credits_remaining).replace(',', ' ') }} credits{% else %}Не подтверждён{% endif %}</b><span>{{ scan_budget.credits_remaining_source }}</span></div>
     <div><small>Этот месяц</small><b>{{ scan_budget.used_this_month }} / {{ scan_budget.monthly_hard_limit or '—' }}</b><span>Рабочая цель: {{ scan_budget.monthly_target or '—' }}</span></div>
@@ -123,6 +126,8 @@
     <span>Максимальный расход: <b data-budget-max>{{ scan_budget.effective_max_credits }} credits</b></span>
     <span>Осталось в месяце: <b data-budget-monthly>{{ scan_budget.monthly_remaining }}</b></span>
     <span>Доступно сегодня: <b data-budget-daily>{{ scan_budget.daily_remaining }}</b></span>
+    <span data-budget-plan>План: ~{{ scan_budget.estimated_competitors_reachable }} конкурентов · ~{{ scan_budget.estimated_comment_pages }} стр. комментариев{% if scan_budget.expected_min_units %} · минимум {{ scan_budget.expected_min_units }} credits{% endif %}</span>
+    <span class="budget-clamp" data-budget-clamp {% if not scan_budget.clamped %}hidden{% endif %}>Запрос будет урезан до <b data-budget-clamp-value>{{ scan_budget.effective_max_credits }}</b> credits</span>
     <button class="btn primary" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Запустить Radar</button>
   </div>
   {% elif scan_budget.is_live %}

@@ -45,7 +45,7 @@
 - [x] C3. Одна кнопка «Оценить накопившееся»
 - [x] C4. Plain-language help на всех вкладках radar
 - [x] C5. Счётчик «спорных» vs «архив» раздельно
-- [ ] C6. Preview стоимости scan до запуска (улучшить)
+- [x] C6. Preview стоимости scan до запуска (улучшить)
 - [x] C7. Post-scan summary modal
 - [x] C8. Competitor tier в строке radar feed
 - [x] C9. Quick filter: только HOT actionable
@@ -80,24 +80,24 @@
 
 - [x] E1. Economics hero: «сколько потратили / сколько лидов»
 - [x] E2. Plain labels вместо PROVIDER_CONFIRMED
-- [ ] E3. График burn 7d sparkline
-- [ ] E4. Alert если credits < 20% месяца
-- [ ] E5. Cost per HOT lead KPI
+- [x] E3. График burn 7d sparkline
+- [x] E4. Alert если credits < 20% месяца
+- [x] E5. Cost per HOT lead KPI
 - [ ] E6. OpenAI $/lead metric
 - [ ] E7. Export economics CSV
-- [ ] E8. Link economics → radar budget
+- [x] E8. Link economics → radar budget
 - [ ] E9. ROI placeholder (deals revenue)
 - [ ] E10. Budget simulation slider
 
 ## F. Конкуренты и discovery (10)
 
 - [x] F1. Competitors hero короче + KPI glass
-- [ ] F2. Рекомендация tier auto-suggest UI
+- [x] F2. Рекомендация tier auto-suggest UI
 - [x] F3. Bulk pause/resume competitors
 - [ ] F4. Discovery → add competitor flow
 - [ ] F5. Overlap graph visual
 - [ ] F6. Commercial rate trend per competitor
-- [ ] F7. Last scan error badge
+- [x] F7. Last scan error badge
 - [x] F8. Notification policy plain RU
 - [ ] F9. Competitor compare side-by-side
 - [ ] F10. Import CSV competitors

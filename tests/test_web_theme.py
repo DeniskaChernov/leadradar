@@ -233,8 +233,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.17.0-wave5" in base
-    assert "13.17.0-wave5" in auth
+    assert "13.18.0-wave6" in base
+    assert "13.18.0-wave6" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
@@ -420,7 +420,16 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "confirmAction" in javascript and "options.danger" in javascript
     assert "/api/competitors/bulk-active" in javascript
     assert ".competitors-bulk-bar" in css
-    assert "13.17.0-wave5" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "13.18.0-wave6" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "data-budget-plan" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "data-scan-quick-plan" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "formatScanPreviewMeta" in javascript
+    assert "burn-sparkline" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert "economics-low-alert" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert 'href="/radar#radar-budget-title"' in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert "credits/HOT" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert "tier-suggest" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
+    assert "Ошибки скана" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
     assert "contacts-hero" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert 'href="/agent"' in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert "ОЧЕРЕДЬ КОНТАКТОВ" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")

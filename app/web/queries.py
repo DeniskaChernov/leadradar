@@ -1245,15 +1245,19 @@ class WebQueryService:
                 if stats["comments"] < 10:
                     recommendation = "Набираем данные"
                     recommendation_tone = "muted"
+                    suggested_tier = None
                 elif stats["commercial_rate"] >= 15 or won > 0:
                     recommendation = "Усилить мониторинг"
                     recommendation_tone = "good"
+                    suggested_tier = "A"
                 elif stats["commercial_rate"] >= 5:
                     recommendation = "Оставить в работе"
                     recommendation_tone = "info"
+                    suggested_tier = "B"
                 else:
                     recommendation = "Фоновый приоритет"
                     recommendation_tone = "warn"
+                    suggested_tier = "C"
                 result.append(
                     {
                         "competitor": competitor,
@@ -1262,6 +1266,7 @@ class WebQueryService:
                         "revenue": revenue,
                         "recommendation": recommendation,
                         "recommendation_tone": recommendation_tone,
+                        "suggested_tier": suggested_tier,
                     }
                 )
             return result
