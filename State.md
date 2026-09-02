@@ -1,7 +1,7 @@
 # Lead Radar — machine state
 
-- updated: 2026-09-02T15:05+05
-- ui: 13.19.0-wave7
-- feature: wave7 B11 CSV · A7 rules stamp · A12 manager FP · G1 agent context · G3 GPT chip · F4 discovery promote active
-- tests: 420 passed, 1 skipped; ruff clean
+- updated: 2026-09-02T15:25+05
+- ui: 13.20.0-wave8
+- feature: wave8 E6$/lead E7 econ CSV E9 ROI G4 cost G5 cache-hit G7 analyze NEW G10 GPT-off D14 focus B13 assign
+- tests: 421 passed, 1 skipped; ruff clean
 - branch: codex/phase-c-budget-ledger-hardening

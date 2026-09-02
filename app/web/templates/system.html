@@ -157,6 +157,8 @@
     <span><b>{{ ai_safety.stale_ai_leases }}</b> просроченных AI lease</span>
     <span><b>{{ ai_safety.uncertain_reservations }}</b> неопределённых списаний</span>
     <span><b>{{ ai_safety.cost_events }}</b> записей себестоимости</span>
+    <span><b>{{ ai_safety.openai_cost_events }}</b> OpenAI cost-событий</span>
+    <span><b>{% if ai_safety.cache_hit_rate is not none %}{{ '%.1f'|format(ai_safety.cache_hit_rate * 100) }}%{% else %}—{% endif %}</b> proxy cache-hit</span>
   </div>
   {% if uncertain_budget_reservations %}
   <p class="table-scroll-hint">Неопределённые списания ScrapeCreators/OpenAI — подтвердите факт charge или закройте без spend.</p>

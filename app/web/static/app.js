@@ -320,8 +320,21 @@
     const y = Number(sessionStorage.getItem('lr:scroll-y') || 0);
     sessionStorage.removeItem('lr:focus');
     sessionStorage.removeItem('lr:scroll-y');
-    if (y) requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'instant' }));
-    if (key) requestAnimationFrame(() => document.querySelector(key)?.focus());
+    const apply = () => {
+      if (y) window.scrollTo({ top: y, behavior: 'instant' });
+      if (!key) return;
+      const el = document.querySelector(key);
+      if (!el) return;
+      el.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      if (typeof el.focus === 'function') {
+        try {
+          el.focus({ preventScroll: true });
+        } catch {
+          el.focus();
+        }
+      }
+    };
+    requestAnimationFrame(apply);
   };
 
   const enhanceTables = () => {
@@ -402,9 +415,42 @@
     element.classList.add('stage-success');
   };
 
+  const focusKeyForElement = (el) => {
+    if (!(el instanceof HTMLElement)) return '';
+    if (el.id) return `#${CSS.escape(el.id)}`;
+    if (el.dataset.leadAction && el.dataset.leadId) {
+      return `[data-lead-action="${el.dataset.leadAction}"][data-lead-id="${el.dataset.leadId}"]`;
+    }
+    if (el.dataset.stage && el.dataset.leadId) {
+      return `[data-stage="${el.dataset.stage}"][data-lead-id="${el.dataset.leadId}"]`;
+    }
+    if (el.dataset.apiAction) {
+      return `[data-api-action="${CSS.escape(el.dataset.apiAction)}"]`;
+    }
+    if (el.dataset.taskComplete) {
+      return `[data-task-complete="${CSS.escape(el.dataset.taskComplete)}"]`;
+    }
+    const form = el.closest('form[data-api-form]');
+    if (form?.id) return `#${CSS.escape(form.id)}`;
+    if (form) {
+      const panel = form.closest('[id]');
+      if (panel?.id) return `#${CSS.escape(panel.id)}`;
+    }
+    const funnel = document.getElementById('funnel');
+    return funnel ? '#funnel' : '';
+  };
+
+  let lastActionEl = null;
+
   const reloadSoon = (delay = 450, focusSelector = '') => {
     sessionStorage.setItem('lr:scroll-y', String(window.scrollY));
-    if (focusSelector) sessionStorage.setItem('lr:focus', focusSelector);
+    let focus = focusSelector;
+    if (!focus) {
+      const active = document.activeElement;
+      focus = focusKeyForElement(active instanceof HTMLElement ? active : null)
+        || focusKeyForElement(lastActionEl);
+    }
+    if (focus) sessionStorage.setItem('lr:focus', focus);
     setTimeout(() => location.reload(), delay);
   };
 
@@ -699,7 +745,10 @@
         }
       }
       if (form.dataset.reset === '1') form.reset();
-      if (form.dataset.reload === '1') reloadSoon();
+      if (form.dataset.reload === '1') {
+        lastActionEl = event.submitter || form;
+        reloadSoon(450, focusKeyForElement(lastActionEl));
+      }
     } catch (error) {
       toast(error.message, true);
     } finally {
@@ -708,6 +757,10 @@
   });
 
   document.addEventListener('click', async (event) => {
+    const tracked = event.target.closest(
+      '[data-lead-action],[data-stage],[data-api-action],[data-lead-bulk],[data-competitor-bulk],[data-task-complete],[data-lead-followup],[data-discovery-import]'
+    );
+    if (tracked) lastActionEl = tracked;
     const button = event.target.closest('.btn');
     if (button && !button.disabled) {
       const bounds = button.getBoundingClientRect();
@@ -865,7 +918,7 @@
           setLoading(action, false);
           return;
         }
-        if (action.dataset.reload === '1') reloadSoon();
+        if (action.dataset.reload === '1') reloadSoon(450, focusKeyForElement(action));
         else setLoading(action, false);
       } catch (error) {
         toast(error.message, true);
@@ -984,7 +1037,7 @@
         const data = await api(`/api/leads/${id}/${type}`, { method: 'POST', body: '{}' });
         toast(data.message || 'Лид обновлён');
         flashStageSuccess(leadAction);
-        reloadSoon();
+        reloadSoon(450, focusKeyForElement(leadAction));
       } catch (error) {
         toast(error.message, true);
         setLoading(leadAction, false);
@@ -1004,7 +1057,7 @@
         });
         toast(data.message || 'Стадия обновлена');
         flashStageSuccess(stage);
-        reloadSoon(650);
+        reloadSoon(650, focusKeyForElement(stage));
       } catch (error) {
         toast(error.message, true);
         setLoading(stage, false);

@@ -81,6 +81,8 @@ class EconomicsPageSnapshot:
     brightdata: ProviderCostSummary
     infrastructure: ProviderCostSummary
     burn_reasons: tuple[str, ...]
+    openai_usd_per_lead: Decimal | None = None
+    openai_usd_per_hot: Decimal | None = None
 
 
 class EconomicsPageService:
@@ -114,6 +116,7 @@ class EconomicsPageService:
         credits = await self._credits_outcome_metrics(started_at, usd)
         openai, brightdata, infrastructure = await self._provider_summaries(started_at)
         burn_reasons = await self._burn_reasons(provider)
+        openai_complete = openai.events > 0 and openai.unpriced_events == 0
         return EconomicsPageSnapshot(
             days=days,
             generated_at=now,
@@ -125,6 +128,12 @@ class EconomicsPageService:
             brightdata=brightdata,
             infrastructure=infrastructure,
             burn_reasons=burn_reasons,
+            openai_usd_per_lead=self._usd_per(
+                openai.known_spend_usd, usd.leads_count, openai_complete
+            ),
+            openai_usd_per_hot=self._usd_per(
+                openai.known_spend_usd, usd.hot_count, openai_complete
+            ),
         )
 
     async def _credits_outcome_metrics(
@@ -405,6 +414,18 @@ class EconomicsPageService:
             return None
         return (Decimal(credits) / Decimal(denominator)).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+    @staticmethod
+    def _usd_per(
+        amount: Decimal,
+        denominator: int,
+        complete: bool,
+    ) -> Decimal | None:
+        if not complete or denominator <= 0:
+            return None
+        return (Decimal(amount) / Decimal(denominator)).quantize(
+            Decimal("0.000001"), rounding=ROUND_HALF_UP
         )
 
     @staticmethod

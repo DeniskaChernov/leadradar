@@ -34,7 +34,7 @@
 - [ ] B10. Mobile kanban swipe между колонками
 - [x] B11. Экспорт воронки CSV
 - [x] B12. SLA-бейдж «просрочен next_action»
-- [ ] B13. Назначение менеджера в UI
+- [x] B13. Назначение менеджера в UI
 - [x] B14. Reopen NOT_LEAD из списка
 - [x] B15. Воронка: колонки WON/LOST на доске
 
@@ -68,7 +68,7 @@
 - [ ] D11. Loading skeletons для kanban
 - [x] D12. Confirm modal RU для destructive
 - [ ] D13. Toast stack + undo NOT_LEAD
-- [ ] D14. Focus restore после reloadSoon
+- [x] D14. Focus restore после reloadSoon
 - [ ] D15. Keyboard shortcuts (/ search)
 - [ ] D16. Breadcrumbs на detail pages
 - [ ] D17. Print-friendly lead card
@@ -83,10 +83,10 @@
 - [x] E3. График burn 7d sparkline
 - [x] E4. Alert если credits < 20% месяца
 - [x] E5. Cost per HOT lead KPI
-- [ ] E6. OpenAI $/lead metric
-- [ ] E7. Export economics CSV
+- [x] E6. OpenAI $/lead metric
+- [x] E7. Export economics CSV
 - [x] E8. Link economics → radar budget
-- [ ] E9. ROI placeholder (deals revenue)
+- [x] E9. ROI placeholder (deals revenue)
 - [ ] E10. Budget simulation slider
 
 ## F. Конкуренты и discovery (10)
@@ -107,13 +107,13 @@
 - [x] G1. Agent: контекст лида в каждом preset
 - [x] G2. Agent: «почему не лид» preset
 - [x] G3. GPT queue progress в header
-- [ ] G4. OpenAI cost per analysis in lead detail
-- [ ] G5. Cache hit rate metric
+- [x] G4. OpenAI cost per analysis in lead detail
+- [x] G5. Cache hit rate metric
 - [ ] G6. Prompt version display
-- [ ] G7. Manual «переспросить GPT» для NEW
+- [x] G7. Manual «переспросить GPT» для NEW
 - [ ] G8. Agent export answer to note
 - [ ] G9. Rate limit user feedback
-- [ ] G10. Fallback message если GPT off
+- [x] G10. Fallback message если GPT off
 
 ## H. Данные и миграции (8)
 

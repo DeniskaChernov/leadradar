@@ -9,18 +9,22 @@
 </div>
 
 {% set ai = lead.analysis_details or {} %}
+{% set openai_cost = openai_cost or {'events': 0, 'known_spend_usd': 0, 'input_tokens': 0, 'output_tokens': 0} %}
 <div class="hero-status lead-hero {% if lead.lead_score >= settings.hot_lead_threshold %}hot live{% else %}safe{% endif %}" data-motion-root>
   <div class="lead-score-xl"><span>{{ lead.lead_score }}</span><small>из 100</small></div>
   <div class="lead-hero-body"><span class="eyebrow">{{ intent_label(lead.intent) }}</span><h2>{{ comment.text or 'Пустой комментарий' }}</h2><p>{{ lead.ai_reason or 'Система ещё не сформировала объяснение оценки.' }}</p><div class="lead-hero-tags">{% include "partials/lead_quality_badge.html" %}<span class="tag">{{ product_label(lead.product_category) }}</span><span class="tag">Источник: @{{ competitor.normalized_handle }}</span><span class="tag status-{{ lead.status.value|lower }}">{{ lead_status_label(lead.status) }}</span></div></div>
   <div class="lead-hero-actions"><a class="btn" target="_blank" rel="noopener" href="{{ contact.profile_url }}">Профиль Instagram ↗</a><a class="btn ghost" target="_blank" rel="noopener" href="{{ post.url }}">Открыть Reel ↗</a></div>
 </div>
 
-{% if ai or lead.status.value == 'AI_PENDING' %}
-<section class="ai-intelligence panel">
+{% if ai or lead.status.value in ['AI_PENDING', 'NEW', 'ANALYZING'] %}
+<section class="ai-intelligence panel" id="lead-ai">
   <div class="ai-intelligence-head">
     <div><span class="eyebrow">AI-РАЗБОР СИГНАЛА</span><h2>Почему этот сигнал важен</h2><p>Не просто оценка, а решение для следующего действия менеджера.</p></div>
     {% if ai %}<div class="confidence-orb"><strong>{{ ai.get('confidence', 50) }}%</strong><span>уверенность</span></div>{% endif %}
   </div>
+  {% if not openai_spend_allowed %}
+  <div class="alert warning"><b>GPT выключен</b><span>Уточнение через OpenAI недоступно. Оценка идёт только по локальным правилам — включите GPT в системе (ops arm + ключ).</span></div>
+  {% endif %}
   {% if ai %}
   <div class="intelligence-grid">
     <div><span>Стадия покупки</span><b>{{ funnel_stage_label(ai.get('funnel_stage')) }}</b></div>
@@ -40,12 +44,19 @@
     <div><h3>Риски и неопределённость</h3>{% for item in ai.get('risk_flags', []) %}<p><span class="risk-mark">!</span>{{ item }}</p>{% else %}<p><span class="evidence-check">✓</span>Существенных рисков классификации не найдено.</p>{% endfor %}</div>
   </div>
   {% endif %}
-  {% if lead.status.value == 'AI_PENDING' %}
+  {% if openai_cost.events %}
+  <div class="intelligence-grid">
+    <div><span>OpenAI cost</span><b>${{ '%.6f'|format(openai_cost.known_spend_usd) }}</b></div>
+    <div><span>Токены in/out</span><b>{{ openai_cost.input_tokens }} / {{ openai_cost.output_tokens }}</b></div>
+    <div><span>Cost-событий</span><b>{{ openai_cost.events }}</b></div>
+  </div>
+  {% endif %}
+  {% if lead.status.value in ['AI_PENDING', 'NEW'] %}
   <div class="empty-box">
     <span class="empty-icon" aria-hidden="true"><i data-lucide="circle-help"></i></span>
-    <b>Система не уверена в оценке</b>
-    <span>Лид уже виден менеджеру. Нажмите ниже — подключится умная оценка GPT (если включена).</span>
-    <button class="btn primary" type="button" data-api-action="/api/leads/{{ lead.id }}/analyze" data-payload='{}' data-reload="1">Уточнить оценку через GPT</button>
+    <b>{% if lead.status.value == 'NEW' %}Переспросить оценку{% else %}Система не уверена в оценке{% endif %}</b>
+    <span>{% if openai_spend_allowed %}Лид уже виден менеджеру. Нажмите ниже — подключится умная оценка GPT.{% else %}GPT сейчас выключен: кнопка прогонит только локальные правила.{% endif %}</span>
+    <button class="btn primary" type="button" id="lead-analyze-btn" data-api-action="/api/leads/{{ lead.id }}/analyze" data-payload='{}' data-reload="1">{% if openai_spend_allowed %}Уточнить оценку через GPT{% else %}Переоценить локальными правилами{% endif %}</button>
   </div>
   {% endif %}
 </section>
@@ -133,6 +144,25 @@
     <section class="panel side-card">
       <div class="avatar large-avatar">{{ (contact.display_name or contact.username)[:1]|upper }}</div><h3>{{ contact.display_name or '@' ~ contact.username }}</h3><a target="_blank" rel="noopener" href="{{ contact.profile_url }}">@{{ contact.username }} ↗</a>
       <dl><dt>Первый сигнал</dt><dd>{{ contact.first_seen_at | display_dt('%d.%m.%Y') }}</dd><dt>Последняя активность</dt><dd>{{ contact.last_seen_at | display_dt('%d.%m.%Y %H:%M') }}</dd><dt>Лучшая оценка</dt><dd>{{ contact.current_lead_score }}/100</dd><dt>Ответственный</dt><dd>{% if lead.assigned_manager_telegram_id %}Telegram ID {{ lead.assigned_manager_telegram_id }}{% else %}Не назначен{% endif %}</dd></dl>
+    </section>
+
+    <section class="panel action-form-card" id="lead-assign">
+      <h3>Ответственный менеджер</h3>
+      <form data-api-form action="/api/leads/{{ lead.id }}/assign" data-reload="1">
+        <label>Telegram ID
+          <select name="manager_id" required aria-label="Менеджер">
+            {% if settings.telegram_admin_chat_ids %}
+              {% for mid in settings.telegram_admin_chat_ids %}
+              <option value="{{ mid }}" {% if lead.assigned_manager_telegram_id == mid or (not lead.assigned_manager_telegram_id and mid == manager_id) %}selected{% endif %}>{{ mid }}{% if mid == manager_id %} · вы{% endif %}</option>
+              {% endfor %}
+            {% else %}
+              <option value="{{ manager_id }}" selected>{{ manager_id }}</option>
+            {% endif %}
+          </select>
+        </label>
+        <input type="hidden" name="reassign" value="1">
+        <button class="btn" type="submit">{% if lead.assigned_manager_telegram_id %}Переназначить{% else %}Назначить{% endif %}</button>
+      </form>
     </section>
 
     <section class="panel action-form-card">

@@ -642,6 +642,48 @@ def build_web_app(
             context=base_context(request, **data),
         )
 
+    @app.get("/api/economics/export.csv")
+    async def export_economics_csv(days: int = 30):
+        """CSV unit economics / OpenAI cost: только агрегаты из БД, без PII."""
+        if days not in {1, 7, 30}:
+            days = 30
+        data = await queries.economics(days=days)
+        page = data["page"]
+        economics = data["economics"]
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["metric", "value", "unit", "period_days"])
+        rows = [
+            ("openai_events", page.openai.events, "count"),
+            ("openai_known_spend_usd", page.openai.known_spend_usd, "usd"),
+            ("openai_usd_per_lead", page.openai_usd_per_lead, "usd"),
+            ("openai_usd_per_hot", page.openai_usd_per_hot, "usd"),
+            ("signals_count", economics.signals_count, "count"),
+            ("leads_count", economics.leads_count, "count"),
+            ("hot_count", economics.hot_count, "count"),
+            ("won_count", economics.won_count, "count"),
+            ("known_spend_usd", economics.known_spend_usd, "usd"),
+            ("cost_per_lead_usd", economics.cost_per_lead_usd, "usd"),
+            ("cost_per_hot_usd", economics.cost_per_hot_usd, "usd"),
+            ("revenue_uzs", economics.revenue_uzs, "uzs"),
+            ("gross_profit_uzs", economics.gross_profit_uzs, "uzs"),
+            ("roi_ratio", economics.roi_ratio, "ratio"),
+            ("roi_status", economics.roi_status, "text"),
+            ("credits_known", page.credits.known_credits, "credits"),
+            ("credits_per_lead", page.credits.credits_per_lead, "credits"),
+            ("credits_per_hot", page.credits.credits_per_hot, "credits"),
+        ]
+        for metric, value, unit in rows:
+            writer.writerow([metric, "" if value is None else value, unit, days])
+        payload = buffer.getvalue()
+        return StreamingResponse(
+            iter([payload]),
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="economics-{days}d.csv"'
+            },
+        )
+
     @app.get("/audiences", response_class=HTMLResponse)
     async def audiences(request: Request, vertical: str = "FURNITURE"):
         rows = await queries.audiences(vertical=vertical)
@@ -1510,15 +1552,22 @@ def build_web_app(
 
     @app.post("/api/leads/{lead_id}/analyze")
     async def analyze_lead_now(request: Request, lead_id: int):
-        """Повторный разбор одного лида: hybrid+OpenAI если armed, иначе только правила."""
+        """Разбор NEW/AI_PENDING/ANALYZING: hybrid+OpenAI если armed, иначе только правила."""
         use_openai = openai_spend_allowed()
+        async with workflow.session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+        if lead is None:
+            raise HTTPException(status_code=404, detail="Лид не найден")
+        if lead.status not in {
+            LeadStatus.NEW,
+            LeadStatus.AI_PENDING,
+            LeadStatus.ANALYZING,
+        }:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Разбор недоступен в статусе {lead.status.value}",
+            )
         if analysis_pipeline is not None and use_openai:
-            pending_ids = await hybrid_lead_service.list_pending_lead_ids(500, cooldown_seconds=0)
-            if lead_id not in pending_ids:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Лид не найден или не в очереди AI_PENDING/ANALYZING",
-                )
             await analysis_pipeline.enqueue(lead_id)
             return {
                 "ok": True,
@@ -1529,12 +1578,7 @@ def build_web_app(
                 "message": "Лид поставлен в очередь OpenAI · разбор в фоне",
             }
         service = hybrid_lead_service if use_openai else local_lead_service
-        result = await service.retry_pending_lead(lead_id)
-        if result is None:
-            raise HTTPException(
-                status_code=409,
-                detail="Лид не найден или не в очереди AI_PENDING/ANALYZING",
-            )
+        result = await service.analyze_lead(lead_id)
         return {
             "ok": True,
             "lead_id": result.lead_id,
@@ -1556,6 +1600,34 @@ def build_web_app(
                 "ok": True,
                 "status": lead.status.value,
                 "message": f"Сохранено · {status_label}",
+            }
+        except LeadWorkflowError as exc:
+            raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
+
+    @app.post("/api/leads/{lead_id}/assign")
+    async def assign_lead(request: Request, lead_id: int):
+        """Назначение/переназначение менеджера из карточки лида (список admin chat ids)."""
+        payload = await _json_or_form(request)
+        target = _int_or_none(payload.get("manager_id"))
+        if target is None:
+            target = manager_id(request)
+        if target <= 0:
+            raise HTTPException(status_code=400, detail="Некорректный manager_id")
+        allowed = list(settings.telegram_admin_chat_ids)
+        if allowed and target not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail="Менеджер не в списке telegram_admin_chat_ids",
+            )
+        reassign = str(payload.get("reassign") or "").lower() in {"1", "true", "yes"}
+        try:
+            lead = await workflow.assign_manager(lead_id, target, reassign=reassign)
+            status_label = label(LEAD_STATUS_LABELS, lead.status)
+            return {
+                "ok": True,
+                "status": lead.status.value,
+                "assigned_manager_telegram_id": lead.assigned_manager_telegram_id,
+                "message": f"Ответственный · {target} · {status_label}",
             }
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from itertools import combinations
 
 from sqlalchemy import desc, func, or_, select
@@ -105,12 +106,28 @@ class WebQueryService:
                     ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
                 )
             )
+            openai_cost_events = int(
+                await session.scalar(
+                    select(func.count(CostEvent.id)).where(
+                        CostEvent.provider == "openai"
+                    )
+                )
+                or 0
+            )
+        statuses = {status.value: count for status, count in status_rows}
+        succeeded = int(statuses.get("SUCCEEDED", 0))
+        cache_hit_rate = None
+        if succeeded > 0:
+            misses = min(openai_cost_events, succeeded)
+            cache_hit_rate = round(max(0.0, (succeeded - misses) / succeeded), 4)
         return {
-            "statuses": {status.value: count for status, count in status_rows},
+            "statuses": statuses,
             "active_reservations": int(active_reservations or 0),
             "stale_ai_leases": int(stale_ai_leases or 0),
             "uncertain_reservations": int(uncertain_reservations or 0),
             "cost_events": int(await self._scalar_count(CostEvent.id)),
+            "openai_cost_events": openai_cost_events,
+            "cache_hit_rate": cache_hit_rate,
         }
 
     async def uncertain_notification_queue(self, *, limit: int = 30) -> list[dict]:
@@ -908,6 +925,19 @@ class WebQueryService:
                     .order_by(ContactTask.due_at)
                 )
             ).all()
+            openai_events = list(
+                await session.scalars(
+                    select(CostEvent).where(
+                        CostEvent.lead_id == lead_id,
+                        CostEvent.provider == "openai",
+                    )
+                )
+            )
+            openai_spend = sum(
+                (event.cost_usd or Decimal("0")) for event in openai_events
+            )
+            openai_tokens_in = sum(int(event.input_tokens or 0) for event in openai_events)
+            openai_tokens_out = sum(int(event.output_tokens or 0) for event in openai_events)
             return {
                 "lead": lead,
                 "contact": contact,
@@ -917,6 +947,12 @@ class WebQueryService:
                 "deal": deal,
                 "history": history,
                 "tasks": tasks,
+                "openai_cost": {
+                    "events": len(openai_events),
+                    "known_spend_usd": openai_spend,
+                    "input_tokens": openai_tokens_in,
+                    "output_tokens": openai_tokens_out,
+                },
             }
 
     async def contacts(self, *, q: str = "", limit: int = 300) -> list:

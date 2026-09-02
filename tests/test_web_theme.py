@@ -233,8 +233,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.19.0-wave7" in base
-    assert "13.19.0-wave7" in auth
+    assert "13.20.0-wave8" in base
+    assert "13.20.0-wave8" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
@@ -436,7 +436,14 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "manager-feedback-quality" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
     assert "В радар активно" in (PROJECT_ROOT / "app/web/templates/discovery.html").read_text(encoding="utf-8")
     assert "data-agent-context" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
-    assert "13.19.0-wave7" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "13.20.0-wave8" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "/api/economics/export.csv" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert "openai_usd_per_lead" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert "proxy cache-hit" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
+    assert "lead-assign" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
+    assert "GPT выключен" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
+    assert "focusKeyForElement" in javascript
+    assert "openai_cost" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
     assert "contacts-hero" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert 'href="/agent"' in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert "ОЧЕРЕДЬ КОНТАКТОВ" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")

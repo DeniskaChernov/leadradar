@@ -297,6 +297,78 @@ async def test_leads_export_csv_and_scan_progress_gpt_queue(session_factory):
     assert "discovery-import" in discovery.text
 
 
+async def test_wave8_economics_export_assign_analyze_new(session_factory):
+    lead_id = await create_lead(session_factory)
+    settings = Settings(
+        _env_file=None,
+        web_enabled=True,
+        instagram_provider="replay",
+        web_manager_id=1001,
+        telegram_admin_chat_ids=[1001, 2002],
+    )
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        economics_csv = await client.get("/api/economics/export.csv?days=30")
+        detail = await client.get(f"/leads/{lead_id}")
+        assign = await client.post(
+            f"/api/leads/{lead_id}/assign",
+            json={"manager_id": 1001, "reassign": True},
+        )
+        analyze = await client.post(f"/api/leads/{lead_id}/analyze", json={})
+        system = await client.get("/system")
+
+    assert economics_csv.status_code == 200
+    assert "openai_usd_per_lead" in economics_csv.text
+    assert "roi_status" in economics_csv.text
+
+    assert detail.status_code == 200
+    assert "lead-assign" in detail.text
+    assert "GPT выключен" in detail.text or "openai_spend_allowed" in detail.text
+    assert "/api/leads/" in detail.text and "/analyze" in detail.text
+
+    assert assign.status_code == 200
+    assert assign.json()["assigned_manager_telegram_id"] == 1001
+
+    # После assign статус TAKEN — analyze должен вернуть 409
+    assert analyze.status_code == 409
+
+    assert system.status_code == 200
+    assert "proxy cache-hit" in system.text
+    assert "OpenAI cost-событий" in system.text
+
+    # Отдельный NEW-лид: analyze локальными правилами, затем назначение
+    new_lead_id = await create_lead(
+        session_factory, comment_id="comment-wave8-new", user_id="user-wave8-new"
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        analyze_new = await client.post(f"/api/leads/{new_lead_id}/analyze", json={})
+        assert analyze_new.status_code == 200
+        assert analyze_new.json()["ok"] is True
+        assign_new = await client.post(
+            f"/api/leads/{new_lead_id}/assign",
+            json={"manager_id": 1001, "reassign": True},
+        )
+        # Если анализ уже закрыл лид как NOT_LEAD — assign ожидаемо 409
+        if assign_new.status_code == 200:
+            assert assign_new.json()["assigned_manager_telegram_id"] == 1001
+            reassign = await client.post(
+                f"/api/leads/{new_lead_id}/assign",
+                json={"manager_id": 2002, "reassign": True},
+            )
+            assert reassign.status_code == 200
+            assert reassign.json()["assigned_manager_telegram_id"] == 2002
+        else:
+            assert assign_new.status_code == 409
+            assert analyze_new.json().get("status") == "NOT_LEAD"
+
+
 async def test_uncertain_notification_resolve_api(session_factory):
     from sqlalchemy import select
 
