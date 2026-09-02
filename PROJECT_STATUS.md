@@ -2,7 +2,12 @@
 
 ## Текущая версия
 
-**PERSISTENT AI CHAT · FUNNEL UX · QA 55 · LIVE PILOT READY**
+**PERSISTENT AI CHAT · FUNNEL UX · QA 55 · LIVE PILOT READY · SIGNAL RECENCY**
+
+Контрольная точка 2026-09-01 (signal recency): фильтр `INSTAGRAM_SIGNAL_MAX_AGE_DAYS=30`
+на ingest, backfill, AI retry и radar feed; baseline/historical analyze выключены по
+умолчанию; OpenAI flush script; radar poll fix (**13.11.4-radar-poll-fix**). Tier A/B/C
+конкуренты восстановлены (**16 active**). **400 passed, 1 skipped**.
 
 Контрольная точка 2026-09-01 (QA5): ROI smoke 89x + gross margin 90% на /economics,
 browser visual 720px OK (economics/leads), PR #1 merged в main. **387 passed, 1 skipped**.

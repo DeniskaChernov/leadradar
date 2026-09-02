@@ -38,3 +38,9 @@ def test_restore_pilot_competitors_module_exposes_main():
 
     assert callable(restore_pilot_competitors.main)
     assert restore_pilot_competitors.RESTORE_TIERS == ("A", "B", "C")
+
+
+def test_flush_openai_pending_module_exposes_main():
+    from scripts import flush_openai_pending
+
+    assert callable(flush_openai_pending.main)

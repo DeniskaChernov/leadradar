@@ -220,8 +220,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.11.3-design-unify" in base
-    assert "13.11.3-design-unify" in auth
+    assert "13.11.4-radar-poll-fix" in base
+    assert "13.11.4-radar-poll-fix" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
@@ -249,6 +249,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     assert "sessionStorage.setItem('lr:scroll-y'" in javascript
     assert "setLoading" in javascript
     assert "prefers-reduced-motion: reduce" in javascript
+    assert "let radarWasBusy" in javascript
+    assert "if (radarWasBusy && !stillBusy)" in javascript
 
 
 def test_mobile_responsive_tables_and_economics_wrap_at_720px():

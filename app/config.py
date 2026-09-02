@@ -75,8 +75,9 @@ class Settings(BaseSettings):
     instagram_incremental_max_comment_pages: int = Field(default=2, ge=1, le=20)
     scrapecreators_max_comment_pages: int = Field(default=10, ge=1, le=100)
     process_existing_comments: bool = False
-    analyze_baseline_comments: bool = True
-    historical_analysis_batch_size: int = Field(default=25, ge=0, le=500)
+    instagram_signal_max_age_days: int = Field(default=30, ge=0, le=3650)
+    analyze_baseline_comments: bool = False
+    historical_analysis_batch_size: int = Field(default=0, ge=0, le=500)
     web_enabled: bool = True
     web_host: str = "127.0.0.1"
     web_port: int = Field(default=8000, ge=1, le=65535)

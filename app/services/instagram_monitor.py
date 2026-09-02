@@ -19,6 +19,7 @@ from app.services.contact_service import ContactService
 from app.services.lead_analysis_pipeline import LeadAnalysisPipeline
 from app.services.lead_service import LeadService
 from app.services.notification_service import LeadNotifier
+from app.services.signal_recency import is_signal_within_window
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class CycleStats:
     competitors_not_due: int = 0
     budget_deferred_candidates: int = 0
     avoided_requests: int = 0
+    comments_skipped_stale: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +87,7 @@ class InstagramMonitor:
         retry_pending_enabled: bool = False,
         retry_pending_batch_size: int = 5,
         retry_pending_cooldown_seconds: int = 3600,
+        max_signal_age_days: int = 30,
         analysis_pipeline: LeadAnalysisPipeline | None = None,
     ) -> None:
         self.session_factory = session_factory
@@ -103,6 +106,7 @@ class InstagramMonitor:
         self.retry_pending_enabled = retry_pending_enabled
         self.retry_pending_batch_size = retry_pending_batch_size
         self.retry_pending_cooldown_seconds = retry_pending_cooldown_seconds
+        self.max_signal_age_days = max(0, max_signal_age_days)
         self.analysis_pipeline = analysis_pipeline
         self.adaptive_monitoring = AdaptiveMonitoringService(
             session_factory,
@@ -318,6 +322,12 @@ class InstagramMonitor:
             )
             stats.avoided_requests += max(0, configured_pages - batch.pages_fetched)
         for comment in comments:
+            if not is_signal_within_window(
+                comment.created_at,
+                max_age_days=self.max_signal_age_days,
+            ):
+                stats.comments_skipped_stale += 1
+                continue
             signal = await self.contact_service.persist_signal(
                 reel, comment, is_baseline=check.is_baseline
             )

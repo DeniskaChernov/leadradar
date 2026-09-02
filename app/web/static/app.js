@@ -932,6 +932,10 @@
 
   let radarPollTimer = null;
   let radarPollBusy = false;
+  let radarWasBusy = (() => {
+    const banner = document.querySelector('[data-radar-live]');
+    return banner ? !banner.hidden : false;
+  })();
 
   const pollRadarFeed = async () => {
     if (radarPollBusy) return;
@@ -944,11 +948,11 @@
       const stillBusy = feed.cycle_running
         || Number(feed.analysis_queue || 0) > 0
         || Number(feed.analysis_in_flight || 0) > 0;
-      if (!stillBusy && radarPollTimer) {
-        clearInterval(radarPollTimer);
-        radarPollTimer = null;
+      // Полный reload только после завершения проверки/очереди, а не в простое.
+      if (radarWasBusy && !stillBusy) {
         reloadSoon(800);
       }
+      radarWasBusy = stillBusy;
     } catch (_error) {
       /* тихий poll */
     } finally {

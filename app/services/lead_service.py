@@ -33,6 +33,11 @@ from app.services.ai_service import (
     ValidatedPreviousSignal,
 )
 from app.services.contact_service import PersistedSignal
+from app.services.signal_recency import (
+    fresh_signal_clause,
+    is_signal_within_window,
+    signal_observed_at,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,17 +69,22 @@ class LeadService:
         hot_threshold: int,
         audience_engine: AudienceEngine | None = None,
         change_detector: SignificantChangeDetector | None = None,
+        *,
+        signal_max_age_days: int = 30,
     ) -> None:
         self.session_factory = session_factory
         self.analyzer = analyzer
         self.hot_threshold = hot_threshold
         self.audience_engine = audience_engine
         self.change_detector = change_detector
+        self.signal_max_age_days = max(0, signal_max_age_days)
 
     async def process_signal(
         self, signal: PersistedSignal, *, allow_baseline: bool = False
     ) -> ProcessedLead | None:
         if not signal.created or (signal.is_baseline and not allow_baseline):
+            return None
+        if not await self._signal_is_fresh(signal.comment_id):
             return None
 
         prepared = await self.ensure_analyzing(signal)
@@ -327,7 +337,10 @@ class LeadService:
                     await session.execute(
                         select(Comment)
                         .outerjoin(Lead, Lead.comment_id == Comment.id)
-                        .where(Lead.id.is_(None))
+                        .where(
+                            Lead.id.is_(None),
+                            fresh_signal_clause(max_age_days=self.signal_max_age_days),
+                        )
                         .order_by(Comment.created_at_platform.desc(), Comment.id.desc())
                         .limit(limit)
                     )
@@ -367,7 +380,9 @@ class LeadService:
             return list(
                 await session.scalars(
                     select(Lead.id)
+                    .join(Comment, Comment.id == Lead.comment_id)
                     .where(
+                        fresh_signal_clause(max_age_days=self.signal_max_age_days),
                         or_(
                             (
                                 (Lead.status == LeadStatus.AI_PENDING)
@@ -383,7 +398,7 @@ class LeadService:
                                     | (Lead.ai_last_attempt_at <= stale_analyzing)
                                 )
                             ),
-                        )
+                        ),
                     )
                     .order_by(Lead.created_at)
                     .limit(limit)
@@ -680,6 +695,19 @@ class LeadService:
         if analyze_with_source is not None:
             return await analyze_with_source(context)
         return await self.analyzer.analyze(context), "custom_analyzer"
+
+    async def _signal_is_fresh(self, comment_id: int) -> bool:
+        async with self.session_factory() as session:
+            comment = await session.get(Comment, comment_id)
+            if comment is None:
+                return False
+            return is_signal_within_window(
+                signal_observed_at(
+                    created_at_platform=comment.created_at_platform,
+                    discovered_at=comment.discovered_at,
+                ),
+                max_age_days=self.signal_max_age_days,
+            )
 
     def _to_result(self, lead: Lead, *, created: bool) -> ProcessedLead:
         return ProcessedLead(

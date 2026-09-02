@@ -1,14 +1,19 @@
 # Lead Radar — machine state
 
-- updated: 2026-09-01T18:05+05
+- updated: 2026-09-01T20:20+05
+- signal_recency: INSTAGRAM_SIGNAL_MAX_AGE_DAYS=30 — ingest/analyze/backfill/radar только свежие; baseline analyze default off
 - branch: main @ 3b48158 (PR #1 merged)
-- ui: 13.11.3-design-unify
+- ui: 13.11.4-radar-poll-fix
+- fix: /radar idle poll больше не делает location.reload каждые 3.5s
 - design: hero-status на discovery/catalog/competitors/roadmap/audiences + detail heroes; glass KPI; empty-state lucide; RU health/budget labels
-- tests: 392 passed, 1 skipped (+5 hero-status smoke)
+- tests: 400 passed, 1 skipped (+signal recency)
 - ruff: clean
 - alembic_head: c4d5e6f7a8b9
 - uncertain_reservations: 0
 - live_readiness: READY FOR LIVE PILOT
 - pilot_preflight: OFFLINE READY
 - pilot_run: 2026-09-01T17:45+05 run#6 SUCCESS aiko.uz only 3 credits PROVIDER_CONFIRMED UNCERTAIN=0
-- pilot_note: all tiers A/B/C restored — 16 active (restore_pilot_competitors)
+- competitors: 16 active tier A/B/C restored 2026-09-01T21:35+05
+- openai: limit 100, flush 23 pending done, 48/100 used today, AI_PENDING=0
+- openai_retry: AI_PENDING_RETRY_ENABLED=true in .env
+- monitor: MONITOR_SCHEDULE_ENABLED=true, INSTAGRAM_MANUAL_LIVE_SCAN_ONLY=false (2026-09-02)

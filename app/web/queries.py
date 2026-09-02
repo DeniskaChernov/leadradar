@@ -46,6 +46,7 @@ from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.audience_quality_service import AudienceQualityService
 from app.services.economics_page_service import EconomicsPageService
 from app.services.product_catalog_service import normalize_product_category
+from app.services.signal_recency import fresh_signal_clause
 from app.web.labels import CHANGE_TYPE_LABELS, label
 
 OPEN_LEAD_STATUSES = [
@@ -73,10 +74,11 @@ CONFIRMED_LEAD_STATUSES = [
 
 class WebQueryService:
     def __init__(
-        self, session_factory: async_sessionmaker[AsyncSession], hot_threshold: int
+        self, session_factory: async_sessionmaker[AsyncSession], hot_threshold: int, *, signal_max_age_days: int = 30
     ) -> None:
         self.session_factory = session_factory
         self.hot_threshold = hot_threshold
+        self.signal_max_age_days = max(0, signal_max_age_days)
 
     async def ai_safety_diagnostics(self) -> dict:
         now = datetime.now(UTC)
@@ -697,6 +699,8 @@ class WebQueryService:
                         Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING]),
                     )
                 )
+            elif normalized_kind != "history":
+                stmt = stmt.where(fresh_signal_clause(max_age_days=self.signal_max_age_days))
             return (await session.execute(stmt)).all()
 
     async def leads(

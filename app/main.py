@@ -156,6 +156,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         settings.hot_lead_threshold,
         audience_engine=audience_engine,
         change_detector=change_detector,
+        signal_max_age_days=settings.instagram_signal_max_age_days,
     )
     workflow = LeadWorkflowService(session_factory, settings.hot_lead_threshold)
 
@@ -190,6 +191,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             retry_pending_enabled=settings.ai_pending_retry_enabled,
             retry_pending_batch_size=settings.ai_pending_retry_batch_size,
             retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
+            max_signal_age_days=settings.instagram_signal_max_age_days,
             analysis_pipeline=LeadAnalysisPipeline(
                 lead_service,
                 NullLeadNotifier(),
@@ -241,6 +243,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             retry_pending_enabled=settings.ai_pending_retry_enabled,
             retry_pending_batch_size=settings.ai_pending_retry_batch_size,
             retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
+            max_signal_age_days=settings.instagram_signal_max_age_days,
             analysis_pipeline=LeadAnalysisPipeline(
                 lead_service,
                 NullLeadNotifier(),
@@ -253,7 +256,11 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         controller = MonitorController(monitor, MonitorRunService(session_factory, provider.name))
         web_app = build_web_app(
             settings,
-            WebQueryService(session_factory, settings.hot_lead_threshold),
+            WebQueryService(
+                session_factory,
+                settings.hot_lead_threshold,
+                signal_max_age_days=settings.instagram_signal_max_age_days,
+            ),
             workflow,
             controller,
             usage_service,
@@ -335,6 +342,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         retry_pending_enabled=settings.ai_pending_retry_enabled,
         retry_pending_batch_size=settings.ai_pending_retry_batch_size,
         retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
+        max_signal_age_days=settings.instagram_signal_max_age_days,
         analysis_pipeline=LeadAnalysisPipeline(
             lead_service,
             notifier,
@@ -364,7 +372,11 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
     if settings.web_enabled:
         web_app = build_web_app(
             settings,
-            WebQueryService(session_factory, settings.hot_lead_threshold),
+            WebQueryService(
+                session_factory,
+                settings.hot_lead_threshold,
+                signal_max_age_days=settings.instagram_signal_max_age_days,
+            ),
             workflow,
             controller,
             usage_service,
