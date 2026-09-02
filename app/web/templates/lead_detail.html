@@ -34,6 +34,9 @@
   </div>
   <div class="intelligence-grid ai-decision-grid">
     <div><span>Источник AI</span><b>{{ ai_source_label(lead.ai_source) }}</b></div>
+    <div><span>Правила</span><b>v{{ ai.get('rules_version') or ai_version_info.rules_version }}</b></div>
+    <div><span>GPT prompt</span><b><code>{{ ai_version_info.openai_prompt_version }}</code></b></div>
+    <div><span>GPT schema</span><b><code>{{ ai_version_info.openai_schema_version }}</code></b></div>
     {% if ai.get('buyer_role') %}<div><span>Роль покупателя</span><b>{{ buyer_role_label(ai.get('buyer_role')) }}</b></div>{% endif %}
     {% if ai.get('recommended_action') %}<div class="wide"><span>Рекомендуемое действие</span><b>{{ ai.get('recommended_action') }}</b></div>{% endif %}
     {% if ai.get('next_best_action') %}<div class="wide"><span>Следующий лучший шаг</span><b>{{ ai.get('next_best_action') }}</b></div>{% endif %}

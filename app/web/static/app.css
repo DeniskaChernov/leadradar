@@ -360,6 +360,25 @@ tr:hover td { background: rgba(255, 255, 255, 0.55); }
 .kanban-mobile-nav { display: none; gap: 6px; overflow-x: auto; padding: 0 2px 10px; scroll-snap-type: x proximity; }
 .kanban-mobile-pill { border: 1px solid rgba(255,255,255,.8); background: rgba(255,255,255,.55); border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: #334155; white-space: nowrap; scroll-snap-align: start; cursor: pointer; }
 .kanban-mobile-pill.is-active { background: #fff; color: #0f172a; box-shadow: 0 4px 14px rgba(90,70,50,.10); }
+.kanban.is-loading .kanban-card { pointer-events: none; }
+.kanban.is-loading .kanban-card-link,
+.kanban.is-loading .kanban-card-actions { visibility: hidden; }
+.kanban.is-loading .kanban-stack { position: relative; min-height: 120px; }
+.kanban.is-loading .kanban-stack::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(255,255,255,.35) 25%, rgba(255,255,255,.75) 50%, rgba(255,255,255,.35) 75%);
+  background-size: 200% 100%;
+  animation: kanban-skeleton 1.2s ease-in-out infinite;
+}
+@keyframes kanban-skeleton { to { background-position: -200% 0; } }
+.budget-sim-control { display: grid; gap: 10px; padding: 0 18px 12px; }
+.budget-sim-control input[type="range"] { width: 100%; accent-color: #ea580c; }
+.economics-budget-preview { display: grid; gap: 6px; padding: 0 18px 16px; font-size: 13px; color: #475569; }
+.economics-budget-preview b { color: #0f172a; }
+.ai-version-info code { font-size: 11px; }
 .kanban-card-link { color: var(--text); display: block; padding: 13px 15px; text-decoration: none; }
 .kanban-card-link:hover { color: var(--text); }
 .kanban-card:hover { color: var(--text); border-color: #ffffff; transform: translateY(-2px); background: #ffffff; box-shadow: 0 12px 28px rgba(90, 70, 50, 0.12); }

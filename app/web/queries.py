@@ -729,7 +729,7 @@ class WebQueryService:
             normalized_kind = kind.strip().lower()
             if normalized_kind == "new":
                 stmt = stmt.where(Comment.is_baseline.is_(False))
-            elif normalized_kind == "history":
+            elif normalized_kind in {"history", "archive", "baseline"}:
                 stmt = stmt.where(Comment.is_baseline.is_(True))
             elif normalized_kind == "hot":
                 stmt = stmt.where(Lead.lead_score >= self.hot_threshold)

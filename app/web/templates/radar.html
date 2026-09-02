@@ -13,6 +13,7 @@
     <a class="btn primary" href="/leads">Лиды ({{ overview.qualified }})</a>
     <a class="btn" href="/radar?kind=hot">HOT</a>
     <a class="btn" href="/radar?kind=new">Новые</a>
+    <a class="btn ghost" href="/radar?kind=baseline">Baseline архив</a>
     {% include "partials/signal_review_actions.html" %}
     <button class="btn ghost" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Проверить Instagram</button>
   </div>
@@ -167,7 +168,8 @@
   <select name="kind" aria-label="Тип сигнала">
     <option value="" {% if not kind_filter %}selected{% endif %}>Все сигналы</option>
     <option value="new" {% if kind_filter=='new' %}selected{% endif %}>Новые</option>
-    <option value="history" {% if kind_filter=='history' %}selected{% endif %}>Исторические</option>
+    <option value="baseline" {% if kind_filter in ['history','baseline','archive'] %}selected{% endif %}>Baseline архив</option>
+    <option value="history" {% if kind_filter=='history' %}selected{% endif %}>Исторические (alias)</option>
     <option value="hot" {% if kind_filter=='hot' %}selected{% endif %}>Горячие</option>
     <option value="pending" {% if kind_filter=='pending' %}selected{% endif %}>Нужна оценка</option>
   </select>

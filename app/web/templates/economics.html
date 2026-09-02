@@ -46,6 +46,31 @@
   <a class="btn {% if page.days != 30 %}ghost{% endif %}" href="/economics?days=30" {% if page.days == 30 %}aria-current="page"{% endif %}>30 дней</a>
 </form>
 
+<section class="panel economics-budget-sim" data-economics-budget-sim aria-labelledby="economics-budget-sim-title">
+  <div class="panel-head">
+    <div>
+      <span class="eyebrow">СИМУЛЯЦИЯ · БЕЗ ЗАПУСКА</span>
+      <h2 id="economics-budget-sim-title">Что даст лимит credits?</h2>
+      <p>Прогноз охвата конкурентов и страниц комментариев при выбранном лимите на одну проверку Radar.</p>
+    </div>
+    {% if scan_budget.is_live %}<span class="tag {% if scan_budget.live_enabled %}success{% else %}warning{% endif %}">{% if scan_budget.live_enabled %}Live{% else %}Live выключен{% endif %}</span>{% else %}<span class="tag neutral">Offline</span>{% endif %}
+  </div>
+  {% set sim_max = scan_budget.maximum_manual_scan_budget or 50 %}
+  {% set sim_value = scan_budget.requested_credits or scan_budget.default_scan_budget or 10 %}
+  <label class="budget-sim-control">
+    <span>Лимит на проверку: <b data-budget-sim-value>{{ sim_value }}</b> credits</span>
+    <input type="range" data-budget-sim-slider min="1" max="{{ sim_max }}" value="{{ sim_value }}" step="1" aria-label="Симуляция лимита credits">
+  </label>
+  <div class="economics-budget-preview">
+    <span>Макс. расход: <b data-budget-sim-max>{{ scan_budget.effective_max_credits }} credits</b></span>
+    <span>Остаток месяца: <b data-budget-sim-monthly>{{ scan_budget.monthly_remaining }}</b></span>
+    <span>Доступно сегодня: <b data-budget-sim-daily>{{ scan_budget.daily_remaining }}</b></span>
+    <span data-budget-sim-plan>План: ~{{ scan_budget.estimated_competitors_reachable }} конкурентов · ~{{ scan_budget.estimated_comment_pages }} стр.{% if scan_budget.expected_min_units %} · мин. {{ scan_budget.expected_min_units }} credits{% endif %}</span>
+    <span class="budget-clamp" data-budget-sim-clamp {% if not scan_budget.clamped %}hidden{% endif %}>Будет урезано до <b data-budget-sim-clamp-value>{{ scan_budget.effective_max_credits }}</b> credits</span>
+  </div>
+  <p class="muted">Запуск — на <a href="/radar#radar-budget-title">Радаре</a>. Здесь только расчёт без списания.</p>
+</section>
+
 <section class="panel economics-provider-card" aria-labelledby="economics-provider-title">
   <div class="panel-head">
     <div><span class="eyebrow">КРЕДИТНЫЙ БЮДЖЕТ ПРОВАЙДЕРОВ</span><h2 id="economics-provider-title">ScrapeCreators</h2><p>Операционный wallet и месячные пределы. Лимит на запуск — на <a href="/radar#radar-budget-title">странице Радара → бюджет проверки</a>.</p></div>

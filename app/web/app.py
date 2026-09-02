@@ -371,6 +371,11 @@ def build_web_app(
             "openai_spend_allowed": openai_spend_allowed(),
             "telegram_manager_count": len(settings.telegram_admin_chat_ids),
             "selected_vertical": selected_vertical,
+            "ai_version_info": {
+                "rules_version": settings.lead_analysis_version,
+                "openai_prompt_version": BudgetedCachedOpenAIAnalyzer.PROMPT_VERSION,
+                "openai_schema_version": BudgetedCachedOpenAIAnalyzer.SCHEMA_VERSION,
+            },
             **kwargs,
         }
 
@@ -644,10 +649,11 @@ def build_web_app(
         if days not in {1, 7, 30}:
             days = 30
         data = await queries.economics(days=days)
+        scan_budget = await _scan_preview_payload()
         return templates.TemplateResponse(
             request=request,
             name="economics.html",
-            context=base_context(request, **data),
+            context=base_context(request, scan_budget=scan_budget, **data),
         )
 
     @app.get("/api/economics/export.csv")

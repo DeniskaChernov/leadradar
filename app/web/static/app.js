@@ -441,6 +441,64 @@
     syncNav();
   };
 
+  const enhanceEconomicsBudgetSim = () => {
+    const root = document.querySelector('[data-economics-budget-sim]');
+    if (!(root instanceof HTMLElement)) return;
+    const slider = root.querySelector('[data-budget-sim-slider]');
+    if (!(slider instanceof HTMLInputElement)) return;
+    let timer = 0;
+    const refresh = async () => {
+      const credits = slider.value;
+      const valueEl = root.querySelector('[data-budget-sim-value]');
+      if (valueEl) valueEl.textContent = credits;
+      try {
+        const preview = await api(
+          `/api/scan/preview?max_credits=${encodeURIComponent(credits)}`,
+          { method: 'GET' },
+        );
+        const maxEl = root.querySelector('[data-budget-sim-max]');
+        const monthlyEl = root.querySelector('[data-budget-sim-monthly]');
+        const dailyEl = root.querySelector('[data-budget-sim-daily]');
+        const planEl = root.querySelector('[data-budget-sim-plan]');
+        const clampEl = root.querySelector('[data-budget-sim-clamp]');
+        const clampValue = root.querySelector('[data-budget-sim-clamp-value]');
+        if (maxEl) maxEl.textContent = `${preview.effective_max_credits} credits`;
+        if (monthlyEl && preview.monthly_remaining != null) {
+          monthlyEl.textContent = String(preview.monthly_remaining);
+        }
+        if (dailyEl && preview.daily_remaining != null) {
+          dailyEl.textContent = String(preview.daily_remaining);
+        }
+        if (planEl) {
+          planEl.textContent = `План: ~${preview.estimated_competitors_reachable || 0} конкурентов · `
+            + `~${preview.estimated_comment_pages || 0} стр.`
+            + (preview.expected_min_units != null ? ` · мин. ${preview.expected_min_units} credits` : '');
+        }
+        if (clampEl) {
+          clampEl.hidden = !preview.clamped;
+          if (clampValue) clampValue.textContent = String(preview.effective_max_credits);
+        }
+      } catch (_error) {
+        /* offline preview недоступен */
+      }
+    };
+    slider.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(refresh, 180);
+    });
+    refresh();
+  };
+
+  const initKanbanLoadingState = () => {
+    const board = document.querySelector('[data-kanban-board]');
+    if (!(board instanceof HTMLElement)) return;
+    if (sessionStorage.getItem('lr:kanban-loading') === '1') {
+      sessionStorage.removeItem('lr:kanban-loading');
+      board.classList.add('is-loading');
+      window.setTimeout(() => board.classList.remove('is-loading'), 420);
+    }
+  };
+
   const enhanceTables = () => {
     document.querySelectorAll('.table-wrap').forEach((wrapper, index) => {
       const table = wrapper.querySelector('table');
@@ -514,6 +572,8 @@
   enhanceMotion();
   enhanceKanbanEventTips();
   enhanceKanbanMobile();
+  enhanceEconomicsBudgetSim();
+  initKanbanLoadingState();
   restoreViewState();
 
   const flashStageSuccess = (element) => {
@@ -553,6 +613,7 @@
     const kanban = document.querySelector('[data-kanban-board]');
     if (kanban instanceof HTMLElement) {
       sessionStorage.setItem('lr:kanban-x', String(kanban.scrollLeft));
+      sessionStorage.setItem('lr:kanban-loading', '1');
     }
     let focus = focusSelector;
     if (!focus) {

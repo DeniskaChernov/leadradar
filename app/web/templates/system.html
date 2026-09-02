@@ -213,6 +213,21 @@
   </div>
 </section>
 
+<section class="panel ai-version-info" aria-labelledby="ai-version-title">
+  <div class="panel-head">
+    <div>
+      <span class="eyebrow">AI VERSIONS</span>
+      <h2 id="ai-version-title">Версии классификации</h2>
+      <p>Rule-based stamp и OpenAI prompt/schema для cache fingerprint и переоценки.</p>
+    </div>
+  </div>
+  <div class="mini-metrics">
+    <span><b>v{{ ai_version_info.rules_version }}</b> правила (LEAD_ANALYSIS_VERSION)</span>
+    <span><code>{{ ai_version_info.openai_prompt_version }}</code> GPT prompt</span>
+    <span><code>{{ ai_version_info.openai_schema_version }}</code> GPT schema</span>
+  </div>
+</section>
+
 <section class="panel feedback-learning" aria-labelledby="feedback-learning-title">
   <div class="panel-head">
     <div>

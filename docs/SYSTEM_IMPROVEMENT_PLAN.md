@@ -65,7 +65,7 @@
 - [ ] D8. Унифицировать `.btn.tiny` размеры
 - [ ] D9. Table mobile: все страницы responsive-table
 - [ ] D10. Empty states lucide везде
-- [ ] D11. Loading skeletons для kanban
+- [x] D11. Loading skeletons для kanban
 - [x] D12. Confirm modal RU для destructive
 - [x] D13. Toast stack + undo NOT_LEAD
 - [x] D14. Focus restore после reloadSoon
@@ -87,7 +87,7 @@
 - [x] E7. Export economics CSV
 - [x] E8. Link economics → radar budget
 - [x] E9. ROI placeholder (deals revenue)
-- [ ] E10. Budget simulation slider
+- [x] E10. Budget simulation slider
 
 ## F. Конкуренты и discovery (10)
 
@@ -109,7 +109,7 @@
 - [x] G3. GPT queue progress в header
 - [x] G4. OpenAI cost per analysis in lead detail
 - [x] G5. Cache hit rate metric
-- [ ] G6. Prompt version display
+- [x] G6. Prompt version display
 - [x] G7. Manual «переспросить GPT» для NEW
 - [ ] G8. Agent export answer to note
 - [ ] G9. Rate limit user feedback
@@ -118,8 +118,8 @@
 ## H. Данные и миграции (8)
 
 - [x] H1. Script reclassify_existing_leads.py
-- [ ] H2. Integrity: leads без comment
-- [ ] H3. Archive baseline comments UI filter
+- [x] H2. Integrity: leads без comment
+- [x] H3. Archive baseline comments UI filter
 - [ ] H4. contact_events compaction view
 - [ ] H5. Backup restore drill doc
 - [ ] H6. PostgreSQL prod migration checklist

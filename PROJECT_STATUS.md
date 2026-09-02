@@ -2,6 +2,11 @@
 
 ## Текущая версия
 
+**WAVE11 · PROMPT VERSION · BUDGET SIM · KANBAN SKELETON · INTEGRITY**
+
+Контрольная точка 2026-09-02 (wave11): G6 prompt/schema на /system и карточке лида; E10 budget simulation slider на /economics; D11 kanban loading skeleton; H2 orphan leads integrity; H3 baseline archive filter на Radar.
+UI **13.23.0-wave11**.
+
 **WAVE10 · KANBAN CRM HISTORY · MOBILE SWIPE · UNDO NOT_LEAD**
 
 Контрольная точка 2026-09-02 (wave10): tooltip CRM `contact_events` на kanban-карточках;
