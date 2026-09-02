@@ -405,6 +405,37 @@ class LeadService:
                 )
             )
 
+    async def list_reanalyze_lead_ids(self, limit: int = 50) -> list[int]:
+        """Свежие лиды NEW/AI_PENDING для повторной оценки после смены правил."""
+        if limit <= 0:
+            return []
+        async with self.session_factory() as session:
+            return list(
+                await session.scalars(
+                    select(Lead.id)
+                    .join(Comment, Comment.id == Lead.comment_id)
+                    .where(
+                        fresh_signal_clause(max_age_days=self.signal_max_age_days),
+                        Lead.status.in_(
+                            [LeadStatus.NEW, LeadStatus.AI_PENDING, LeadStatus.ANALYZING]
+                        ),
+                    )
+                    .order_by(Lead.lead_score.desc(), Lead.updated_at.asc())
+                    .limit(limit)
+                )
+            )
+
+    async def reanalyze_batch(self, limit: int = 25) -> list[ProcessedLead]:
+        """Повторный полный analyze_lead для накопившихся лидов."""
+        lead_ids = await self.list_reanalyze_lead_ids(limit)
+        results: list[ProcessedLead] = []
+        for lead_id in lead_ids:
+            try:
+                results.append(await self.analyze_lead(lead_id))
+            except Exception:
+                logger.exception("reanalyze_batch_failed lead_id=%s", lead_id)
+        return results
+
     async def retry_pending(
         self,
         limit: int = 50,

@@ -20,6 +20,7 @@
   <div class="hero-actions">
     <a class="btn primary" href="/leads?status=NEW">Новые ({{ ns.new }})</a>
     <a class="btn" href="/radar?kind=hot">HOT сигналы</a>
+    {% include "partials/lead_reanalyze_actions.html" %}
     <button class="btn ghost" type="button" data-agent-open>AI по лидам</button>
   </div>
 </section>

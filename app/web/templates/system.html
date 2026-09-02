@@ -15,9 +15,11 @@
   </div>
   <div class="hero-actions">
     {% include "partials/signal_review_actions.html" %}
+    {% include "partials/lead_reanalyze_actions.html" %}
     <a class="btn ghost" href="/radar?kind=pending">Спорные лиды</a>
   </div>
 </section>
+<section class="panel plain-help compact"><div class="alert ok"><b>Качество лидов</b><span>«Переоценить лиды» прогоняет свежие NEW/AI_PENDING через новые правила и GPT. Часы и чужие категории отсекаются автоматически.</span></div></section>
 {% include "partials/signal_review_help.html" %}
 
 <nav class="system-toc panel" aria-label="Разделы системной страницы">

@@ -10,9 +10,9 @@
 
 <section class="hero-status economics-hero {% if page.provider and page.provider.budget_status == 'HEALTHY' %}live{% elif page.provider %}warn{% else %}safe{% endif %}" data-motion-root>
   <div>
-    <span class="eyebrow">ЮНИТ-ЭКОНОМИКА · {{ page.days }} дн.</span>
-    <h2>{% if page.provider %}ScrapeCreators {{ page.provider.used_this_month }}/{{ page.provider.monthly_hard_limit }} credits{% else %}Экономика без live wallet{% endif %}</h2>
-    <p>{% if page.provider and page.provider.credits_remaining is not none %}Остаток пакета: {{ '{:,}'.format(page.provider.credits_remaining).replace(',', ' ') }} credits · {% endif %}Горячие: {{ economics.hot_count }} · Выиграно: {{ economics.won_count }} · AI-операций: {{ page.openai.events }}. Только ledger — без внешних вызовов.</p>
+    <span class="eyebrow">ДЕНЬГИ И РЕЗУЛЬТАТ · {{ page.days }} дн.</span>
+    <h2>{% if page.provider %}Потрачено {{ page.provider.used_this_month }} из {{ page.provider.monthly_hard_limit }} credits{% else %}Расходы без live-кошелька{% endif %}</h2>
+    <p>Горячих лидов: {{ economics.hot_count }} · продаж: {{ economics.won_count }} · AI-запросов: {{ page.openai.events }}. Цифры только из базы — без новых API-вызовов.</p>
   </div>
   <div class="hero-actions">
     <a class="btn" href="/radar">Радар</a>

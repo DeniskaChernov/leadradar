@@ -3,11 +3,11 @@
 {% block heading %}Карта конкурентов{% endblock %}
 {% block subheading %}Все найденные игроки рынка, приоритеты и качество мониторинга{% endblock %}
 {% block content %}
-<section class="hero-status safe market-hero" data-motion-root>
+<section class="hero-status safe market-hero competitors-hero" data-motion-root>
   <div>
-    <span class="eyebrow">КАРТА РЫНКА</span>
-    <h2>Мы больше не ограничены AIKO</h2>
-    <p>Здесь находятся только компании, уже добавленные в радар. Поиск, импорт и проверка новых компаний вынесены в <a href="/discovery"><b>Разведку</b></a>. Синхронизация каталога добавляет компании <b>на паузе</b> — без расхода токенов. Ручное добавление сразу запускает мониторинг, если компания не поставлена на паузу.</p>
+    <span class="eyebrow">КОНКУРЕНТЫ В РАДАРЕ</span>
+    <h2>{{ market_overview.active }} активных · {{ market_overview.paused }} на паузе</h2>
+    <p>Только компании, которые вы добавили. Новые — через <a href="/discovery"><b>Разведку</b></a>. Пауза = бесплатно, без API.</p>
   </div>
   <div class="market-kpis">
     <div><strong>{{ market_overview.verified }}</strong><span>в радаре</span></div>

@@ -1326,6 +1326,30 @@ def build_web_app(
             "message": message,
         }
 
+    @app.post("/api/leads/reanalyze-batch")
+    async def reanalyze_leads_batch(request: Request):
+        """Переоценить свежие лиды NEW/AI_PENDING новыми правилами + GPT."""
+        payload = await _json_or_form(request)
+        limit = max(1, min(int(payload.get("limit") or 25), 100))
+        use_openai = openai_spend_allowed()
+        service = hybrid_lead_service if use_openai else local_lead_service
+        results = await service.reanalyze_batch(limit)
+        not_lead = sum(item.status == LeadStatus.NOT_LEAD for item in results)
+        pending = sum(item.status == LeadStatus.AI_PENDING for item in results)
+        new_leads = sum(item.status == LeadStatus.NEW for item in results)
+        return {
+            "ok": True,
+            "processed": len(results),
+            "not_lead": not_lead,
+            "still_new": new_leads,
+            "pending": pending,
+            "openai_used": use_openai,
+            "message": (
+                f"Переоценено: {len(results)} · лидов: {new_leads} · не лид: {not_lead}"
+                + (f" · ждут GPT: {pending}" if pending else "")
+            ),
+        }
+
     @app.post("/api/leads/{lead_id}/analyze")
     async def analyze_lead_now(request: Request, lead_id: int):
         """Повторный разбор одного лида: hybrid+OpenAI если armed, иначе только правила."""

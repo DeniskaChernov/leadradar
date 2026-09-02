@@ -1,6 +1,9 @@
 # Lead Radar — machine state
 
-- updated: 2026-09-02T11:00+05
+- updated: 2026-09-02T11:50+05
+- commit: 08b9352 funnel+signal_scope; wave1 pending
+- plan: docs/SYSTEM_IMPROVEMENT_PLAN.md 120 actions
+- ui: 13.12.0-wave1 reanalyze-batch, economics/competitors plain hero
 - leads_funnel: kanban/list кнопки воронки; ui 13.11.7-leads-funnel
 - signal_scope: «+» → OpenAI по caption; цена без мебели → OpenAI; часы/телефоны → NOT_LEAD локально
 - signal_recency: INSTAGRAM_SIGNAL_MAX_AGE_DAYS=30 — ingest/analyze/backfill/radar только свежие; baseline analyze default off

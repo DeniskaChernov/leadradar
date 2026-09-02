@@ -338,7 +338,9 @@ tr:hover td { background: rgba(255, 255, 255, 0.55); }
 .kanban-card-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 12px; border-top: 1px solid rgba(0, 0, 0, 0.06); margin-top: 0; padding-top: 10px; }
 .lead-funnel-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .leads-save-trust.compact, .leads-save-warning { margin-bottom: 0; }
-.leads-save-trust .alert.ok { border-color: rgba(34, 197, 94, 0.25); background: rgba(240, 253, 244, 0.85); }
+.plain-help.compact { margin-top: 0; }
+.plain-help .alert.ok { border-color: rgba(34, 197, 94, 0.25); background: rgba(240, 253, 244, 0.85); }
+.competitors-hero .market-kpis { display: flex; gap: 12px; flex-wrap: wrap; }
 .kanban-card.hot { border-color: rgba(225, 29, 72, 0.35); box-shadow: inset 3px 0 #e11d48, 0 6px 18px rgba(90, 70, 50, 0.06); }
 .kanban-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .kanban-top b { font-size: 14px; color: #0f172a; }
