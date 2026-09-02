@@ -2426,6 +2426,41 @@ body::after { animation: ambient-drift-b 22s ease-in-out infinite alternate; }
 .modal-backdrop.is-open { opacity: 1; }
 .modal { transform: translateY(18px) scale(.94); transition: transform var(--motion-base) var(--ease-spring); }
 .modal-backdrop.is-open .modal { transform: none; }
+.modal-backdrop.is-danger .modal { border-color: rgba(225, 29, 72, 0.28); }
+.modal-backdrop.is-danger [data-confirm-ok].danger {
+  color: #fff;
+  border-color: #be123c;
+  background: #be123c;
+}
+
+.competitors-bulk-bar { margin: 0 0 14px; }
+.competitors-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+.competitors-bulk-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.competitor-pick {
+  display: grid;
+  place-items: start;
+  padding-top: 4px;
+}
+.competitor-pick input { width: 16px; height: 16px; }
+.radar-empty-cell { padding: 28px 16px !important; }
+.radar-table-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.radar-table-empty .btn { margin-top: 6px; }
 
 .mobile-nav-backdrop { display: none; }
 

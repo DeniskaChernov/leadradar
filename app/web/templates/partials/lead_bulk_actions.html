@@ -23,7 +23,9 @@
       type="button"
       data-lead-bulk="not_lead"
       data-lead-ids="{{ bulk.garbage_ids | tojson }}"
+      data-confirm-title="Отметить как «не лид»?"
       data-confirm="Отметить {{ bulk.garbage_ids | length }} лид(ов) как «не лид»? История клиента сохранится."
+      data-confirm-danger="1"
     >Не лид · все подозрительные ({{ bulk.garbage_ids | length }})</button>
     {% endif %}
   </div>

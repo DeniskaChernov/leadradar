@@ -61,6 +61,7 @@ from app.web.labels import (
     CHANNEL_LABELS,
     COMMERCIAL_STAGE_LABELS,
     COMPETITOR_CATEGORY_LABELS,
+    COMPETITOR_TIER_LABELS,
     COVERAGE_LABELS,
     DEAL_STATUS_LABELS,
     EVENT_LABELS,
@@ -68,6 +69,7 @@ from app.web.labels import (
     FUNNEL_STAGE_LABELS,
     INTENT_LABELS,
     LEAD_STATUS_LABELS,
+    NOTIFICATION_POLICY_LABELS,
     PRODUCT_LABELS,
     PURCHASE_HORIZON_LABELS,
     QUALIFICATION_FIELD_LABELS,
@@ -216,6 +218,10 @@ def build_web_app(
         run_status_label=lambda value: label(RUN_STATUS_LABELS, value),
         trigger_label=lambda value: label(TRIGGER_LABELS, value),
         competitor_category_label=lambda value: label(COMPETITOR_CATEGORY_LABELS, value),
+        competitor_tier_label=lambda value: label(COMPETITOR_TIER_LABELS, value),
+        notification_policy_label=lambda value: label(
+            NOTIFICATION_POLICY_LABELS, value, "Общий режим системы"
+        ),
         channel_label=lambda value: label(CHANNEL_LABELS, value, "Не указан"),
         qualification_field_label=lambda value: label(
             QUALIFICATION_FIELD_LABELS, value, str(value)
@@ -2055,6 +2061,35 @@ def build_web_app(
             }
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/competitors/bulk-active")
+    async def bulk_competitors_active(request: Request):
+        payload = await _json_or_form(request)
+        raw_ids = payload.get("competitor_ids") or payload.get("ids") or []
+        if isinstance(raw_ids, str):
+            raw_ids = [item.strip() for item in raw_ids.split(",") if item.strip()]
+        try:
+            competitor_ids = [int(item) for item in raw_ids]
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400, detail="Нужен список competitor_ids"
+            ) from exc
+        if "active" not in payload:
+            raise HTTPException(status_code=400, detail="Укажите active=true или false")
+        active = str(payload.get("active")).lower() in {"1", "true", "yes", "on"}
+        try:
+            changed = await crm.bulk_set_competitors_active(
+                competitor_ids, active=active
+            )
+            action_label = "Включён мониторинг" if active else "Поставлено на паузу"
+            return {
+                "ok": True,
+                "changed": changed,
+                "active": active,
+                "message": f"{action_label}: {changed}",
+            }
+        except LeadWorkflowError as exc:
+            raise HTTPException(status_code=400, detail=_human_workflow_error(exc)) from exc
 
     @app.post("/api/competitors/{competitor_id}/settings")
     async def update_competitor(request: Request, competitor_id: int):

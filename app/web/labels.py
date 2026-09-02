@@ -203,6 +203,19 @@ COMPETITOR_CATEGORY_LABELS = {
     "MASS": "Массовый рынок",
 }
 
+COMPETITOR_TIER_LABELS = {
+    "A": "A · главный",
+    "B": "B · важный",
+    "C": "C · фоновый",
+}
+
+NOTIFICATION_POLICY_LABELS = {
+    "INHERIT": "Общий режим системы",
+    "ALL_NEW_COMMENTS": "Каждый новый комментарий",
+    "COMMERCIAL_ONLY": "Только покупательский интерес",
+    "HOT_ONLY": "Только горячие лиды",
+}
+
 AUDIENCE_HEALTH_LABELS = {
     "HEALTHY": "Здоровая",
     "LOW_DATA": "Мало данных",

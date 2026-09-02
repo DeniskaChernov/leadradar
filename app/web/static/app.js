@@ -184,16 +184,23 @@
     return data;
   };
 
-  const confirmAction = (title, text) => new Promise((resolve) => {
+  const confirmAction = (title, text, options = {}) => new Promise((resolve) => {
     const root = document.getElementById('confirm');
     if (!root) return resolve(window.confirm(text));
     const previouslyFocused = document.activeElement;
+    const danger = Boolean(options.danger);
     root.hidden = false;
+    root.classList.toggle('is-danger', danger);
     requestAnimationFrame(() => root.classList.add('is-open'));
     document.getElementById('confirm-title').textContent = title;
     document.getElementById('confirm-text').textContent = text;
     const ok = root.querySelector('[data-confirm-ok]');
     const cancel = root.querySelector('[data-confirm-cancel]');
+    const okDefault = ok.dataset.defaultLabel || ok.textContent || 'Продолжить';
+    ok.dataset.defaultLabel = okDefault;
+    ok.textContent = danger ? (options.okLabel || 'Да, подтверждаю') : (options.okLabel || okDefault);
+    ok.classList.toggle('danger', danger);
+    ok.classList.toggle('primary', !danger);
     const onKeydown = (event) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -215,11 +222,15 @@
     };
     const done = (value) => {
       root.classList.remove('is-open');
+      root.classList.remove('is-danger');
       ok.onclick = null;
       cancel.onclick = null;
       document.removeEventListener('keydown', onKeydown);
       setTimeout(() => {
         root.hidden = true;
+        ok.textContent = ok.dataset.defaultLabel || 'Продолжить';
+        ok.classList.remove('danger');
+        ok.classList.add('primary');
         if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
         resolve(value);
       }, 180);
@@ -227,7 +238,7 @@
     ok.onclick = () => done(true);
     cancel.onclick = () => done(false);
     document.addEventListener('keydown', onKeydown);
-    requestAnimationFrame(() => cancel.focus());
+    cancel.focus();
   });
 
   const enhanceNavigation = () => {
@@ -332,9 +343,40 @@
     });
   };
 
+  const enhanceCompetitorBulkSelection = () => {
+    const picks = () => [...document.querySelectorAll('[data-competitor-pick]')];
+    if (!picks().length) return;
+    const sync = () => {
+      const selected = picks().filter((input) => input.checked);
+      const count = document.querySelector('[data-competitor-bulk-count]');
+      if (count) count.textContent = `Выбрано: ${selected.length}`;
+      document.querySelectorAll('[data-competitor-bulk]').forEach((button) => {
+        button.disabled = selected.length === 0;
+      });
+      const master = document.querySelector('[data-competitor-select-all]');
+      if (master) {
+        const all = picks();
+        master.checked = all.length > 0 && selected.length === all.length;
+        master.indeterminate = selected.length > 0 && selected.length < all.length;
+      }
+    };
+    document.addEventListener('change', (event) => {
+      if (event.target.matches('[data-competitor-select-all]')) {
+        picks().forEach((input) => {
+          input.checked = event.target.checked;
+        });
+        sync();
+        return;
+      }
+      if (event.target.matches('[data-competitor-pick]')) sync();
+    });
+    sync();
+  };
+
   enhanceNavigation();
   enhanceTables();
   enhanceClickableRows();
+  enhanceCompetitorBulkSelection();
   enhanceMotion();
   restoreViewState();
 
@@ -556,8 +598,9 @@
     event.preventDefault();
     if (event.submitter?.dataset.confirm) {
       const proceed = await confirmAction(
-        'Подтвердите применение импорта',
-        event.submitter.dataset.confirm
+        event.submitter.dataset.confirmTitle || 'Подтвердите действие',
+        event.submitter.dataset.confirm,
+        { danger: event.submitter.dataset.confirmDanger === '1' }
       );
       if (!proceed) return;
     }
@@ -717,7 +760,11 @@
     const action = event.target.closest('[data-api-action]');
     if (action) {
       if (action.dataset.confirm) {
-        const proceed = await confirmAction('Подтвердите действие', action.dataset.confirm);
+        const proceed = await confirmAction(
+          action.dataset.confirmTitle || 'Подтвердите действие',
+          action.dataset.confirm,
+          { danger: action.dataset.confirmDanger === '1' }
+        );
         if (!proceed) return;
       }
       setLoading(action, true);
@@ -766,7 +813,11 @@
       }
       if (!leadIds.length) return;
       if (leadBulk.dataset.confirm) {
-        const proceed = await confirmAction('Массовое действие', leadBulk.dataset.confirm);
+        const proceed = await confirmAction(
+          leadBulk.dataset.confirmTitle || 'Массовое действие',
+          leadBulk.dataset.confirm,
+          { danger: leadBulk.dataset.confirmDanger === '1' }
+        );
         if (!proceed) return;
       }
       setLoading(leadBulk, true);
@@ -780,6 +831,41 @@
       } catch (error) {
         toast(error.message, true);
         setLoading(leadBulk, false);
+      }
+      return;
+    }
+
+    const competitorBulk = event.target.closest('[data-competitor-bulk]');
+    if (competitorBulk) {
+      event.preventDefault();
+      event.stopPropagation();
+      const ids = [...document.querySelectorAll('[data-competitor-pick]:checked')]
+        .map((input) => Number(input.value))
+        .filter((id) => Number.isFinite(id) && id > 0);
+      if (!ids.length) {
+        toast('Выберите хотя бы одну компанию', true);
+        return;
+      }
+      const resume = competitorBulk.dataset.competitorBulk === 'resume';
+      if (competitorBulk.dataset.confirm) {
+        const proceed = await confirmAction(
+          competitorBulk.dataset.confirmTitle || 'Массовое действие',
+          competitorBulk.dataset.confirm,
+          { danger: competitorBulk.dataset.confirmDanger === '1' }
+        );
+        if (!proceed) return;
+      }
+      setLoading(competitorBulk, true);
+      try {
+        const data = await api('/api/competitors/bulk-active', {
+          method: 'POST',
+          body: JSON.stringify({ competitor_ids: ids, active: resume }),
+        });
+        toast(data.message || 'Готово');
+        reloadSoon();
+      } catch (error) {
+        toast(error.message, true);
+        setLoading(competitorBulk, false);
       }
       return;
     }
@@ -813,7 +899,8 @@
       if (type === 'not-lead') {
         const proceed = await confirmAction(
           'Точно не лид?',
-          'Это сохранится как обратная связь для будущего скоринга. Сам клиент и его история из базы не удалятся.'
+          'Это сохранится как обратная связь для будущего скоринга. Сам клиент и его история из базы не удалятся.',
+          { danger: true }
         );
         if (!proceed) return;
       }

@@ -27,7 +27,7 @@
   </div>
 </section>
 {% endif %}
-<section class="panel ops-arm-card">
+<section class="panel ops-arm-card" id="radar-live-arm">
   <div class="panel-head"><div><h2>Управление Live</h2><p>Тумблеры пишутся в БД. Master unlock остаётся в .env</p></div>
     <span class="tag {% if ops.radar_live_armed %}success{% else %}muted-tag{% endif %}">{% if ops.radar_live_armed %}Radar включён{% else %}Radar выключен{% endif %}</span>
   </div>
@@ -175,12 +175,33 @@
 <tr>
   <td data-label="Клиент"><a class="user" href="/contacts/{{ contact.id }}"><b>@{{ contact.username }}</b><small>{{ contact.display_name or 'Имя не указано' }}</small></a></td>
   <td data-label="Комментарий" class="comment-cell"><b>{{ comment.text or 'Пустой комментарий' }}</b><small>{% if comment.is_baseline %}<span class="tag neutral">история</span>{% else %}<span class="tag live">новый</span>{% endif %} {{ (comment.created_at_platform or comment.discovered_at) | display_dt }}</small></td>
-  <td data-label="Источник"><b>@{{ competitor.normalized_handle }}</b><small><a target="_blank" rel="noopener" href="{{ post.url }}">Открыть Reel ↗</a></small></td>
+  <td data-label="Источник"><b>@{{ competitor.normalized_handle }}</b><small><span class="tier tier-{{ competitor.tier|lower }}" title="Приоритет мониторинга">{{ competitor_tier_label(competitor.tier) }}</span> · <a target="_blank" rel="noopener" href="{{ post.url }}">Открыть Reel ↗</a></small></td>
   <td data-label="Контекст Reel" class="context">{{ post.caption[:165] or 'Описание Reel не получено' }}{% if post.caption|length > 165 %}…{% endif %}</td>
   <td data-label="Оценка">{% if lead and lead.status.value == 'ANALYZING' %}<span class="tag pending">Ставим оценку</span><small>Лид уже виден менеджеру</small>{% elif lead and lead.status.value == 'AI_PENDING' %}<span class="tag pending">Система не уверена</span><small>Нужна умная оценка GPT</small>{% elif lead %}<div class="score-line"><div class="lead-score {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead.lead_score >= 50 %}warm{% endif %}">{{ lead.lead_score }}</div><div><b>{{ intent_label(lead.intent) }}</b><small>{{ product_label(lead.product_category) }} · {{ ai_source_label(lead.ai_source) }}</small></div></div>{% else %}<span class="tag pending">Нет оценки</span>{% endif %}</td>
   <td data-label="Действие">{% if lead %}<a class="btn tiny" href="/leads/{{ lead.id }}">Открыть лид</a><small class="human-status">{{ lead_status_label(lead.status) }}</small>{% else %}<a class="btn tiny ghost" href="/contacts/{{ contact.id }}">Карточка клиента</a>{% endif %}</td>
 </tr>
-{% else %}<tr><td colspan="6" class="empty">По этим условиям ничего не найдено.</td></tr>{% endfor %}
+{% else %}
+<tr>
+  <td colspan="6" class="empty radar-empty-cell">
+    <div class="empty-state compact radar-table-empty">
+      <span class="empty-icon" aria-hidden="true"><i data-lucide="radar"></i></span>
+      {% if q or competitor_filter or kind_filter %}
+      <b>По этим условиям ничего не найдено</b>
+      <span>Сбросьте фильтры или запустите проверку Instagram.</span>
+      <a class="btn tiny ghost" href="/radar">Сбросить фильтры</a>
+      {% elif not ops.radar_live_armed %}
+      <b>Сигналов пока нет — Live Radar выключен</b>
+      <span>Включите Live, чтобы проверка Instagram могла собирать новые комментарии.</span>
+      <a class="btn tiny primary" href="#radar-live-arm">Включить Live Radar</a>
+      {% else %}
+      <b>Сигналов пока нет</b>
+      <span>Запустите проверку Instagram — свежие комментарии появятся здесь.</span>
+      <button class="btn tiny primary" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Проверить Instagram</button>
+      {% endif %}
+    </div>
+  </td>
+</tr>
+{% endfor %}
 </tbody>
 </table></div>
 {% endblock %}

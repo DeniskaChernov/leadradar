@@ -200,6 +200,59 @@ async def test_follow_up_api_schedules_task(session_factory):
     assert body["task_id"]
     assert "напоминание" in body["message"].lower()
 
+
+async def test_bulk_competitors_active_api(session_factory):
+    crm = CRMService(session_factory)
+    first = await crm.add_competitor("wave5pause1", display_name="Wave5 Pause 1", tier="B")
+    second = await crm.add_competitor("wave5pause2", display_name="Wave5 Pause 2", tier="C")
+    assert first.active is True
+    assert second.active is True
+
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=crm,
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        pause = await client.post(
+            "/api/competitors/bulk-active",
+            json={"competitor_ids": [first.id, second.id], "active": False},
+        )
+        resume = await client.post(
+            "/api/competitors/bulk-active",
+            json={"competitor_ids": [first.id], "active": True},
+        )
+        page = await client.get("/competitors")
+
+    assert pause.status_code == 200
+    pause_body = pause.json()
+    assert pause_body["ok"] is True
+    assert pause_body["changed"] == 2
+    assert "паузу" in pause_body["message"].lower()
+
+    assert resume.status_code == 200
+    resume_body = resume.json()
+    assert resume_body["ok"] is True
+    assert resume_body["changed"] == 1
+    assert resume_body["active"] is True
+
+    assert page.status_code == 200
+    assert "data-competitor-bulk" in page.text
+    assert "competitors-plain-help" in page.text
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        noop = await client.post(
+            "/api/competitors/bulk-active",
+            json={"competitor_ids": [first.id], "active": True},
+        )
+    assert noop.status_code == 200
+    assert noop.json()["changed"] == 0
+
+
 async def test_uncertain_notification_resolve_api(session_factory):
     from sqlalchemy import select
 

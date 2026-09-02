@@ -14,7 +14,7 @@
   <form data-api-form data-output="#catalog-import-result" action="/api/catalog/import" method="post" enctype="multipart/form-data" class="form-grid">
     <label>CSV в UTF-8<input name="file" type="file" accept=".csv,text/csv" required></label>
     <small>Ровно 9 колонок: canonical_key, name, vertical, category, price, currency, stock, cogs, active. До 5 МБ и 2000 строк.</small>
-    <div class="button-row"><button class="btn ghost" type="submit" name="apply" value="false">Показать diff</button><button class="btn primary" type="submit" name="apply" value="true" data-confirm="Все валидные изменения из файла будут применены одной транзакцией. Подтверждённые поля останутся защищены.">Применить файл</button></div>
+    <div class="button-row"><button class="btn ghost" type="submit" name="apply" value="false">Показать diff</button><button class="btn primary" type="submit" name="apply" value="true" data-confirm-title="Применить импорт каталога?" data-confirm="Все валидные изменения из файла будут применены одной транзакцией. Подтверждённые поля останутся защищены." data-confirm-danger="1">Применить файл</button></div>
   </form>
   <pre id="catalog-import-result" class="truth-note" hidden aria-live="polite"></pre>
 </section>

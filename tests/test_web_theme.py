@@ -60,9 +60,16 @@ def test_v41_signal_first_states_and_notification_modes_are_manager_readable():
     assert "Качество локального интеллекта" in system
     assert "production accuracy" in system
     assert "INDEPENDENT QUALITY GATES" in system or "НЕЗАВИСИМЫЕ GATES" in system
-    assert "Каждый новый комментарий" in competitors
-    assert "Только покупательский интерес" in competitors
-    assert "Только горячие лиды" in competitors
+    assert "Каждый новый комментарий" in (
+        PROJECT_ROOT / "app/web/labels.py"
+    ).read_text(encoding="utf-8")
+    assert "Только покупательский интерес" in (
+        PROJECT_ROOT / "app/web/labels.py"
+    ).read_text(encoding="utf-8")
+    assert "Только горячие лиды" in (
+        PROJECT_ROOT / "app/web/labels.py"
+    ).read_text(encoding="utf-8")
+    assert "notification_policy_label" in competitors
     assert "Лид уже виден менеджеру" in radar
 
 
@@ -226,8 +233,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.16.0-scan-summary" in base
-    assert "13.16.0-scan-summary" in auth
+    assert "13.17.0-wave5" in base
+    assert "13.17.0-wave5" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
@@ -403,6 +410,17 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "/api/scan/progress" in javascript
     assert ".scan-progress-banner" in css
     assert ".scan-progress-track" in css
+    assert "competitor_tier_label" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "radar-table-empty" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert 'href="#radar-live-arm"' in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "data-competitor-bulk" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
+    assert "competitors-plain-help" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
+    assert "notification_policy_label" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
+    assert "data-confirm-danger" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
+    assert "confirmAction" in javascript and "options.danger" in javascript
+    assert "/api/competitors/bulk-active" in javascript
+    assert ".competitors-bulk-bar" in css
+    assert "13.17.0-wave5" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
     assert "contacts-hero" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert 'href="/agent"' in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert "ОЧЕРЕДЬ КОНТАКТОВ" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")

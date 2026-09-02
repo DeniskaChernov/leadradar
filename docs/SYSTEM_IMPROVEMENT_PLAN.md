@@ -47,11 +47,11 @@
 - [x] C5. Счётчик «спорных» vs «архив» раздельно
 - [ ] C6. Preview стоимости scan до запуска (улучшить)
 - [x] C7. Post-scan summary modal
-- [ ] C8. Competitor tier в строке radar feed
+- [x] C8. Competitor tier в строке radar feed
 - [x] C9. Quick filter: только HOT actionable
 - [x] C10. WebSocket/poll status bar global
 - [x] C11. Pause search banner если LEAD_SEARCH_ENABLED=false
-- [ ] C12. Radar empty state с CTA «включить live»
+- [x] C12. Radar empty state с CTA «включить live»
 
 ## D. UI/UX и дизайн (20)
 
@@ -66,7 +66,7 @@
 - [ ] D9. Table mobile: все страницы responsive-table
 - [ ] D10. Empty states lucide везде
 - [ ] D11. Loading skeletons для kanban
-- [ ] D12. Confirm modal RU для destructive
+- [x] D12. Confirm modal RU для destructive
 - [ ] D13. Toast stack + undo NOT_LEAD
 - [ ] D14. Focus restore после reloadSoon
 - [ ] D15. Keyboard shortcuts (/ search)
@@ -93,12 +93,12 @@
 
 - [x] F1. Competitors hero короче + KPI glass
 - [ ] F2. Рекомендация tier auto-suggest UI
-- [ ] F3. Bulk pause/resume competitors
+- [x] F3. Bulk pause/resume competitors
 - [ ] F4. Discovery → add competitor flow
 - [ ] F5. Overlap graph visual
 - [ ] F6. Commercial rate trend per competitor
 - [ ] F7. Last scan error badge
-- [ ] F8. Notification policy plain RU
+- [x] F8. Notification policy plain RU
 - [ ] F9. Competitor compare side-by-side
 - [ ] F10. Import CSV competitors
 

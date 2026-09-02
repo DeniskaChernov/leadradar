@@ -508,6 +508,29 @@ class CRMService:
             await session.commit()
             return competitor
 
+    async def bulk_set_competitors_active(
+        self,
+        competitor_ids: list[int],
+        *,
+        active: bool,
+    ) -> int:
+        """Массово включить/поставить на паузу. Возвращает число обновлённых."""
+        if not competitor_ids:
+            return 0
+        unique_ids = list(dict.fromkeys(int(item) for item in competitor_ids[:200]))
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Competitor).where(Competitor.id.in_(unique_ids))
+            )
+            rows = list(result.scalars().all())
+            changed = 0
+            for competitor in rows:
+                if competitor.active != active:
+                    competitor.active = active
+                    changed += 1
+            await session.commit()
+            return changed
+
 
 def _clean_optional(value: str | None, max_length: int) -> str | None:
     cleaned = (value or "").strip()
