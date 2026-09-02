@@ -13,3 +13,4 @@
 - post120: A1-A4 B1-B3 B5 done · B4 B6 need manager · C blocked
 - branch: codex/phase-c-budget-ledger-hardening
 - tip: live only after «разрешаю live»
+- pr: https://github.com/DeniskaChernov/leadradar/pull/2
