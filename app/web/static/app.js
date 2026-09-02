@@ -894,7 +894,7 @@
       parts.push(
         '<div class="empty-box" data-radar-feed-empty>'
         + '<span class="empty-icon" aria-hidden="true"><i data-lucide="bell"></i></span>'
-        + '<b>Пока спокойно</b><span>Изменения и HOT появятся после проверки и разбора сигналов.</span></div>'
+        + '<b>Пока спокойно</b><span>Изменения и HOT появятся после проверки Instagram и оценки комментариев.</span></div>'
       );
     }
     list.innerHTML = parts.join('');
@@ -902,7 +902,7 @@
     const badge = document.querySelector('[data-radar-queue-badge]');
     if (badge) {
       const queueTotal = Number(feed.ai_pending || 0) + Number(feed.analyzing || 0);
-      badge.textContent = queueTotal > 0 ? `AI: ${queueTotal}` : 'AI готов';
+      badge.textContent = queueTotal > 0 ? `Оценка: ${queueTotal}` : 'Оценка готова';
       badge.classList.toggle('warning', queueTotal > 0);
       badge.classList.toggle('success', queueTotal === 0);
     }
@@ -922,11 +922,11 @@
       title.textContent = 'Идёт проверка Instagram';
       detail.textContent = 'Сбор комментариев и Reels…';
     } else if (Number(payload.analysis_in_flight || 0) > 0) {
-      title.textContent = 'OpenAI разбирает сигналы';
+      title.textContent = 'Идёт умная оценка';
       detail.textContent = `В работе: ${payload.analysis_in_flight}, в очереди: ${payload.analysis_queue || 0}`;
     } else if (Number(payload.analysis_queue || 0) > 0) {
-      title.textContent = 'Очередь OpenAI';
-      detail.textContent = `Ждут разбора: ${payload.analysis_queue}`;
+      title.textContent = 'Очередь оценки';
+      detail.textContent = `Ждут: ${payload.analysis_queue}`;
     }
   };
 

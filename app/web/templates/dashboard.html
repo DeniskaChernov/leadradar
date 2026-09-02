@@ -11,7 +11,7 @@
   </div>
   <div class="hero-actions">
     <a class="btn primary" href="/radar">Открыть Радар</a>
-    {% include "partials/signal_review_buttons.html" %}
+    {% include "partials/signal_review_actions.html" %}
   </div>
 </section>
 {% include "partials/signal_review_help.html" %}
@@ -29,7 +29,10 @@
 <section class="operations-strip panel">
   <div><span class="op-icon" aria-hidden="true"><i data-lucide="scan-search"></i></span><div><b>{{ counts.unprocessed_actionable + counts.ai_pending }} нужна оценка</b><small>{{ counts.unprocessed_actionable }} свежих без лида · {{ counts.ai_pending }} ждут GPT{% if counts.unprocessed > counts.unprocessed_actionable %} · {{ counts.unprocessed - counts.unprocessed_actionable }} в архиве{% endif %}</small></div></div>
   <div><span class="op-icon" aria-hidden="true"><i data-lucide="bell-ring"></i></span><div><b>{% if telegram_manager_count %}Уведомления: {{ telegram_manager_count }} менеджер{% if telegram_manager_count != 1 %}ов{% endif %}{% else %}Telegram не настроен{% endif %}</b><small>{{ counts.notifications_pending }} в очереди · {{ counts.notifications_failed }} ошибок · <a href="/system#uncertain-notifications">{{ counts.notifications_uncertain }} сверка</a></small></div></div>
-  <button class="btn tiny" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %}>Проверить сейчас</button>
+  <button class="btn tiny" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %}>Проверить Instagram</button>
+  {% if counts.unprocessed_actionable + counts.ai_pending > 0 %}
+  <button class="btn tiny primary" type="button" data-api-action="/api/signals/review-all" data-payload='{"limit":100,"gpt_limit":10}' data-async-retry="1">Оценить накопившееся</button>
+  {% endif %}
 </section>
 
 <div class="metrics dashboard-metrics" data-motion-root>

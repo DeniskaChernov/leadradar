@@ -39,9 +39,9 @@ def test_lead_detail_and_radar_expose_deep_responsive_analysis():
     assert "catalog_recommendation.match_reasons" in lead_detail
     assert "risk_flags" in lead_detail
     assert 'data-lucide="circle-help"' in lead_detail
-    assert 'data-label="AI-оценка"' in radar
+    assert 'data-label="Оценка"' in radar
     assert "РАДАР СИГНАЛОВ" in radar
-    assert "partials/signal_review_buttons.html" in radar
+    assert "partials/signal_review_actions.html" in radar
     assert "Оценить накопившееся" in signal_buttons
     assert "/api/signals/review-all" in signal_buttons
 
@@ -63,7 +63,7 @@ def test_v41_signal_first_states_and_notification_modes_are_manager_readable():
     assert "Каждый новый комментарий" in competitors
     assert "Только покупательский интерес" in competitors
     assert "Только горячие лиды" in competitors
-    assert "Сигнал уже сохранён и виден менеджеру" in radar
+    assert "Лид уже виден менеджеру" in radar
 
 
 def test_audience_pages_explain_privacy_boundary_and_campaign_action():
@@ -79,8 +79,9 @@ def test_audience_pages_explain_privacy_boundary_and_campaign_action():
     )
 
     assert 'href="/audiences"' in base
-    assert "Чувствительные признаки не собираются" in audiences
-    assert "quality workspace" in audiences or "рабочее пространство качества" in audiences
+    assert "ГРУППЫ СПРОСА" in audiences
+    assert "автоматически" in audiences
+    assert "Качество аудиторий" in audiences
     assert "Instagram username не превращается" in audiences
     assert "CAMPAIGN BRIEF" in detail or "БРИФ КАМПАНИИ" in detail
     assert "АУДИТОРИЯ И ИНТЕРЕСЫ" in contact
@@ -225,8 +226,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.11.5-plain-signals" in base
-    assert "13.11.5-plain-signals" in auth
+    assert "13.11.6-plain-language" in base
+    assert "13.11.6-plain-language" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
@@ -339,10 +340,10 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "АССИСТЕНТ · ТОЛЬКО БАЗА" in system
     assert "system-hero" in system
     assert "system-toc" in system
-    assert "review-all" in system or "signal_review_buttons" in system
+    assert "review-all" in system or "signal_review_actions" in system
     assert "responsive-table system-table" in system
     assert "system-run-history" in system
-    assert "partials/signal_review_buttons.html" in radar
+    assert "partials/signal_review_actions.html" in radar
     assert "rattan-metrics" in (PROJECT_ROOT / "app/web/templates/rattan.html").read_text(encoding="utf-8")
     assert ".rattan-metrics" in css
     assert 'name="contact_id"' in contact_detail

@@ -2219,6 +2219,7 @@ body::after { animation: ambient-drift-b 22s ease-in-out infinite alternate; }
 }
 .system-toc a:hover { background: rgba(255,255,255,.85); }
 .alert.compact-help { margin-bottom: 16px; }
+.signal-review-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 @media (max-width: 900px) {
   .top-actions .btn[data-agent-open] span { display: none; }
 }
