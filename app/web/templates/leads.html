@@ -24,6 +24,12 @@
   </div>
 </section>
 
+{% if not settings.web_auth_enabled and not settings.web_manager_id %}
+<section class="panel leads-save-warning"><div class="alert danger"><b>Изменения воронки не сохранятся</b><span>Добавьте <code>WEB_MANAGER_ID=1</code> в <code>.env</code> и перезапустите сервер. Без этого API вернёт ошибку 403.</span></div></section>
+{% else %}
+<section class="panel leads-save-trust compact"><div class="alert ok"><b>Каждый шаг сохраняется в базу</b><span>После нажатия кнопки вы увидите «Сохранено» — запись попадёт в историю клиента.</span></div></section>
+{% endif %}
+
 <form class="filters leads-filters" method="get" aria-label="Фильтр лидов">
   <input name="q" value="{{ q }}" aria-label="Поиск лидов" placeholder="Клиент, комментарий, товар или конкурент">
   <select name="status" aria-label="Стадия лида">
@@ -51,7 +57,11 @@
   <blockquote>{{ comment.text or 'Пустой комментарий' }}</blockquote>
   <div class="lead-tags"><span class="tag">{{ intent_label(lead.intent) }}</span><span class="tag">{{ product_label(lead.product_category) }}</span><span class="tag status-{{ lead.status.value|lower }}">{{ lead_status_label(lead.status) }}</span></div>
   <p class="reason">{{ lead.ai_reason or 'Объяснение ещё не сформировано.' }}</p>
-  <div class="card-actions"><a class="btn primary" href="/leads/{{ lead.id }}">Работать с лидом</a><a class="btn ghost" href="/contacts/{{ contact.id }}">История клиента</a></div>
+  <div class="card-actions lead-funnel-actions">
+    {% include "partials/lead_funnel_quick_action.html" %}
+    <a class="btn ghost" href="/leads/{{ lead.id }}">Подробнее</a>
+    <a class="btn ghost" href="/contacts/{{ contact.id }}">История клиента</a>
+  </div>
 </article>
 {% else %}<div class="empty panel">Лидов с таким статусом нет.</div>{% endfor %}
 </div>
@@ -62,12 +72,18 @@
   <header><div><b>{{ lead_status_label(stage) }}</b><small>{% set col=namespace(count=0) %}{% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}{% set col.count = col.count + 1 %}{% endif %}{% endfor %}{{ col.count }} лидов</small></div></header>
   <div class="kanban-stack">
   {% for lead, contact, comment, competitor, post, deal in rows %}{% if lead.status.value==stage %}
-    <a class="kanban-card {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %}" href="/leads/{{ lead.id }}">
-      <div class="kanban-top"><b>@{{ contact.username }}</b><span>{% if lead.status.value in ['ANALYZING','AI_PENDING'] %}…{% else %}{{ lead.lead_score }}{% endif %}</span></div>
-      <p>{{ comment.text[:120] }}{% if comment.text|length > 120 %}…{% endif %}</p>
-      <small>{{ intent_label(lead.intent) }} · {{ product_label(lead.product_category) }}</small>
-      <div class="kanban-source"><span>@{{ competitor.normalized_handle }}</span>{% if lead.next_action_at %}<em>⏱ {{ lead.next_action_at | display_dt }}</em>{% endif %}</div>
-    </a>
+    <article class="kanban-card {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %}" data-lead-card="{{ lead.id }}">
+      <a class="kanban-card-link" href="/leads/{{ lead.id }}">
+        <div class="kanban-top"><b>@{{ contact.username }}</b><span>{% if lead.status.value in ['ANALYZING','AI_PENDING'] %}…{% else %}{{ lead.lead_score }}{% endif %}</span></div>
+        <p>{{ comment.text[:120] }}{% if comment.text|length > 120 %}…{% endif %}</p>
+        <small>{{ intent_label(lead.intent) }} · {{ product_label(lead.product_category) }}</small>
+        <div class="kanban-source"><span>@{{ competitor.normalized_handle }}</span>{% if lead.next_action_at %}<em>⏱ {{ lead.next_action_at | display_dt }}</em>{% endif %}</div>
+      </a>
+      <div class="kanban-card-actions lead-funnel-actions">
+        {% include "partials/lead_funnel_quick_action.html" %}
+        <a class="btn tiny ghost" href="/leads/{{ lead.id }}">Подробнее</a>
+      </div>
+    </article>
   {% endif %}{% endfor %}
   </div>
 </section>

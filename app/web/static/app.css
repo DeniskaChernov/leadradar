@@ -331,8 +331,14 @@ tr:hover td { background: rgba(255, 255, 255, 0.55); }
 .kanban-col header b { font-size: 14px; color: #0f172a; font-weight: 700; }
 .kanban-col header small { color: var(--muted); margin-top: 2px; font-size: 11px; }
 .kanban-stack { padding: 10px; display: grid; gap: 10px; }
-.kanban-card { color: var(--text); border: 1px solid rgba(255, 255, 255, 0.85); border-radius: 14px; padding: 13px 15px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(16px); box-shadow: 0 6px 18px rgba(90, 70, 50, 0.06); transition: all .18s ease; display: block; text-decoration: none; }
+.kanban-card { color: var(--text); border: 1px solid rgba(255, 255, 255, 0.85); border-radius: 14px; padding: 0; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(16px); box-shadow: 0 6px 18px rgba(90, 70, 50, 0.06); transition: all .18s ease; display: grid; gap: 0; overflow: hidden; }
+.kanban-card-link { color: var(--text); display: block; padding: 13px 15px; text-decoration: none; }
+.kanban-card-link:hover { color: var(--text); }
 .kanban-card:hover { color: var(--text); border-color: #ffffff; transform: translateY(-2px); background: #ffffff; box-shadow: 0 12px 28px rgba(90, 70, 50, 0.12); }
+.kanban-card-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 12px; border-top: 1px solid rgba(0, 0, 0, 0.06); margin-top: 0; padding-top: 10px; }
+.lead-funnel-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.leads-save-trust.compact, .leads-save-warning { margin-bottom: 0; }
+.leads-save-trust .alert.ok { border-color: rgba(34, 197, 94, 0.25); background: rgba(240, 253, 244, 0.85); }
 .kanban-card.hot { border-color: rgba(225, 29, 72, 0.35); box-shadow: inset 3px 0 #e11d48, 0 6px 18px rgba(90, 70, 50, 0.06); }
 .kanban-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .kanban-top b { font-size: 14px; color: #0f172a; }

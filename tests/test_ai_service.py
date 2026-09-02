@@ -250,9 +250,9 @@ async def test_local_rules_raise_priority_for_cross_competitor_history():
     assert comparison.lead_score <= 99
 
 
-def test_commercial_plus_cta_tolerates_benign_punctuation_and_emoji():
+def test_commercial_plus_defers_to_openai_for_caption_context():
     analyzer = RuleBasedLeadAnalyzer()
-    for comment in ("+?", "+!", "+ 🙏", "+..."):
+    for comment in ("+", "+?", "+!", "+ 🙏", "+..."):
         result = analyzer.classify(
             LeadAnalysisContext(
                 competitor="aiko.uz",
@@ -263,6 +263,36 @@ def test_commercial_plus_cta_tolerates_benign_punctuation_and_emoji():
                 previous_interests=[],
             )
         )
-        assert result is not None
-        assert result.is_lead is True
-        assert result.intent == Intent.BUY
+        assert result is None
+
+
+def test_watch_price_question_is_rejected_without_openai():
+    analyzer = RuleBasedLeadAnalyzer()
+    result = analyzer.classify(
+        LeadAnalysisContext(
+            competitor="aiko.uz",
+            post_caption="Rolex Submariner yangi kolleksiya soatlar",
+            comment="Narxi qancha?",
+            username="buyer",
+            previous_signals=[],
+            previous_interests=[],
+        )
+    )
+    assert result is not None
+    assert result.is_lead is False
+    assert result.intent == Intent.OTHER
+
+
+def test_generic_price_without_furniture_context_defers_to_openai():
+    analyzer = RuleBasedLeadAnalyzer()
+    result = analyzer.classify(
+        LeadAnalysisContext(
+            competitor="aiko.uz",
+            post_caption="Новинки сезона",
+            comment="Narxi qancha?",
+            username="buyer",
+            previous_signals=[],
+            previous_interests=[],
+        )
+    )
+    assert result is None

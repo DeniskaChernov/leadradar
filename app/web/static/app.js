@@ -754,6 +754,8 @@
 
     const leadAction = event.target.closest('[data-lead-action]');
     if (leadAction) {
+      event.preventDefault();
+      event.stopPropagation();
       const id = leadAction.dataset.leadId;
       const type = leadAction.dataset.leadAction;
       if (type === 'not-lead') {
@@ -778,6 +780,8 @@
 
     const stage = event.target.closest('[data-stage]');
     if (stage) {
+      event.preventDefault();
+      event.stopPropagation();
       setLoading(stage, true);
       try {
         const data = await api(`/api/leads/${stage.dataset.leadId}/stage`, {

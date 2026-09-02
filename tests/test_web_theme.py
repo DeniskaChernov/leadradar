@@ -226,8 +226,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.11.6-plain-language" in base
-    assert "13.11.6-plain-language" in auth
+    assert "13.11.7-leads-funnel" in base
+    assert "13.11.7-leads-funnel" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
@@ -368,6 +368,12 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "radar-metrics" in radar
     assert ".radar-metrics" in css
     assert "leads-hero" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "partials/lead_funnel_quick_action.html" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    funnel_partial = (PROJECT_ROOT / "app/web/templates/partials/lead_funnel_quick_action.html").read_text(encoding="utf-8")
+    assert "data-stage" in funnel_partial
+    assert "data-lead-action" in funnel_partial
+    assert "leads-save-trust" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "kanban-card-actions" in css
     assert "contacts-hero" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert 'href="/agent"' in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert "ОЧЕРЕДЬ КОНТАКТОВ" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")

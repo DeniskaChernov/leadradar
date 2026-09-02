@@ -116,6 +116,103 @@ class RuleBasedLeadAnalyzer:
         "насиб",
     }
 
+    # Контекст мебели/ротанга в caption или комментарии — без этого ценовые маркеры не считаем лидом локально.
+    _FURNITURE_CONTEXT_MARKERS: ClassVar[tuple[str, ...]] = (
+        "мебел",
+        "mebel",
+        "mebell",
+        "интерьер",
+        "interior",
+        "стол",
+        "stol",
+        "стул",
+        "stul",
+        "диван",
+        "divan",
+        "кресл",
+        "kreslo",
+        "ротанг",
+        "rattan",
+        "плетен",
+        "pleten",
+        "комплект",
+        "komplekt",
+        "террас",
+        "terrace",
+        "балкон",
+        "сад",
+        "bog'",
+        "bog ",
+        "horeca",
+        "кафе",
+        "kafe",
+        "ресторан",
+        "restoran",
+        "шоурум",
+        "showroom",
+        "гарнитур",
+        "качел",
+        "swing",
+        "пергол",
+        "pergola",
+        "кухн",
+        "oshxona",
+        "обеден",
+        "dining",
+    )
+
+    # Явно чужие категории — отсекаем локально, без OpenAI.
+    _OFF_CATALOG_MARKERS: ClassVar[tuple[str, ...]] = (
+        "iphone",
+        "айфон",
+        "samsung",
+        "galaxy",
+        "xiaomi",
+        "redmi",
+        "smartphone",
+        "smart phone",
+        "telefon",
+        "телефон",
+        "rolex",
+        "casio",
+        "apple watch",
+        "smartwatch",
+        "smart watch",
+        "наручные",
+        "naruchn",
+        "avtomobil",
+        "автомобил",
+        " mashina",
+        " avto ",
+        " avto.",
+        "car sale",
+        "kiyim",
+        "одежд",
+        "платье",
+        "dress",
+        "kosmetika",
+        "косметик",
+        "parfum",
+        "парфюм",
+        "atir",
+        "soatlar",
+        "soat kolleksiya",
+        "watch collection",
+        "watches",
+    )
+
+    _DEFER_WITHOUT_FURNITURE_INTENTS: ClassVar[frozenset[Intent]] = frozenset(
+        {
+            Intent.PRICE,
+            Intent.AVAILABILITY,
+            Intent.DELIVERY,
+            Intent.CATALOG,
+            Intent.COLOR,
+            Intent.SIZE,
+            Intent.LOCATION,
+        }
+    )
+
     def classify(self, context: LeadAnalysisContext) -> LeadAnalysis | None:
         raw = (context.comment or "").strip()
         text = self._norm(raw)
@@ -214,27 +311,8 @@ class RuleBasedLeadAnalyzer:
             )
 
         if re.fullmatch(r"\+{1,3}[?!.,…🙏]*", raw.replace(" ", "")):
-            if self._caption_has_commercial_plus_cta(caption):
-                score = 92
-                return self._result(
-                    True,
-                    score,
-                    Intent.BUY,
-                    self._product(caption),
-                    language,
-                    "Пользователь выполнил коммерческий призыв публикации и оставил «+» для получения цены, каталога или связи.",
-                    context,
-                )
-            return self._result(
-                False,
-                15,
-                Intent.REACTION,
-                self._product(caption),
-                language,
-                "Сам по себе «+» не доказывает покупательский интерес: в публикации не найден коммерческий призыв оставить плюс.",
-                context,
-                risk_flags=["Смысл «+» зависит от призыва в публикации"],
-            )
+            # «+» — сигнал для OpenAI: смысл определяется по описанию Reel, не локально.
+            return None
 
         designer_markers = (
             "дизайн-проект",
@@ -303,6 +381,9 @@ class RuleBasedLeadAnalyzer:
             text,
         )
         if quantity_pattern and not any(marker in text for marker in explicit_purchase):
+            rejected = self._reject_off_catalog(caption, text, language, context)
+            if rejected is not None:
+                return rejected
             return self._result(
                 True,
                 90,
@@ -531,6 +612,14 @@ class RuleBasedLeadAnalyzer:
                 for extra_intent, _score, extra_reason, _matched in matched_checks
                 if extra_intent != intent
             )
+            rejected = self._reject_off_catalog(caption, text, language, context)
+            if rejected is not None:
+                return rejected
+            if (
+                intent in self._DEFER_WITHOUT_FURNITURE_INTENTS
+                and self._defer_without_furniture_context(caption, text)
+            ):
+                return None
             return self._result(
                 score >= 65,
                 score,
@@ -547,6 +636,11 @@ class RuleBasedLeadAnalyzer:
             )
 
         if has_price_objection:
+            rejected = self._reject_off_catalog(caption, text, language, context)
+            if rejected is not None:
+                return rejected
+            if self._defer_without_furniture_context(caption, text):
+                return None
             score = 58
             return self._result(
                 score >= 65,
@@ -648,6 +742,48 @@ class RuleBasedLeadAnalyzer:
             return False
         stripped = re.sub(r"[\W_]+", "", raw, flags=re.UNICODE)
         return stripped == "" and "+" not in raw
+
+    def _has_furniture_context(self, combined: str) -> bool:
+        if self._product(combined):
+            return True
+        return any(marker in combined for marker in self._FURNITURE_CONTEXT_MARKERS)
+
+    def _is_off_catalog_topic(self, combined: str) -> bool:
+        if any(marker in combined for marker in self._OFF_CATALOG_MARKERS):
+            return True
+        if re.search(r"\b(?:через|after|dan keyin)\s+\d+\s+час", combined):
+            return False
+        if re.search(r"\b\d+\s+час(?:а|ов)\b", combined) and "достав" in combined:
+            return False
+        watch_product = re.search(r"\b(?:час(?:ы|ов)|soat(?:lar|ni)?|watch(?:es)?)\b", combined)
+        if watch_product and not self._has_furniture_context(combined):
+            return True
+        return False
+
+    def _reject_off_catalog(
+        self,
+        caption: str,
+        text: str,
+        language: str,
+        context: LeadAnalysisContext,
+    ) -> LeadAnalysis | None:
+        combined = self._norm(f"{caption} {text}")
+        if not self._is_off_catalog_topic(combined):
+            return None
+        return self._result(
+            False,
+            8,
+            Intent.OTHER,
+            None,
+            language,
+            "Запрос относится к товару вне каталога мебели и ротанга.",
+            context,
+            risk_flags=["Не наш ассортимент"],
+        )
+
+    def _defer_without_furniture_context(self, caption: str, text: str) -> bool:
+        combined = self._norm(f"{caption} {text}")
+        return not self._has_furniture_context(combined)
 
     @staticmethod
     def _caption_has_commercial_plus_cta(caption: str) -> bool:
@@ -1055,8 +1191,11 @@ class OpenAILeadAnalyzer:
             "Use only CurrentSignal, PostContext, EvidenceBundle, ValidatedCommercialHistory, ContactCRMContext, and ProductCatalogFacts supplied in the input. Never infer private traits, contact details, income, or "
             "facts that are not present. Evaluate the comment together with the Reel caption and "
             "CTA, product fit, request specificity, repetition across prior signals, comparison "
-            "across competitors, buyer role (B2C, HoReCa/B2B, Designer), and manager-entered CRM context. A plus sign is commercial only "
-            "when the Reel explicitly asks for it to receive a price, catalog, or contact. Praise, "
+            "across competitors, buyer role (B2C, HoReCa/B2B, Designer), and manager-entered CRM context. "
+            "The business sells furniture and artificial rattan only. Reject leads about watches, phones, cars, "
+            "clothing, cosmetics, and other off-catalog products even if the comment asks for a price. "
+            "A plus sign is a signal to interpret using the Reel caption: commercial when the post explicitly "
+            "invites a plus for price, catalog, or contact; otherwise not a lead. Praise, "
             "emoji, congratulations, job requests, and unrelated conversation are not leads. "
             "Negation overrides keyword matches. Distinguish active purchase intent from research, "
             "price objections, and ambiguous questions. Score 0–100 consistently; confidence means "

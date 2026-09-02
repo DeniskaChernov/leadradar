@@ -44,6 +44,10 @@ def test_intelligence_v2_golden_dataset_calibration():
             previous_interests=[],
         )
         analysis = analyzer.classify(context)
+        if case.get("defer_to_openai"):
+            assert analysis is None, case["id"]
+            passed += 1
+            continue
         if analysis is None:
             analysis = analyzer._result(
                 False,

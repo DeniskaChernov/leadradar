@@ -1369,7 +1369,12 @@ def build_web_app(
     async def take_lead(request: Request, lead_id: int):
         try:
             lead = await workflow.assign_manager(lead_id, manager_id(request))
-            return {"ok": True, "status": lead.status.value, "message": "Лид взят в работу"}
+            status_label = label(LEAD_STATUS_LABELS, lead.status)
+            return {
+                "ok": True,
+                "status": lead.status.value,
+                "message": f"Сохранено · {status_label}",
+            }
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
 
@@ -1377,7 +1382,12 @@ def build_web_app(
     async def not_lead(request: Request, lead_id: int):
         try:
             lead = await workflow.mark_not_lead(lead_id, manager_id(request))
-            return {"ok": True, "status": lead.status.value, "message": "Сигнал помечен как не лид"}
+            status_label = label(LEAD_STATUS_LABELS, lead.status)
+            return {
+                "ok": True,
+                "status": lead.status.value,
+                "message": f"Сохранено · {status_label}",
+            }
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
 
@@ -1387,7 +1397,12 @@ def build_web_app(
         try:
             target = LeadStatus(str(payload.get("status") or "").upper())
             lead = await crm.move_lead(lead_id, manager_id(request), target)
-            return {"ok": True, "status": lead.status.value, "message": "Стадия обновлена"}
+            status_label = label(LEAD_STATUS_LABELS, lead.status)
+            return {
+                "ok": True,
+                "status": lead.status.value,
+                "message": f"Сохранено · {status_label}",
+            }
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Неизвестная стадия лида") from exc
         except LeadWorkflowError as exc:

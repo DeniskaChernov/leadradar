@@ -1,0 +1,14 @@
+{# Следующий шаг воронки для карточки лида (kanban / список). Ожидает переменную lead. #}
+{% if lead.status.value == 'NEW' %}
+<button class="btn tiny primary" type="button" data-lead-action="take" data-lead-id="{{ lead.id }}">Взять в работу</button>
+{% elif lead.status.value == 'TAKEN' %}
+<button class="btn tiny primary" type="button" data-stage="CONTACTED" data-lead-id="{{ lead.id }}">Связались</button>
+{% elif lead.status.value == 'CONTACTED' %}
+<button class="btn tiny primary" type="button" data-stage="QUALIFIED" data-lead-id="{{ lead.id }}">Интерес подтверждён</button>
+{% elif lead.status.value == 'QUALIFIED' %}
+<button class="btn tiny primary" type="button" data-stage="OFFER_SENT" data-lead-id="{{ lead.id }}">Отправили предложение</button>
+{% elif lead.status.value == 'OFFER_SENT' %}
+<button class="btn tiny primary" type="button" data-stage="NEGOTIATION" data-lead-id="{{ lead.id }}">Переговоры</button>
+{% elif lead.status.value == 'NEGOTIATION' %}
+<a class="btn tiny" href="/leads/{{ lead.id }}#funnel">Закрыть сделку →</a>
+{% endif %}

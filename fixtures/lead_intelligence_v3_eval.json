@@ -22,6 +22,7 @@
   {"id":"job","caption":"Мебельная фабрика","lead":false,"intent":"SPAM","role":"JOB_SEEKER","phrases":["Работа нужна","Есть вакансии?","Куда отправить резюме?","Ищу работу сборщиком","Ish kerak","Ish bormi sizlarda?","Вакансия борми?","Резюме юборсам бўладими?"]},
   {"id":"negation","caption":"Столы со скидкой","lead":false,"intent":"OTHER","role":"UNKNOWN","phrases":["Не хочу покупать","Мне это не нужно","Покупать не буду","Уже купил в другом месте, не нужно","Kerak emas","Olmayman","Сотиб олмайман","Менга керак эмас"]},
   {"id":"ambiguous","caption":"Интерьер гостиной","lead":false,"intent":"OTHER","role":"UNKNOWN","phrases":["Интересно","Посмотрим","Где это снято?","Кто фотограф?","Музыка из видео понравилась","Qiziq ekan","Ko'ramiz","Бу қаерда олинган?"]},
-  {"id":"plus_no_cta","caption":"Новая мебель в интерьере","lead":false,"intent":"REACTION","role":"UNKNOWN","phrases":["+","++","+?","+!","+ 🙏"," + ","+...","+++?"]},
-  {"id":"plus_cta","caption":"Оставьте плюс, чтобы получить каталог и цены","lead":true,"intent":"BUY","role":"B2C_CONSUMER","phrases":["+","++","+?","+!","+ 🙏"," + ","+...","+++?"]}
+  {"id":"plus_no_cta","caption":"Новая мебель в интерьере","lead":false,"intent":"OTHER","role":"UNKNOWN","phrases":["+","++","+?","+!","+ 🙏"," + ","+...","+++?"]},
+  {"id":"plus_cta","caption":"Оставьте плюс, чтобы получить каталог и цены","lead":true,"intent":"BUY","role":"B2C_CONSUMER","defer_to_openai":true,"phrases":["+","++","+?","+!","+ 🙏"," + ","+...","+++?"]},
+  {"id":"watch_price","caption":"Rolex Submariner yangi kolleksiya soatlar","lead":false,"intent":"OTHER","role":"UNKNOWN","phrases":["Narxi qancha?","Сколько стоит?","Nech pul?","Qancha turadi?","Цена?","+","Soat narxi?","Часы сколько?"]}
 ]

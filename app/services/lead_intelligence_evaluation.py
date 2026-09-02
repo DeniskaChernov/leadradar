@@ -49,6 +49,7 @@ class LeadIntelligenceEvaluation:
         scenario_count = 0
 
         for group in groups:
+            defer_to_openai = bool(group.get("defer_to_openai"))
             for index, phrase in enumerate(group["phrases"]):
                 scenario_count += 1
                 case_id = f"{group['id']}:{index}"
@@ -68,6 +69,9 @@ class LeadIntelligenceEvaluation:
                         evidence_ids=[scenario_count],
                     )
                 )
+                if defer_to_openai:
+                    assert analysis is None, case_id
+                    continue
                 actual_lead = bool(analysis and analysis.is_lead)
                 actual_intent = analysis.intent if analysis else Intent.OTHER
                 actual_role = analysis.buyer_role if analysis else BuyerRole.UNKNOWN

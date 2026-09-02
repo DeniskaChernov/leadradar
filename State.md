@@ -1,6 +1,8 @@
 # Lead Radar — machine state
 
-- updated: 2026-09-01T20:20+05
+- updated: 2026-09-02T11:00+05
+- leads_funnel: kanban/list кнопки воронки; ui 13.11.7-leads-funnel
+- signal_scope: «+» → OpenAI по caption; цена без мебели → OpenAI; часы/телефоны → NOT_LEAD локально
 - signal_recency: INSTAGRAM_SIGNAL_MAX_AGE_DAYS=30 — ingest/analyze/backfill/radar только свежие; baseline analyze default off
 - ui_plain: одна кнопка «Оценить накопившееся», счётчик «нужна оценка», авто-оценка 10/цикл
 - ui: 13.11.6-plain-language
