@@ -113,6 +113,7 @@ class BrightDataProvider(HTTPInstagramProvider):
         *,
         known_comment_ids: set[str] | None = None,
         max_pages: int | None = None,
+        cursor: str | None = None,
     ) -> CommentFetchResult:
         rows = await self._scrape(self.comments_dataset_id, [{"url": post.url}])
         comments = [self.normalize_comment(row) for row in rows]

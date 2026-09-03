@@ -98,6 +98,7 @@ class FallbackInstagramProvider(InstagramProvider):
         *,
         known_comment_ids: set[str] | None = None,
         max_pages: int | None = None,
+        cursor: str | None = None,
     ) -> CommentFetchResult:
         return await self._call(
             "get_comment_batch",
@@ -105,11 +106,13 @@ class FallbackInstagramProvider(InstagramProvider):
                 post,
                 known_comment_ids=known_comment_ids,
                 max_pages=max_pages,
+                cursor=cursor,
             ),
             lambda: self.fallback.get_comment_batch(
                 post,
                 known_comment_ids=known_comment_ids,
                 max_pages=max_pages,
+                cursor=cursor,
             ),
         )
 

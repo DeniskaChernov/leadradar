@@ -53,6 +53,8 @@ class CommentFetchResult(BaseModel):
     coverage_status: str = "UNKNOWN"
     cursor_exhausted: bool = True
     stopped_on_known_comment: bool = False
+    # Курсор следующей страницы (ScrapeCreators); None = продолжать нечего.
+    next_cursor: str | None = None
 
 
 class ProviderCreditObservation(BaseModel):

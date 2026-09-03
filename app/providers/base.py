@@ -89,6 +89,7 @@ class InstagramProvider(ABC):
         *,
         known_comment_ids: set[str] | None = None,
         max_pages: int | None = None,
+        cursor: str | None = None,
     ) -> CommentFetchResult:
         comments = await self.get_comments(post)
         return CommentFetchResult(
@@ -97,6 +98,7 @@ class InstagramProvider(ABC):
             pages_fetched=1,
             coverage_status="UNKNOWN",
             cursor_exhausted=True,
+            next_cursor=None,
         )
 
     async def aclose(self) -> None:

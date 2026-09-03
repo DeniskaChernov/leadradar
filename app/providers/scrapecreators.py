@@ -153,11 +153,12 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         *,
         known_comment_ids: set[str] | None = None,
         max_pages: int | None = None,
+        cursor: str | None = None,
     ) -> CommentFetchResult:
         comments: list[InstagramComment] = []
         seen_ids: set[str] = set()
         known_comment_ids = known_comment_ids or set()
-        cursor: str | None = None
+        page_cursor: str | None = cursor
         pages = 0
         cursor_exhausted = False
         stopped_on_known = False
@@ -167,8 +168,8 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
 
         while pages < page_limit:
             params = {"url": post.url, "include_replies": "true"}
-            if cursor:
-                params["cursor"] = cursor
+            if page_cursor:
+                params["cursor"] = page_cursor
             payload = await self._request_json(
                 "GET",
                 f"{self.base_url}/v2/instagram/post/comments",
@@ -196,15 +197,18 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             # we already fetched. Stopping here usually turns a 10-page refresh into one request.
             if page_has_known:
                 stopped_on_known = True
+                page_cursor = None
                 break
 
             next_cursor = payload.get("cursor") if isinstance(payload, dict) else None
             if not next_cursor:
                 cursor_exhausted = True
+                page_cursor = None
                 break
-            if str(next_cursor) == cursor:
+            if str(next_cursor) == page_cursor:
+                page_cursor = None
                 break
-            cursor = str(next_cursor)
+            page_cursor = str(next_cursor)
 
         coverage = "FULL" if cursor_exhausted else "UNKNOWN" if stopped_on_known else "PARTIAL"
         return CommentFetchResult(
@@ -214,6 +218,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             coverage_status=coverage,
             cursor_exhausted=cursor_exhausted,
             stopped_on_known_comment=stopped_on_known,
+            next_cursor=None if cursor_exhausted or stopped_on_known else page_cursor,
         )
 
     @staticmethod

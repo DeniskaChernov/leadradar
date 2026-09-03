@@ -4,6 +4,11 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-03 (C7 scan-cap credits): comment fetch page-by-page;
+`ScanBudget` синхронизируется с `PROVIDER_CONFIRMED` credits (не page-count);
+дорогая 1-я страница останавливает пагинацию до 2-й. First live pilot run=630
+(−16 credits, UNCERTAIN=0) → rollback (Radar OFF, kill switch ON). UI **13.29.5-contrast**.
+
 Контрольная точка 2026-09-03 (palette): единый **slate + teal** (`--brand #0d9488`,
 `--primary #0f766e`); убраны cream/amber brand и violet/indigo CTA. UI **13.29.4-palette**.
 
