@@ -59,7 +59,37 @@ async def test_base_template_links_pwa_manifest(session_factory):
     assert response.status_code == 200
     assert 'rel="manifest"' in response.text
     assert "/static/icons/icon.svg" in response.text
-    assert "13.29.5-contrast" in response.text
+    assert "13.29.6-pwa" in response.text
+    assert 'navigator.serviceWorker.register("/sw.js"' in response.text or "navigator.serviceWorker.register('/sw.js'" in response.text
+
+
+async def test_pwa_service_worker_served_with_root_scope(session_factory):
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/sw.js")
+        offline = await client.get("/static/offline.html")
+    assert response.status_code == 200
+    assert response.headers.get("service-worker-allowed") == "/"
+    assert "leadradar-shell-13.29.6-pwa" in response.text
+    assert "/static/offline.html" in response.text
+    assert offline.status_code == 200
+    assert 'data-offline-shell="1"' in offline.text
+
+
+def test_pwa_service_worker_source_exists():
+    path = Path("app/web/static/sw.js")
+    assert path.is_file()
+    text = path.read_text(encoding="utf-8")
+    assert "CACHE_VERSION" in text
+    assert "13.29.6-pwa" in text
 
 
 async def test_dedupe_interest_evidence_keeps_newest(session_factory):

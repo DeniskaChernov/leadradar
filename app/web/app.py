@@ -9,7 +9,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -126,6 +132,19 @@ def build_web_app(
     root = Path(__file__).resolve().parent
     templates = Jinja2Templates(directory=str(root / "templates"))
     app.mount("/static", StaticFiles(directory=str(root / "static")), name="static")
+
+    @app.get("/sw.js")
+    async def service_worker_script():
+        """SW на корневом path, чтобы scope=/ покрывал CRM shell."""
+        return FileResponse(
+            root / "static" / "sw.js",
+            media_type="application/javascript; charset=utf-8",
+            headers={
+                "Service-Worker-Allowed": "/",
+                "Cache-Control": "no-cache",
+            },
+        )
+
     auth = TelegramWebAuth(settings)
     usage_service = usage_service or ExternalUsageService(workflow.session_factory)
     provider_budget_service = ProviderCreditBudgetService(workflow.session_factory)
@@ -260,7 +279,7 @@ def build_web_app(
 
     @app.middleware("http")
     async def protect_mini_app(request: Request, call_next):
-        public_paths = {"/auth", "/api/auth/telegram", "/health", "/ready"}
+        public_paths = {"/auth", "/api/auth/telegram", "/health", "/ready", "/sw.js"}
         if not settings.web_auth_enabled:
             request.state.manager_id = local_manager_id()
             request.state.web_role = WebRole.ADMIN
@@ -330,6 +349,7 @@ def build_web_app(
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' https://telegram.org https://unpkg.com; "
+            "worker-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: https:; "
             "connect-src 'self'; "

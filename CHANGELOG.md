@@ -2,6 +2,15 @@
 
 Формат: волны улучшений по `docs/SYSTEM_IMPROVEMENT_PLAN.md`. Полная история релизов — `RELEASE_NOTES.md`.
 
+## [13.29.6-pwa] — 2026-09-03
+
+### Added
+- PWA service worker `/sw.js` (root scope): offline shell precache + navigate fallback
+- `/static/offline.html` offline shell page
+
+### Notes
+- API/health/ready never cached; Cache-Control: no-cache on SW script
+
 ## [13.29.5-contrast] — 2026-09-03
 
 ### Added

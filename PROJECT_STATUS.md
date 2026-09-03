@@ -4,6 +4,9 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-03 (D4 PWA SW): `/sw.js` scope=/; precache shell CSS/JS/icons;
+offline.html network-first navigate fallback; API не кэшируется. UI **13.29.6-pwa**.
+
 Контрольная точка 2026-09-03 (D3 audience unseen:v2): 76 cases / 210 labeled decisions;
 gate merges registry `vertical` into criteria (как production sync); unique case_id +
 active-slug coverage tests. UI **13.29.5-contrast**.

@@ -1,9 +1,10 @@
 # Lead Radar — machine state
 
-- updated: 2026-09-03T18:00+05
-- ui: 13.29.5-contrast
-- D3: DONE unseen:v2 76 cases / 210 decisions; vertical merge in gate; local commit pending
-- D2: DONE pushed
+- updated: 2026-09-03T18:10+05
+- ui: 13.29.6-pwa
+- D4: DONE /sw.js offline shell; commit+push next
+- D3: DONE pushed d75b77e
+- D2: DONE
 - C7: DONE
 - spend: gated
-- tip: commit+push D3; next D4 PWA SW
+- tip: post-120 A–D offline closed except A5/B7 manual
