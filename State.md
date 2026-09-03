@@ -1,10 +1,8 @@
 # Lead Radar — machine state
 
-- updated: 2026-09-03T16:10+05
-- ui: 13.29.4-palette
-- palette: slate+#0d9488 teal (no violet/cream/amber brand)
-- branch: codex/phase-c-budget-ledger-hardening
-- head_after_p0: 872081b
-- github_ci_p0: GREEN
-- pilot_verdict: NOT READY
-- tip: hard-refresh UI for new CSS cache; no live scan
+- updated: 2026-09-03T16:20+05
+- ui: 13.29.5-contrast
+- palette: slate+#0d9488 teal
+- fix: light-only contrast (OS dark no longer flips --text to light-on-light)
+- muted: #475569
+- tip: Ctrl+F5; commit/push contrast fix when asked

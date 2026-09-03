@@ -59,7 +59,7 @@ async def test_base_template_links_pwa_manifest(session_factory):
     assert response.status_code == 200
     assert 'rel="manifest"' in response.text
     assert "/static/icons/icon.svg" in response.text
-    assert "13.29.4-palette" in response.text
+    assert "13.29.5-contrast" in response.text
 
 
 async def test_dedupe_interest_evidence_keeps_newest(session_factory):

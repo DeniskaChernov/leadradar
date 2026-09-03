@@ -6,7 +6,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def test_web_shell_exposes_light_theme_and_accessible_navigation():
     base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
 
-    assert '<meta name="color-scheme" content="light dark">' in base
+    assert '<meta name="color-scheme" content="light">' in base
     assert 'class="skip-link"' in base
     assert 'aria-label="Основная навигация"' in base
     assert 'id="main-content"' in base
@@ -138,6 +138,8 @@ def test_audit_fixes_navigation_alignment_and_accessible_filters():
     assert "--primary: #0f766e" in css
     assert "--brand: #0d9488" in css
     assert "--brand-2: #0f766e" in css
+    assert "--muted: #475569" in css
+    assert "--text: #e8eef9" not in css
     assert "#745cff" not in css
     assert "#6c63f4" not in css
     assert "#eee6df" not in css
@@ -238,8 +240,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.29.4-palette" in base
-    assert "13.29.4-palette" in auth
+    assert "13.29.5-contrast" in base
+    assert "13.29.5-contrast" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
@@ -449,7 +451,7 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "manager-feedback-quality" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
     assert "В радар активно" in (PROJECT_ROOT / "app/web/templates/discovery.html").read_text(encoding="utf-8")
     assert "data-agent-context" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
-    assert "13.29.4-palette" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "13.29.5-contrast" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
     assert "kanban-drag-handle" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
     assert "data-economics-budget-sim" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
     assert "ai-version-info" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")

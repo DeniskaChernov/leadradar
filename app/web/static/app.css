@@ -25,7 +25,7 @@
   --line: rgba(15, 23, 42, .12);
   --line-soft: rgba(15, 23, 42, .08);
   --text: #0f172a;
-  --muted: #64748b;
+  --muted: #475569;
   --brand: #0d9488;
   --brand-2: #0f766e;
   --primary: #0f766e;
@@ -58,37 +58,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --bg: #0b1220;
-    --bg-soft: #111827;
-    --bg-glass: rgba(17, 24, 39, 0.72);
-    --bg-glass-card: rgba(22, 30, 46, 0.82);
-    --bg-glass-card-hover: rgba(28, 38, 58, 0.92);
-    --side-glass: rgba(15, 23, 42, 0.88);
-    --panel: rgba(17, 24, 39, 0.84);
-    --panel-2: rgba(22, 30, 46, 0.92);
-    --panel-3: rgba(15, 23, 42, 0.72);
-    --line: rgba(148, 163, 184, 0.18);
-    --line-soft: rgba(148, 163, 184, 0.10);
-    --text: #e8eef9;
-    --muted: #94a3b8;
-    --brand: #2dd4bf;
-    --brand-2: #14b8a6;
-    --primary: #5eead4;
-    --shadow: 0 18px 50px rgba(0, 0, 0, 0.35), 0 2px 10px rgba(0, 0, 0, 0.2);
-    --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 16px 45px rgba(0, 0, 0, 0.28);
-  }
-  body {
-    background:
-      radial-gradient(circle at 10% 15%, rgba(30, 41, 59, 0.55), transparent 50%),
-      radial-gradient(circle at 80% 20%, rgba(120, 53, 15, 0.22), transparent 45%),
-      radial-gradient(circle at 60% 85%, rgba(30, 58, 138, 0.18), transparent 50%),
-      linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-  }
-  a { color: var(--brand); }
-  a:hover { color: #5eead4; }
-  code { color: #fcd34d; background: rgba(15, 23, 42, 0.85); }
+  /* CRM UI сейчас light-only: не переключаем text tokens,
+     иначе светлый текст оказывается на светлом slate-фоне. */
 }
 
 * { box-sizing: border-box; }
@@ -863,7 +834,18 @@ td.empty { border: 0; background: transparent; padding: 36px 20px; }
 
 /* V3.4 · light liquid-glass design system */
 
-html { background: var(--bg); color-scheme: light; scroll-behavior: smooth; }
+html {
+  background: var(--bg);
+  color-scheme: light;
+  scroll-behavior: smooth;
+  /* Жёстко фиксируем light-контраст поверх OS dark preference. */
+  --bg: #f1f5f9;
+  --bg-soft: #f8fafc;
+  --text: #0f172a;
+  --muted: #475569;
+  --panel: rgba(255, 255, 255, .88);
+  --panel-2: rgba(248, 250, 252, .96);
+}
 body {
   position: relative;
   isolation: isolate;
@@ -887,16 +869,16 @@ body::after {
   filter: blur(20px);
   pointer-events: none;
 }
-body::before { left: 10%; top: -15rem; background: rgba(104, 190, 255, .18); }
-body::after { right: -10rem; bottom: -12rem; background: rgba(160, 116, 255, .15); }
+body::before { left: 10%; top: -15rem; background: rgba(13, 148, 136, .12); }
+body::after { right: -10rem; bottom: -12rem; background: rgba(15, 23, 42, .06); }
 
-::selection { background: rgba(13, 148, 136, .22); color: #102040; }
+::selection { background: rgba(13, 148, 136, .22); color: #0f172a; }
 :focus-visible { outline: 3px solid rgba(13, 148, 136, .28); outline-offset: 2px; }
-a { color: #176dcc; }
-a:hover { color: #0b4f9e; }
-code { color: #334a69; background: rgba(237, 243, 252, .85); border-color: var(--line); }
+a { color: var(--primary); }
+a:hover { color: var(--brand-2); }
+code { color: #334155; background: rgba(241, 245, 249, .90); border-color: var(--line); }
 button:disabled { cursor: not-allowed; }
-input, select, textarea { color-scheme: light; }
+input, select, textarea { color-scheme: light; color: var(--text); }
 
 .skip-link {
   position: fixed;
