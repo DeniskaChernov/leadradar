@@ -4,6 +4,9 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-03 (palette): единый **slate + teal** (`--brand #0d9488`,
+`--primary #0f766e`); убраны cream/amber brand и violet/indigo CTA. UI **13.29.4-palette**.
+
 Контрольная точка 2026-09-03 (P0 pilot safety): CI template-cache fix; `PilotReadinessService`
 fail-closed; missing `ProviderBudgetPolicy` blocks paid SC/IG before network; freshness
 ACTIVE/STALE/DORMANT/INACTIVE/UNKNOWN + `confirm_competitor_freshness`; arm script
