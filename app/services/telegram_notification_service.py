@@ -51,9 +51,10 @@ class TelegramLeadNotifier:
         bot: Bot,
         session_factory: async_sessionmaker[AsyncSession],
         workflow: LeadWorkflowService,
-        admin_chat_ids: list[int],
+        manager_chat_ids: list[int],
         *,
         hot_threshold: int,
+        admin_chat_ids: list[int] | None = None,
         max_attempts: int = 3,
         notification_policy: NotificationPolicy = NotificationPolicy.ALL_NEW_COMMENTS,
         delivery_enabled: bool = True,
@@ -64,7 +65,10 @@ class TelegramLeadNotifier:
         self.bot = bot
         self.session_factory = session_factory
         self.workflow = workflow
-        self.admin_chat_ids = admin_chat_ids
+        # Lead/change delivery targets (pilot B7: TELEGRAM_MANAGER_CHAT_IDS).
+        self.manager_chat_ids = list(dict.fromkeys(manager_chat_ids))
+        # Admin digests only (quality report и т.п.).
+        self.admin_chat_ids = list(dict.fromkeys(admin_chat_ids or []))
         self.hot_threshold = hot_threshold
         self.max_attempts = max_attempts
         self.notification_policy = notification_policy
@@ -168,7 +172,7 @@ class TelegramLeadNotifier:
             )
         if manager_id:
             return [int(manager_id)]
-        return list(dict.fromkeys(self.admin_chat_ids))
+        return list(self.manager_chat_ids)
 
     async def _change_target_chat_ids(self, change_id: int) -> list[int]:
         async with self.session_factory() as session:
@@ -179,7 +183,7 @@ class TelegramLeadNotifier:
             )
         if manager_id:
             return [int(manager_id)]
-        return list(dict.fromkeys(self.admin_chat_ids))
+        return list(self.manager_chat_ids)
 
     async def refresh_lead_messages(self, lead_id: int) -> None:
         card = await self.workflow.get_lead_card(lead_id)
@@ -375,7 +379,7 @@ class TelegramLeadNotifier:
                 )
             ).all()
         for lead_id, manager_id in leads:
-            targets = [int(manager_id)] if manager_id else self.admin_chat_ids
+            targets = [int(manager_id)] if manager_id else self.manager_chat_ids
             for chat_id in dict.fromkeys(targets):
                 await self._ensure_log(lead_id, chat_id)
 

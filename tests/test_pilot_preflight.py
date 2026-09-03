@@ -53,6 +53,8 @@ def _pilot_settings(**changes) -> Settings:
         "instagram_live_calls_enabled": False,
         "external_kill_switch": True,
         "ai_mode": "rules",
+        "telegram_manager_chat_ids": [1001],
+        "telegram_admin_chat_ids": [9001],
     }
     values.update(changes)
     return Settings(_env_file=None, **values)
@@ -204,6 +206,26 @@ async def test_preflight_blockers_for_unsafe_pilot_conditions(session_factory):
     )
     assert result.ready is False
     assert any("ровно 1" in item for item in result.blocking_reasons)
+
+
+@pytest.mark.asyncio
+async def test_preflight_requires_manager_chat_and_warns_when_same_as_admin(session_factory):
+    await _seed_policy(session_factory)
+    await _seed_competitor(session_factory, "pilot.uz", published_days_ago=1)
+    await CompetitorFreshnessService(session_factory).refresh_handle("pilot.uz")
+
+    missing = await PilotReadinessService(
+        session_factory, _pilot_settings(telegram_manager_chat_ids=[])
+    ).evaluate(competitor_handle="pilot.uz", scan_credits=5, offline=_offline_ok())
+    assert missing.ready is False
+    assert any("TELEGRAM_MANAGER_CHAT_IDS" in item for item in missing.blocking_reasons)
+
+    shared = await PilotReadinessService(
+        session_factory,
+        _pilot_settings(telegram_manager_chat_ids=[9001], telegram_admin_chat_ids=[9001]),
+    ).evaluate(competitor_handle="pilot.uz", scan_credits=5, offline=_offline_ok())
+    assert shared.ready is True
+    assert any("совпадает с ADMIN" in item for item in shared.warnings)
 
 
 @pytest.mark.asyncio

@@ -20,7 +20,7 @@
 - [x] B4. Pilot competitor: `@aiko.uz` only after arm; cap=5; schedule OFF; manual-only ON
 - [x] B5. Unseen gates PASS (lead/rattan/audience)
 - [x] B6. `arm_controlled_pilot --competitor aiko.uz --credits 5` → Radar ON, OpenAI OFF, active=1
-- [ ] B7. Отдельный Telegram manager chat для pilot — решение менеджера
+- [x] B7. Telegram manager chat для pilot: `TELEGRAM_MANAGER_CHAT_IDS` (локально; delivery через manager IDs; readiness fail-closed)
 
 ## C. Phase 10 — только после явного «разрешаю live»
 

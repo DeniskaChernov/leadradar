@@ -1,9 +1,9 @@
 # Lead Radar — machine state
 
-- updated: 2026-09-03T18:20+05
+- updated: 2026-09-03T18:25+05
 - ui: 13.29.6-pwa
-- head: 6705651 + A5 docs pending commit
-- A5: DONE main protection sqlite+postgres required; enforce_admins; no force-push
-- D2/D3/D4: DONE
-- open: B7 manager Telegram chat decision; C3/C4 need explicit live allow
+- head: d3eb266
+- A5: DONE
+- next_plan: B7 needs dedicated TELEGRAM_MANAGER_CHAT_IDS from manager
+- blocked_live: C3/C4 until explicit «разрешаю live»
 - spend: gated

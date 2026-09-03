@@ -13,7 +13,7 @@
 - [ ] 5. `python -m scripts.prepare_controlled_pilot` (dry)
 - [ ] 6. Manual backup: `python scripts/backup_database.py`
 - [ ] 7. Выбраны 1–2 конкурента; `INSTAGRAM_MAX_UNITS_PER_SCAN` ≤ 8–10
-- [ ] 8. Отдельный Telegram manager chat id в env
+- [x] 8. Отдельный Telegram manager chat id в env (`TELEGRAM_MANAGER_CHAT_IDS`)
 
 ## 1. Unlock (только с разрешением)
 

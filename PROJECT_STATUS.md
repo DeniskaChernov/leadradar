@@ -4,6 +4,9 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-03 (B7 manager chat): lead/change Telegram delivery →
+`TELEGRAM_MANAGER_CHAT_IDS`; pilot readiness fail-closed если пусто; warning если = ADMIN.
+
 Контрольная точка 2026-09-03 (A5 branch protection): `main` требует
 `offline-quality-gate (sqlite)` + `(postgres)`, enforce_admins, force-push OFF.
 

@@ -200,7 +200,7 @@ def build_web_app(
     notification_readiness_service = NotificationReadinessService(
         workflow.session_factory,
         workflow,
-        admin_chat_ids=settings.telegram_admin_chat_ids,
+        manager_chat_ids=settings.telegram_manager_chat_ids,
         default_policy=NotificationPolicy(settings.notification_policy),
         hot_threshold=settings.hot_lead_threshold,
         token_configured=bool(settings.telegram_bot_token),
@@ -393,7 +393,7 @@ def build_web_app(
             "ops": ops_control.snapshot(),
             "master_live_ready": master_live_ready(),
             "openai_spend_allowed": openai_spend_allowed(),
-            "telegram_manager_count": len(settings.telegram_admin_chat_ids),
+            "telegram_manager_count": len(settings.telegram_manager_chat_ids),
             "selected_vertical": selected_vertical,
             "ai_version_info": {
                 "rules_version": settings.lead_analysis_version,

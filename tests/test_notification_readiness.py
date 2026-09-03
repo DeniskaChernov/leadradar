@@ -13,7 +13,7 @@ async def test_notification_preview_is_read_only_and_repeatable(session_factory)
     service = NotificationReadinessService(
         session_factory,
         LeadWorkflowService(session_factory, 70),
-        admin_chat_ids=[1001, 1001],
+        manager_chat_ids=[1001, 1001],
         default_policy=NotificationPolicy.ALL_NEW_COMMENTS,
         hot_threshold=70,
         token_configured=True,
@@ -39,7 +39,7 @@ async def test_notification_preview_blocks_missing_manager_target(session_factor
     service = NotificationReadinessService(
         session_factory,
         LeadWorkflowService(session_factory, 70),
-        admin_chat_ids=[],
+        manager_chat_ids=[],
         default_policy=NotificationPolicy.ALL_NEW_COMMENTS,
         hot_threshold=70,
         token_configured=True,
