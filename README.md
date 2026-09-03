@@ -304,6 +304,12 @@ python -m alembic check
 python -m scripts.check_data_integrity
 ```
 
+Browser E2E (Chromium) входит в `pytest`. Один раз после установки зависимостей:
+
+```powershell
+python -m playwright install chromium
+```
+
 Контрольная точка 2026-08-30: 238 тестов, Ruff, compileall, integrity и `alembic check`
 проходят. Stages 0–5 закрыты; активный этап — Independent quality gates.
 

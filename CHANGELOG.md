@@ -2,6 +2,15 @@
 
 Формат: волны улучшений по `docs/SYSTEM_IMPROVEMENT_PLAN.md`. Полная история релизов — `RELEASE_NOTES.md`.
 
+## [13.29.5-contrast] — 2026-09-03
+
+### Added
+- Playwright Chromium browser E2E: funnel take→CONTACTED→not-lead→reopen (`tests/e2e/test_leads_funnel_browser.py`)
+- CI: `python -m playwright install --with-deps chromium`
+
+### Notes
+- HTTP-level e2e smoke сохранён; локально после `pip install -r requirements.txt` нужен `python -m playwright install chromium`
+
 ## [13.29.3-bugfix] — 2026-09-02
 
 ### Fixed

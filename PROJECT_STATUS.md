@@ -4,6 +4,10 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-03 (D2 Playwright e2e): Chromium browser funnel
+take→CONTACTED→not-lead→reopen; CI `playwright install chromium`; HTTP smoke сохранён.
+UI **13.29.5-contrast**.
+
 Контрольная точка 2026-09-03 (C7 scan-cap credits): comment fetch page-by-page;
 `ScanBudget` синхронизируется с `PROVIDER_CONFIRMED` credits (не page-count);
 дорогая 1-я страница останавливает пагинацию до 2-й. First live pilot run=630

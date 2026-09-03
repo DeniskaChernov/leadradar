@@ -1,39 +1,15 @@
-"""E2E smoke: /leads funnel (HTTP-level, без браузера). Playwright — опционально локально."""
+"""E2E smoke: /leads funnel (HTTP-level, без браузера)."""
 
 from httpx import ASGITransport, AsyncClient
 
-from app.config import Settings
 from app.db.models import LeadStatus
-from app.services.crm_service import CRMService
-from app.services.lead_workflow_service import LeadWorkflowService
-from app.services.monitor_controller import MonitorController
-from app.web.app import build_web_app
-from app.web.queries import WebQueryService
+from tests.e2e.helpers import build_e2e_app
 from tests.test_lead_workflow import create_lead
-
-
-def _app(session_factory):
-    return build_web_app(
-        Settings(
-            _env_file=None,
-            web_enabled=True,
-            instagram_provider="replay",
-            web_manager_id=1001,
-            openai_live_calls_enabled=True,
-            external_kill_switch=False,
-            external_live_unlock="ALLOW_EXTERNAL_CALLS",
-            openai_api_key="test-key",
-        ),
-        WebQueryService(session_factory, hot_threshold=70),
-        LeadWorkflowService(session_factory, hot_threshold=70),
-        MonitorController(None),  # type: ignore[arg-type]
-        crm=CRMService(session_factory),
-    )
 
 
 async def test_leads_page_renders_kanban_funnel(session_factory):
     lead_id = await create_lead(session_factory)
-    app = _app(session_factory)
+    app = build_e2e_app(session_factory)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         board = await client.get("/leads")
         detail = await client.get(f"/leads/{lead_id}")
@@ -45,7 +21,7 @@ async def test_leads_page_renders_kanban_funnel(session_factory):
 
 async def test_leads_funnel_full_api_chain(session_factory):
     lead_id = await create_lead(session_factory)
-    app = _app(session_factory)
+    app = build_e2e_app(session_factory)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         taken = await client.post(f"/api/leads/{lead_id}/take", json={})
         contacted = await client.post(
@@ -60,4 +36,9 @@ async def test_leads_funnel_full_api_chain(session_factory):
     assert reopened.status_code == 200
     assert taken.json().get("ok") is True
     assert reopened.json().get("ok") is True
-    assert reopened.json().get("status") in {LeadStatus.NEW.value, LeadStatus.TAKEN.value, "NEW", "TAKEN"}
+    assert reopened.json().get("status") in {
+        LeadStatus.NEW.value,
+        LeadStatus.TAKEN.value,
+        "NEW",
+        "TAKEN",
+    }

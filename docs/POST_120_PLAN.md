@@ -36,7 +36,7 @@
 ## D. Product backlog (offline, по приоритету)
 
 - [x] D1. Meta Custom Audience Graph adapter (PAUSED audience + users) за fail-closed gate
-- [ ] D2. Playwright browser E2E (сейчас HTTP-level e2e)
+- [x] D2. Playwright browser E2E (Chromium; CI installs browsers; HTTP smoke сохранён)
 - [ ] D3. Audience golden expansion beyond current unseen
 - [ ] D4. Service worker для PWA offline shell (сейчас только manifest)
 
