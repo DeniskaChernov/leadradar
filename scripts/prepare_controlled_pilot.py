@@ -1,10 +1,8 @@
-"""Controlled Radar pilot preflight without live API calls.
-
-Permanent checklist before a 5-10 credit manual scan.
-"""
+"""Controlled Radar pilot preflight — authoritative fail-closed (NO LIVE)."""
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import sys
 from pathlib import Path
@@ -13,132 +11,79 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlalchemy import func, select  # noqa: E402
-
 from app.config import get_settings  # noqa: E402
-from app.db.models import Competitor, CostEvent, ProviderBudgetPolicy  # noqa: E402
 from app.db.session import create_engine, create_session_factory  # noqa: E402
-from app.services.provider_credit_budget_service import (  # noqa: E402
-    ProviderCreditBudgetService,
+from app.services.pilot_readiness_service import (  # noqa: E402
+    MAX_PILOT_CREDITS,
+    MIN_PILOT_CREDITS,
+    PilotReadinessService,
 )
-from scripts.live_readiness_check import evaluate_readiness, inspect_local_state  # noqa: E402
 
 
-async def _snapshot() -> dict:
+async def _run(competitor: str | None, credits: int) -> int:
     settings = get_settings()
     engine = create_engine(settings)
     factory = create_session_factory(engine)
     try:
-        async with factory() as session:
-            competitor_count = await session.scalar(select(func.count(Competitor.id)))
-            active_competitors = (
-                await session.scalars(
-                    select(Competitor.handle)
-                    .where(Competitor.active.is_(True))
-                    .order_by(Competitor.handle)
-                    .limit(20)
-                )
-            ).all()
-            policy = await session.scalar(
-                select(ProviderBudgetPolicy).where(
-                    ProviderBudgetPolicy.provider == "scrapecreators",
-                    ProviderBudgetPolicy.service == "instagram",
-                    ProviderBudgetPolicy.active.is_(True),
-                )
-            )
-            cost_event_rows = int(
-                await session.scalar(
-                    select(func.count(CostEvent.id)).where(
-                        CostEvent.provider == "scrapecreators",
-                    )
-                )
-                or 0
-            )
-        wallet = await ProviderCreditBudgetService(factory).snapshot(
-            provider="scrapecreators",
-            service="instagram",
+        result = await PilotReadinessService(factory, settings).evaluate(
+            competitor_handle=competitor,
+            scan_credits=credits,
         )
-        return {
-            "settings": settings,
-            "competitor_count": int(competitor_count or 0),
-            "active_handles": list(active_competitors),
-            "policy": policy,
-            "wallet": wallet,
-            "cost_event_rows": cost_event_rows,
-        }
     finally:
         await engine.dispose()
 
-
-def main() -> int:
     print("==================================================")
     print("  CONTROLLED RADAR PILOT — PREFLIGHT (NO LIVE)    ")
     print("==================================================")
-
-    settings = get_settings()
-    state = asyncio.run(inspect_local_state(settings))
-    report = evaluate_readiness(settings, state)
-    snap = asyncio.run(_snapshot())
-
-    print(f"[{'OK' if report.offline_ready else 'X'}] Offline readiness")
-    print(f"[{'OK' if report.live_ready else 'X'}] Live readiness (must unlock manually)")
+    print(f"[i] competitor={competitor or '(not set)'} credits={credits}")
+    snap = result.snapshot
+    print(f"[{'OK' if snap.get('offline_ready') else 'X'}] Offline DB/migrations")
+    print(f"[{'OK' if snap.get('backup_present') else 'X'}] Backup present")
     print(
-        f"[i] Competitors total / active sample: "
-        f"{snap['competitor_count']} / {len(snap['active_handles'])}"
+        f"[{'OK' if not snap.get('uncertain_reservations') else 'X'}] "
+        f"UNCERTAIN={snap.get('uncertain_reservations')}"
     )
-    for handle in snap["active_handles"][:5]:
-        print(f"    - @{handle}")
-    policy = snap["policy"]
-    if policy is None:
-        print("[X] ProviderBudgetPolicy scrapecreators/instagram missing")
-    else:
-        print(
-            "[OK] Budget policy: "
-            f"target={policy.monthly_target_units} soft={policy.monthly_soft_limit_units} "
-            f"hard={policy.monthly_hard_limit_units} "
-            f"default_scan={policy.default_scan_budget_units}"
-        )
-    wallet = snap["wallet"]
-    if wallet is None:
-        print("[X] Wallet snapshot unavailable (no policy)")
-    else:
-        print(
-            f"[i] Wallet status={wallet.budget_status} "
-            f"balance={wallet.credits_remaining} "
-            f"month_remaining={wallet.monthly_remaining} "
-            f"burn7={wallet.average_daily_burn_7d} burn30={wallet.average_daily_burn_30d}"
-        )
-    print(f"[i] CostEvent rows (scrapecreators): {snap['cost_event_rows']}")
-    print(f"[i] MANUAL_LIVE_SCAN_ONLY={settings.instagram_manual_live_scan_only}")
-    print(f"[i] MONITOR_SCHEDULE_ENABLED={settings.monitor_schedule_enabled}")
-    print("[i] Meta live must stay OFF")
-
-    print("\n--- Pilot contract (manual) ---")
-    print("1. One active competitor; set others active=false for the pilot window.")
-    print("2. MONITOR_SCHEDULE_ENABLED=false; manual scan only.")
-    print("3. Cap 5-10 credits (not Deep 40).")
+    print(f"[{'OK' if snap.get('policy_present') else 'X'}] ProviderBudgetPolicy")
+    print(f"[{'OK' if snap.get('wallet_present') else 'X'}] Wallet snapshot")
     print(
-        "4. Compare: selected cap -> provider charged -> new comments "
-        "-> commercial -> HOT -> errors."
+        f"[i] monthly_remaining={snap.get('monthly_remaining')} "
+        f"balance={snap.get('credits_remaining')} "
+        f"source={snap.get('credits_remaining_source')}"
     )
-    print("5. After run: /economics coverage %, no UNCERTAIN, no hidden requests.")
-    print("6. Do NOT enable Meta / Google live.")
+    print(f"[i] schedule={snap.get('monitor_schedule_enabled')} "
+          f"manual_only={snap.get('instagram_manual_live_scan_only')}")
+    print(f"[i] meta_live={snap.get('meta_ads_live_enabled')} "
+          f"freshness={snap.get('freshness_status')}")
+    print(f"[i] active_handles={snap.get('active_handles')}")
 
-    if report.offline_blocks:
-        print("\nOFFLINE BLOCKS:")
-        for item in report.offline_blocks:
-            print(f"  [X] {item}")
-    if report.live_blocks:
-        print("\nLIVE BLOCKS (expected until explicit unlock):")
-        for item in report.live_blocks:
+    if result.warnings:
+        print("\nWARNINGS:")
+        for item in result.warnings:
+            print(f"  [!] {item}")
+    if result.blocking_reasons:
+        print("\nBLOCKERS:")
+        for item in result.blocking_reasons:
             print(f"  [X] {item}")
 
     print("==================================================")
-    if not report.offline_ready:
-        print("RESULT: OFFLINE NOT READY - fix before pilot")
-        return 1
-    print("RESULT: OFFLINE READY - awaiting explicit live unlock + 5-10 credits")
-    return 0
+    if result.ready:
+        print("RESULT: READY")
+        return 0
+    print("RESULT: NOT READY")
+    return 1
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Controlled pilot preflight (no live)")
+    parser.add_argument("--competitor", default="", help="Instagram handle for pilot")
+    parser.add_argument(
+        "--credits",
+        type=int,
+        default=5,
+        help=f"Scan cap {MIN_PILOT_CREDITS}..{MAX_PILOT_CREDITS}",
+    )
+    args = parser.parse_args()
+    return asyncio.run(_run(args.competitor.strip() or None, int(args.credits)))
 
 
 if __name__ == "__main__":

@@ -115,7 +115,9 @@ async def test_fallback_blocked_after_uncertain_primary_call(session_factory):
     from sqlalchemy import select
 
     from app.db.models import ExternalBudgetReservation, ReservationStatus
+    from tests.conftest import seed_scrapecreators_instagram_policy
 
+    await seed_scrapecreators_instagram_policy(session_factory)
     usage = ExternalUsageService(session_factory)
     primary = BudgetedInstagramProvider(
         StubProfileProvider("scrapecreators", True), usage, enabled=True, daily_limit=10
@@ -149,6 +151,9 @@ async def test_fallback_blocked_after_uncertain_primary_call(session_factory):
 async def test_provider_confirmed_response_reconciles_wallet_and_actual_usage(
     session_factory,
 ):
+    from tests.conftest import seed_scrapecreators_instagram_policy
+
+    await seed_scrapecreators_instagram_policy(session_factory)
     usage = ExternalUsageService(session_factory)
     provider = BudgetedInstagramProvider(
         CreditAwareProfileProvider(),

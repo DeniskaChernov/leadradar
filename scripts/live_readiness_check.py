@@ -1,7 +1,12 @@
-"""Fail-closed проверка offline/live готовности без внешних вызовов."""
+"""Fail-closed проверка offline/live готовности без внешних вызовов.
+
+Controlled pilot verdict идёт через PilotReadinessService — нельзя иметь
+live_readiness=READY при pilot_preflight=BLOCKED.
+"""
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import sys
 from dataclasses import dataclass
@@ -12,16 +17,19 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config import Settings, get_settings  # noqa: E402
+from app.db.session import create_engine, create_session_factory  # noqa: E402
 from app.services.deployment_readiness_service import (  # noqa: E402
     OfflineReadinessState as LocalReadinessState,
     inspect_offline_readiness,
 )
+from app.services.pilot_readiness_service import PilotReadinessService  # noqa: E402
 
 
 @dataclass(frozen=True, slots=True)
 class ReadinessReport:
     offline_blocks: tuple[str, ...]
     live_blocks: tuple[str, ...]
+    pilot_blocks: tuple[str, ...] = ()
 
     @property
     def offline_ready(self) -> bool:
@@ -29,7 +37,12 @@ class ReadinessReport:
 
     @property
     def live_ready(self) -> bool:
+        """Infra live keys OK — не controlled-pilot READY."""
         return self.offline_ready and not self.live_blocks
+
+    @property
+    def controlled_pilot_ready(self) -> bool:
+        return self.live_ready and not self.pilot_blocks
 
 
 def evaluate_readiness(
@@ -94,20 +107,23 @@ async def inspect_local_state(settings: Settings) -> LocalReadinessState:
     return await inspect_offline_readiness(settings)
 
 
-def main() -> None:
+async def _async_main(competitor: str | None, credits: int) -> int:
     print("==================================================")
     print("       LEAD RADAR V6 — LIVE READINESS CHECK       ")
     print("==================================================")
 
     settings = get_settings()
-    state = asyncio.run(inspect_local_state(settings))
+    state = await inspect_local_state(settings)
     report = evaluate_readiness(settings, state)
 
     print(f"[{'OK' if state.database_healthy else 'X'}] Database health")
     print(f"[{'OK' if state.migration_at_head else 'X'}] Database at Alembic head")
     print(f"[{'OK' if state.migration_drift_free else 'X'}] Alembic metadata drift check")
     print(f"[{'OK' if state.backup_present else 'X'}] Backup present")
-    print(f"[{'OK' if not state.uncertain_reservations else 'X'}] Unresolved UNCERTAIN reservations: {state.uncertain_reservations}")
+    print(
+        f"[{'OK' if not state.uncertain_reservations else 'X'}] "
+        f"Unresolved UNCERTAIN reservations: {state.uncertain_reservations}"
+    )
 
     print("\n--------------------------------------------------")
     if report.offline_ready:
@@ -118,14 +134,48 @@ def main() -> None:
             print(f"  [X] {block}")
 
     if report.live_ready:
-        print("STATUS: READY FOR LIVE PILOT")
+        print("STATUS: INFRA LIVE KEYS OK (not controlled pilot)")
     else:
-        print("STATUS: LIVE BLOCKED")
+        print("STATUS: LIVE INFRA BLOCKED")
         for block in (*report.offline_blocks, *report.live_blocks):
             print(f"  [X] {block}")
-    print("--------------------------------------------------")
-    sys.exit(0 if report.live_ready else 1)
 
+    # Authoritative controlled pilot — расширенный fail-closed verdict.
+    engine = create_engine(settings)
+    factory = create_session_factory(engine)
+    try:
+        pilot = await PilotReadinessService(factory, settings).evaluate(
+            competitor_handle=competitor,
+            scan_credits=credits,
+            offline=state,
+            require_single_active=True,
+        )
+    finally:
+        await engine.dispose()
+
+    print("\n--------------------------------------------------")
+    print("CONTROLLED PILOT (authoritative)")
+    if pilot.ready and report.live_ready:
+        print("STATUS: READY FOR CONTROLLED LIVE PILOT")
+        exit_code = 0
+    else:
+        print("STATUS: CONTROLLED PILOT BLOCKED")
+        for block in (*report.live_blocks, *pilot.blocking_reasons):
+            print(f"  [X] {block}")
+        exit_code = 1
+    print("--------------------------------------------------")
+    return exit_code
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Live / controlled pilot readiness")
+    parser.add_argument("--competitor", default="")
+    parser.add_argument("--credits", type=int, default=5)
+    args = parser.parse_args()
+    code = asyncio.run(
+        _async_main(args.competitor.strip() or None, int(args.credits))
+    )
+    sys.exit(code)
 
 
 if __name__ == "__main__":

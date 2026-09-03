@@ -21,6 +21,9 @@ class _PricingMonitor:
 
 @pytest.mark.asyncio
 async def test_finalized_paid_operation_creates_one_attributed_cost_event(session_factory):
+    from tests.conftest import seed_scrapecreators_instagram_policy
+
+    await seed_scrapecreators_instagram_policy(session_factory)
     pricing = PricingConfigService(session_factory)
     await pricing.set_price(
         provider="scrapecreators",

@@ -58,6 +58,9 @@ def test_scan_budget_begin_cycle_keeps_manual_cap_until_restore():
 
 @pytest.mark.asyncio
 async def test_started_external_failure_marks_reservation_uncertain(session_factory):
+    from tests.conftest import seed_scrapecreators_instagram_policy
+
+    await seed_scrapecreators_instagram_policy(session_factory)
     usage = ExternalUsageService(session_factory)
     provider = BudgetedInstagramProvider(
         BoomProvider(),
@@ -123,6 +126,9 @@ class ChargedThenBoomProvider:
 
 @pytest.mark.asyncio
 async def test_billed_parse_failure_does_not_leak_credits_to_next_call(session_factory):
+    from tests.conftest import seed_scrapecreators_instagram_policy
+
+    await seed_scrapecreators_instagram_policy(session_factory)
     usage = ExternalUsageService(session_factory)
     provider = BudgetedInstagramProvider(
         ChargedThenBoomProvider(),

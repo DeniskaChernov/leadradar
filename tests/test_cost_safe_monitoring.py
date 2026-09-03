@@ -245,7 +245,9 @@ async def test_fallback_cannot_bypass_one_unit_scan_budget(session_factory):
     from sqlalchemy import select
 
     from app.db.models import ExternalBudgetReservation, ReservationStatus
+    from tests.conftest import seed_scrapecreators_instagram_policy
 
+    await seed_scrapecreators_instagram_policy(session_factory)
     usage = ExternalUsageService(session_factory)
     shared = ScanBudget(default_limit=1)
     primary_inner = ProfileProvider("scrapecreators", fail=True)

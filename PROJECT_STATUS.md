@@ -4,6 +4,13 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-03 (P0 pilot safety): CI template-cache fix; `PilotReadinessService`
+fail-closed; missing `ProviderBudgetPolicy` blocks paid SC/IG before network; freshness
+ACTIVE/STALE/DORMANT/INACTIVE/UNKNOWN + `confirm_competitor_freshness`; arm script
+Radar-only (no OpenAI), cap 1..10; prepare exits non-zero on any blocker.
+SQLite: **495 passed, 2 skipped**; integrity OK. Controlled pilot: **NOT READY** until
+operator freshness/arm + green GitHub CI. Live/OpenAI/Meta/scheduler remain OFF.
+
 Контрольная точка 2026-09-02 (bugfix high+med): WON/LOST только через сделку; AI-статусы
 на kanban; dashboard revenue None→«—»; TAKEN→feedback; Meta invalid fail-closed;
 ops live_refresh из БД; kanban dropInFlight. UI **13.29.3-bugfix**.

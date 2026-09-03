@@ -167,6 +167,16 @@ class ExternalUsageService:
                         ProviderBudgetPolicy.active.is_(True),
                     )
                 )
+                # Paid ScrapeCreators Instagram: отсутствие policy = fail-closed (не unlimited).
+                if (
+                    normalized_provider == "scrapecreators"
+                    and service == "instagram"
+                    and monthly_policy is None
+                ):
+                    raise ExternalBudgetExceeded(
+                        "Active ProviderBudgetPolicy missing for scrapecreators/instagram; "
+                        "paid Instagram calls are blocked until monthly hard limit is configured"
+                    )
                 if monthly_policy is not None:
                     monthly_used = await session.scalar(
                         select(func.coalesce(func.sum(CostEvent.units), 0)).where(

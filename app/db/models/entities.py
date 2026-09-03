@@ -297,6 +297,16 @@ class Competitor(Base):
     adaptive_reasons_json: Mapped[list[str]] = mapped_column(JSON, default=list)
     adaptive_policy_version: Mapped[str | None] = mapped_column(String(64))
     scan_error_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Publication freshness (отдельно от adaptive monitoring_state).
+    latest_publication_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    freshness_status: Mapped[str] = mapped_column(
+        String(16), default="UNKNOWN", index=True
+    )
+    freshness_reason: Mapped[str | None] = mapped_column(Text)
+    freshness_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    manual_freshness_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     baseline_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     baseline_provider: Mapped[str | None] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
