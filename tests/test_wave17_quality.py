@@ -71,10 +71,15 @@ def test_golden_calibration_includes_watch_cases():
     assert "watch_plus_defer" in ids
 
 
-def test_app_css_has_dark_mode_tokens():
+def test_app_css_keeps_light_only_contrast_safe():
+    """CRM UI light-only: OS dark must not flip text tokens onto light surfaces."""
     css = Path("app/web/static/app.css").read_text(encoding="utf-8")
     assert "prefers-color-scheme: dark" in css
-    assert "--bg: #0b1220" in css
+    assert "light-only" in css
+    assert "--text: #0f172a" in css
+    assert "--muted: #475569" in css
+    assert "--bg: #0b1220" not in css
+    assert "--text: #e8eef9" not in css
 
 
 def test_update_state_notes_builder():
