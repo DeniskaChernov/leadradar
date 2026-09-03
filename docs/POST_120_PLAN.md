@@ -14,19 +14,20 @@
 
 ## B. Controlled live pilot prep (без live calls)
 
-- [x] B1. `live_readiness_check` → READY FOR LIVE PILOT (UNCERTAIN=0 после reconcile 134/137 spent=false)
-- [x] B2. `prepare_controlled_pilot` → OFFLINE READY, awaiting explicit unlock
+- [x] B1. Authoritative `PilotReadinessService` + fail-closed `prepare_controlled_pilot`
+- [x] B2. `prepare_controlled_pilot --competitor aiko.uz --credits 5` → **READY** (2026-09-03)
 - [x] B3. Manual backup создан (`scripts/backup_database.py`); полный restore-drill — по запросу
-- [x] B4. Рекомендация pilot: `@aiko.uz` + `@chinar.uz`, cap ≤10 units/scan, schedule OFF
-  (остальные active=false только после явного «разрешаю live» / arm script)
+- [x] B4. Pilot competitor: `@aiko.uz` only after arm; cap=5; schedule OFF; manual-only ON
 - [x] B5. Unseen gates PASS (lead/rattan/audience)
-- [ ] B6. Отдельный Telegram manager chat для pilot — решение менеджера
+- [x] B6. `arm_controlled_pilot --competitor aiko.uz --credits 5` → Radar ON, OpenAI OFF, active=1
+- [ ] B7. Отдельный Telegram manager chat для pilot — решение менеджера
 
 ## C. Phase 10 — только после явного «разрешаю live»
 
-- [ ] C1. `EXTERNAL_KILL_SWITCH=false` + `EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS`
-- [ ] C2. Ручной `/scan` с лимитом credits; reconciliation ledger
-- [ ] C3. OpenAI hybrid только если unseen PASS + arm тумблер
+- [x] C0. Env prep: schedule OFF, manual-only ON, OpenAI live OFF (rules-only first)
+- [ ] C1. Confirm unlock remains intentional (`EXTERNAL_KILL_SWITCH=false` + `EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS`)
+- [ ] C2. Ручной `/scan` с лимитом credits=5; reconciliation ledger
+- [ ] C3. OpenAI hybrid только если unseen PASS + **explicit** arm тумблер после Radar proof
 - [ ] C4. Telegram delivery smoke (1 manager)
 - [x] C5. Meta Custom Audience confirmed export (PAUSED + phone SHA-256; gate NOT_CONNECTED без unlock)
 - [ ] C6. После пилота: kill switch ON, отчёт в `docs/` + `State.md`
