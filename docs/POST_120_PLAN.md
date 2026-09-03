@@ -10,7 +10,7 @@
 - [x] A2. `ROADMAP.md` → Stage 9 ГОТОВО, Stage 10 gated
 - [x] A3. Ссылки на Railway / PG / backup / CI quality gates
 - [x] A4. Push + PR https://github.com/DeniskaChernov/leadradar/pull/2
-- [ ] A5. Branch protection: required checks `offline-quality-gate` (sqlite+postgres) — вручную в GitHub Settings
+- [x] A5. Branch protection on `main`: required checks `offline-quality-gate (sqlite)` + `(postgres)`; enforce_admins; no force-push (2026-09-03)
 
 ## B. Controlled live pilot prep (без live calls)
 

@@ -1,10 +1,9 @@
 # Lead Radar — machine state
 
-- updated: 2026-09-03T18:10+05
+- updated: 2026-09-03T18:20+05
 - ui: 13.29.6-pwa
-- D4: DONE /sw.js offline shell; commit+push next
-- D3: DONE pushed d75b77e
-- D2: DONE
-- C7: DONE
+- head: 6705651 + A5 docs pending commit
+- A5: DONE main protection sqlite+postgres required; enforce_admins; no force-push
+- D2/D3/D4: DONE
+- open: B7 manager Telegram chat decision; C3/C4 need explicit live allow
 - spend: gated
-- tip: post-120 A–D offline closed except A5/B7 manual

@@ -4,6 +4,9 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-03 (A5 branch protection): `main` требует
+`offline-quality-gate (sqlite)` + `(postgres)`, enforce_admins, force-push OFF.
+
 Контрольная точка 2026-09-03 (D4 PWA SW): `/sw.js` scope=/; precache shell CSS/JS/icons;
 offline.html network-first navigate fallback; API не кэшируется. UI **13.29.6-pwa**.
 
