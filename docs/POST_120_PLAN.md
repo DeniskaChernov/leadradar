@@ -31,7 +31,7 @@
 - [ ] C4. Telegram delivery smoke (1 manager)
 - [x] C5. Meta Custom Audience confirmed export (PAUSED + phone SHA-256; gate NOT_CONNECTED без unlock)
 - [x] C6. После первого pilot scan: Radar disarmed + `EXTERNAL_KILL_SWITCH=true` (2026-09-03)
-- [ ] C7. Fix scan_cap overshoot: comment pagination reserved≪PROVIDER_CONFIRMED charge
+- [x] C7. Fix scan_cap overshoot: comment page-by-page + PROVIDER_CONFIRMED credits (`1a74983`)
 
 ## D. Product backlog (offline, по приоритету)
 
