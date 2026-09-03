@@ -30,7 +30,8 @@
 - [ ] C3. OpenAI hybrid только если unseen PASS + **explicit** arm тумблер после Radar proof
 - [ ] C4. Telegram delivery smoke (1 manager)
 - [x] C5. Meta Custom Audience confirmed export (PAUSED + phone SHA-256; gate NOT_CONNECTED без unlock)
-- [ ] C6. После пилота: kill switch ON / disarm Radar, отчёт в `docs/` + `State.md`
+- [x] C6. После первого pilot scan: Radar disarmed + `EXTERNAL_KILL_SWITCH=true` (2026-09-03)
+- [ ] C7. Fix scan_cap overshoot: comment pagination reserved≪PROVIDER_CONFIRMED charge
 
 ## D. Product backlog (offline, по приоритету)
 
