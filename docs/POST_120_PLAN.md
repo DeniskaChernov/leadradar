@@ -37,7 +37,7 @@
 
 - [x] D1. Meta Custom Audience Graph adapter (PAUSED audience + users) за fail-closed gate
 - [x] D2. Playwright browser E2E (Chromium; CI installs browsers; HTTP smoke сохранён)
-- [ ] D3. Audience golden expansion beyond current unseen
+- [x] D3. Audience golden expansion beyond current unseen (`unseen:v2`, 76 cases / 210 decisions)
 - [ ] D4. Service worker для PWA offline shell (сейчас только manifest)
 
 ## Правило

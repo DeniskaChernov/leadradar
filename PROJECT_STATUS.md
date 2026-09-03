@@ -4,6 +4,10 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-03 (D3 audience unseen:v2): 76 cases / 210 labeled decisions;
+gate merges registry `vertical` into criteria (как production sync); unique case_id +
+active-slug coverage tests. UI **13.29.5-contrast**.
+
 Контрольная точка 2026-09-03 (D2 Playwright e2e): Chromium browser funnel
 take→CONTACTED→not-lead→reopen; CI `playwright install chromium`; HTTP smoke сохранён.
 UI **13.29.5-contrast**.

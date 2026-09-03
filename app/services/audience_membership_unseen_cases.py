@@ -185,10 +185,10 @@ AUDIENCE_MEMBERSHIP_UNSEEN_CASES: tuple[AudienceMembershipUnseenCase, ...] = (
     AudienceMembershipUnseenCase(
         "rattan_commercial",
         _base_facts(vertical="ARTIFICIAL_RATTAN", commercial_signals=2, evidence_ids=[1, 2]),
-        {"rattan-commercial": True, "furniture-commercial-intent": True},
+        {"rattan-commercial": True, "furniture-commercial-intent": False},
     ),
     AudienceMembershipUnseenCase(
-        "reactivated_contact",
+        "rattan_raw_layer_basic",
         _base_facts(vertical="ARTIFICIAL_RATTAN", rattan_layers={"RAW_MATERIAL"}),
         {"rattan-raw-buyers": True, "rattan-ready-furniture-buyers": False},
     ),
@@ -227,7 +227,7 @@ AUDIENCE_MEMBERSHIP_UNSEEN_CASES: tuple[AudienceMembershipUnseenCase, ...] = (
     AudienceMembershipUnseenCase(
         "rattan_wholesale_b2b",
         _base_facts(vertical="ARTIFICIAL_RATTAN", customer_type="B2B", buyer_role="B2B_HORECA"),
-        {"rattan-wholesale": True, "furniture-b2b": True},
+        {"rattan-wholesale": True, "furniture-b2b": False},
     ),
     AudienceMembershipUnseenCase(
         "multi_product_seating",
@@ -325,5 +325,330 @@ AUDIENCE_MEMBERSHIP_UNSEEN_CASES: tuple[AudienceMembershipUnseenCase, ...] = (
             rattan_layers={"RAW_MATERIAL"},
         ),
         {"rattan-manufacturers": True, "rattan-import-distribution": False, "rattan-raw-sellers": False},
+    ),
+    # --- unseen:v2 expansion: границы, негативы, слабые сегменты ---
+    AudienceMembershipUnseenCase(
+        "no_commercial_signal",
+        _base_facts(commercial_signals=0, evidence_ids=[]),
+        {
+            "furniture-commercial-intent": False,
+            "furniture-high-intent": False,
+            "furniture-b2b": False,
+            "price-sensitive-research": False,
+        },
+    ),
+    AudienceMembershipUnseenCase(
+        "high_intent_score_edge_69",
+        _base_facts(current_intent_score=69, recency_days=5, commercial_signals=2, evidence_ids=[1, 2]),
+        {"furniture-high-intent": False, "furniture-commercial-intent": True},
+    ),
+    AudienceMembershipUnseenCase(
+        "high_intent_score_edge_70",
+        _base_facts(current_intent_score=70, recency_days=5, commercial_signals=2, evidence_ids=[1, 2]),
+        {"furniture-high-intent": True, "furniture-commercial-intent": True},
+    ),
+    AudienceMembershipUnseenCase(
+        "high_intent_day_boundary_29",
+        _base_facts(current_intent_score=80, recency_days=29, commercial_signals=2, evidence_ids=[1, 2]),
+        {"furniture-high-intent": True, "furniture-commercial-intent": True},
+    ),
+    AudienceMembershipUnseenCase(
+        "high_intent_day_boundary_30",
+        _base_facts(current_intent_score=80, recency_days=30, commercial_signals=2, evidence_ids=[1, 2]),
+        {"furniture-high-intent": False, "furniture-commercial-intent": True},
+    ),
+    AudienceMembershipUnseenCase(
+        "armchair_seating_family",
+        _base_facts(products={"ARMCHAIR"}),
+        {"furniture-seating": True, "furniture-tables": False, "furniture-outdoor": False},
+        profiles=(AudienceProfileSpec("PRODUCT", "ARMCHAIR", 2, 67, (31,)),),
+    ),
+    AudienceMembershipUnseenCase(
+        "sofa_seating_family",
+        _base_facts(products={"SOFA"}),
+        {"furniture-seating": True, "furniture-dining": False, "furniture-sets": False},
+        profiles=(AudienceProfileSpec("PRODUCT", "SOFA", 2, 71, (32,)),),
+    ),
+    AudienceMembershipUnseenCase(
+        "rattan_garden_set_family",
+        _base_facts(products={"RATTAN_GARDEN_SET"}),
+        {"furniture-sets": True, "furniture-dining": False, "furniture-tables": False},
+        profiles=(AudienceProfileSpec("PRODUCT", "RATTAN_GARDEN_SET", 2, 69, (33,)),),
+    ),
+    AudienceMembershipUnseenCase(
+        "outdoor_not_seating",
+        _base_facts(products={"OUTDOOR_FURNITURE"}),
+        {
+            "furniture-outdoor": True,
+            "furniture-seating": False,
+            "furniture-tables": False,
+            "furniture-commercial-intent": True,
+        },
+        profiles=(AudienceProfileSpec("PRODUCT", "OUTDOOR_FURNITURE", 2, 70, (34,)),),
+    ),
+    AudienceMembershipUnseenCase(
+        "bulk_quantity_intent_strong",
+        _base_facts(intents={"QUANTITY"}, quantity=50, commercial_signals=2, evidence_ids=[1, 2]),
+        {
+            "bulk-quantity-intent": True,
+            "furniture-b2b": False,
+            "furniture-commercial-intent": True,
+            "catalog-research": False,
+        },
+        profiles=(AudienceProfileSpec("INTENT", "QUANTITY", 3, 72, (35, 36)),),
+    ),
+    AudienceMembershipUnseenCase(
+        "quantity_without_intent_profile",
+        _base_facts(quantity=40, intents=()),
+        {"bulk-quantity-intent": False, "furniture-commercial-intent": True},
+    ),
+    AudienceMembershipUnseenCase(
+        "delivery_not_catalog",
+        _base_facts(intents={"DELIVERY"}),
+        {
+            "logistics-ready": True,
+            "catalog-research": False,
+            "availability-ready": False,
+            "price-sensitive-research": False,
+        },
+        profiles=(AudienceProfileSpec("INTENT", "DELIVERY", 2, 64, (37,)),),
+    ),
+    AudienceMembershipUnseenCase(
+        "catalog_not_logistics",
+        _base_facts(intents={"CATALOG"}),
+        {
+            "catalog-research": True,
+            "logistics-ready": False,
+            "bulk-quantity-intent": False,
+            "furniture-commercial-intent": True,
+        },
+        profiles=(AudienceProfileSpec("INTENT", "CATALOG", 2, 59, (38,)),),
+    ),
+    AudienceMembershipUnseenCase(
+        "comparison_window_both_fresh",
+        _base_facts(sources=2, commercial_signals=2, evidence_ids=[1, 2]),
+        {"furniture-comparison": True, "furniture-commercial-intent": True},
+        source_competitors=(101, 202),
+        source_ages_days=(10, 20),
+    ),
+    AudienceMembershipUnseenCase(
+        "comparison_window_both_stale",
+        _base_facts(sources=2, commercial_signals=2, evidence_ids=[1, 2]),
+        {"furniture-comparison": False, "furniture-commercial-intent": True},
+        source_competitors=(101, 202),
+        source_ages_days=(50, 55),
+    ),
+    AudienceMembershipUnseenCase(
+        "comparison_duplicate_competitor",
+        _base_facts(sources=2, commercial_signals=2, evidence_ids=[1, 2]),
+        {"furniture-comparison": False, "furniture-commercial-intent": True},
+        source_competitors=(101, 101),
+        source_ages_days=(3, 7),
+    ),
+    AudienceMembershipUnseenCase(
+        "b2b_horeca_wholesale_path",
+        _base_facts(
+            customer_type="B2B",
+            buyer_role="B2B_HORECA",
+            quantity=60,
+            value=90,
+            current_intent_score=76,
+            commercial_signals=3,
+            evidence_ids=[1, 2, 3],
+        ),
+        {
+            "furniture-b2b": True,
+            "furniture-high-intent": True,
+            "furniture-designers": False,
+            "furniture-reactivated": False,
+        },
+    ),
+    AudienceMembershipUnseenCase(
+        "designer_high_intent",
+        _base_facts(
+            buyer_role="DESIGNER_CONTRACTOR",
+            current_intent_score=85,
+            recency_days=3,
+            commercial_signals=2,
+            evidence_ids=[1, 2],
+        ),
+        {
+            "furniture-designers": True,
+            "furniture-high-intent": True,
+            "furniture-b2b": False,
+            "furniture-commercial-intent": True,
+        },
+    ),
+    AudienceMembershipUnseenCase(
+        "reactivated_not_comparison",
+        _base_facts(reactivated=True, sources=1, commercial_signals=2, evidence_ids=[1, 2]),
+        {
+            "furniture-reactivated": True,
+            "furniture-comparison": False,
+            "furniture-commercial-intent": True,
+        },
+        source_competitors=(10,),
+    ),
+    AudienceMembershipUnseenCase(
+        "tables_not_dining",
+        _base_facts(products={"TABLE"}),
+        {
+            "furniture-tables": True,
+            "furniture-dining": False,
+            "furniture-sets": False,
+            "furniture-outdoor": False,
+        },
+        profiles=(AudienceProfileSpec("PRODUCT", "TABLE", 2, 73, (39,)),),
+    ),
+    AudienceMembershipUnseenCase(
+        "dining_is_also_sets",
+        _base_facts(products={"DINING_SET"}),
+        {
+            "furniture-dining": True,
+            "furniture-sets": True,
+            "furniture-seating": False,
+            "furniture-outdoor": False,
+        },
+        profiles=(AudienceProfileSpec("PRODUCT", "DINING_SET", 3, 75, (40,)),),
+    ),
+    AudienceMembershipUnseenCase(
+        "rattan_wholesale_b2b_not_raw_buyer",
+        _base_facts(
+            vertical="ARTIFICIAL_RATTAN",
+            customer_type="B2B",
+            buyer_role="B2B_HORECA",
+            rattan_layers=set(),
+        ),
+        {
+            "rattan-wholesale": True,
+            "rattan-commercial": True,
+            "rattan-raw-buyers": False,
+            "rattan-ready-furniture-buyers": False,
+        },
+    ),
+    AudienceMembershipUnseenCase(
+        "rattan_b2c_not_wholesale",
+        _base_facts(
+            vertical="ARTIFICIAL_RATTAN",
+            customer_type="B2C",
+            buyer_role="B2C_CONSUMER",
+            rattan_layers={"READY_FURNITURE"},
+        ),
+        {
+            "rattan-wholesale": False,
+            "rattan-ready-furniture-buyers": True,
+            "rattan-commercial": True,
+            "furniture-b2b": False,
+        },
+    ),
+    AudienceMembershipUnseenCase(
+        "rattan_wholesaler_as_raw_seller",
+        _base_facts(
+            vertical="ARTIFICIAL_RATTAN",
+            rattan_layers={"RAW_MATERIAL"},
+            rattan_roles={"WHOLESALER"},
+        ),
+        {
+            "rattan-raw-sellers": True,
+            "rattan-manufacturers": False,
+            "rattan-import-distribution": False,
+            "rattan-raw-buyers": True,
+        },
+    ),
+    AudienceMembershipUnseenCase(
+        "rattan_distributor_import",
+        _base_facts(
+            vertical="ARTIFICIAL_RATTAN",
+            rattan_layers={"RAW_MATERIAL"},
+            rattan_roles={"DISTRIBUTOR"},
+        ),
+        {
+            "rattan-import-distribution": True,
+            "rattan-raw-sellers": False,
+            "rattan-manufacturers": False,
+        },
+    ),
+    AudienceMembershipUnseenCase(
+        "furniture_vertical_not_rattan_commercial",
+        _base_facts(vertical="FURNITURE", commercial_signals=2, evidence_ids=[1, 2]),
+        {
+            "rattan-commercial": False,
+            "furniture-commercial-intent": True,
+            "rattan-wholesale": False,
+        },
+    ),
+    AudienceMembershipUnseenCase(
+        "price_and_buy_dual_profile",
+        _base_facts(intents={"PRICE", "BUY"}, current_intent_score=72, commercial_signals=2, evidence_ids=[1, 2]),
+        {
+            "price-sensitive-research": True,
+            "furniture-high-intent": True,
+            "availability-ready": False,
+            "furniture-commercial-intent": True,
+        },
+        profiles=(
+            AudienceProfileSpec("INTENT", "PRICE", 2, 60, (41,)),
+            AudienceProfileSpec("INTENT", "BUY", 2, 72, (42,)),
+        ),
+    ),
+    AudienceMembershipUnseenCase(
+        "availability_and_delivery_dual",
+        _base_facts(intents={"AVAILABILITY", "DELIVERY"}),
+        {
+            "availability-ready": True,
+            "logistics-ready": True,
+            "price-sensitive-research": False,
+            "catalog-research": False,
+        },
+        profiles=(
+            AudienceProfileSpec("INTENT", "AVAILABILITY", 2, 61, (43,)),
+            AudienceProfileSpec("INTENT", "DELIVERY", 2, 58, (44,)),
+        ),
+    ),
+    AudienceMembershipUnseenCase(
+        "chairs_and_table_cross_family",
+        _base_facts(products={"CHAIRS", "TABLE"}),
+        {
+            "furniture-seating": True,
+            "furniture-tables": True,
+            "furniture-dining": False,
+            "furniture-outdoor": False,
+        },
+        profiles=(
+            AudienceProfileSpec("PRODUCT", "CHAIRS", 2, 70, (45,)),
+            AudienceProfileSpec("PRODUCT", "TABLE", 2, 68, (46,)),
+        ),
+    ),
+    AudienceMembershipUnseenCase(
+        "set_not_outdoor",
+        _base_facts(products={"SET"}),
+        {
+            "furniture-sets": True,
+            "furniture-outdoor": False,
+            "furniture-seating": False,
+            "furniture-commercial-intent": True,
+        },
+        profiles=(AudienceProfileSpec("PRODUCT", "SET", 2, 66, (47,)),),
+    ),
+    AudienceMembershipUnseenCase(
+        "ready_seller_not_manufacturer",
+        _base_facts(
+            vertical="ARTIFICIAL_RATTAN",
+            rattan_layers={"READY_FURNITURE"},
+            rattan_roles={"FURNITURE_RESELLER"},
+        ),
+        {
+            "rattan-ready-furniture-sellers": True,
+            "rattan-manufacturers": False,
+            "rattan-raw-sellers": False,
+            "rattan-ready-furniture-buyers": True,
+        },
+    ),
+    AudienceMembershipUnseenCase(
+        "stale_comparison_one_fresh_source",
+        _base_facts(sources=2, commercial_signals=2, evidence_ids=[1, 2]),
+        {"furniture-comparison": False, "furniture-commercial-intent": True},
+        source_competitors=(11, 22),
+        source_ages_days=(2, 90),
     ),
 )

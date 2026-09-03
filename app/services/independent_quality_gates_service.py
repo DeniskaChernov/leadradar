@@ -74,7 +74,7 @@ class QualityGateReport:
                 and (self.layer_accuracy or 0.0) >= 0.90
             )
         if self.gate_id == "audience_unseen":
-            return self.labeled_decisions >= 100 and self.accuracy >= 0.90
+            return self.labeled_decisions >= 160 and self.accuracy >= 0.90
         return False
 
 
@@ -119,7 +119,7 @@ class IndependentQualityGatesService:
 
     LEAD_DATASET = "unseen:v1"
     RATTAN_DATASET = "unseen:v1"
-    AUDIENCE_DATASET = "unseen:v1"
+    AUDIENCE_DATASET = "unseen:v2"
 
     def __init__(self, fixtures_dir: str | Path = "fixtures") -> None:
         self.fixtures_dir = Path(fixtures_dir)
@@ -255,8 +255,10 @@ class IndependentQualityGatesService:
                 definition = AUDIENCE_BY_SLUG.get(slug)
                 if definition is None:
                     raise KeyError(f"Unknown audience slug in unseen gate: {slug}")
+                # Как в AudienceEngine.sync: vertical из registry входит в criteria_json.
+                criteria = {**definition.criteria, "vertical": definition.vertical}
                 active, _, _, _ = AudienceEngine._evaluate(
-                    definition.criteria,
+                    criteria,
                     facts,
                     last_seen,
                 )

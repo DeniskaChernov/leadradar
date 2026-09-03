@@ -7,6 +7,11 @@
 ### Added
 - Playwright Chromium browser E2E: funnel take→CONTACTED→not-lead→reopen (`tests/e2e/test_leads_funnel_browser.py`)
 - CI: `python -m playwright install --with-deps chromium`
+- Audience membership unseen **v2**: 76 cases / 210 labeled decisions; gate threshold ≥160
+
+### Fixed
+- Audience unseen gate evaluates `{**criteria, vertical}` like production segment sync
+- Duplicate unseen case_id `reactivated_contact`; rattan vs furniture vertical expectations
 
 ### Notes
 - HTTP-level e2e smoke сохранён; локально после `pip install -r requirements.txt` нужен `python -m playwright install chromium`

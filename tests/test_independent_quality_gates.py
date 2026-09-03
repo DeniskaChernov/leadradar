@@ -1,3 +1,7 @@
+from collections import Counter
+
+from app.services.audience_membership_unseen_cases import AUDIENCE_MEMBERSHIP_UNSEEN_CASES
+from app.services.audience_registry import ACTIVE_AUDIENCE_DEFINITIONS, AUDIENCE_BY_SLUG
 from app.services.independent_quality_gates_service import IndependentQualityGatesService
 
 
@@ -12,7 +16,8 @@ def test_independent_quality_gates_are_deterministic_and_pass_unseen_sets():
     assert first.audience_unseen == second.audience_unseen
     assert first.lead_unseen.case_count >= 50
     assert first.rattan_unseen.case_count >= 30
-    assert first.audience_unseen.labeled_decisions >= 100
+    assert first.audience_unseen.labeled_decisions >= 160
+    assert first.audience_unseen.dataset_version == "unseen:v2"
     assert first.lead_unseen.passed
     assert first.rattan_unseen.passed
     assert first.audience_unseen.passed
@@ -32,5 +37,22 @@ def test_audience_unseen_evaluates_registry_segments_without_database():
     report = IndependentQualityGatesService().evaluate_audience_unseen()
 
     assert report.gate_id == "audience_unseen"
-    assert report.case_count >= 30
+    assert report.case_count >= 70
+    assert report.labeled_decisions >= 160
     assert report.accuracy >= 0.90
+    assert report.dataset_version == "unseen:v2"
+
+
+def test_audience_unseen_cases_have_unique_ids_and_cover_active_slugs():
+    case_ids = [case.case_id for case in AUDIENCE_MEMBERSHIP_UNSEEN_CASES]
+    assert len(case_ids) == len(set(case_ids))
+
+    covered = Counter(
+        slug for case in AUDIENCE_MEMBERSHIP_UNSEEN_CASES for slug in case.expected
+    )
+    active_slugs = {definition.slug for definition in ACTIVE_AUDIENCE_DEFINITIONS}
+    missing = sorted(active_slugs - set(covered))
+    assert missing == []
+
+    for slug in covered:
+        assert slug in AUDIENCE_BY_SLUG
