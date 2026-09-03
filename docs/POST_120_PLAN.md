@@ -25,12 +25,12 @@
 ## C. Phase 10 — только после явного «разрешаю live»
 
 - [x] C0. Env prep: schedule OFF, manual-only ON, OpenAI live OFF (rules-only first)
-- [ ] C1. Confirm unlock remains intentional (`EXTERNAL_KILL_SWITCH=false` + `EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS`)
-- [ ] C2. Ручной `/scan` с лимитом credits=5; reconciliation ledger
+- [x] C1. Unlock intentional for pilot (`EXTERNAL_KILL_SWITCH=false` + `EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS`)
+- [x] C2. Ручной `--once` scan cap=5 (run 630): live SC calls; wallet −16 PROVIDER_CONFIRMED; UNCERTAIN=0
 - [ ] C3. OpenAI hybrid только если unseen PASS + **explicit** arm тумблер после Radar proof
 - [ ] C4. Telegram delivery smoke (1 manager)
 - [x] C5. Meta Custom Audience confirmed export (PAUSED + phone SHA-256; gate NOT_CONNECTED без unlock)
-- [ ] C6. После пилота: kill switch ON, отчёт в `docs/` + `State.md`
+- [ ] C6. После пилота: kill switch ON / disarm Radar, отчёт в `docs/` + `State.md`
 
 ## D. Product backlog (offline, по приоритету)
 
