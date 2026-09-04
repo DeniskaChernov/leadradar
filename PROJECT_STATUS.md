@@ -4,6 +4,10 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-04 (audit-fix): BOTANIST без выдуманного IG;
+тесты copy sync; nav Люди vs Компании; leftovers Radar→поиск;
+cache **13.43.0-work-pages**.
+
 Контрольная точка 2026-09-04 (work-pages): contacts→«Люди»; deals/tasks
 CTA «Найти лидов»; auth pitch; agent presets human; cache **13.43.0-work-pages**.
 

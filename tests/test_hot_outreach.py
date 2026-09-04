@@ -211,5 +211,5 @@ async def test_hot_page_and_apis(session_factory):
     assert body["detail"]["status"] == LeadStatus.OFFER_SENT.value
     assert "next_url" in body
     assert leads_rattan.status_code == 200
-    assert "Лиды ротанга" in leads_rattan.text
+    assert "Лиды ротанга" in leads_rattan.text or "Клиенты · ротанг" in leads_rattan.text
     assert 'href="/leads?vertical=ARTIFICIAL_RATTAN"' in leads_rattan.text or "vertical=ARTIFICIAL_RATTAN" in leads_rattan.text

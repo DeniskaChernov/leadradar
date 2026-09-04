@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Ротанг · Lead Radar{% endblock %}
 {% block heading %}Искусственный ротанг{% endblock %}
-{% block subheading %}Отдельный портфель источников. Не наследует мебельный Radar автоматически.{% endblock %}
+{% block subheading %}Отдельный портфель источников. Не наследует мебельный поиск автоматически.{% endblock %}
 {% block content %}
 <section class="hero-status safe rattan-hero" data-motion-root>
   <div>
@@ -10,7 +10,7 @@
     <p>{% if rattan_counts.portfolio_empty %}Добавьте Instagram-источники в портфель на странице «Конкуренты» (вертикаль = Ротанг). Пока источников нет — сканы мебели сюда не попадают.{% else %}Только источники с вертикалью «Ротанг» и коммерческие сигналы по ним.{% endif %}</p>
   </div>
   <div class="hero-actions">
-    <a class="btn primary" href="/hot?vertical=ARTIFICIAL_RATTAN">HOT очередь</a>
+    <a class="btn primary" href="/hot?vertical=ARTIFICIAL_RATTAN">Написать сейчас</a>
     <a class="btn" href="/leads?vertical=ARTIFICIAL_RATTAN">Лиды ротанга</a>
     <a class="btn ghost" href="/radar?vertical=ARTIFICIAL_RATTAN">Найти лидов · ротанг</a>
     <a class="btn ghost" href="/competitors?vertical=ARTIFICIAL_RATTAN">Портфель источников</a>
@@ -73,7 +73,7 @@
   {% for lead, comment, contact, competitor, signal, evidence in rattan_rows %}<tr><td data-label="Контакт"><a href="/contacts/{{ lead.contact_id }}">{% if contact.username %}@{{ contact.username }}{% else %}Контакт #{{ contact.id }}{% endif %}</a></td><td data-label="Сигнал">{{ comment.text }}</td><td data-label="Категория"><span class="tag neutral">{{ evidence.topic or lead.product_category or 'Не определено' }}</span></td><td data-label="Источник">@{{ competitor.normalized_handle }}</td></tr>{% endfor %}
   </tbody></table></div>
   {% else %}
-  <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="radio-tower"></i></span><b>Сигналов портфеля пока нет</b><span>{% if rattan_counts.portfolio_empty %}Сначала добавьте источники в вертикаль ротанга.{% else %}Запустите Live Radar по источникам портфеля.{% endif %}</span></div>
+  <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="radio-tower"></i></span><b>Сигналов портфеля пока нет</b><span>{% if rattan_counts.portfolio_empty %}Сначала добавьте источники в вертикаль ротанга.{% else %}Запустите «Найти лидов» по источникам портфеля.{% endif %}</span></div>
   {% endif %}
 </section>
 

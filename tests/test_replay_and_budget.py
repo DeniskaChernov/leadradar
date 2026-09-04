@@ -195,6 +195,6 @@ async def test_tasks_page_renders_in_russian(session_factory):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/tasks")
     assert response.status_code == 200
-    assert "Задачи менеджера" in response.text
+    assert "Задачи менеджера" in response.text or "Кому писать" in response.text
     assert "ОЧЕРЕДЬ КОНТАКТОВ" in response.text
     assert "tasks-hero" in response.text

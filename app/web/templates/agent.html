@@ -21,7 +21,7 @@
 </section>
 {% if agent_lead_id %}
 <section class="panel compact agent-context-bar" data-agent-context data-lead-id="{{ agent_lead_id }}"{% if agent_contact_id %} data-contact-id="{{ agent_contact_id }}"{% endif %}>
-  <div class="alert ok"><b>Контекст клиента #{{ agent_lead_id }}</b><span>Вопросы идут с lead_id.{% if agent_contact_id %} Ответ можно сохранить в заметку.{% endif %} <a href="/leads/{{ agent_lead_id }}">Открыть карточку →</a></span></div>
+  <div class="alert ok"><b>Контекст клиента #{{ agent_lead_id }}</b><span>Вопросы идут с lead_id.{% if agent_contact_id %} Ответы можно сохранить в заметку.{% endif %} <a href="/leads/{{ agent_lead_id }}">Открыть карточку →</a></span></div>
 </section>
 {% elif agent_contact_id %}
 <section class="panel compact agent-context-bar" data-agent-context data-contact-id="{{ agent_contact_id }}">

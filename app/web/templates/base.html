@@ -39,7 +39,7 @@
       </div>
       <div class="nav-group">
         <span class="nav-group-label">Разведка</span>
-        <a class="nav {% if active_path.startswith('/contacts') or active_path.startswith('/openings') %}active{% endif %}" href="{% if selected_vertical == 'ARTIFICIAL_RATTAN' %}/rattan#companies{% else %}/contacts{% endif %}"><span aria-hidden="true"><i data-lucide="building-2"></i></span><b>Компании</b></a>
+        <a class="nav {% if active_path.startswith('/contacts') or active_path.startswith('/openings') %}active{% endif %}" href="{% if selected_vertical == 'ARTIFICIAL_RATTAN' %}/rattan#companies{% else %}/contacts{% endif %}"><span aria-hidden="true"><i data-lucide="{% if selected_vertical == 'ARTIFICIAL_RATTAN' %}building-2{% else %}contact{% endif %}"></i></span><b>{% if selected_vertical == 'ARTIFICIAL_RATTAN' %}Компании{% else %}Люди{% endif %}</b></a>
         <a class="nav {% if active_path.startswith('/competitors') %}active{% endif %}" href="/competitors{{ vq }}" {% if active_path.startswith('/competitors') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="building-2"></i></span><b>Конкуренты</b></a>
         <a class="nav {% if active_path.startswith('/audiences') %}active{% endif %}" href="/audiences{{ vq }}" {% if active_path.startswith('/audiences') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="target"></i></span><b>Аудитории</b></a>
       </div>

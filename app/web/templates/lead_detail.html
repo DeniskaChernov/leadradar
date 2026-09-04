@@ -7,7 +7,7 @@
   {% set breadcrumbs = [{"href": "/leads", "label": "Клиенты"}, {"label": "#" ~ lead.id}] %}
   {% include "partials/breadcrumbs.html" %}
   <span class="pill primary">Карточка #{{ lead.id }}</span>
-  <button class="btn ghost btn-sm" type="button" onclick="window.print()" aria-label="Печать карточки">Печать</button>
+  <button class="btn ghost btn-sm" type="button" onclick="window.print()" aria-label="Печать карточки лида">Печать</button>
 </div>
 
 <article class="lead-print-sheet">

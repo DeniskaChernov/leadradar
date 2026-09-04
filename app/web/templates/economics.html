@@ -51,7 +51,7 @@
     <div>
       <span class="eyebrow">СИМУЛЯЦИЯ · БЕЗ ЗАПУСКА</span>
       <h2 id="economics-budget-sim-title">Что даст лимит credits?</h2>
-      <p>Прогноз охвата конкурентов и страниц комментариев при выбранном лимите на одну проверку Radar.</p>
+      <p>Прогноз охвата конкурентов и страниц комментариев при выбранном лимите на один поиск.</p>
     </div>
     {% if scan_budget.is_live %}<span class="tag {% if scan_budget.live_enabled %}success{% else %}warning{% endif %}">{% if scan_budget.live_enabled %}Live{% else %}Live выключен{% endif %}</span>{% else %}<span class="tag neutral">Offline</span>{% endif %}
   </div>
@@ -101,7 +101,7 @@
     <div><span>credits / горячий</span><strong>{{ ratio(page.credits.credits_per_hot) }}</strong></div>
     <div><span>USD / горячий</span><strong>{{ usd(economics.cost_per_hot_usd) }}</strong></div>
     <div><span>Горячих за период</span><strong>{{ economics.hot_count }}</strong></div>
-    <a class="btn tiny ghost" href="/radar#radar-budget-title">К бюджету Radar</a>
+    <a class="btn tiny ghost" href="/radar#radar-budget-title">К бюджету поиска</a>
   </div>
   <div class="table-wrap embedded economics-table-wrap">
     <table class="responsive-table">
@@ -148,9 +148,9 @@
     <div class="metric"><span>credits / горячий</span><strong>{{ ratio(page.credits.credits_per_hot) }}</strong><small>{{ economics.hot_count }} горячих{% if credit_accuracy is not none and credit_accuracy < 100 %} · ⚠ {{ (100 - credit_accuracy)|round(1) }}% оценочных{% endif %}</small></div>
     <div class="metric"><span>credits / B2B</span><strong>{{ ratio(page.credits.credits_per_b2b) }}</strong><small>{{ economics.b2b_count }} B2B-лидов</small></div>
     <div class="metric"><span>credits / выигранный</span><strong>{{ ratio(page.credits.credits_per_won) }}</strong><small>{{ economics.won_count }} выигранных</small></div>
-    <div class="metric"><span>Горячие / 1 000 credits</span><strong>{{ ratio(page.credits.hot_per_1000_credits) }}</strong><small>эффективность Radar</small></div>
-    <div class="metric"><span>B2B / 1 000 credits</span><strong>{{ ratio(page.credits.b2b_per_1000_credits) }}</strong><small>эффективность Radar</small></div>
-    <div class="metric"><span>Выигранные / 1 000 credits</span><strong>{{ ratio(page.credits.won_per_1000_credits) }}</strong><small>эффективность Radar</small></div>
+    <div class="metric"><span>Горячие / 1 000 credits</span><strong>{{ ratio(page.credits.hot_per_1000_credits) }}</strong><small>эффективность поиска</small></div>
+    <div class="metric"><span>B2B / 1 000 credits</span><strong>{{ ratio(page.credits.b2b_per_1000_credits) }}</strong><small>эффективность поиска</small></div>
+    <div class="metric"><span>Выигранные / 1 000 credits</span><strong>{{ ratio(page.credits.won_per_1000_credits) }}</strong><small>эффективность поиска</small></div>
   </div>
   <div class="metrics economics-metrics">
     <div class="metric"><span>Известные расходы USD</span><strong>{% if economics.cost_events %}{{ usd(economics.known_spend_usd) }}{% else %}—{% endif %}</strong><small>{{ economics.cost_events }} событий · {{ economics.cost_coverage_percent }}%</small></div>
