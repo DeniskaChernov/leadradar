@@ -49,7 +49,8 @@ async def test_rebuild_classifies_signal_but_does_not_auto_enroll_source(session
         lead = await session.scalar(select(Lead).where(Lead.comment_id == signal.comment_id))
 
     assert lead is not None
-    assert lead.vertical == Vertical.ARTIFICIAL_RATTAN
+    # Вертикаль лида = портфель источника, не keyword-taxonomy.
+    assert lead.vertical == Vertical.FURNITURE
     assert competitor is not None
     assert competitor.vertical == Vertical.FURNITURE
     assert stats.enrolled_competitors == 0
@@ -57,6 +58,7 @@ async def test_rebuild_classifies_signal_but_does_not_auto_enroll_source(session
     assert workspace["rattan_counts"]["portfolio_empty"] is True
     assert workspace["rattan_counts"]["companies"] == 0
     assert workspace["rattan_counts"]["signals"] == 0
+    assert workspace["rattan_counts"]["orphan_rattan_signals"] >= 1
 
 
 async def test_explicit_enrollment_opens_rattan_portfolio(session_factory):
@@ -103,10 +105,25 @@ async def test_crm_vertical_setting_enrolls_portfolio(session_factory):
         audience_engine=AudienceEngine(session_factory, 70),
     ).process_signal(signal)
     await RattanVerticalService(session_factory).rebuild()
+    queries = WebQueryService(session_factory, hot_threshold=70)
+    before = await queries.rattan_workspace()
+    assert any(
+        item["id"] == signal.competitor_id for item in before["rattan_enroll_candidates"]
+    )
     await CRMService(session_factory).update_competitor(
         signal.competitor_id,
         vertical=Vertical.ARTIFICIAL_RATTAN.value,
     )
-    workspace = await WebQueryService(session_factory, hot_threshold=70).rattan_workspace()
+    workspace = await queries.rattan_workspace()
     assert workspace["rattan_counts"]["portfolio_empty"] is False
     assert workspace["rattan_counts"]["companies"] == 1
+    assert not any(
+        item["id"] == signal.competitor_id
+        for item in workspace["rattan_enroll_candidates"]
+    )
+    async with session_factory() as session:
+        lead = await session.scalar(
+            select(Lead).where(Lead.competitor_id == signal.competitor_id)
+        )
+        assert lead is not None
+        assert lead.vertical == Vertical.ARTIFICIAL_RATTAN

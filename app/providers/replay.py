@@ -146,6 +146,7 @@ class ReplayInstagramProvider(InstagramProvider):
         *,
         known_comment_ids: set[str] | None = None,
         max_pages: int | None = None,
+        cursor: str | None = None,
     ) -> CommentFetchResult:
         rows = self.scenario.competitor(post.competitor).get("reels") or []
         for row in rows:

@@ -4,13 +4,14 @@
 {% block subheading %}Кто входит в сегмент и какое маркетинговое решение следует принять{% endblock %}
 {% block content %}
 <div class="detail-back-bar">
-  <a class="btn ghost btn-sm" href="/audiences{% if selected_vertical %}?vertical={{ selected_vertical }}{% endif %}">← Назад ко всем аудиториям</a>
+  {% set breadcrumbs = [{"href": "/audiences" ~ ("?vertical=" ~ selected_vertical if selected_vertical else ""), "label": "Аудитории"}, {"label": segment.name}] %}
+  {% include "partials/breadcrumbs.html" %}
   <span class="pill primary">{{ segment.audience_family }} · {{ segment.audience_level }}</span>
 </div>
 
-<section class="panel audience-hero" data-motion-root>
+<section class="hero-status live audience-hero" data-motion-root>
   <div>
-    <span class="eyebrow">ИНТЕЛЛЕКТ АУДИТОРИЙ</span>
+    <span class="eyebrow">ГРУППЫ СПРОСА</span>
     <h2>{{ segment.name }}</h2>
     <p>{{ segment.description }}</p>
     <div class="audience-definition-meta"><span>{{ segment.membership_strategy }}</span><span>confidence ≥ {{ segment.minimum_confidence }}</span><span>Evidence ≥ {{ segment.minimum_evidence_count }}</span><span>{{ segment.meta_use_case }}</span></div>
@@ -40,7 +41,7 @@
 </section>
 
 <section class="panel meta-readiness">
-  <div class="panel-head"><div><span class="eyebrow">ГРАНИЦА АКТИВАЦИИ META</span><h2>Готовность к активации</h2></div><span class="pill warn">{{ meta_readiness.blueprint.eligibility_status if meta_readiness else 'NOT_CONNECTED' }}</span></div>
+  <div class="panel-head"><div><span class="eyebrow">ГРАНИЦА АКТИВАЦИИ META</span><h2>Готовность к активации</h2></div><span class="pill warn">{% if meta_readiness %}{{ meta_readiness.blueprint.eligibility_status }}{% else %}Не подключено{% endif %}</span></div>
   {% if meta_readiness %}
   <p>{{ meta_readiness.blueprint.reason }}</p>
   <div class="audience-definition-meta"><span>{{ meta_readiness.blueprint.mode }}</span><span>{% if meta_readiness.blueprint.first_party_required %}Нужны first-party identifiers{% else %}First-party seed не требуется для планирования{% endif %}</span><span>Meta IDs: отсутствуют</span></div>
@@ -54,7 +55,7 @@
 
 {% if export_recipe %}
 <section class="panel export-recipes-workspace" aria-labelledby="audience-export-title">
-  <div class="panel-head"><div><span class="eyebrow">META ЭКСПОРТ · DRY-RUN</span><h2 id="audience-export-title">Предпросмотр экспорта сегмента</h2><p>Recipe «{{ export_recipe.name }}» · только first-party eligible · без Meta API</p></div><span class="tag neutral">NOT_CONNECTED</span></div>
+  <div class="panel-head"><div><span class="eyebrow">META ЭКСПОРТ · ПРЕДПРОСМОТР</span><h2 id="audience-export-title">Предпросмотр экспорта сегмента</h2><p>Recipe «{{ export_recipe.name }}» · только first-party eligible · без Meta API</p></div><span class="tag neutral">Не подключено</span></div>
   <button class="btn ghost btn-sm" type="button" data-api-action="/api/audiences/export-recipes/{{ export_recipe.slug }}" data-payload='{"dry_run": true}' data-result-target="#audience-export-result">Запустить dry-run</button>
   <pre class="export-result" id="audience-export-result" hidden aria-live="polite"></pre>
 </section>
@@ -95,7 +96,7 @@
       </div>
     {% else %}
       <div class="empty-box">
-        <span class="empty-icon">💬</span>
+        <span class="empty-icon" aria-hidden="true"><i data-lucide="message-circle"></i></span>
         <b>Нет явных вопросов</b>
         <span>Коммерческие сигналы с конкретными вопросами для этой аудитории ещё накапливаются.</span>
       </div>
@@ -112,7 +113,7 @@
       </div>
     {% else %}
       <div class="empty-box">
-        <span class="empty-icon">🪑</span>
+        <span class="empty-icon" aria-hidden="true"><i data-lucide="armchair"></i></span>
         <b>Товары не определены</b>
         <span>Категории товаров будут определены после поступления релевантных комментариев.</span>
       </div>
@@ -129,7 +130,7 @@
       </div>
     {% else %}
       <div class="empty-box">
-        <span class="empty-icon">📍</span>
+        <span class="empty-icon" aria-hidden="true"><i data-lucide="map-pin"></i></span>
         <b>Источники не зафиксированы</b>
         <span>Пока нет сигналов у отслеживаемых конкурентов по данному сегменту.</span>
       </div>
@@ -146,7 +147,7 @@
       </div>
     {% else %}
       <div class="empty-box">
-        <span class="empty-icon">🛡️</span>
+        <span class="empty-icon" aria-hidden="true"><i data-lucide="shield"></i></span>
         <b>Возражений нет</b>
         <span>Клиенты не выражали явных сомнений или препятствий к покупке.</span>
       </div>
@@ -200,10 +201,10 @@
   </div>
   {% else %}
   <div class="empty-state">
-    <span class="empty-icon">👥</span>
+    <span class="empty-icon" aria-hidden="true"><i data-lucide="users"></i></span>
     <h3>В этом сегменте пока нет контактов</h3>
     <p>Контакты попадают сюда автоматически при обнаружении соответствующих запросов в комментариях.</p>
-    <a class="btn ghost btn-sm" href="/radar">Перейти в радар сигналов →</a>
+    <a class="btn ghost btn-sm" href="/radar">Открыть «Найти лидов» →</a>
   </div>
   {% endif %}
 </section>

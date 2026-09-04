@@ -75,8 +75,10 @@ class Settings(BaseSettings):
     instagram_incremental_max_comment_pages: int = Field(default=2, ge=1, le=20)
     scrapecreators_max_comment_pages: int = Field(default=10, ge=1, le=100)
     process_existing_comments: bool = False
-    analyze_baseline_comments: bool = True
-    historical_analysis_batch_size: int = Field(default=25, ge=0, le=500)
+    instagram_signal_max_age_days: int = Field(default=30, ge=0, le=3650)
+    instagram_auto_analyze_fresh_batch_size: int = Field(default=10, ge=0, le=100)
+    analyze_baseline_comments: bool = False
+    historical_analysis_batch_size: int = Field(default=0, ge=0, le=500)
     web_enabled: bool = True
     web_host: str = "127.0.0.1"
     web_port: int = Field(default=8000, ge=1, le=65535)
@@ -86,11 +88,15 @@ class Settings(BaseSettings):
     web_auth_enabled: bool = False
     telegram_init_data_max_age_seconds: int = Field(default=300, ge=60, le=3600)
     log_level: str = "INFO"
+    sentry_dsn: str = ""
     http_timeout_seconds: float = Field(default=60.0, gt=0)
     http_max_attempts: int = Field(default=3, ge=1, le=5)
     telegram_notification_max_attempts: int = Field(default=3, ge=1, le=10)
     telegram_notification_flush_interval_seconds: int = Field(default=30, ge=10, le=3600)
     telegram_notification_lease_seconds: int = Field(default=120, ge=30, le=1800)
+    quality_report_enabled: bool = False
+    quality_report_hour: int = Field(default=9, ge=0, le=23)
+    quality_report_poll_seconds: int = Field(default=300, ge=60, le=3600)
     notification_policy: str = "ALL_NEW_COMMENTS"
     external_kill_switch: bool = True
 

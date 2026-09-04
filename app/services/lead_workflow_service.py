@@ -80,7 +80,9 @@ class LeadWorkflowService:
         self.session_factory = session_factory
         self.hot_threshold = hot_threshold
 
-    async def assign_manager(self, lead_id: int, manager_id: int) -> Lead:
+    async def assign_manager(
+        self, lead_id: int, manager_id: int, *, reassign: bool = False
+    ) -> Lead:
         async with self.session_factory() as session:
             result = await session.execute(
                 update(Lead)
@@ -104,7 +106,42 @@ class LeadWorkflowService:
                 if current.assigned_manager_telegram_id == manager_id:
                     return current
                 if current.assigned_manager_telegram_id is not None:
-                    raise LeadAlreadyAssignedError(current.assigned_manager_telegram_id)
+                    if not reassign:
+                        raise LeadAlreadyAssignedError(current.assigned_manager_telegram_id)
+                    previous = current.assigned_manager_telegram_id
+                    current.assigned_manager_telegram_id = manager_id
+                    if current.status in {
+                        LeadStatus.NEW,
+                        LeadStatus.AI_PENDING,
+                        LeadStatus.ANALYZING,
+                    }:
+                        current.status = LeadStatus.TAKEN
+                    current.updated_at = datetime.now(UTC)
+                    await session.execute(
+                        update(Contact)
+                        .where(Contact.id == current.contact_id)
+                        .values(assigned_manager_telegram_id=manager_id)
+                    )
+                    feedback = await session.scalar(
+                        select(AIFeedback).where(AIFeedback.lead_id == lead_id)
+                    )
+                    if feedback is not None:
+                        feedback.manager_is_lead = True
+                    await ContactEventRepository(session).add(
+                        current.contact_id,
+                        ContactEventType.MANAGER_ASSIGNED,
+                        lead_id=lead_id,
+                        manager_telegram_id=manager_id,
+                        payload={
+                            "manager_telegram_id": manager_id,
+                            "reassign_from": previous,
+                        },
+                    )
+                    await session.commit()
+                    lead = await session.get(Lead, lead_id)
+                    if lead is None:
+                        raise RuntimeError("Assigned lead disappeared")
+                    return lead
                 raise LeadWorkflowError(f"Lead cannot be taken in status {current.status.value}")
             await session.execute(
                 update(Contact)

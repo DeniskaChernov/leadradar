@@ -38,8 +38,8 @@ Lead Radar строится не как «парсер комментариев�
 искусственный ротанг V2, durable Telegram outbox, budget/cost ledger, Discovery Center,
 подтверждаемый каталог, grounded Next Best Action и 600-case robustness replay.
 
-Это не означает live/production readiness: независимые quality gates и controlled live pilot
-ещё не пройдены.
+Это не означает live/production readiness: controlled live pilot
+ещё не пройден (Phase 10). Независимые quality gates — **offline PASS**.
 
 ## Master work order 2026-08-31
 
@@ -51,8 +51,8 @@ Lead Radar строится не как «парсер комментариев�
 - Phase 6 Independent quality gates — **ГОТОВО**;
 - Phase 7 Grounded Agent — **ГОТОВО**;
 - Phase 8 UI final hardening — **ЗАВЕРШЁН offline** (agent panels, auth fail-closed, crm.assign_lead, 303 tests);
-- Phase 9 Deployment readiness — **В ПРОЦЕССЕ** (/ready, PORT, SIGTERM, PostgreSQL CI, MetaAdsService, 310 tests);
-- Phase 10 Controlled live pilot — только по отдельному разрешению.
+- Phase 9 Deployment readiness — **ЗАВЕРШЁН offline** (/ready, PORT, SIGTERM, PG CI, Railway docs, backup drill, 483+ tests);
+- Phase 10 Controlled live pilot — только по отдельному разрешению (см. `docs/POST_120_PLAN.md`).
 
 ### Master Phase 6. Independent quality gates — ГОТОВО
 
@@ -152,23 +152,26 @@ Lead Radar строится не как «парсер комментариев�
 - dry-run/race/retry/UNCERTAIN для Telegram;
 - реальная доставка остаётся отдельным pilot gate.
 
-### Stage 9. Deployment readiness
+### Stage 9. Deployment readiness — ГОТОВО (offline)
 
 - PostgreSQL compatibility;
 - health/readiness, graceful shutdown и structured logs;
 - backup/restore drill;
 - fail-closed live preflight;
-- SQLite + PostgreSQL CI matrix.
+- SQLite + PostgreSQL CI matrix;
+- Railway/Dockerfile runbooks.
 
 ### Stage 10. Controlled live integrations — ТОЛЬКО ПО ОТДЕЛЬНОМУ РАЗРЕШЕНИЮ
 
 - один выбранный Instagram provider с минимальным ручным лимитом;
 - отдельный Telegram manager chat;
-- OpenAI только через budget ledger;
+- OpenAI только через budget ledger + unseen gate PASS;
 - Meta/Google только через официальные adapters, credentials, privacy и budget gates;
+- Meta Custom Audience confirmed export (сейчас dry-run / NOT_CONNECTED);
 - после пилота — reconciliation и повторное отключение live.
 
 До Stage 10 любые Instagram/OpenAI/Telegram delivery/Meta/Google live-вызовы запрещены.
+Чеклист: `docs/LIVE_PILOT_CHECKLIST.md`, план: `docs/POST_120_PLAN.md`.
 
 ## Что должно увеличивать количество лидов
 

@@ -114,9 +114,9 @@ async def test_lead_funnel_api_chain(session_factory):
         ("/discovery", "ЦЕНТР РАЗВЕДКИ"),
         ("/analytics?days=7", "РЫНОЧНАЯ АНАЛИТИКА"),
         ("/catalog", "ИСТОЧНИК ИСТИНЫ"),
-        ("/audiences", "ИНТЕЛЛЕКТ АУДИТОРИЙ"),
+        ("/audiences", "ГРУППЫ СПРОСА"),
         ("/openings", "B2B ОТКРЫТИЯ"),
-        ("/agent", "ОБОСНОВАННО"),
+        ("/agent", "ТОЛЬКО ИЗ БАЗЫ"),
     ],
 )
 async def test_admin_pages_show_russian_eyebrows(session_factory, path: str, marker: str):
@@ -145,6 +145,24 @@ async def test_secondary_pages_have_motion_root(session_factory, path: str):
         response = await client.get(path)
     assert response.status_code == 200
     assert "data-motion-root" in response.text
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/discovery",
+        "/catalog",
+        "/competitors",
+        "/roadmap",
+        "/audiences",
+    ],
+)
+async def test_legacy_pages_use_hero_status(session_factory, path: str):
+    app = _app(session_factory)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(path)
+    assert response.status_code == 200
+    assert 'class="hero-status' in response.text
 
 
 async def _seed_mixed_credit_events(session_factory) -> None:
@@ -226,7 +244,7 @@ async def test_audience_detail_renders_with_real_slug(session_factory):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(f"/audiences/{slug}")
     assert response.status_code == 200
-    assert "ИНТЕЛЛЕКТ АУДИТОРИЙ" in response.text
+    assert "ГРУППЫ СПРОСА" in response.text
     assert "data-motion-root" in response.text
 
 

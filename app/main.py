@@ -5,6 +5,7 @@ import contextlib
 import logging
 import signal
 import sys
+from datetime import datetime
 
 import uvicorn
 from aiogram import Bot, Dispatcher
@@ -16,7 +17,7 @@ from aiogram.types import BotCommand
 
 from app.bot.handlers import build_router
 from app.config import Settings, get_settings
-from app.db.models import NotificationPolicy
+from app.db.models import DailyQualityReportLog, NotificationPolicy
 from app.db.session import (
     backup_sqlite_database,
     create_engine,
@@ -45,6 +46,7 @@ from app.services.monitor_run_service import MonitorRunService
 from app.services.notification_service import NullLeadNotifier
 from app.services.operational_control_service import OperationalControlService
 from app.services.product_catalog_service import ProductCatalogService
+from app.services.quality_report_service import QualityReportService
 from app.services.rattan_vertical_service import RattanVerticalService
 from app.services.significant_change_service import SignificantChangeDetector
 from app.services.telegram_notification_service import TelegramLeadNotifier
@@ -95,6 +97,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         print(f"Database backup: {backup}")
     await upgrade_database()
     configure_logging(settings)
+    init_error_monitoring(settings)
     engine = create_engine(settings)
     session_factory = create_session_factory(engine)
     market_service = MarketIntelligenceService(session_factory)
@@ -118,6 +121,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         settings,
         usage_service,
         live_gate=ops_control.radar_live_armed,
+        live_refresh=ops_control.radar_live_armed_fresh,
     )
     rules = RuleBasedLeadAnalyzer()
     openai_analyzer = None
@@ -132,6 +136,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             lease_seconds=settings.ai_request_lease_seconds,
             max_attempts=settings.ai_request_max_attempts,
             live_gate=ops_control.openai_live_armed,
+            live_refresh=ops_control.openai_live_armed_fresh,
         )
     analyzer = (
         HybridLeadAnalyzer(rules, openai_analyzer, mode=settings.ai_mode)
@@ -156,6 +161,7 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         settings.hot_lead_threshold,
         audience_engine=audience_engine,
         change_detector=change_detector,
+        signal_max_age_days=settings.instagram_signal_max_age_days,
     )
     workflow = LeadWorkflowService(session_factory, settings.hot_lead_threshold)
 
@@ -190,6 +196,8 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             retry_pending_enabled=settings.ai_pending_retry_enabled,
             retry_pending_batch_size=settings.ai_pending_retry_batch_size,
             retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
+            max_signal_age_days=settings.instagram_signal_max_age_days,
+            auto_analyze_fresh_batch_size=settings.instagram_auto_analyze_fresh_batch_size,
             analysis_pipeline=LeadAnalysisPipeline(
                 lead_service,
                 NullLeadNotifier(),
@@ -241,6 +249,8 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             retry_pending_enabled=settings.ai_pending_retry_enabled,
             retry_pending_batch_size=settings.ai_pending_retry_batch_size,
             retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
+            max_signal_age_days=settings.instagram_signal_max_age_days,
+            auto_analyze_fresh_batch_size=settings.instagram_auto_analyze_fresh_batch_size,
             analysis_pipeline=LeadAnalysisPipeline(
                 lead_service,
                 NullLeadNotifier(),
@@ -253,7 +263,11 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         controller = MonitorController(monitor, MonitorRunService(session_factory, provider.name))
         web_app = build_web_app(
             settings,
-            WebQueryService(session_factory, settings.hot_lead_threshold),
+            WebQueryService(
+                session_factory,
+                settings.hot_lead_threshold,
+                signal_max_age_days=settings.instagram_signal_max_age_days,
+            ),
             workflow,
             controller,
             usage_service,
@@ -307,7 +321,8 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         bot,
         session_factory,
         workflow,
-        settings.telegram_admin_chat_ids,
+        settings.telegram_manager_chat_ids,
+        admin_chat_ids=settings.telegram_admin_chat_ids,
         hot_threshold=settings.hot_lead_threshold,
         max_attempts=settings.telegram_notification_max_attempts,
         lease_seconds=settings.telegram_notification_lease_seconds,
@@ -335,6 +350,8 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         retry_pending_enabled=settings.ai_pending_retry_enabled,
         retry_pending_batch_size=settings.ai_pending_retry_batch_size,
         retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
+        max_signal_age_days=settings.instagram_signal_max_age_days,
+        auto_analyze_fresh_batch_size=settings.instagram_auto_analyze_fresh_batch_size,
         analysis_pipeline=LeadAnalysisPipeline(
             lead_service,
             notifier,
@@ -356,6 +373,12 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
     notification_task = asyncio.create_task(
         _notification_loop(notifier, settings), name="lead-radar-notifications"
     )
+    quality_report_task = None
+    if settings.quality_report_enabled:
+        quality_report_task = asyncio.create_task(
+            _quality_report_loop(session_factory, notifier, settings),
+            name="lead-radar-quality-report",
+        )
     analysis_task = asyncio.create_task(
         _analysis_loop(analysis_pipeline, settings), name="lead-radar-analysis"
     )
@@ -364,7 +387,11 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
     if settings.web_enabled:
         web_app = build_web_app(
             settings,
-            WebQueryService(session_factory, settings.hot_lead_threshold),
+            WebQueryService(
+                session_factory,
+                settings.hot_lead_threshold,
+                signal_max_age_days=settings.instagram_signal_max_age_days,
+            ),
             workflow,
             controller,
             usage_service,
@@ -404,6 +431,8 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
         polling_task.cancel()
         monitor_task.cancel()
         notification_task.cancel()
+        if quality_report_task is not None:
+            quality_report_task.cancel()
         analysis_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await polling_task
@@ -411,6 +440,9 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             await monitor_task
         with contextlib.suppress(asyncio.CancelledError):
             await notification_task
+        if quality_report_task is not None:
+            with contextlib.suppress(asyncio.CancelledError):
+                await quality_report_task
         with contextlib.suppress(asyncio.CancelledError):
             await analysis_task
         if web_server is not None:
@@ -467,6 +499,78 @@ async def _notification_loop(notifier: TelegramLeadNotifier, settings: Settings)
         await asyncio.sleep(settings.telegram_notification_flush_interval_seconds)
 
 
+async def _quality_report_loop(
+    session_factory,
+    notifier: TelegramLeadNotifier,
+    settings: Settings,
+) -> None:
+    """Ежедневный digest качества в admin Telegram (идемпотентно по дате+TZ)."""
+    from sqlalchemy import select
+
+    service = QualityReportService(
+        session_factory,
+        hot_threshold=settings.hot_lead_threshold,
+        rules_version=settings.lead_analysis_version,
+        signal_max_age_days=settings.instagram_signal_max_age_days,
+    )
+    last_sent_local_date = None
+    while True:
+        try:
+            from zoneinfo import ZoneInfo
+
+            tz = ZoneInfo(settings.web_display_timezone)
+            now_local = datetime.now(tz)
+            if (
+                now_local.hour == settings.quality_report_hour
+                and now_local.date() != last_sent_local_date
+            ):
+                report_date = now_local.date()
+                async with session_factory() as session:
+                    exists = await session.scalar(
+                        select(DailyQualityReportLog.id).where(
+                            DailyQualityReportLog.report_date == report_date,
+                            DailyQualityReportLog.report_timezone == settings.web_display_timezone,
+                        )
+                    )
+                if exists is None:
+                    snapshot = await service.build_snapshot(
+                        report_date=report_date,
+                        timezone_name=settings.web_display_timezone,
+                    )
+                    message = QualityReportService.format_message(
+                        snapshot,
+                        rules_version=settings.lead_analysis_version,
+                    )
+                    sent = await notifier.send_admin_digest(message)
+                    if sent:
+                        async with session_factory() as session:
+                            session.add(
+                                DailyQualityReportLog(
+                                    report_date=report_date,
+                                    report_timezone=settings.web_display_timezone,
+                                    snapshot_json={
+                                        "new_leads": snapshot.new_leads,
+                                        "not_lead": snapshot.not_lead,
+                                        "hot_leads": snapshot.hot_leads,
+                                        "hot_false_positives": snapshot.hot_false_positives,
+                                        "reviewed_feedback": snapshot.reviewed_feedback,
+                                        "stale_rules_count": snapshot.stale_rules_count,
+                                        "openai_events": snapshot.openai_events,
+                                    },
+                                )
+                            )
+                            await session.commit()
+                        last_sent_local_date = report_date
+                        logger.info(
+                            "quality_report_sent date=%s chats=%s",
+                            report_date.isoformat(),
+                            sent,
+                        )
+        except Exception as exc:
+            logger.exception("quality_report_loop_failed error_type=%s", type(exc).__name__)
+        await asyncio.sleep(settings.quality_report_poll_seconds)
+
+
 async def _register_bot_commands(bot: Bot) -> None:
     await bot.set_my_commands(
         [
@@ -501,6 +605,22 @@ def configure_logging(settings: Settings) -> None:
         format=fmt,
         force=True,
     )
+
+
+def init_error_monitoring(settings: Settings) -> None:
+    """Подключает Sentry при наличии DSN и установленного sentry-sdk."""
+    dsn = settings.sentry_dsn.strip()
+    if not dsn:
+        return
+    try:
+        import sentry_sdk
+    except ImportError:
+        logging.getLogger(__name__).warning(
+            "sentry_dsn_configured sentry_sdk_missing hint=pip install sentry-sdk"
+        )
+        return
+    sentry_sdk.init(dsn=dsn, traces_sample_rate=0.0)
+    logging.getLogger(__name__).info("sentry_initialized")
 
 
 def main() -> None:

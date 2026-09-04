@@ -1,47 +1,51 @@
 {% extends "base.html" %}
 {% block title %}Обзор · Lead Radar{% endblock %}
-{% block heading %}Обзор{% endblock %}
-{% block subheading %}Кабина пилота — лиды, задачи и Radar в одном месте{% endblock %}
+{% block heading %}Главная{% endblock %}
+{% block subheading %}Находите людей, которым нужна мебель — и ведите их до сделки{% endblock %}
 {% block content %}
 <section class="hero-status {% if safe_mode %}safe{% else %}live{% endif %}" data-motion-root>
   <div>
-    <span class="eyebrow">{% if safe_mode %}БЕЗ LIVE · ГОТОВО{% else %}ПОДГОТОВКА LIVE{% endif %}</span>
-    <h2>{% if safe_mode %}База и CRM работают без расхода credits{% else %}Готовим контролируемый пилот радара{% endif %}</h2>
-    <p>{% if safe_mode %}Live ScrapeCreators выключен. Разбор сигналов, задачи и сделки доступны. Запуск Radar — только с подтверждением лимита 5–10 credits.{% else %}Новые комментарии сохраняются в базу. Запускайте проверку с /radar или кнопкой «Проверить сейчас» с явным cap.{% endif %}</p>
+    <span class="eyebrow">{% if safe_mode %}БЕЗ LIVE · КЛИЕНТЫ РАБОТАЮТ{% else %}ПОИСК КЛИЕНТОВ{% endif %}</span>
+    <h2>{% if safe_mode %}База клиентов без расхода credits{% else %}Готовы искать новых клиентов{% endif %}</h2>
+    <p>{% if safe_mode %}Внешний Instagram выключен — можно вести уже найденных клиентов. Чтобы искать новых — включите Live и откройте «Найти лидов».{% else %}Начните с «Найти лидов»: выберите источники, кого ищем — Lead Radar соберёт готовых потенциальных покупателей.{% endif %}</p>
   </div>
   <div class="hero-actions">
-    <a class="btn primary" href="/radar">Открыть Radar</a>
-    <button class="btn" type="button" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Разобрать локально</button>
-    <button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-async-retry="1">Повторить очередь AI</button>
+    <a class="btn primary" href="/radar">Найти лидов</a>
+    <a class="btn" href="/hot">Новые лиды</a>
+    {% include "partials/signal_review_actions.html" %}
   </div>
 </section>
-
-<section class="alert info compact-help"><b>Разбор сигналов</b><span>«Разобрать локально» — только правила, без OpenAI. «Повторить очередь AI» — hybrid/GPT, если OpenAI live включён на /system или /radar; иначе снова только правила.</span></section>
+{% include "partials/dashboard_plain_help.html" %}
+{% include "partials/signal_review_help.html" %}
 
 <section class="quick-actions panel" aria-label="Быстрые действия" data-motion-root>
-  <a class="quick-action" href="/radar"><span class="quick-action-icon"><i data-lucide="radar"></i></span><b>Radar</b><small>Бюджет и запуск проверки</small></a>
-  <a class="quick-action" href="/agent"><span class="quick-action-icon"><i data-lucide="bot"></i></span><b>AI-чат</b><small>Grounded ответы из БД</small></a>
-  <a class="quick-action" href="/leads"><span class="quick-action-icon hot"><i data-lucide="zap"></i></span><b>{{ counts.hot }} HOT</b><small>Открыть горячие лиды</small></a>
+  <a class="quick-action" href="/radar"><span class="quick-action-icon"><i data-lucide="search"></i></span><b>Найти лидов</b><small>Источники → цель → запуск</small></a>
+  <a class="quick-action" href="/hot"><span class="quick-action-icon hot"><i data-lucide="flame"></i></span><b>{{ counts.hot }} HOT</b><small>Горячие клиенты сейчас</small></a>
+  <a class="quick-action" href="/leads"><span class="quick-action-icon"><i data-lucide="briefcase"></i></span><b>Клиенты</b><small>Воронка до сделки</small></a>
   <a class="quick-action" href="/tasks"><span class="quick-action-icon warn"><i data-lucide="circle-check-big"></i></span><b>{{ counts.tasks_today }} задач</b><small>{% if counts.tasks_due %}{{ counts.tasks_due }} просрочено{% else %}На сегодня{% endif %}</small></a>
-  <a class="quick-action" href="/economics"><span class="quick-action-icon"><i data-lucide="wallet"></i></span><b>Экономика</b><small>Credits и эффективность</small></a>
+  <a class="quick-action" href="/economics"><span class="quick-action-icon"><i data-lucide="wallet"></i></span><b>Расходы</b><small>Credits и эффективность</small></a>
   <a class="quick-action" href="/competitors"><span class="quick-action-icon"><i data-lucide="building-2"></i></span><b>Конкуренты</b><small>Источники мониторинга</small></a>
-  <a class="quick-action" href="/system"><span class="quick-action-icon"><i data-lucide="settings-2"></i></span><b>Диагностика</b><small>Лимиты и quality gates</small></a>
+  <a class="quick-action" href="/agent"><span class="quick-action-icon"><i data-lucide="bot"></i></span><b>AI-чат</b><small>Ответы только из базы</small></a>
+  <a class="quick-action" href="/system"><span class="quick-action-icon"><i data-lucide="settings-2"></i></span><b>Настройки</b><small>Лимиты и диагностика</small></a>
 </section>
 
 <section class="operations-strip panel">
-  <div><span class="op-icon" aria-hidden="true"><i data-lucide="scan-search"></i></span><div><b>{{ counts.unprocessed + counts.ai_pending }} сигналов требуют разбора</b><small>{{ counts.unprocessed }} не классифицировано · {{ counts.ai_pending }} ждут AI</small></div></div>
+  <div><span class="op-icon" aria-hidden="true"><i data-lucide="scan-search"></i></span><div><b>{{ counts.unprocessed_actionable + counts.ai_pending }} нужна оценка</b><small>{{ counts.unprocessed_actionable }} свежих без лида · {{ counts.ai_pending }} ждут GPT{% if counts.unprocessed > counts.unprocessed_actionable %} · {{ counts.unprocessed - counts.unprocessed_actionable }} в архиве{% endif %}</small></div></div>
   <div><span class="op-icon" aria-hidden="true"><i data-lucide="bell-ring"></i></span><div><b>{% if telegram_manager_count %}Уведомления: {{ telegram_manager_count }} менеджер{% if telegram_manager_count != 1 %}ов{% endif %}{% else %}Telegram не настроен{% endif %}</b><small>{{ counts.notifications_pending }} в очереди · {{ counts.notifications_failed }} ошибок · <a href="/system#uncertain-notifications">{{ counts.notifications_uncertain }} сверка</a></small></div></div>
-  <button class="btn tiny" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %}>Проверить сейчас</button>
+  <button class="btn tiny" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %}>Найти лидов</button>
+  {% if counts.unprocessed_actionable + counts.ai_pending > 0 %}
+  <button class="btn tiny primary" type="button" data-api-action="/api/signals/review-all" data-payload='{"limit":100,"gpt_limit":10}' data-async-retry="1">Оценить накопившееся</button>
+  {% endif %}
 </section>
 
 <div class="metrics dashboard-metrics" data-motion-root>
   <a class="metric" href="/contacts"><span>Клиенты</span><strong>{{ counts.contacts }}</strong><small>уникальных профилей</small></a>
   <a class="metric" href="/radar"><span>Сигналы</span><strong>{{ counts.comments }}</strong><small>+{{ counts.new_comments_24h }} за 24ч</small></a>
-  <a class="metric" href="/radar?kind=pending"><span>Ждут разбора</span><strong>{{ counts.unprocessed + counts.ai_pending }}</strong><small>очередь + AI</small></a>
+  <a class="metric" href="/radar?kind=pending"><span>Нужна оценка</span><strong>{{ counts.unprocessed_actionable + counts.ai_pending }}</strong><small>свежие + GPT</small></a>
   <a class="metric accent" href="/leads"><span>Горячие</span><strong>{{ counts.hot }}</strong><small>от {{ settings.hot_lead_threshold }}/100</small></a>
   <a class="metric change" href="/#changes"><span>Стали горячее</span><strong>{{ counts.significant_changes_24h }}</strong><small>за 24 часа</small></a>
   <a class="metric warn" href="/tasks"><span>Связаться</span><strong>{{ counts.tasks_today }}</strong><small>{{ counts.tasks_due }} просрочено</small></a>
-  <a class="metric success" href="/deals?status=WON"><span>Продажи</span><strong>{{ counts.won }}</strong><small>{{ money(counts.revenue) }} сум</small></a>
+  <a class="metric success" href="/deals?status=WON"><span>Продажи</span><strong>{{ counts.won }}</strong><small>{% if counts.revenue is not none %}{{ money(counts.revenue) }} сум{% else %}—{% endif %}</small></a>
 </div>
 
 <div class="dashboard-grid">
@@ -64,13 +68,13 @@
       </a>
       {% endfor %}
       {% if not recent_changes and not tasks and not hot_leads %}
-      <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="layout-dashboard"></i></span><b>Всё спокойно</b><span>HOT и задачи появятся здесь при активных источниках и проверках; Live Radar нужен, когда он включён.</span></div>
+      <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="layout-dashboard"></i></span><b>Всё спокойно</b><span>Горячие клиенты и задачи появятся здесь после поиска. Live нужен только когда он включён.</span></div>
       {% endif %}
     </div>
   </section>
 
   <section class="panel funnel-panel">
-    <div class="panel-head"><div><h2>Воронка</h2><p>Стадии лидов</p></div><a href="/leads">Открыть →</a></div>
+    <div class="panel-head"><div><h2>Воронка</h2><p>Стадии клиентов</p></div><a href="/leads">Открыть →</a></div>
     <div class="funnel">
       {% set funnel_peak = [1, funnel.get('NEW',0), funnel.get('TAKEN',0), funnel.get('CONTACTED',0), funnel.get('QUALIFIED',0), funnel.get('OFFER_SENT',0), funnel.get('NEGOTIATION',0), funnel.get('WON',0), funnel.get('LOST',0)]|max %}
       {% for status in ['NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION','WON','LOST'] %}
@@ -82,7 +86,7 @@
 
 <div class="grid two dashboard-lower">
   <section class="panel">
-    <div class="panel-head"><div><h2>Последние сигналы</h2></div><a href="/radar">Вся лента →</a></div>
+    <div class="panel-head"><div><h2>Последние сигналы</h2></div><a href="/radar">Все результаты →</a></div>
     <div class="feed">
       {% for comment, contact, competitor, post, lead in recent_signals %}
       <a class="feed-item" href="{% if lead %}/leads/{{ lead.id }}{% else %}/contacts/{{ contact.id }}{% endif %}">
@@ -94,7 +98,7 @@
         <div class="score {% if lead and lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead %}warm{% else %}muted{% endif %}">{% if lead and lead.status.value not in ['ANALYZING','AI_PENDING'] %}{{ lead.lead_score }}{% else %}…{% endif %}</div>
       </a>
       {% else %}
-      <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="radio-tower"></i></span><b>Сигналов пока нет</b><span>Запустите Radar на странице «Радар».</span></div>
+      <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="radio-tower"></i></span><b>Сигналов пока нет</b><span>Откройте «Найти лидов» и запустите поиск.</span></div>
       {% endfor %}
     </div>
   </section>
@@ -110,7 +114,7 @@
         <div class="run-stat"><b>{{ run.actual_credits_spent or 0 }}</b><small>credits</small></div>
       </div>
       {% else %}
-      <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="settings-2"></i></span><b>Проверок ещё не было</b><span>Запустите Radar с лимитом 5–10 credits.</span></div>
+      <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="settings-2"></i></span><b>Проверок ещё не было</b><span>Запустите «Найти лидов» с лимитом 5–10 credits.</span></div>
       {% endfor %}
     </div>
   </section>

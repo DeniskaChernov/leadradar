@@ -57,11 +57,13 @@ async def test_atomic_manager_assignment_and_double_assignment_protection(sessio
     assert same_manager.assigned_manager_telegram_id == 1001
     with pytest.raises(LeadAlreadyAssignedError):
         await workflow.assign_manager(lead_id, 2002)
+    reassigned = await workflow.assign_manager(lead_id, 2002, reassign=True)
+    assert reassigned.assigned_manager_telegram_id == 2002
 
     async with session_factory() as session:
         contact = await session.get(Contact, assigned.contact_id)
         assert contact is not None
-        assert contact.assigned_manager_telegram_id == 1001
+        assert contact.assigned_manager_telegram_id == 2002
         events = (
             await session.scalars(
                 select(ContactEvent).where(
@@ -69,7 +71,7 @@ async def test_atomic_manager_assignment_and_double_assignment_protection(sessio
                 )
             )
         ).all()
-        assert len(events) == 1
+        assert len(events) == 2
 
 
 async def test_not_lead_updates_feedback_without_deleting_signal(session_factory):

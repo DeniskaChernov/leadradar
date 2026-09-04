@@ -1,19 +1,28 @@
 from __future__ import annotations
 
+import csv
+import io
 import logging
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import Settings
-from app.db.models import LeadStatus, NotificationPolicy
+from app.db.models import Lead, LeadStatus, NotificationPolicy
+from app.services.agent_rate_limit_service import agent_rate_limiter
 from app.services.ai_service import (
     BudgetedCachedOpenAIAnalyzer,
     HybridLeadAnalyzer,
@@ -22,11 +31,17 @@ from app.services.ai_service import (
 )
 from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.audience_service import AudienceEngine
+from app.services.competitor_import_service import CompetitorImportService
 from app.services.crm_service import CRMService
 from app.services.deployment_readiness_service import inspect_offline_readiness
 from app.services.discovery_service import DiscoveryService
 from app.services.export_recipe_service import ExportRecipeService
+from app.services.feedback_learning_service import FeedbackLearningService
 from app.services.fx_policy_service import FxPolicyService
+from app.services.hot_outreach_service import (
+    HotOutreachService,
+    OpenAIOutreachComposer,
+)
 from app.services.independent_quality_gates_service import IndependentQualityGatesService
 from app.services.lead_analysis_pipeline import LeadAnalysisPipeline
 from app.services.lead_intelligence_challenge import LeadIntelligenceChallenge
@@ -53,12 +68,15 @@ from app.web.auth import TelegramAuthError, TelegramWebAuth, WebRole, required_r
 from app.web.datetime_display import format_display_dt, parse_display_dt
 from app.web.labels import (
     AI_SOURCE_LABELS,
+    AUDIENCE_HEALTH_LABELS,
+    BUDGET_STATUS_LABELS,
     BUYER_ROLE_ICONS,
     BUYER_ROLE_LABELS,
     CHANGE_TYPE_LABELS,
     CHANNEL_LABELS,
     COMMERCIAL_STAGE_LABELS,
     COMPETITOR_CATEGORY_LABELS,
+    COMPETITOR_TIER_LABELS,
     COVERAGE_LABELS,
     DEAL_STATUS_LABELS,
     EVENT_LABELS,
@@ -66,6 +84,7 @@ from app.web.labels import (
     FUNNEL_STAGE_LABELS,
     INTENT_LABELS,
     LEAD_STATUS_LABELS,
+    NOTIFICATION_POLICY_LABELS,
     PRODUCT_LABELS,
     PURCHASE_HORIZON_LABELS,
     QUALIFICATION_FIELD_LABELS,
@@ -74,6 +93,12 @@ from app.web.labels import (
     URGENCY_LABELS,
     label,
 )
+from app.web.lead_ui_helpers import (
+    lead_is_off_catalog,
+    lead_next_action_overdue,
+    lead_quality_badge,
+)
+from app.web.operator_board import OPERATOR_BOARD_COLUMNS, rows_by_operator_column
 from app.web.queries import WebQueryService
 
 logger = logging.getLogger(__name__)
@@ -112,6 +137,19 @@ def build_web_app(
     root = Path(__file__).resolve().parent
     templates = Jinja2Templates(directory=str(root / "templates"))
     app.mount("/static", StaticFiles(directory=str(root / "static")), name="static")
+
+    @app.get("/sw.js")
+    async def service_worker_script():
+        """SW на корневом path, чтобы scope=/ покрывал CRM shell."""
+        return FileResponse(
+            root / "static" / "sw.js",
+            media_type="application/javascript; charset=utf-8",
+            headers={
+                "Service-Worker-Allowed": "/",
+                "Cache-Control": "no-cache",
+            },
+        )
+
     auth = TelegramWebAuth(settings)
     usage_service = usage_service or ExternalUsageService(workflow.session_factory)
     provider_budget_service = ProviderCreditBudgetService(workflow.session_factory)
@@ -121,7 +159,23 @@ def build_web_app(
     market_service = MarketIntelligenceService(workflow.session_factory)
     meta_audience_service = MetaAudiencePlanningService(workflow.session_factory)
     discovery_service = DiscoveryService(workflow.session_factory)
+    competitor_import_service = CompetitorImportService(workflow.session_factory)
     product_catalog_service = ProductCatalogService(workflow.session_factory)
+    hot_outreach_composer = None
+    if settings.openai_api_key:
+        hot_outreach_composer = OpenAIOutreachComposer(
+            settings.openai_api_key, settings.openai_model
+        )
+    hot_outreach_service = HotOutreachService(
+        workflow.session_factory,
+        hot_threshold=settings.hot_lead_threshold,
+        workflow=workflow,
+        crm=crm,
+        catalog=product_catalog_service,
+        usage=usage_service,
+        composer=hot_outreach_composer,
+        openai_daily_limit=settings.openai_daily_request_limit,
+    )
     local_audience_engine = AudienceEngine(workflow.session_factory, settings.hot_lead_threshold)
     change_detector = SignificantChangeDetector(
         workflow.session_factory, hot_threshold=settings.hot_lead_threshold
@@ -132,6 +186,8 @@ def build_web_app(
         settings.hot_lead_threshold,
         audience_engine=local_audience_engine,
         change_detector=change_detector,
+        signal_max_age_days=settings.instagram_signal_max_age_days,
+        rules_version=settings.lead_analysis_version,
     )
     openai_analyzer = None
     if settings.openai_api_key:
@@ -145,6 +201,7 @@ def build_web_app(
             lease_seconds=settings.ai_request_lease_seconds,
             max_attempts=settings.ai_request_max_attempts,
             live_gate=ops_control.openai_live_armed,
+            live_refresh=ops_control.openai_live_armed_fresh,
             worker_id="web-hybrid",
         )
     hybrid_mode = settings.ai_mode if settings.ai_mode in {"rules", "hybrid", "openai"} else "hybrid"
@@ -154,6 +211,8 @@ def build_web_app(
         settings.hot_lead_threshold,
         audience_engine=local_audience_engine,
         change_detector=change_detector,
+        signal_max_age_days=settings.instagram_signal_max_age_days,
+        rules_version=settings.lead_analysis_version,
     )
     delivery_allowed_by_config = bool(settings.telegram_bot_token) and (
         settings.instagram_provider not in {"mock", "replay"}
@@ -161,7 +220,7 @@ def build_web_app(
     notification_readiness_service = NotificationReadinessService(
         workflow.session_factory,
         workflow,
-        admin_chat_ids=settings.telegram_admin_chat_ids,
+        manager_chat_ids=settings.telegram_manager_chat_ids,
         default_policy=NotificationPolicy(settings.notification_policy),
         hot_threshold=settings.hot_lead_threshold,
         token_configured=bool(settings.telegram_bot_token),
@@ -207,6 +266,10 @@ def build_web_app(
         run_status_label=lambda value: label(RUN_STATUS_LABELS, value),
         trigger_label=lambda value: label(TRIGGER_LABELS, value),
         competitor_category_label=lambda value: label(COMPETITOR_CATEGORY_LABELS, value),
+        competitor_tier_label=lambda value: label(COMPETITOR_TIER_LABELS, value),
+        notification_policy_label=lambda value: label(
+            NOTIFICATION_POLICY_LABELS, value, "Общий режим системы"
+        ),
         channel_label=lambda value: label(CHANNEL_LABELS, value, "Не указан"),
         qualification_field_label=lambda value: label(
             QUALIFICATION_FIELD_LABELS, value, str(value)
@@ -215,8 +278,13 @@ def build_web_app(
         buyer_role_icon=lambda value: BUYER_ROLE_ICONS.get(
             str(value) if value else "UNKNOWN", "❓"
         ),
+        audience_health_label=lambda value: label(AUDIENCE_HEALTH_LABELS, value),
+        budget_status_label=lambda value: label(BUDGET_STATUS_LABELS, value),
         money=lambda value: f"{float(value or 0):,.0f}".replace(",", " "),
         safe_attr=lambda obj, name, default=None: getattr(obj, name, default),
+        lead_is_off_catalog=lead_is_off_catalog,
+        lead_next_action_overdue=lead_next_action_overdue,
+        lead_quality_badge=lead_quality_badge,
     )
     templates.env.filters["display_dt"] = lambda value, fmt="%d.%m %H:%M": format_display_dt(
         value, fmt, timezone=settings.web_display_timezone
@@ -231,7 +299,7 @@ def build_web_app(
 
     @app.middleware("http")
     async def protect_mini_app(request: Request, call_next):
-        public_paths = {"/auth", "/api/auth/telegram", "/health", "/ready"}
+        public_paths = {"/auth", "/api/auth/telegram", "/health", "/ready", "/sw.js"}
         if not settings.web_auth_enabled:
             request.state.manager_id = local_manager_id()
             request.state.web_role = WebRole.ADMIN
@@ -301,6 +369,7 @@ def build_web_app(
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' https://telegram.org https://unpkg.com; "
+            "worker-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: https:; "
             "connect-src 'self'; "
@@ -318,14 +387,20 @@ def build_web_app(
             )
         return response
 
+    def resolve_business_vertical(
+        request: Request, *, explicit: str | None = None
+    ) -> str:
+        """Мебель и ротанг — отдельные портфели; дефолт без query = FURNITURE."""
+        raw = (explicit or request.query_params.get("vertical") or "").strip().upper()
+        if raw in {"FURNITURE", "ARTIFICIAL_RATTAN"}:
+            return raw
+        if request.url.path.startswith("/rattan"):
+            return "ARTIFICIAL_RATTAN"
+        return "FURNITURE"
+
     def base_context(request: Request, **kwargs):
         snapshot = controller.snapshot()
-        requested_vertical = request.query_params.get("vertical", "").upper()
-        selected_vertical = (
-            "ARTIFICIAL_RATTAN"
-            if request.url.path.startswith("/rattan") or requested_vertical == "ARTIFICIAL_RATTAN"
-            else "FURNITURE"
-        )
+        selected_vertical = resolve_business_vertical(request)
         return {
             "request": request,
             "now": datetime.now().astimezone(),
@@ -344,13 +419,28 @@ def build_web_app(
             "ops": ops_control.snapshot(),
             "master_live_ready": master_live_ready(),
             "openai_spend_allowed": openai_spend_allowed(),
-            "telegram_manager_count": len(settings.telegram_admin_chat_ids),
+            "telegram_manager_count": len(settings.telegram_manager_chat_ids),
             "selected_vertical": selected_vertical,
+            "ai_version_info": {
+                "rules_version": settings.lead_analysis_version,
+                "openai_prompt_version": BudgetedCachedOpenAIAnalyzer.PROMPT_VERSION,
+                "openai_schema_version": BudgetedCachedOpenAIAnalyzer.SCHEMA_VERSION,
+            },
             **kwargs,
         }
 
     def manager_id(request: Request) -> int:
         return int(getattr(request.state, "manager_id", local_manager_id()))
+
+    def enforce_agent_rate_limit(request: Request) -> None:
+        limit = agent_rate_limiter.check(manager_id(request))
+        if limit.allowed:
+            return
+        raise HTTPException(
+            status_code=429,
+            detail=f"Слишком много запросов к AI. Подождите {limit.retry_after_seconds} сек.",
+            headers={"Retry-After": str(limit.retry_after_seconds)},
+        )
 
     @app.get("/auth", response_class=HTMLResponse)
     async def auth_page(request: Request):
@@ -408,13 +498,17 @@ def build_web_app(
         q: str = "",
         competitor: str = "",
         kind: str = "",
+        vertical: str = "",
     ):
-        rows = await queries.signals(q=q, competitor=competitor, kind=kind)
-        competitors = await queries.competitors()
-        overview = await queries.signal_overview()
-        scan_budget = await _scan_preview_payload()
+        selected_vertical = resolve_business_vertical(request, explicit=vertical)
+        rows = await queries.signals(
+            q=q, competitor=competitor, kind=kind, vertical=selected_vertical
+        )
+        competitors = await queries.competitors(vertical=selected_vertical)
+        overview = await queries.signal_overview(vertical=selected_vertical)
+        scan_budget = await _scan_preview_payload(vertical=selected_vertical)
         recent_runs = await queries.monitor_runs(limit=1)
-        radar_feed = await queries.radar_feed(limit=8)
+        radar_feed = await queries.radar_feed(limit=8, vertical=selected_vertical)
         return templates.TemplateResponse(
             request=request,
             name="radar.html",
@@ -429,30 +523,183 @@ def build_web_app(
                 scan_budget=scan_budget,
                 last_run=recent_runs[0] if recent_runs else None,
                 radar_feed=radar_feed,
+                radar_vertical=selected_vertical,
             ),
         )
 
+    @app.get("/hot", response_class=HTMLResponse)
+    async def hot_workspace(
+        request: Request,
+        vertical: str = "",
+        lead_id: int | None = None,
+    ):
+        selected_vertical = resolve_business_vertical(request, explicit=vertical)
+        queue = await hot_outreach_service.queue(vertical=selected_vertical)
+        selected = None
+        if lead_id is not None:
+            selected = await hot_outreach_service.detail(
+                lead_id, vertical=selected_vertical
+            )
+        usage = await queries.usage_today()
+        openai_used = int(usage.get("openai", 0) or 0)
+        openai_limit = int(settings.openai_daily_request_limit)
+        return templates.TemplateResponse(
+            request=request,
+            name="hot.html",
+            context=base_context(
+                request,
+                queue=queue,
+                selected=selected,
+                openai_usage={
+                    "used": openai_used,
+                    "limit": openai_limit,
+                    "remaining": max(0, openai_limit - openai_used),
+                },
+            ),
+        )
+
+    @app.post("/api/hot/{lead_id}/prepare")
+    async def hot_prepare(request: Request, lead_id: int):
+        if not openai_spend_allowed():
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "OpenAI выключен. Включите тумблер OpenAI в Системе, "
+                    "чтобы готовить текст предложения."
+                ),
+            )
+        payload = await _json_or_form(request)
+        force = str(payload.get("force") or "").lower() in {"1", "true", "yes"}
+        try:
+            detail = await hot_outreach_service.prepare(
+                lead_id, manager_id(request), force=force
+            )
+            return {
+                "ok": True,
+                "message": "Текст предложения готов",
+                "detail": detail,
+            }
+        except LeadWorkflowError as exc:
+            raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
+
+    @app.post("/api/hot/{lead_id}/sent")
+    async def hot_mark_sent(request: Request, lead_id: int):
+        try:
+            detail = await hot_outreach_service.mark_sent(lead_id, manager_id(request))
+            vertical = str(detail.get("vertical") or "FURNITURE")
+            next_id = detail.get("next_lead_id")
+            next_url = (
+                f"/hot?vertical={vertical}&lead_id={next_id}"
+                if next_id
+                else f"/hot?vertical={vertical}"
+            )
+            return {
+                "ok": True,
+                "message": f"Отмечено · {label(LEAD_STATUS_LABELS, detail['status'])}",
+                "detail": detail,
+                "next_url": next_url,
+            }
+        except LeadWorkflowError as exc:
+            raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
+
     @app.get("/leads", response_class=HTMLResponse)
-    async def leads(request: Request, q: str = "", status: str = "", view: str = "board"):
-        rows = await queries.leads(q=q, status=status)
+    async def leads(
+        request: Request,
+        q: str = "",
+        status: str = "",
+        quality: str = "",
+        view: str = "board",
+        vertical: str = "",
+    ):
+        selected_vertical = resolve_business_vertical(request, explicit=vertical)
+        rows = await queries.leads(
+            q=q, status=status, quality=quality, vertical=selected_vertical
+        )
+        board_columns = OPERATOR_BOARD_COLUMNS
+        use_board = view == "board" and not status and quality not in {
+            "not_lead",
+            "off_catalog",
+            "garbage",
+            "hot",
+        }
+        events_by_lead: dict[int, list] = {}
+        if use_board and rows:
+            events_by_lead = await queries.lead_recent_events(
+                [lead.id for lead, *_rest in rows],
+                limit_per_lead=5,
+            )
+        rows_by_column = rows_by_operator_column(rows, board_columns)
         return templates.TemplateResponse(
             request=request,
             name="leads.html",
             context=base_context(
                 request,
                 rows=rows,
+                rows_by_column=rows_by_column,
+                board_columns=board_columns,
                 q=q,
                 status_filter=status,
-                view=view,
-                board_statuses=[
-                    "NEW",
-                    "TAKEN",
-                    "CONTACTED",
-                    "QUALIFIED",
-                    "OFFER_SENT",
-                    "NEGOTIATION",
-                ],
+                quality_filter=quality,
+                view=view if use_board else "list",
+                events_by_lead=events_by_lead,
             ),
+        )
+
+    @app.get("/api/leads/export.csv")
+    async def export_leads_csv(
+        request: Request,
+        q: str = "",
+        status: str = "",
+        quality: str = "",
+        vertical: str = "",
+    ):
+        """CSV воронки: только публичные Instagram-поля, без телефонов/email."""
+        selected_vertical = resolve_business_vertical(request, explicit=vertical)
+        rows = await queries.leads(
+            q=q,
+            status=status,
+            quality=quality,
+            vertical=selected_vertical,
+            limit=1000,
+        )
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(
+            [
+                "lead_id",
+                "username",
+                "display_name",
+                "competitor",
+                "status",
+                "score",
+                "intent",
+                "product",
+                "comment",
+                "created_at",
+                "deal_status",
+            ]
+        )
+        for lead, contact, comment, competitor, _post, deal in rows:
+            writer.writerow(
+                [
+                    lead.id,
+                    contact.username,
+                    contact.display_name or "",
+                    competitor.normalized_handle,
+                    lead.status.value,
+                    lead.lead_score,
+                    lead.intent or "",
+                    lead.product_category or "",
+                    (comment.text or "").replace("\n", " ").strip()[:500],
+                    lead.created_at.isoformat() if lead.created_at else "",
+                    deal.status.value if deal is not None else "",
+                ]
+            )
+        payload = buffer.getvalue()
+        return StreamingResponse(
+            iter([payload]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="leads-funnel.csv"'},
         )
 
     @app.get("/leads/{lead_id}", response_class=HTMLResponse)
@@ -549,10 +796,55 @@ def build_web_app(
         if days not in {1, 7, 30}:
             days = 30
         data = await queries.economics(days=days)
+        scan_budget = await _scan_preview_payload(
+            vertical=resolve_business_vertical(request)
+        )
         return templates.TemplateResponse(
             request=request,
             name="economics.html",
-            context=base_context(request, **data),
+            context=base_context(request, scan_budget=scan_budget, **data),
+        )
+
+    @app.get("/api/economics/export.csv")
+    async def export_economics_csv(days: int = 30):
+        """CSV unit economics / OpenAI cost: только агрегаты из БД, без PII."""
+        if days not in {1, 7, 30}:
+            days = 30
+        data = await queries.economics(days=days)
+        page = data["page"]
+        economics = data["economics"]
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["metric", "value", "unit", "period_days"])
+        rows = [
+            ("openai_events", page.openai.events, "count"),
+            ("openai_known_spend_usd", page.openai.known_spend_usd, "usd"),
+            ("openai_usd_per_lead", page.openai_usd_per_lead, "usd"),
+            ("openai_usd_per_hot", page.openai_usd_per_hot, "usd"),
+            ("signals_count", economics.signals_count, "count"),
+            ("leads_count", economics.leads_count, "count"),
+            ("hot_count", economics.hot_count, "count"),
+            ("won_count", economics.won_count, "count"),
+            ("known_spend_usd", economics.known_spend_usd, "usd"),
+            ("cost_per_lead_usd", economics.cost_per_lead_usd, "usd"),
+            ("cost_per_hot_usd", economics.cost_per_hot_usd, "usd"),
+            ("revenue_uzs", economics.revenue_uzs, "uzs"),
+            ("gross_profit_uzs", economics.gross_profit_uzs, "uzs"),
+            ("roi_ratio", economics.roi_ratio, "ratio"),
+            ("roi_status", economics.roi_status, "text"),
+            ("credits_known", page.credits.known_credits, "credits"),
+            ("credits_per_lead", page.credits.credits_per_lead, "credits"),
+            ("credits_per_hot", page.credits.credits_per_hot, "credits"),
+        ]
+        for metric, value, unit in rows:
+            writer.writerow([metric, "" if value is None else value, unit, days])
+        payload = buffer.getvalue()
+        return StreamingResponse(
+            iter([payload]),
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="economics-{days}d.csv"'
+            },
         )
 
     @app.get("/audiences", response_class=HTMLResponse)
@@ -599,10 +891,12 @@ def build_web_app(
 
     @app.get("/competitors", response_class=HTMLResponse)
     async def competitors(request: Request):
-        rows = await queries.competitors()
+        selected_vertical = resolve_business_vertical(request)
+        rows = await queries.competitors(vertical=selected_vertical)
         overview = await queries.market_overview()
         intelligence_overview = await queries.competitor_intelligence_overview()
         overlaps = await queries.competitor_overlap_network()
+        overlap_graph = await queries.competitor_overlap_graph()
         return templates.TemplateResponse(
             request=request,
             name="competitors.html",
@@ -612,6 +906,7 @@ def build_web_app(
                 market_overview=overview,
                 intelligence_overview=intelligence_overview,
                 overlaps=overlaps,
+                overlap_graph=overlap_graph,
                 categories=COMPETITOR_CATEGORY_LABELS,
             ),
         )
@@ -639,6 +934,22 @@ def build_web_app(
                     "ROLE_CHANGED": "Изменился сегмент",
                 },
             ),
+        )
+
+    @app.get("/competitors/compare", response_class=HTMLResponse)
+    async def competitors_compare(request: Request):
+        left_raw = request.query_params.get("left")
+        right_raw = request.query_params.get("right")
+        if not left_raw or not right_raw or not left_raw.isdigit() or not right_raw.isdigit():
+            raise HTTPException(status_code=400, detail="Укажите left и right — ID конкурентов")
+        data = await queries.competitor_compare(int(left_raw), int(right_raw))
+        if data is None:
+            raise HTTPException(status_code=404, detail="Один из конкурентов не найден")
+        all_rows = await queries.competitors()
+        return templates.TemplateResponse(
+            request=request,
+            name="competitor_compare.html",
+            context=base_context(request, compare=data, competitor_options=all_rows),
         )
 
     @app.get("/competitors/{competitor_id}", response_class=HTMLResponse)
@@ -697,7 +1008,22 @@ def build_web_app(
         intelligence_quality = intelligence_challenge.evaluate(
             hot_threshold=settings.hot_lead_threshold
         )
-        quality_gates = quality_gates_service.snapshot()
+        quality_gates = quality_gates_service.snapshot(
+            rules_version=settings.lead_analysis_version
+        )
+        manager_feedback_quality = await queries.manager_feedback_quality()
+        feedback_learning_service = FeedbackLearningService(
+            workflow.session_factory,
+            hot_threshold=settings.hot_lead_threshold,
+        )
+        feedback_learning = await feedback_learning_service.snapshot(days=30)
+        feedback_learning_rows = await feedback_learning_service.false_positive_rows(
+            limit=10,
+            days=30,
+        )
+        rules_reanalyze = await queries.rules_reanalyze_status(
+            settings.lead_analysis_version
+        )
         pricing_configs = await pricing_service.list_active()
         fx_policies = await fx_policy_service.list_active()
         notification_modes = {
@@ -789,6 +1115,10 @@ def build_web_app(
                 ai_safety=ai_safety,
                 intelligence_quality=intelligence_quality,
                 quality_gates=quality_gates,
+                manager_feedback_quality=manager_feedback_quality,
+                feedback_learning=feedback_learning,
+                feedback_learning_rows=feedback_learning_rows,
+                rules_reanalyze=rules_reanalyze,
                 pricing_configs=pricing_configs,
                 fx_policies=fx_policies,
                 export_recipes=export_recipes,
@@ -872,7 +1202,11 @@ def build_web_app(
             "message": f"Сценарий сброшен: {status.title}",
         }
 
-    async def _scan_preview_payload(requested_credits: int | None = None) -> dict:
+    async def _scan_preview_payload(
+        requested_credits: int | None = None,
+        *,
+        vertical: str | None = None,
+    ) -> dict:
         daily = await usage_service.snapshot(
             "instagram", settings.instagram_daily_request_limit
         )
@@ -900,6 +1234,7 @@ def build_web_app(
             max_units_per_scan=effective,
             daily_remaining=daily.remaining,
             live_enabled=radar_spend_allowed(),
+            vertical=vertical,
         )
         budget = await provider_budget_service.snapshot(settings.instagram_provider)
         blocking_reasons = list(availability.blocking_reasons) if is_live else []
@@ -950,7 +1285,12 @@ def build_web_app(
                 )
             ),
             "maximum_manual_scan_budget": (
-                policy.maximum_manual_scan_budget_units if policy is not None else None
+                # UI max для «свой лимит»: месячный остаток / hard, не устаревшие 50.
+                availability.monthly_remaining
+                if availability.monthly_remaining > 0
+                else (
+                    policy.maximum_manual_scan_budget_units if policy is not None else None
+                )
             ),
             "average_daily_burn_7d": (
                 budget.average_daily_burn_7d if budget is not None else 0
@@ -968,6 +1308,7 @@ def build_web_app(
                 budget.months_remaining_at_target if budget is not None else None
             ),
             "budget_status": budget.budget_status if budget is not None else "NOT_CONFIGURED",
+            "vertical": vertical,
             "active_competitors": plan["active_competitors"],
             "due_competitors": plan["due_competitors"],
             "estimated_competitors_reachable": min(
@@ -975,6 +1316,14 @@ def build_web_app(
             ),
             "estimated_comment_pages": max(
                 0, effective - min(plan["active_competitors"], effective)
+            ),
+            "expected_min_units": plan.get("expected_min_units"),
+            "comment_candidates": plan.get("comment_candidates"),
+            "clamped": bool(
+                is_live and requested > effective and radar_spend_allowed()
+            ),
+            "month_credits_low": bool(
+                budget is not None and getattr(budget, "month_credits_low", False)
             ),
             "can_start": not blocking_reasons and (effective > 0 or not is_live),
             "blocking_reasons": blocking_reasons,
@@ -988,7 +1337,10 @@ def build_web_app(
             requested = int(raw) if raw is not None else None
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="max_credits должен быть целым") from exc
-        return await _scan_preview_payload(requested)
+        vertical = resolve_business_vertical(
+            request, explicit=request.query_params.get("vertical")
+        )
+        return await _scan_preview_payload(requested, vertical=vertical)
 
     @app.post("/api/scan")
     async def scan_now(request: Request):
@@ -1002,7 +1354,12 @@ def build_web_app(
             requested_credits = int(payload.get("max_credits") or 0)
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=400, detail="max_credits должен быть целым") from exc
+        vertical = resolve_business_vertical(
+            request, explicit=str(payload.get("vertical") or "")
+        )
         is_live = settings.instagram_provider not in {"mock", "replay"}
+        if is_live:
+            await ops_control.load()
         if is_live and not radar_spend_allowed():
             raise HTTPException(
                 status_code=409,
@@ -1016,7 +1373,7 @@ def build_web_app(
                 status_code=428,
                 detail="Live-проверка требует отдельного подтверждения расхода.",
             )
-        preview = await _scan_preview_payload(requested_credits)
+        preview = await _scan_preview_payload(requested_credits, vertical=vertical)
         if is_live and not preview["can_start"]:
             raise HTTPException(
                 status_code=409,
@@ -1026,6 +1383,7 @@ def build_web_app(
             "web",
             max_units=preview["effective_max_credits"] if is_live else None,
             requested_units=requested_credits if is_live else None,
+            vertical=vertical,
         )
         return JSONResponse(
             {
@@ -1033,6 +1391,7 @@ def build_web_app(
                 "message": "Проверка запущена" if started else "Проверка уже выполняется",
                 "requested_credits": requested_credits,
                 "effective_max_credits": preview["effective_max_credits"],
+                "vertical": vertical,
             }
         )
 
@@ -1087,6 +1446,13 @@ def build_web_app(
             raise HTTPException(status_code=409, detail="OPENAI_API_KEY не задан.")
         payload = await _json_or_form(request)
         armed = str(payload.get("armed", "")).lower() in {"1", "true", "yes", "on"}
+        if armed:
+            gates = quality_gates_service.snapshot(
+                rules_version=settings.lead_analysis_version
+            )
+            allowed, reason = gates.openai_live_allowed()
+            if not allowed:
+                raise HTTPException(status_code=409, detail=reason)
         snap = await ops_control.set_openai_live(armed, manager_id=manager_id(request))
         return {
             "ok": True,
@@ -1218,6 +1584,52 @@ def build_web_app(
             ),
         }
 
+    @app.post("/api/signals/review-all")
+    async def review_all_signals(request: Request):
+        """Одна кнопка: свежие комментарии → лиды по правилам → очередь GPT для спорных."""
+        payload = await _json_or_form(request)
+        limit = max(1, min(int(payload.get("limit") or 100), 500))
+        gpt_limit = max(1, min(int(payload.get("gpt_limit") or 10), 50))
+        results = await local_lead_service.backfill_unanalyzed_comments(limit)
+        rules_pending = sum(item.status == LeadStatus.AI_PENDING for item in results)
+        gpt_queued = 0
+        gpt_processed = 0
+        use_openai = openai_spend_allowed()
+        if use_openai:
+            if analysis_pipeline is not None:
+                gpt_queued = await analysis_pipeline.enqueue_retry_batch(
+                    gpt_limit, cooldown_seconds=0
+                )
+            else:
+                retry_results = await hybrid_lead_service.retry_pending(
+                    gpt_limit, cooldown_seconds=0
+                )
+                gpt_processed = len(retry_results)
+        parts: list[str] = []
+        if results:
+            parts.append(f"Оценено комментариев: {len(results)}")
+        else:
+            parts.append("Свежих комментариев без оценки не осталось")
+        if rules_pending:
+            parts.append(f"спорных после правил: {rules_pending}")
+        if use_openai:
+            if gpt_queued:
+                parts.append(f"в очередь GPT: {gpt_queued}")
+            elif gpt_processed:
+                parts.append(f"GPT дожал: {gpt_processed}")
+        elif rules_pending:
+            parts.append("включите OpenAI для GPT-оценки спорных")
+        return {
+            "ok": True,
+            "processed": len(results),
+            "rules_pending": rules_pending,
+            "gpt_queued": gpt_queued,
+            "gpt_processed": gpt_processed,
+            "openai_used": use_openai,
+            "async": bool(gpt_queued),
+            "message": ". ".join(parts) + ".",
+        }
+
     @app.post("/api/history/analyze-local")
     async def analyze_history_local(request: Request):
         payload = await _json_or_form(request)
@@ -1229,8 +1641,8 @@ def build_web_app(
             "processed": len(results),
             "pending": pending,
             "message": (
-                f"Локально разобрано сигналов: {len(results)}. "
-                f"Неоднозначных оставлено на AI: {pending}. OpenAI не вызывался."
+                f"Оценено комментариев: {len(results)}. "
+                f"Спорных (нужен GPT): {pending}. OpenAI не вызывался."
             ),
         }
 
@@ -1247,8 +1659,8 @@ def build_web_app(
                 "async": True,
                 "openai_used": True,
                 "message": (
-                    f"В очередь OpenAI поставлено: {queued}. "
-                    "Разбор идёт в фоне — следите за лентой на Radar."
+                    f"В очередь GPT поставлено: {queued}. "
+                    "Оценка идёт в фоне — обновите поиск через минуту."
                 ),
             }
         service = hybrid_lead_service if use_openai else local_lead_service
@@ -1256,14 +1668,14 @@ def build_web_app(
         still_pending = sum(item.status == LeadStatus.AI_PENDING for item in results)
         if use_openai:
             message = (
-                f"Hybrid/OpenAI: разобрано {len(results)}. "
-                f"Осталось AI_PENDING: {still_pending}."
+                f"Умный разбор: обработано {len(results)}. "
+                f"Ещё ждут GPT: {still_pending}."
             )
         else:
             message = (
-                f"Локальные правила: разобрано {len(results)}. "
-                f"Осталось AI_PENDING: {still_pending}. "
-                "OpenAI выключен — включите тумблер OpenAI для GPT-разбора."
+                f"Только правила: обработано {len(results)}. "
+                f"Спорных осталось: {still_pending}. "
+                "Включите OpenAI в Системе для GPT-оценки."
             )
         return {
             "ok": True,
@@ -1274,17 +1686,137 @@ def build_web_app(
             "message": message,
         }
 
+    @app.post("/api/leads/reanalyze-batch")
+    async def reanalyze_leads_batch(request: Request):
+        """Переоценить свежие лиды NEW/AI_PENDING или спорные NOT_LEAD новыми правилами + GPT."""
+        payload = await _json_or_form(request)
+        limit = max(1, min(int(payload.get("limit") or 25), 100))
+        include_not_lead = payload.get("include_not_lead_high_score") in {
+            True,
+            "true",
+            "1",
+        }
+        min_not_lead_score = max(0, min(int(payload.get("min_not_lead_score") or 50), 100))
+        use_openai = openai_spend_allowed()
+        service = hybrid_lead_service if use_openai else local_lead_service
+        results = await service.reanalyze_batch(
+            limit,
+            include_not_lead_high_score=include_not_lead,
+            min_not_lead_score=min_not_lead_score,
+        )
+        not_lead = sum(item.status == LeadStatus.NOT_LEAD for item in results)
+        pending = sum(item.status == LeadStatus.AI_PENDING for item in results)
+        new_leads = sum(item.status == LeadStatus.NEW for item in results)
+        scope = "NEW/AI_PENDING"
+        if include_not_lead:
+            scope += f" + NOT_LEAD≥{min_not_lead_score}"
+        return {
+            "ok": True,
+            "processed": len(results),
+            "not_lead": not_lead,
+            "still_new": new_leads,
+            "pending": pending,
+            "openai_used": use_openai,
+            "include_not_lead_high_score": include_not_lead,
+            "rules_version": settings.lead_analysis_version,
+            "message": (
+                f"Переоценено ({scope}, правила {settings.lead_analysis_version}): {len(results)}"
+                f" · лидов: {new_leads} · не лид: {not_lead}"
+                + (f" · ждут GPT: {pending}" if pending else "")
+            ),
+        }
+
+    @app.get("/api/system/feedback-export")
+    async def feedback_export():
+        """Экспорт HOT false-positive кейсов для offline eval."""
+        service = FeedbackLearningService(
+            workflow.session_factory,
+            hot_threshold=settings.hot_lead_threshold,
+        )
+        return {
+            "rules_version": settings.lead_analysis_version,
+            "cases": await service.export_cases(limit=50, days=30),
+        }
+
+    @app.post("/api/leads/bulk-action")
+    async def bulk_lead_action(request: Request):
+        """Массово взять NEW или отметить NOT_LEAD по списку id (до 50)."""
+        payload = await _json_or_form(request)
+        action = str(payload.get("action") or "").strip().lower().replace("-", "_")
+        raw_ids = payload.get("lead_ids")
+        if action not in {"take", "not_lead"}:
+            raise HTTPException(status_code=400, detail="Допустимы action=take или action=not_lead")
+        if not isinstance(raw_ids, list) or not raw_ids:
+            raise HTTPException(status_code=400, detail="Нужен непустой список lead_ids")
+        lead_ids = [int(item) for item in raw_ids[:50]]
+        mgr = manager_id(request)
+        processed = 0
+        skipped = 0
+        for lead_id in lead_ids:
+            try:
+                if action == "take":
+                    await workflow.assign_manager(lead_id, mgr)
+                else:
+                    await workflow.mark_not_lead(lead_id, mgr)
+                processed += 1
+            except LeadWorkflowError:
+                skipped += 1
+        verb = "взято" if action == "take" else "не лид"
+        return {
+            "ok": True,
+            "processed": processed,
+            "skipped": skipped,
+            "message": f"Сохранено · {verb}: {processed}" + (f" · пропущено: {skipped}" if skipped else ""),
+        }
+
+    @app.post("/api/leads/{lead_id}/follow-up")
+    async def schedule_lead_follow_up(request: Request, lead_id: int):
+        """One-click задача: связаться через N часов (по умолчанию 24)."""
+        if crm is None:
+            raise HTTPException(status_code=503, detail="CRM недоступен")
+        payload = await _json_or_form(request)
+        hours = max(1, min(int(payload.get("hours") or 24), 168))
+        note = str(payload.get("note") or "Связаться с клиентом").strip() or "Связаться с клиентом"
+        async with queries.session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise HTTPException(status_code=404, detail="Лид не найден")
+            contact_id = lead.contact_id
+        due_at = datetime.now(UTC) + timedelta(hours=hours)
+        try:
+            task = await crm.schedule_contact(
+                contact_id,
+                manager_id(request),
+                due_at=due_at,
+                note=note,
+                lead_id=lead_id,
+            )
+            return {
+                "ok": True,
+                "task_id": task.id,
+                "message": f"Сохранено · напоминание через {hours} ч",
+            }
+        except LeadWorkflowError as exc:
+            raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
+
     @app.post("/api/leads/{lead_id}/analyze")
     async def analyze_lead_now(request: Request, lead_id: int):
-        """Повторный разбор одного лида: hybrid+OpenAI если armed, иначе только правила."""
+        """Разбор NEW/AI_PENDING/ANALYZING: hybrid+OpenAI если armed, иначе только правила."""
         use_openai = openai_spend_allowed()
+        async with workflow.session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+        if lead is None:
+            raise HTTPException(status_code=404, detail="Лид не найден")
+        if lead.status not in {
+            LeadStatus.NEW,
+            LeadStatus.AI_PENDING,
+            LeadStatus.ANALYZING,
+        }:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Разбор недоступен в статусе {lead.status.value}",
+            )
         if analysis_pipeline is not None and use_openai:
-            pending_ids = await hybrid_lead_service.list_pending_lead_ids(500, cooldown_seconds=0)
-            if lead_id not in pending_ids:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Лид не найден или не в очереди AI_PENDING/ANALYZING",
-                )
             await analysis_pipeline.enqueue(lead_id)
             return {
                 "ok": True,
@@ -1295,12 +1827,7 @@ def build_web_app(
                 "message": "Лид поставлен в очередь OpenAI · разбор в фоне",
             }
         service = hybrid_lead_service if use_openai else local_lead_service
-        result = await service.retry_pending_lead(lead_id)
-        if result is None:
-            raise HTTPException(
-                status_code=409,
-                detail="Лид не найден или не в очереди AI_PENDING/ANALYZING",
-            )
+        result = await service.analyze_lead(lead_id)
         return {
             "ok": True,
             "lead_id": result.lead_id,
@@ -1317,7 +1844,48 @@ def build_web_app(
     async def take_lead(request: Request, lead_id: int):
         try:
             lead = await workflow.assign_manager(lead_id, manager_id(request))
-            return {"ok": True, "status": lead.status.value, "message": "Лид взят в работу"}
+            status_label = label(LEAD_STATUS_LABELS, lead.status)
+            return {
+                "ok": True,
+                "status": lead.status.value,
+                "message": f"Сохранено · {status_label}",
+            }
+        except LeadWorkflowError as exc:
+            raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
+
+    @app.get("/api/leads/{lead_id}/explain")
+    async def lead_explain_api(lead_id: int):
+        """Только grounded explain из БД — без GPT и без выдуманных evidence."""
+        payload = await queries.lead_explain(lead_id)
+        if payload is None:
+            raise HTTPException(status_code=404, detail="Лид не найден")
+        return payload
+
+    @app.post("/api/leads/{lead_id}/assign")
+    async def assign_lead(request: Request, lead_id: int):
+        """Назначение/переназначение менеджера из карточки лида (список admin chat ids)."""
+        payload = await _json_or_form(request)
+        target = _int_or_none(payload.get("manager_id"))
+        if target is None:
+            target = manager_id(request)
+        if target <= 0:
+            raise HTTPException(status_code=400, detail="Некорректный manager_id")
+        allowed = list(settings.telegram_admin_chat_ids)
+        if allowed and target not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail="Менеджер не в списке telegram_admin_chat_ids",
+            )
+        reassign = str(payload.get("reassign") or "").lower() in {"1", "true", "yes"}
+        try:
+            lead = await workflow.assign_manager(lead_id, target, reassign=reassign)
+            status_label = label(LEAD_STATUS_LABELS, lead.status)
+            return {
+                "ok": True,
+                "status": lead.status.value,
+                "assigned_manager_telegram_id": lead.assigned_manager_telegram_id,
+                "message": f"Ответственный · {target} · {status_label}",
+            }
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
 
@@ -1325,7 +1893,12 @@ def build_web_app(
     async def not_lead(request: Request, lead_id: int):
         try:
             lead = await workflow.mark_not_lead(lead_id, manager_id(request))
-            return {"ok": True, "status": lead.status.value, "message": "Сигнал помечен как не лид"}
+            status_label = label(LEAD_STATUS_LABELS, lead.status)
+            return {
+                "ok": True,
+                "status": lead.status.value,
+                "message": f"Сохранено · {status_label}",
+            }
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
 
@@ -1334,8 +1907,13 @@ def build_web_app(
         payload = await _json_or_form(request)
         try:
             target = LeadStatus(str(payload.get("status") or "").upper())
-            lead = await crm.move_lead(lead_id, manager_id(request), target)
-            return {"ok": True, "status": lead.status.value, "message": "Стадия обновлена"}
+            lead = await crm.move_lead_toward(lead_id, manager_id(request), target)
+            status_label = label(LEAD_STATUS_LABELS, lead.status)
+            return {
+                "ok": True,
+                "status": lead.status.value,
+                "message": f"Сохранено · {status_label}",
+            }
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Неизвестная стадия лида") from exc
         except LeadWorkflowError as exc:
@@ -1493,6 +2071,7 @@ def build_web_app(
     async def agent_query_endpoint(request: Request):
         from app.services.agent_session_service import AgentSessionService
 
+        enforce_agent_rate_limit(request)
         payload = await _json_or_form(request)
         query = str(payload.get("query") or "").strip()
         if not query:
@@ -1552,10 +2131,25 @@ def build_web_app(
 
     @app.get("/agent", response_class=HTMLResponse)
     async def agent_workspace(request: Request):
+        lead_id_raw = request.query_params.get("lead_id")
+        contact_id_raw = request.query_params.get("contact_id")
+        agent_lead_id = int(lead_id_raw) if lead_id_raw and lead_id_raw.isdigit() else None
+        agent_contact_id = (
+            int(contact_id_raw) if contact_id_raw and contact_id_raw.isdigit() else None
+        )
+        if agent_lead_id is not None and agent_contact_id is None:
+            async with workflow.session_factory() as session:
+                lead = await session.get(Lead, agent_lead_id)
+                if lead is not None:
+                    agent_contact_id = lead.contact_id
         return templates.TemplateResponse(
             request=request,
             name="agent.html",
-            context=base_context(request),
+            context=base_context(
+                request,
+                agent_lead_id=agent_lead_id,
+                agent_contact_id=agent_contact_id,
+            ),
         )
 
     @app.get("/api/agent/sessions")
@@ -1617,6 +2211,7 @@ def build_web_app(
     async def agent_chat_turn(request: Request):
         from app.services.agent_chat_orchestrator import AgentChatOrchestrator
 
+        enforce_agent_rate_limit(request)
         payload = await _json_or_form(request)
         query = str(payload.get("query") or "").strip()
         if not query:
@@ -1751,6 +2346,24 @@ def build_web_app(
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
 
+    @app.post("/api/competitors/import")
+    async def import_competitors_csv(request: Request, filename: str = "competitors.csv"):
+        try:
+            result = await competitor_import_service.import_file(filename, await request.body())
+            return {
+                "ok": True,
+                "total_rows": result.total_rows,
+                "created": result.created,
+                "updated": result.updated,
+                "skipped": result.skipped,
+                "message": (
+                    f"Импорт конкурентов: {result.created} новых на паузе, "
+                    f"{result.updated} уже были в базе, {result.skipped} пропущено."
+                ),
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/competitors")
     async def add_competitor(request: Request):
         payload = await _json_or_form(request)
@@ -1796,7 +2409,11 @@ def build_web_app(
             return {
                 "ok": True,
                 "competitor_id": competitor.id,
-                "message": f"@{competitor.normalized_handle} добавлен в радар на {'активный мониторинг' if competitor.active else 'паузу'}",
+                "message": (
+                    f"@{competitor.normalized_handle} добавлен в радар на "
+                    f"{'активный мониторинг' if competitor.active else 'паузу'}. "
+                    f"Открыть: /competitors/{competitor.id}"
+                ),
             }
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1881,6 +2498,35 @@ def build_web_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/competitors/bulk-active")
+    async def bulk_competitors_active(request: Request):
+        payload = await _json_or_form(request)
+        raw_ids = payload.get("competitor_ids") or payload.get("ids") or []
+        if isinstance(raw_ids, str):
+            raw_ids = [item.strip() for item in raw_ids.split(",") if item.strip()]
+        try:
+            competitor_ids = [int(item) for item in raw_ids]
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400, detail="Нужен список competitor_ids"
+            ) from exc
+        if "active" not in payload:
+            raise HTTPException(status_code=400, detail="Укажите active=true или false")
+        active = str(payload.get("active")).lower() in {"1", "true", "yes", "on"}
+        try:
+            changed = await crm.bulk_set_competitors_active(
+                competitor_ids, active=active
+            )
+            action_label = "Включён мониторинг" if active else "Поставлено на паузу"
+            return {
+                "ok": True,
+                "changed": changed,
+                "active": active,
+                "message": f"{action_label}: {changed}",
+            }
+        except LeadWorkflowError as exc:
+            raise HTTPException(status_code=400, detail=_human_workflow_error(exc)) from exc
+
     @app.post("/api/competitors/{competitor_id}/settings")
     async def update_competitor(request: Request, competitor_id: int):
         payload = await _json_or_form(request)
@@ -1910,18 +2556,39 @@ def build_web_app(
                     if competitor.notification_policy
                     else "INHERIT"
                 ),
-                "message": "Настройки конкурента сохранены",
+                "message": (
+                    "Источник в портфеле ротанга"
+                    if competitor.vertical.value == "ARTIFICIAL_RATTAN"
+                    and payload.get("vertical")
+                    else "Настройки конкурента сохранены"
+                ),
             }
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=400, detail=_human_workflow_error(exc)) from exc
 
     @app.get("/api/radar/feed")
-    async def radar_feed_api(limit: int = 8):
+    async def radar_feed_api(request: Request, limit: int = 8, vertical: str = ""):
         safe_limit = max(1, min(limit, 20))
-        payload = await queries.radar_feed(limit=safe_limit)
+        selected_vertical = resolve_business_vertical(request, explicit=vertical)
+        payload = await queries.radar_feed(limit=safe_limit, vertical=selected_vertical)
         snapshot = controller.snapshot()
         payload["cycle_running"] = snapshot.cycle_running
         payload["last_error"] = snapshot.last_error
+        payload["scan_progress"] = snapshot.progress.to_dict()
+        payload["last_stats"] = (
+            {
+                "competitors_checked": snapshot.last_stats.competitors_checked,
+                "reels_found": snapshot.last_stats.reels_found,
+                "comments_created": snapshot.last_stats.comments_created,
+                "leads_created": snapshot.last_stats.leads_created,
+                "errors": snapshot.last_stats.errors,
+                "budget_stops": snapshot.last_stats.budget_stops,
+                "hot_notifications": snapshot.last_stats.hot_notifications,
+            }
+            if snapshot.last_stats is not None
+            else None
+        )
+        payload["cycles_completed"] = snapshot.cycles_completed
         if analysis_pipeline is not None:
             payload["analysis_queue"] = analysis_pipeline.pending_count
             payload["analysis_in_flight"] = analysis_pipeline.in_flight_count
@@ -1929,6 +2596,43 @@ def build_web_app(
         else:
             payload["analysis_queue"] = 0
             payload["analysis_in_flight"] = 0
+        return payload
+
+    @app.get("/api/scan/progress")
+    async def scan_progress_api():
+        """Лёгкий endpoint для live-прогресса проверки на любой странице."""
+        snapshot = controller.snapshot()
+        payload = {
+            "ok": True,
+            "cycle_running": snapshot.cycle_running,
+            "cycle_trigger": snapshot.cycle_trigger,
+            "last_error": snapshot.last_error,
+            "progress": snapshot.progress.to_dict(),
+            "cycles_completed": snapshot.cycles_completed,
+            "last_stats": (
+                {
+                    "competitors_checked": snapshot.last_stats.competitors_checked,
+                    "reels_found": snapshot.last_stats.reels_found,
+                    "comments_created": snapshot.last_stats.comments_created,
+                    "leads_created": snapshot.last_stats.leads_created,
+                    "errors": snapshot.last_stats.errors,
+                    "budget_stops": snapshot.last_stats.budget_stops,
+                    "hot_notifications": snapshot.last_stats.hot_notifications,
+                }
+                if snapshot.last_stats is not None
+                else None
+            ),
+        }
+        if analysis_pipeline is not None:
+            payload["analysis_queue"] = analysis_pipeline.pending_count
+            payload["analysis_in_flight"] = analysis_pipeline.in_flight_count
+        else:
+            payload["analysis_queue"] = 0
+            payload["analysis_in_flight"] = 0
+        feed = await queries.gpt_queue_counts()
+        payload["ai_pending"] = int(feed.get("ai_pending") or 0)
+        payload["analyzing"] = int(feed.get("analyzing") or 0)
+        payload["gpt_queue_total"] = payload["ai_pending"] + payload["analyzing"]
         return payload
 
     @app.get("/health")
@@ -1940,6 +2644,7 @@ def build_web_app(
             "cycle_running": snapshot.cycle_running,
             "cycles_completed": snapshot.cycles_completed,
             "last_error": snapshot.last_error,
+            "scan_progress": snapshot.progress.to_dict(),
             "radar_live_armed": ops_control.radar_live_armed(),
             "openai_live_armed": ops_control.openai_live_armed(),
             "master_live_ready": master_live_ready(),
@@ -1952,14 +2657,34 @@ def build_web_app(
 
     @app.get("/ready")
     async def ready():
+        from sqlalchemy import func, select
+
+        from app.db.models import Competitor
+
         state = await inspect_offline_readiness(settings)
         payload = {
             "ok": state.ready,
             "database_healthy": state.database_healthy,
             "migration_at_head": state.migration_at_head,
             "migration_drift_free": state.migration_drift_free,
+            "backup_present": state.backup_present,
+            "uncertain_reservations": state.uncertain_reservations,
+            "web_enabled": settings.web_enabled,
+            "radar_live_armed": ops_control.radar_live_armed(),
+            "openai_live_armed": ops_control.openai_live_armed(),
             "blocks": list(state.offline_blocks),
         }
+        if analysis_pipeline is not None:
+            payload["analysis_queue"] = analysis_pipeline.pending_count
+            payload["analysis_in_flight"] = analysis_pipeline.in_flight_count
+        async with workflow.session_factory() as session:
+            payload["active_competitors"] = int(
+                await session.scalar(select(func.count(Competitor.id)).where(Competitor.active))
+                or 0
+            )
+            payload["competitors_total"] = int(
+                await session.scalar(select(func.count(Competitor.id))) or 0
+            )
         status_code = 200 if state.ready else 503
         return JSONResponse(payload, status_code=status_code)
 

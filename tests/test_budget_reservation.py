@@ -110,6 +110,9 @@ async def test_started_reservation_cannot_be_released_and_uncertain_still_consum
 async def test_provider_confirmed_charge_over_reservation_is_recorded_truthfully(
     session_factory,
 ):
+    from tests.conftest import seed_scrapecreators_instagram_policy
+
+    await seed_scrapecreators_instagram_policy(session_factory)
     usage = ExternalUsageService(session_factory)
     reservation_id = await usage.reserve_budget(
         "instagram",

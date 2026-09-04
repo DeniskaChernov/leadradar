@@ -47,6 +47,8 @@ class ProviderBudgetSnapshot:
     months_remaining_at_target: float | None
     budget_status: str
     usage_by_operation: dict[str, int]
+    daily_burn_series: tuple[tuple[str, int], ...] = ()
+    month_credits_low: bool = False
 
 
 class ProviderCreditBudgetService:
@@ -229,10 +231,10 @@ class ProviderCreditBudgetService:
         balance = await self.latest_balance(provider)
         balance_value = balance.credits_remaining if balance is not None else None
         balance_source = balance.source if balance is not None else "UNKNOWN"
+        # Ручной лимит менеджера — источник истины. Режем только месячным hard limit
+        # и подтверждённым балансом провайдера, не произвольным «max 50».
         effective = min(
             max(0, requested_units),
-            policy.maximum_manual_scan_budget_units,
-            max(0, daily_remaining),
             monthly_remaining,
         )
         if balance_value is not None and balance_source in self.CONFIRMED_SOURCES:
@@ -241,8 +243,6 @@ class ProviderCreditBudgetService:
         reasons: list[str] = []
         if requested_units <= 0:
             reasons.append("Лимит проверки должен быть положительным.")
-        if daily_remaining <= 0:
-            reasons.append("Дневной лимит внешних операций исчерпан.")
         if monthly_remaining <= 0:
             reasons.append("Месячный hard limit провайдера исчерпан.")
         if (
@@ -306,6 +306,13 @@ class ProviderCreditBudgetService:
             status = "BLOCKED"
         if remaining is None and status != "BLOCKED":
             status = "UNKNOWN"
+        series = await self.daily_burn_series(provider, days=7)
+        month_credits_low = (
+            policy.monthly_hard_limit_units > 0
+            and max(0, policy.monthly_hard_limit_units - used - active)
+            / policy.monthly_hard_limit_units
+            < 0.2
+        )
         return ProviderBudgetSnapshot(
             provider=provider,
             service=service,
@@ -323,7 +330,43 @@ class ProviderCreditBudgetService:
             months_remaining_at_target=months_at_target,
             budget_status=status,
             usage_by_operation=await self.usage_by_operation(provider),
+            daily_burn_series=series,
+            month_credits_low=month_credits_low,
         )
+
+    async def daily_burn_series(
+        self,
+        provider: str,
+        *,
+        days: int = 7,
+    ) -> tuple[tuple[str, int], ...]:
+        """Сумма CostEvent.units по календарным суткам UTC за последние N дней."""
+        safe_days = max(1, min(int(days), 30))
+        now = datetime.now(UTC)
+        start = (now - timedelta(days=safe_days - 1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        async with self.session_factory() as session:
+            rows = (
+                await session.execute(
+                    select(
+                        func.date(CostEvent.created_at),
+                        func.coalesce(func.sum(CostEvent.units), 0),
+                    )
+                    .where(
+                        CostEvent.provider == provider.strip().lower(),
+                        CostEvent.created_at >= start,
+                    )
+                    .group_by(func.date(CostEvent.created_at))
+                    .order_by(func.date(CostEvent.created_at))
+                )
+            ).all()
+        by_day = {str(day): int(units or 0) for day, units in rows}
+        series: list[tuple[str, int]] = []
+        for offset in range(safe_days):
+            day = (start + timedelta(days=offset)).date().isoformat()
+            series.append((day, by_day.get(day, 0)))
+        return tuple(series)
 
     async def _average_daily_burn(
         self,

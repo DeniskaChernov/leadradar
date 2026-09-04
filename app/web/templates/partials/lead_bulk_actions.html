@@ -1,0 +1,33 @@
+{# Массовые действия по текущему списку лидов (list view). #}
+{% set bulk = namespace(new_ids=[], garbage_ids=[]) %}
+{% for lead, contact, comment, competitor, post, deal in rows %}
+  {% if lead.status.value == 'NEW' %}{% set _ = bulk.new_ids.append(lead.id) %}{% endif %}
+  {% if lead_quality_badge(lead) in ['off_catalog', 'not_lead', 'noise'] and lead.status.value not in ['WON', 'LOST', 'NOT_LEAD'] %}
+    {% set _ = bulk.garbage_ids.append(lead.id) %}
+  {% endif %}
+{% endfor %}
+{% if bulk.new_ids or bulk.garbage_ids %}
+<section class="panel leads-bulk-bar compact" aria-label="Массовые действия">
+  <div class="leads-bulk-actions">
+    {% if bulk.new_ids %}
+    <button
+      class="btn tiny primary"
+      type="button"
+      data-lead-bulk="take"
+      data-lead-ids="{{ bulk.new_ids | tojson }}"
+    >Взять все NEW ({{ bulk.new_ids | length }})</button>
+    {% endif %}
+    {% if bulk.garbage_ids %}
+    <button
+      class="btn tiny ghost"
+      type="button"
+      data-lead-bulk="not_lead"
+      data-lead-ids="{{ bulk.garbage_ids | tojson }}"
+      data-confirm-title="Отметить как «не лид»?"
+      data-confirm="Отметить {{ bulk.garbage_ids | length }} лид(ов) как «не лид»? История клиента сохранится."
+      data-confirm-danger="1"
+    >Не лид · все подозрительные ({{ bulk.garbage_ids | length }})</button>
+    {% endif %}
+  </div>
+</section>
+{% endif %}

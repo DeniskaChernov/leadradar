@@ -1,24 +1,44 @@
 {% extends "base.html" %}
 {% block title %}Экономика · Lead Radar{% endblock %}
-{% block heading %}Экономика{% endblock %}
-{% block subheading %}Расходы провайдеров, AI, воронка и результат в деньгах и credits{% endblock %}
+{% block heading %}Расходы{% endblock %}
+{% block subheading %}Сколько credits уходит на поиск клиентов и что вы получаете взамен{% endblock %}
 {% block content %}
 {% macro usd(value) -%}{% if value is not none %}${{ '%.6f'|format(value) }}{% else %}—{% endif %}{%- endmacro %}
 {% macro credits(value) -%}{% if value is not none %}{{ value }} credits{% else %}—{% endif %}{%- endmacro %}
 {% macro ratio(value) -%}{% if value is not none %}{{ '%.2f'|format(value) }}{% else %}—{% endif %}{%- endmacro %}
 {% set credit_accuracy = safe_attr(page.credits, 'confirmed_coverage_percent') %}
 
-<section class="hero-status economics-hero {% if page.provider and page.provider.budget_status == 'HEALTHY' %}live{% elif page.provider %}warn{% else %}safe{% endif %}" data-motion-root>
+<section class="hero-status economics-hero {% if page.provider and page.provider.budget_status == 'HEALTHY' and not page.provider.month_credits_low %}live{% elif page.provider %}warn{% else %}safe{% endif %}" data-motion-root>
   <div>
-    <span class="eyebrow">ЮНИТ-ЭКОНОМИКА · {{ page.days }} дн.</span>
-    <h2>{% if page.provider %}ScrapeCreators {{ page.provider.used_this_month }}/{{ page.provider.monthly_hard_limit }} credits{% else %}Экономика без live wallet{% endif %}</h2>
-    <p>{% if page.provider and page.provider.credits_remaining is not none %}Остаток пакета: {{ '{:,}'.format(page.provider.credits_remaining).replace(',', ' ') }} credits · {% endif %}Горячие: {{ economics.hot_count }} · Выиграно: {{ economics.won_count }} · AI-операций: {{ page.openai.events }}. Только ledger — без внешних вызовов.</p>
+    <span class="eyebrow">РАСХОДЫ НА ПОИСК · {{ page.days }} дн.</span>
+    <h2>{% if page.provider %}Потрачено {{ page.provider.used_this_month }} из {{ page.provider.monthly_hard_limit }} credits{% else %}Расходы без live-кошелька{% endif %}</h2>
+    <p>
+      Горячих клиентов: {{ economics.hot_count }}
+      · credits/HOT: <b>{{ ratio(page.credits.credits_per_hot) }}</b>
+      · USD/HOT: <b>{{ usd(economics.cost_per_hot_usd) }}</b>
+      · продаж: {{ economics.won_count }}
+      · AI: {{ page.openai.events }}
+      · OpenAI $/лид: <b>{{ usd(page.openai_usd_per_lead) }}</b>
+      · ROI: <b>{% if economics.roi_ratio is not none %}{{ '%.2f'|format(economics.roi_ratio * 100) }}%{% else %}—{% endif %}</b>.
+      Цифры только из базы. Максимальный расход на поиск ≠ фактический.
+    </p>
   </div>
   <div class="hero-actions">
-    <a class="btn" href="/radar">Радар</a>
+    <a class="btn primary" href="/radar">Найти лидов</a>
+    <a class="btn" href="/radar#radar-budget-title">Лимит поиска →</a>
+    <a class="btn ghost" href="/api/economics/export.csv?days={{ page.days }}">CSV</a>
     <button class="btn ghost" type="button" data-agent-open>AI сводка</button>
   </div>
 </section>
+{% if page.provider and page.provider.month_credits_low %}
+<section class="panel compact economics-low-alert">
+  <div class="alert danger">
+    <b>Месячный бюджет почти исчерпан</b>
+    <span>Осталось меньше 20% hard-лимита ({{ page.provider.monthly_remaining }} из {{ page.provider.monthly_hard_limit }} credits). Снизьте лимит scan или дождитесь нового месяца.</span>
+    <a class="btn tiny" href="/radar#radar-budget-title">Настроить лимит</a>
+  </div>
+</section>
+{% endif %}
 
 <form class="filters segmented-control" method="get" aria-label="Период экономики">
   <a class="btn {% if page.days != 1 %}ghost{% endif %}" href="/economics?days=1" {% if page.days == 1 %}aria-current="page"{% endif %}>24 часа</a>
@@ -26,18 +46,62 @@
   <a class="btn {% if page.days != 30 %}ghost{% endif %}" href="/economics?days=30" {% if page.days == 30 %}aria-current="page"{% endif %}>30 дней</a>
 </form>
 
+<section class="panel economics-budget-sim" data-economics-budget-sim aria-labelledby="economics-budget-sim-title">
+  <div class="panel-head">
+    <div>
+      <span class="eyebrow">СИМУЛЯЦИЯ · БЕЗ ЗАПУСКА</span>
+      <h2 id="economics-budget-sim-title">Что даст лимит credits?</h2>
+      <p>Прогноз охвата конкурентов и страниц комментариев при выбранном лимите на один поиск.</p>
+    </div>
+    {% if scan_budget.is_live %}<span class="tag {% if scan_budget.live_enabled %}success{% else %}warning{% endif %}">{% if scan_budget.live_enabled %}Live{% else %}Live выключен{% endif %}</span>{% else %}<span class="tag neutral">Offline</span>{% endif %}
+  </div>
+  {% set sim_max = scan_budget.maximum_manual_scan_budget or scan_budget.monthly_hard_limit or 3800 %}
+  {% set sim_value = scan_budget.requested_credits or scan_budget.default_scan_budget or 10 %}
+  <label class="budget-sim-control">
+    <span>Лимит на проверку: <b data-budget-sim-value>{{ sim_value }}</b> credits</span>
+    <input type="range" data-budget-sim-slider min="1" max="{{ sim_max }}" value="{{ sim_value }}" step="1" aria-label="Симуляция лимита credits">
+  </label>
+  <div class="economics-budget-preview">
+    <span>Макс. расход: <b data-budget-sim-max>{{ scan_budget.effective_max_credits }} credits</b></span>
+    <span>Остаток месяца: <b data-budget-sim-monthly>{{ scan_budget.monthly_remaining }}</b></span>
+    <span>Доступно сегодня: <b data-budget-sim-daily>{{ scan_budget.daily_remaining }}</b></span>
+    <span data-budget-sim-plan>План: ~{{ scan_budget.estimated_competitors_reachable }} конкурентов · ~{{ scan_budget.estimated_comment_pages }} стр.{% if scan_budget.expected_min_units %} · мин. {{ scan_budget.expected_min_units }} credits{% endif %}</span>
+    <span class="budget-clamp" data-budget-sim-clamp {% if not scan_budget.clamped %}hidden{% endif %}>Будет урезано до <b data-budget-sim-clamp-value>{{ scan_budget.effective_max_credits }}</b> credits</span>
+  </div>
+  <p class="muted">Запуск — в <a href="/radar#radar-budget-title">«Найти лидов»</a>. Здесь только расчёт без списания.</p>
+</section>
+
 <section class="panel economics-provider-card" aria-labelledby="economics-provider-title">
   <div class="panel-head">
-    <div><span class="eyebrow">КРЕДИТНЫЙ БЮДЖЕТ ПРОВАЙДЕРОВ</span><h2 id="economics-provider-title">ScrapeCreators</h2><p>Операционный wallet и месячные пределы. Для запуска Radar используйте <a href="/radar">страницу Радара</a>.</p></div>
-    {% if page.provider %}<span class="tag {% if page.provider.budget_status == 'HEALTHY' %}success{% elif page.provider.budget_status in ['WATCH','UNKNOWN'] %}warning{% else %}danger{% endif %}">{{ page.provider.budget_status }}</span>{% else %}<span class="tag neutral">NOT_CONFIGURED</span>{% endif %}
+    <div><span class="eyebrow">КРЕДИТНЫЙ БЮДЖЕТ ПРОВАЙДЕРОВ</span><h2 id="economics-provider-title">ScrapeCreators</h2><p>Операционный wallet и месячные пределы. Лимит на запуск — в <a href="/radar#radar-budget-title">«Найти лидов» → бюджет проверки</a>.</p></div>
+    {% if page.provider %}<span class="tag {% if page.provider.budget_status == 'HEALTHY' and not page.provider.month_credits_low %}success{% elif page.provider.budget_status in ['WATCH','UNKNOWN'] or page.provider.month_credits_low %}warning{% else %}danger{% endif %}">{{ budget_status_label(page.provider.budget_status) }}{% if page.provider.month_credits_low %} · &lt;20%{% endif %}</span>{% else %}<span class="tag neutral">{{ budget_status_label('NOT_CONFIGURED') }}</span>{% endif %}
   </div>
   {% if page.provider %}
   <div class="radar-budget-metrics economics-wallet-metrics">
     <div><small>Баланс</small><b>{% if page.provider.credits_remaining is not none %}{{ '{:,}'.format(page.provider.credits_remaining).replace(',', ' ') }} credits{% else %}Не подтверждён{% endif %}</b><span>{{ page.provider.credits_remaining_source }}</span></div>
     <div><small>Этот месяц</small><b>{{ page.provider.used_this_month }} / {{ page.provider.monthly_hard_limit }}</b><span>Рабочая цель: {{ page.provider.monthly_target }}</span></div>
     <div><small>Мягкий лимит</small><b>{{ page.provider.monthly_soft_limit }}</b><span>Осталось: {{ page.provider.monthly_remaining }}</span></div>
-    <div><small>Прогноз месяца</small><b>~{{ page.provider.projected_monthly_burn|round|int }} credits</b><span>7д: {{ page.provider.average_daily_burn_7d }}/day · 30д: {{ page.provider.average_daily_burn_30d }}/day</span></div>
+    <div class="economics-burn-spark">
+      <small>Burn 7 дней</small>
+      {% set burn_max = namespace(v=1) %}
+      {% for _day, units in page.provider.daily_burn_series %}{% if units > burn_max.v %}{% set burn_max.v = units %}{% endif %}{% endfor %}
+      <svg class="burn-sparkline" viewBox="0 0 112 28" role="img" aria-label="Расход credits за 7 дней">
+        {% for day, units in page.provider.daily_burn_series %}
+        {% set h = ((units / burn_max.v) * 22)|round|int %}
+        <rect x="{{ loop.index0 * 16 }}" y="{{ 26 - (h if h > 0 else 1) }}" width="12" height="{{ h if h > 0 else 1 }}" rx="2" class="{% if loop.last %}is-today{% endif %}"></rect>
+        {% else %}
+        <text x="4" y="18" class="burn-empty">нет данных</text>
+        {% endfor %}
+      </svg>
+      <span>ср. {{ page.provider.average_daily_burn_7d }}/день · прогноз ~{{ page.provider.projected_monthly_burn|round|int }}</span>
+    </div>
     <div><small>Хватит примерно</small><b>{% if page.provider.months_remaining is not none %}{{ page.provider.months_remaining }} мес.{% else %}—{% endif %}</b><span>Цель: ≥6 месяцев</span></div>
+  </div>
+  <div class="economics-hot-kpi">
+    <div><span>credits / горячий</span><strong>{{ ratio(page.credits.credits_per_hot) }}</strong></div>
+    <div><span>USD / горячий</span><strong>{{ usd(economics.cost_per_hot_usd) }}</strong></div>
+    <div><span>Горячих за период</span><strong>{{ economics.hot_count }}</strong></div>
+    <a class="btn tiny ghost" href="/radar#radar-budget-title">К бюджету поиска</a>
   </div>
   <div class="table-wrap embedded economics-table-wrap">
     <table class="responsive-table">
@@ -66,6 +130,8 @@
     <div class="metric"><span>Входные токены</span><strong>{% if page.openai.events and page.openai.input_tokens == 0 and page.openai.unpriced_events == page.openai.events %}—{% else %}{{ page.openai.input_tokens }}{% endif %}</strong><small>из response.usage</small></div>
     <div class="metric"><span>Выходные токены</span><strong>{% if page.openai.events and page.openai.output_tokens == 0 and page.openai.unpriced_events == page.openai.events %}—{% else %}{{ page.openai.output_tokens }}{% endif %}</strong><small>из response.usage</small></div>
     <div class="metric"><span>Известно USD</span><strong>{{ usd(page.openai.known_spend_usd) if page.openai.events else '—' }}</strong><small>{{ page.openai.unpriced_events }} без тарифа</small></div>
+    <div class="metric"><span>OpenAI $/лид</span><strong>{{ usd(page.openai_usd_per_lead) }}</strong><small>{{ economics.leads_count }} лидов</small></div>
+    <div class="metric"><span>OpenAI $/HOT</span><strong>{{ usd(page.openai_usd_per_hot) }}</strong><small>{{ economics.hot_count }} горячих</small></div>
   </div>
 </section>
 
@@ -73,7 +139,7 @@
   <div class="panel-head"><div><span class="eyebrow">СТОИМОСТЬ ВОРОНКИ</span><h2 id="economics-funnel-title">Стоимость воронки</h2><p>USD и ScrapeCreators credits на исход за {{ page.days }} дн.</p></div></div>
   <div class="metrics economics-metrics">
     <div class="metric"><span>ScrapeCreators credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.known_credits }}{% else %}—{% endif %}</strong><small>{{ page.credits.credit_events }} cost-событий</small></div>
-    <div class="metric"><span>Подтверждённые credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.confirmed_credits }}{% else %}—{% endif %}</strong><small>PROVIDER_CONFIRMED</small></div>
+    <div class="metric"><span>Подтверждённые credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.confirmed_credits }}{% else %}—{% endif %}</strong><small>провайдер подтвердил</small></div>
     <div class="metric"><span>Оценочные credits</span><strong>{% if page.credits.credit_events %}{{ page.credits.estimated_credits }}{% else %}—{% endif %}</strong><small>без ответа провайдера</small></div>
     <div class="metric"><span>Точность credits</span><strong>{% if credit_accuracy is not none %}{{ credit_accuracy }}%{% else %}—{% endif %}</strong><small>доля подтверждённых</small></div>
     <div class="metric"><span>credits / сигнал</span><strong>{{ ratio(page.credits.credits_per_signal) }}</strong><small>{{ economics.signals_count }} сигналов</small></div>
@@ -82,9 +148,9 @@
     <div class="metric"><span>credits / горячий</span><strong>{{ ratio(page.credits.credits_per_hot) }}</strong><small>{{ economics.hot_count }} горячих{% if credit_accuracy is not none and credit_accuracy < 100 %} · ⚠ {{ (100 - credit_accuracy)|round(1) }}% оценочных{% endif %}</small></div>
     <div class="metric"><span>credits / B2B</span><strong>{{ ratio(page.credits.credits_per_b2b) }}</strong><small>{{ economics.b2b_count }} B2B-лидов</small></div>
     <div class="metric"><span>credits / выигранный</span><strong>{{ ratio(page.credits.credits_per_won) }}</strong><small>{{ economics.won_count }} выигранных</small></div>
-    <div class="metric"><span>Горячие / 1 000 credits</span><strong>{{ ratio(page.credits.hot_per_1000_credits) }}</strong><small>эффективность Radar</small></div>
-    <div class="metric"><span>B2B / 1 000 credits</span><strong>{{ ratio(page.credits.b2b_per_1000_credits) }}</strong><small>эффективность Radar</small></div>
-    <div class="metric"><span>Выигранные / 1 000 credits</span><strong>{{ ratio(page.credits.won_per_1000_credits) }}</strong><small>эффективность Radar</small></div>
+    <div class="metric"><span>Горячие / 1 000 credits</span><strong>{{ ratio(page.credits.hot_per_1000_credits) }}</strong><small>эффективность поиска</small></div>
+    <div class="metric"><span>B2B / 1 000 credits</span><strong>{{ ratio(page.credits.b2b_per_1000_credits) }}</strong><small>эффективность поиска</small></div>
+    <div class="metric"><span>Выигранные / 1 000 credits</span><strong>{{ ratio(page.credits.won_per_1000_credits) }}</strong><small>эффективность поиска</small></div>
   </div>
   <div class="metrics economics-metrics">
     <div class="metric"><span>Известные расходы USD</span><strong>{% if economics.cost_events %}{{ usd(economics.known_spend_usd) }}{% else %}—{% endif %}</strong><small>{{ economics.cost_events }} событий · {{ economics.cost_coverage_percent }}%</small></div>

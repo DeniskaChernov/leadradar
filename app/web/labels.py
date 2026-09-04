@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 LEAD_STATUS_LABELS = {
-    "ANALYZING": "Анализируем",
-    "AI_PENDING": "Нужна дополнительная проверка",
+    "ANALYZING": "Ставим оценку",
+    "AI_PENDING": "Система не уверена",
     "NEW": "Новый",
     "TAKEN": "В работе",
     "CONTACTED": "Связались",
@@ -56,10 +56,10 @@ PRODUCT_LABELS = {
 }
 
 AI_SOURCE_LABELS = {
-    "local_rules": "Локальные правила · бесплатно",
-    "openai_or_cache": "OpenAI / сохранённый AI-ответ",
-    "pending": "Ожидает дополнительного анализа",
-    "custom_analyzer": "Системный анализатор",
+    "local_rules": "Правила (бесплатно)",
+    "openai_or_cache": "Умная оценка GPT",
+    "pending": "Оценка не начата",
+    "custom_analyzer": "Системная оценка",
 }
 
 FUNNEL_STAGE_LABELS = {
@@ -128,6 +128,7 @@ EVENT_LABELS = {
     "LEAD_REOPENED": "Лид возвращён в работу",
     "SIGNIFICANT_CHANGE": "Лид стал горячее",
     "AUDIENCE_EXPORT_PREVIEW": "Dry-run экспорта аудитории",
+    "AUDIENCE_EXPORT": "Экспорт аудитории в Meta",
 }
 
 CHANGE_TYPE_LABELS = {
@@ -201,6 +202,36 @@ COMPETITOR_CATEGORY_LABELS = {
     "HORECA": "HoReCa",
     "PREMIUM": "Премиум / интерьер",
     "MASS": "Массовый рынок",
+}
+
+COMPETITOR_TIER_LABELS = {
+    "A": "A · главный",
+    "B": "B · важный",
+    "C": "C · фоновый",
+}
+
+NOTIFICATION_POLICY_LABELS = {
+    "INHERIT": "Общий режим системы",
+    "ALL_NEW_COMMENTS": "Каждый новый комментарий",
+    "COMMERCIAL_ONLY": "Только покупательский интерес",
+    "HOT_ONLY": "Только горячие лиды",
+}
+
+AUDIENCE_HEALTH_LABELS = {
+    "HEALTHY": "Здоровая",
+    "LOW_DATA": "Мало данных",
+    "STALE": "Устарела",
+    "NEEDS_REVIEW": "На проверке",
+    "NOT_EXPORTABLE": "Не для экспорта",
+    "NOISY": "Шумная",
+}
+
+BUDGET_STATUS_LABELS = {
+    "HEALTHY": "В норме",
+    "WATCH": "Наблюдение",
+    "UNKNOWN": "Неизвестно",
+    "NOT_CONFIGURED": "Не задан",
+    "DANGER": "Опасно",
 }
 
 

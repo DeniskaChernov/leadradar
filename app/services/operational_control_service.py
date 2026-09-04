@@ -44,6 +44,16 @@ class OperationalControlService:
     def openai_live_armed(self) -> bool:
         return self._cache.openai_live_armed
 
+    async def radar_live_armed_fresh(self) -> bool:
+        """Актуальное значение из БД — для spend gate (multi-worker safe)."""
+        snap = await self.load()
+        return snap.radar_live_armed
+
+    async def openai_live_armed_fresh(self) -> bool:
+        """Актуальное значение из БД — для OpenAI spend gate."""
+        snap = await self.load()
+        return snap.openai_live_armed
+
     async def load(self) -> OperationalSnapshot:
         async with self.session_factory() as session:
             row = await session.get(OperationalControl, 1)
@@ -72,7 +82,7 @@ class OperationalControlService:
             row = await self._get_or_create(session)
             row.radar_live_armed = bool(armed)
             if default_scan_credits is not None:
-                row.default_scan_credits = max(1, min(50, int(default_scan_credits)))
+                row.default_scan_credits = max(1, min(100_000, int(default_scan_credits)))
             row.updated_by = manager_id
             row.updated_at = datetime.now(UTC)
             await session.commit()

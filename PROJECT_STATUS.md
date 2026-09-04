@@ -2,10 +2,187 @@
 
 ## Текущая версия
 
-**PERSISTENT AI CHAT · FUNNEL UX · QA 55 · LIVE PILOT READY**
+**WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
+
+Контрольная точка 2026-09-04 (ops-live + ship): Live Radar → «Live-поиск»
+на system/radar/wizard; cache **13.45.0-ops-live**. Find-leads UI closed;
+push ветки в PR #2 для CI.
+
+Контрольная точка 2026-09-04 (copy-sweep): rattan/openings/offline leftovers;
+competitors Live-поиск; cache **13.44.0-copy-sweep**. Ops Live Radar labels
+на system/radar advanced сохранены.
+
+Контрольная точка 2026-09-04 (audit-fix): BOTANIST без выдуманного IG;
+тесты copy sync; nav Люди vs Компании; leftovers Radar→поиск;
+cache **13.43.0-work-pages**.
+
+Контрольная точка 2026-09-04 (work-pages): contacts→«Люди»; deals/tasks
+CTA «Найти лидов»; auth pitch; agent presets human; cache **13.43.0-work-pages**.
+
+Контрольная точка 2026-09-04 (shell-human): scan modal/banner/confirm
+и empty states → «Найти лидов»; lead_detail «Клиент»; help/system/economics;
+cache **13.42.0-shell-human**.
+
+Контрольная точка 2026-09-04 (CRM/HOT polish): nav «Клиенты»; HOT/CRM empty
+states + CTA «Найти лидов»; kanban-empty; «Написать» вместо «В HOT»;
+cache **13.41.0-crm-hot**.
+
+Контрольная точка 2026-09-04 (find-leads pass7): soft geo/lang подсказки
+(ориентир, не фильтр scan; город не выдумываем); cache в **13.41.0-crm-hot**.
+
+Контрольная точка 2026-09-04 (find-leads pass6): сброс prefs-фильтра;
+sync kind select; wizard restore step; Discovery/Economics → «Найти лидов»;
+nav «Новые источники» / «Расходы»; cache **13.39.0-find-leads-pass6**.
+
+Контрольная точка 2026-09-04 (find-leads pass5): таблица радара синхронно
+с prefs-фильтром; autoscroll к результатам; Конкуренты → «Источники поиска»;
+cache **13.38.0-find-leads-pass5**.
+
+Контрольная точка 2026-09-04 (find-leads pass4): prefs аудитория/категории
+фильтруют карточки (intent/role/product); empty state; Главная → «Найти лидов»;
+cache **13.37.0-find-leads-pass4**.
+
+Контрольная точка 2026-09-04 (find-leads pass3): `kind=warm` + `overview.warm`;
+фильтры выдачи из wizard heat; gated «Следить постоянно»; copy CRM/HOT;
+cache **13.36.0-find-leads-pass3**.
+
+Контрольная точка 2026-09-04 (find-leads pass2): advanced Live/budget,
+HOT badge в nav, grounded `GET /api/leads/{id}/explain`, «Взять в работу»,
+человечный итог поиска; cache **13.35.0-find-leads-pass2**.
+
+Контрольная точка 2026-09-04 (find-leads UI): redesign `/radar` — wizard
+«Найти лидов» (4 шага, presets, summary, Coming Soon источники), nav IA +
+usage-card из `/api/scan/preview`, accent forest green; backend scan/safety
+без ослабления; cache **13.34.0-find-leads**; тесты `test_find_leads_ui.py`.
+
+Контрольная точка 2026-09-04 (live C3/C4): user «разрешаю live»;
+`OPENAI_LIVE_CALLS_ENABLED=true`, daily=25; arm `@aiko.uz` Radar+OpenAI;
+OpenAI smoke 3 AI_PENDING (budget 3/25); Telegram manager smoke OK;
+readiness READY FOR CONTROLLED LIVE PILOT; backup `.backups/lead_radar-20260904-070632-035824.db`.
+Rollback: kill switch / disarm тумблеры на /system.
+
+Контрольная точка 2026-09-04 (machine polish): GPT daily meter на `/hot`;
+enrollment ротанга one-click на `/rattan` (+ sync Lead/Signal при смене vertical);
+cache **13.33.0-machine-polish**. Live C3/C4 не трогали (нет «разрешаю live»).
+
+Контрольная точка 2026-09-04 (operator board D): доска лидов — 6 колонок
+(Оценка/Новый/В работе/Предложение/Переговоры/Закрыто); DnD через
+`move_lead_toward` (цепочка стадий); кнопка «В HOT»; cache **13.32.0-operator-board**.
+
+Контрольная точка 2026-09-04 (operator loop A+B): `/hot` после «Отправил»
+сразу следующий HOT; бейдж «уже писали»; `/leads?vertical=` + Лиды в nav ротанга;
+cache **13.31.0-operator-loop**. Тесты `test_hot_outreach.py` (4).
+
+Контрольная точка 2026-09-04 (HOT outreach workspace): `/hot` — очередь HOT,
+кнопка «Подготовить текст» (OpenAI), копирование, «Отправил» двигает
+`TAKEN→CONTACTED→OFFER_SENT`; nav упрощён (HOT в primary). UI **13.30.0-hot-outreach**.
+
+Контрольная точка 2026-09-03 (vertical-scoped Radar): мебель и ротанг — отдельные
+сканы/ленты/превью по `Competitor.vertical`; UI `/radar?vertical=ARTIFICIAL_RATTAN`,
+cache **13.29.10-rattan-radar**; тесты `test_vertical_scoped_scan.py`.
+
+Контрольная точка 2026-09-03 (B7 manager chat): lead/change Telegram delivery →
+`TELEGRAM_MANAGER_CHAT_IDS`; pilot readiness fail-closed если пусто; warning если = ADMIN.
+
+Контрольная точка 2026-09-03 (A5 branch protection): `main` требует
+`offline-quality-gate (sqlite)` + `(postgres)`, enforce_admins, force-push OFF.
+
+Контрольная точка 2026-09-03 (D4 PWA SW): `/sw.js` scope=/; precache shell CSS/JS/icons;
+offline.html network-first navigate fallback; API не кэшируется. UI **13.29.6-pwa**.
+
+Контрольная точка 2026-09-03 (D3 audience unseen:v2): 76 cases / 210 labeled decisions;
+gate merges registry `vertical` into criteria (как production sync); unique case_id +
+active-slug coverage tests. UI **13.29.5-contrast**.
+
+Контрольная точка 2026-09-03 (D2 Playwright e2e): Chromium browser funnel
+take→CONTACTED→not-lead→reopen; CI `playwright install chromium`; HTTP smoke сохранён.
+UI **13.29.5-contrast**.
+
+Контрольная точка 2026-09-03 (C7 scan-cap credits): comment fetch page-by-page;
+`ScanBudget` синхронизируется с `PROVIDER_CONFIRMED` credits (не page-count);
+дорогая 1-я страница останавливает пагинацию до 2-й. First live pilot run=630
+(−16 credits, UNCERTAIN=0) → rollback (Radar OFF, kill switch ON). UI **13.29.5-contrast**.
+
+Контрольная точка 2026-09-03 (palette): единый **slate + teal** (`--brand #0d9488`,
+`--primary #0f766e`); убраны cream/amber brand и violet/indigo CTA. UI **13.29.4-palette**.
+
+Контрольная точка 2026-09-03 (P0 pilot safety): CI template-cache fix; `PilotReadinessService`
+fail-closed; missing `ProviderBudgetPolicy` blocks paid SC/IG before network; freshness
+ACTIVE/STALE/DORMANT/INACTIVE/UNKNOWN + `confirm_competitor_freshness`; arm script
+Radar-only (no OpenAI), cap 1..10; prepare exits non-zero on any blocker.
+SQLite: **495 passed, 2 skipped**; integrity OK. Controlled pilot: **NOT READY** until
+operator freshness/arm + green GitHub CI. Live/OpenAI/Meta/scheduler remain OFF.
+
+Контрольная точка 2026-09-02 (bugfix high+med): WON/LOST только через сделку; AI-статусы
+на kanban; dashboard revenue None→«—»; TAKEN→feedback; Meta invalid fail-closed;
+ops live_refresh из БД; kanban dropInFlight. UI **13.29.3-bugfix**.
+
+Контрольная точка 2026-09-02 (perf audit fix): убран cartesian product в quality report
+(Lead⨝Comment); batch `competitors()` / `audiences()`; kanban `/leads` группирует стадии в Python.
+Bench: competitors ~0.7s→~0.16s, audiences ~1.0s→~0.6s. `485+` suite зелёный на срезе 85.
+
+Контрольная точка 2026-09-02 (post-120 prep): UNCERTAIN reservations 134/137 reconciled
+(`spent=false`, reason=no provider credit); `live_readiness_check` → **READY FOR LIVE PILOT**;
+unseen PASS; integrity OK; Meta/Instagram/OpenAI live всё ещё OFF до явного разрешения.
+План: `docs/POST_120_PLAN.md`.
+
+Контрольная точка 2026-09-02 (docs sync): план улучшений **120/120** закрыт (commit `6fba631`);
+Master Phase 9 — **offline deployment readiness ЗАВЕРШЁН**; Meta Custom Audience live export
+и controlled live pilot остаются **gated** (только по явному разрешению).
+UI **13.29.0-wave18**.
+
+Контрольная точка 2026-09-02 (wave18): B4 drag-and-drop kanban на /leads.
+UI **13.29.0-wave18**. План: **120/120** ✅
+
+Контрольная точка 2026-09-02 (wave17): I5 unseen gate→openai-live; I4 watch golden cases; D7 dark mode; I2 e2e funnel; I6 queue load; J2 state script; J5 shutdown test.
+
+Контрольная точка 2026-09-02 (wave16): D20 design tokens doc; H5 backup drill; H6 PG migration checklist; I7 plus→OpenAI regression; I10 Bugbot PR; J7 Sentry hook; J8 Railway doc.
+
+Контрольная точка 2026-09-02 (wave15): D18 PWA manifest+icons; H7 interest_evidence dedup; H8 recalc error handling; J3 WEB_MANAGER_ID doc; J10 CHANGELOG; I9 CI quality gates doc+PR template.
+
+Контрольная точка 2026-09-02 (wave14): D17 print lead card; F9 competitor compare; F10 CSV import; J4 extended /ready; J9 junk leads runbook.
+UI **13.26.0-wave14**. План: **97/120**.
+
+**WAVE10 · KANBAN CRM HISTORY · MOBILE SWIPE · UNDO NOT_LEAD**
+
+Контрольная точка 2026-09-02 (wave10): tooltip CRM `contact_events` на kanban-карточках;
+mobile pill-nav + scroll-snap между колонками; toast «Отменить» после NOT_LEAD (reopen API).
+UI **13.22.0-wave10**.
+
+**WAVE9 · PARENT «+» · FEEDBACK LOOP · NOT_LEAD REANALYZE · DAILY QUALITY REPORT**
+
+Контрольная точка 2026-09-02 (wave9): parent-comment context для reply «+» (ScrapeCreators/Bright Data + БД);
+FeedbackLearningService + секция /system + `GET /api/system/feedback-export`; reanalyze NOT_LEAD≥50 (API+UI);
+daily quality report в Telegram admin (`QUALITY_REPORT_ENABLED`, idempotency `daily_quality_report_logs`).
+UI **13.21.0-wave9**. **428 passed, 1 skipped**.
+
+**WAVE4 · QUALITY FILTERS · BULK FUNNEL · OFF-CATALOG EXPAND · SLA · FOLLOW-UP**
+
+Контрольная точка 2026-09-02 (wave4): off-catalog расширен (украшения/обувь/техника);
+kanban NEGOTIATION → продажа при известной сумме; `POST /api/leads/{id}/follow-up`;
+SLA «Просрочен контакт»; reopen NOT_LEAD; Radar спорные vs архив + banner search pause;
+Agent RU presets; economics «провайдер подтвердил». UI **13.14.0-wave4**.
+
+Контрольная точка 2026-09-02 (wave2/3): quality badges + garbage filters, WON/LOST kanban,
+bulk take/not-lead, radar/dashboard plain-help, `scripts/reclassify_leads.py`.
+UI **13.13.0-wave3**. Commit `961071a`.
+
+Контрольная точка 2026-09-02 (plain UX): одна кнопка «Оценить накопившееся» (`/api/signals/review-all`);
+счётчик «нужна оценка» (свежие, без архива >30д); авто-оценка до 10 комментариев за цикл мониторинга.
+UI **13.11.5-plain-signals**. **403 passed, 1 skipped**.
+
+Контрольная точка 2026-09-01 (signal recency): фильтр `INSTAGRAM_SIGNAL_MAX_AGE_DAYS=30`
+на ingest, backfill, AI retry и radar feed; baseline/historical analyze выключены по
+умолчанию; OpenAI flush script; radar poll fix (**13.11.4-radar-poll-fix**). Tier A/B/C
+конкуренты восстановлены (**16 active**). **400 passed, 1 skipped**.
 
 Контрольная точка 2026-09-01 (QA5): ROI smoke 89x + gross margin 90% на /economics,
 browser visual 720px OK (economics/leads), PR #1 merged в main. **387 passed, 1 skipped**.
+
+Контрольная точка 2026-09-01 (design unify): hero-status на discovery/catalog/competitors/
+roadmap/audiences + detail pages (lead/contact/competitor/audience); glass KPI вместо тёмных
+блоков; empty-state с lucide; RU labels health/budget. UI cache **13.11.3-design-unify**.
+**392 passed, 1 skipped**.
 
 Контрольная точка 2026-09-01 (QA4): полная русификация economics (токены, HOT/WON,
 валовая прибыль), smoke WON+revenue 12.5M UZS, pilot preflight test, mobile CSS
@@ -73,24 +250,29 @@ P0/P1 закрыты в коде:
 - Alembic: короткие CHECK-токены под PG 63 chars; `d9e4b1c82a70` normalize на Postgres;
   `alembic/env.py` не падает на исторический CHECK name drift.
 
-**Phase 9 не завершена.** Meta live OFF. Live pilot — только по явному разрешению.
+**Phase 9 offline завершена.** Meta live OFF. Live pilot — только по явному разрешению.
+Post-120 план: `docs/POST_120_PLAN.md`.
 
-## Master Phase 9 — Deployment readiness (offline, в процессе)
+## Master Phase 9 — Deployment readiness (offline ЗАВЕРШЁН)
 
 - `GET /ready` — readiness probe: DB ping + Alembic head + drift check (`503` при блокерах);
 - `GET /health` — liveness без DB check (как раньше);
 - `PORT` env переопределяет `WEB_PORT` (Railway);
 - `LOG_FORMAT=json` — structured logs в production;
+- `SENTRY_DSN` + `init_error_monitoring()` — optional hook;
 - `DeploymentReadinessService` — общая логика для `/ready` и `live_readiness_check.py`;
-- `railway.json`: `--web-only`, `healthcheckPath=/ready`;
+- `railway.json` + `docs/RAILWAY.md`: `--web-only`, `healthcheckPath=/ready`;
 - `Dockerfile`: `HEALTHCHECK`, default `--web-only`;
-- `docs/DEPLOYMENT.md` — runbook env/probes/rollback;
+- `docs/DEPLOYMENT.md` — runbook env/probes/WEB_MANAGER_ID/rollback;
+- `docs/BACKUP_RESTORE_RUNBOOK.md` — restore drill;
+- `docs/POSTGRESQL_MIGRATION_CHECKLIST.md` — PG cutover;
 - `meta.create_campaign_draft` — `MetaAdsService` Graph API (campaign + adset PAUSED) при live unlock;
 - PostgreSQL CI matrix в GitHub Actions (sqlite + postgres);
-- SIGTERM/SIGINT graceful shutdown для full-stack и web-only;
+- SIGTERM/SIGINT graceful shutdown (Linux/containers); Windows — KeyboardInterrupt → clean exit;
 - bug-hunt pass 3: monitor errors logged; MCP catch-all INTERNAL; export `ineligible_count`;
-- полный offline gate: **310 tests passed**; внешних вызовов: **0**.
-- backlog: Meta Custom Audience confirmed export; SIGTERM на Windows dev.
+- полный offline gate: **483+ tests passed**; внешних вызовов: **0**.
+- **Gated (Phase 10 / explicit unlock):** Meta Custom Audience confirmed export;
+  Instagram/OpenAI/Telegram live delivery; controlled credit pilot.
 
 ## Master Phase 8 — UI final hardening (завершён offline)
 
@@ -112,6 +294,7 @@ P0/P1 закрыты в коде:
 - навигация упрощена: 5 primary + 5 в «Ещё»; topbar «Проверить сейчас» с любой страницы;
 - `/` dashboard: «Кабина пилота», quick-actions (Radar, HOT, задачи, экономика, конкуренты, диагностика);
 - модалка `#scan-quick`: выбор 5 / 10 / 20 / custom credits перед запуском Radar;
+- `INSTAGRAM_DAILY_REQUEST_LIMIT` больше не блокирует старт live Radar (оставлено как метрика в UI), fail-closed провайдерные бюджет-гварды остаются; покрыто тестами.
 - `ProviderCallUncertainError`: fallback не активируется после `call_started` без credit proof (P0 double-spend fix);
 - OpenAI после `call_started` → `mark_reservation_uncertain`, не `finalize(units=1)` (P1);
 - CSS/JS cache `13.3.0-pilot-cockpit`;

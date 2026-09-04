@@ -7,6 +7,36 @@ from sqlalchemy.pool import StaticPool
 
 from app.config import OutboundNetworkForbiddenError
 from app.db.base import Base
+from app.db.models import ProviderBudgetPolicy
+
+
+async def seed_scrapecreators_instagram_policy(
+    session_factory,
+    *,
+    hard: int = 3800,
+    target: int = 3000,
+    soft: int = 3500,
+) -> None:
+    """Минимальная active monthly policy для paid scrapecreators/instagram тестов."""
+    async with session_factory() as session:
+        session.add(
+            ProviderBudgetPolicy(
+                provider="scrapecreators",
+                service="instagram",
+                monthly_target_units=target,
+                monthly_soft_limit_units=soft,
+                monthly_hard_limit_units=hard,
+                default_scan_budget_units=5,
+                maximum_manual_scan_budget_units=50,
+                target_minimum_months=6,
+                comments_target_units=1,
+                discovery_target_units=1,
+                enrichment_target_units=0,
+                reserve_target_units=1,
+                active=True,
+            )
+        )
+        await session.commit()
 
 
 @pytest.fixture(autouse=True)

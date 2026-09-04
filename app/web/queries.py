@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import math
 from collections import Counter
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from itertools import combinations
 
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import (
@@ -46,6 +48,7 @@ from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.audience_quality_service import AudienceQualityService
 from app.services.economics_page_service import EconomicsPageService
 from app.services.product_catalog_service import normalize_product_category
+from app.services.signal_recency import fresh_signal_clause
 from app.web.labels import CHANGE_TYPE_LABELS, label
 
 OPEN_LEAD_STATUSES = [
@@ -73,10 +76,11 @@ CONFIRMED_LEAD_STATUSES = [
 
 class WebQueryService:
     def __init__(
-        self, session_factory: async_sessionmaker[AsyncSession], hot_threshold: int
+        self, session_factory: async_sessionmaker[AsyncSession], hot_threshold: int, *, signal_max_age_days: int = 30
     ) -> None:
         self.session_factory = session_factory
         self.hot_threshold = hot_threshold
+        self.signal_max_age_days = max(0, signal_max_age_days)
 
     async def ai_safety_diagnostics(self) -> dict:
         now = datetime.now(UTC)
@@ -103,12 +107,28 @@ class WebQueryService:
                     ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
                 )
             )
+            openai_cost_events = int(
+                await session.scalar(
+                    select(func.count(CostEvent.id)).where(
+                        CostEvent.provider == "openai"
+                    )
+                )
+                or 0
+            )
+        statuses = {status.value: count for status, count in status_rows}
+        succeeded = int(statuses.get("SUCCEEDED", 0))
+        cache_hit_rate = None
+        if succeeded > 0:
+            misses = min(openai_cost_events, succeeded)
+            cache_hit_rate = round(max(0.0, (succeeded - misses) / succeeded), 4)
         return {
-            "statuses": {status.value: count for status, count in status_rows},
+            "statuses": statuses,
             "active_reservations": int(active_reservations or 0),
             "stale_ai_leases": int(stale_ai_leases or 0),
             "uncertain_reservations": int(uncertain_reservations or 0),
             "cost_events": int(await self._scalar_count(CostEvent.id)),
+            "openai_cost_events": openai_cost_events,
+            "cache_hit_rate": cache_hit_rate,
         }
 
     async def uncertain_notification_queue(self, *, limit: int = 30) -> list[dict]:
@@ -264,17 +284,55 @@ class WebQueryService:
                         .limit(100)
                     )
                 ).all()
+            # «Сироты»: текст про ротанг, но источник не в портфеле (taxonomy в evidence).
             orphan_rattan_signals = int(
                 await session.scalar(
-                    select(func.count(Lead.id))
-                    .join(Competitor, Competitor.id == Lead.competitor_id)
+                    select(func.count(func.distinct(PublicSignal.id)))
+                    .join(Evidence, Evidence.public_signal_id == PublicSignal.id)
+                    .join(Competitor, Competitor.id == PublicSignal.competitor_id)
                     .where(
-                        Lead.vertical == Vertical.ARTIFICIAL_RATTAN,
                         Competitor.vertical != Vertical.ARTIFICIAL_RATTAN,
+                        Evidence.intent.is_not(None),
                     )
                 )
                 or 0
             )
+            # Кандидаты в портфель: у источника есть ротанг-таксономия, но вертикаль ещё не ротанг.
+            enroll_rows = (
+                await session.execute(
+                    select(
+                        Competitor.id,
+                        Competitor.normalized_handle,
+                        Competitor.active,
+                        Competitor.tier,
+                        func.count(func.distinct(PublicSignal.id)).label("signal_count"),
+                    )
+                    .join(PublicSignal, PublicSignal.competitor_id == Competitor.id)
+                    .join(Evidence, Evidence.public_signal_id == PublicSignal.id)
+                    .where(
+                        Competitor.vertical != Vertical.ARTIFICIAL_RATTAN,
+                        Evidence.intent.is_not(None),
+                    )
+                    .group_by(
+                        Competitor.id,
+                        Competitor.normalized_handle,
+                        Competitor.active,
+                        Competitor.tier,
+                    )
+                    .order_by(desc("signal_count"))
+                    .limit(24)
+                )
+            ).all()
+            enroll_candidates = [
+                {
+                    "id": row.id,
+                    "handle": row.normalized_handle,
+                    "active": row.active,
+                    "tier": row.tier,
+                    "signal_count": int(row.signal_count or 0),
+                }
+                for row in enroll_rows
+            ]
         layers: Counter[str] = Counter()
         roles: Counter[str] = Counter()
         products: Counter[str] = Counter()
@@ -288,6 +346,7 @@ class WebQueryService:
         return {
             "rattan_rows": rows,
             "rattan_companies": enrolled,
+            "rattan_enroll_candidates": enroll_candidates,
             "rattan_layers": layers,
             "rattan_roles": roles.most_common(),
             "rattan_products": products.most_common(),
@@ -298,9 +357,30 @@ class WebQueryService:
                 "raw": layers.get("RAW_MATERIAL", 0),
                 "ready": layers.get("READY_FURNITURE", 0),
                 "orphan_rattan_signals": orphan_rattan_signals,
+                "enroll_candidates": len(enroll_candidates),
                 "portfolio_empty": len(enrolled) == 0,
             },
         }
+
+    async def _comments_without_lead_count(
+        self,
+        session: AsyncSession,
+        *,
+        fresh_only: bool,
+        vertical: Vertical | None = None,
+    ) -> int:
+        stmt = (
+            select(func.count(Comment.id))
+            .outerjoin(Lead, Lead.comment_id == Comment.id)
+            .where(Lead.id.is_(None))
+        )
+        if vertical is not None:
+            stmt = stmt.join(Competitor, Competitor.id == Comment.competitor_id).where(
+                Competitor.vertical == vertical
+            )
+        if fresh_only:
+            stmt = stmt.where(fresh_signal_clause(max_age_days=self.signal_max_age_days))
+        return int(await session.scalar(stmt) or 0)
 
     async def dashboard(self) -> dict:
         now = datetime.now(UTC)
@@ -336,13 +416,11 @@ class WebQueryService:
                 )
                 or 0
             )
-            counts["unprocessed"] = int(
-                await session.scalar(
-                    select(func.count(Comment.id))
-                    .outerjoin(Lead, Lead.comment_id == Comment.id)
-                    .where(Lead.id.is_(None))
-                )
-                or 0
+            counts["unprocessed"] = await self._comments_without_lead_count(
+                session, fresh_only=False
+            )
+            counts["unprocessed_actionable"] = await self._comments_without_lead_count(
+                session, fresh_only=True
             )
             counts["notifications_pending"] = int(
                 await session.scalar(
@@ -531,42 +609,73 @@ class WebQueryService:
             "funnel": {getattr(key, "value", str(key)): value for key, value in funnel_rows},
         }
 
-    async def signal_overview(self) -> dict[str, int]:
+    async def signal_overview(self, *, vertical: str | None = None) -> dict[str, int]:
+        vertical_enum = None
+        if vertical:
+            try:
+                vertical_enum = Vertical(vertical.strip().upper())
+            except ValueError:
+                vertical_enum = None
         async with self.session_factory() as session:
-            total = int(await session.scalar(select(func.count(Comment.id))) or 0)
-            unprocessed = int(
-                await session.scalar(
-                    select(func.count(Comment.id))
-                    .outerjoin(Lead, Lead.comment_id == Comment.id)
-                    .where(Lead.id.is_(None))
-                )
-                or 0
+            comment_stmt = select(func.count(Comment.id))
+            if vertical_enum is not None:
+                comment_stmt = comment_stmt.join(
+                    Competitor, Competitor.id == Comment.competitor_id
+                ).where(Competitor.vertical == vertical_enum)
+            total = int(await session.scalar(comment_stmt) or 0)
+            unprocessed = await self._comments_without_lead_count(
+                session, fresh_only=False, vertical=vertical_enum
             )
+            unprocessed_actionable = await self._comments_without_lead_count(
+                session, fresh_only=True, vertical=vertical_enum
+            )
+            lead_filters = []
+            if vertical_enum is not None:
+                lead_filters.append(Lead.vertical == vertical_enum)
             hot = int(
                 await session.scalar(
                     select(func.count(Lead.id)).where(
                         Lead.lead_score >= self.hot_threshold,
                         Lead.status.in_(OPEN_LEAD_STATUSES),
+                        *lead_filters,
+                    )
+                )
+                or 0
+            )
+            warm = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(
+                        Lead.lead_score >= 50,
+                        Lead.lead_score < self.hot_threshold,
+                        Lead.status.in_(OPEN_LEAD_STATUSES),
+                        *lead_filters,
                     )
                 )
                 or 0
             )
             qualified = int(
                 await session.scalar(
-                    select(func.count(Lead.id)).where(Lead.status.in_(OPEN_LEAD_STATUSES))
+                    select(func.count(Lead.id)).where(
+                        Lead.status.in_(OPEN_LEAD_STATUSES),
+                        *lead_filters,
+                    )
                 )
                 or 0
             )
             rejected = int(
                 await session.scalar(
-                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.NOT_LEAD)
+                    select(func.count(Lead.id)).where(
+                        Lead.status == LeadStatus.NOT_LEAD,
+                        *lead_filters,
+                    )
                 )
                 or 0
             )
             pending = int(
                 await session.scalar(
                     select(func.count(Lead.id)).where(
-                        Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING])
+                        Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING]),
+                        *lead_filters,
                     )
                 )
                 or 0
@@ -574,47 +683,62 @@ class WebQueryService:
         return {
             "total": total,
             "unprocessed": unprocessed,
+            "unprocessed_actionable": unprocessed_actionable,
             "qualified": qualified,
             "hot": hot,
+            "warm": warm,
             "rejected": rejected,
             "pending": pending,
         }
 
-    async def radar_feed(self, *, limit: int = 8) -> dict[str, object]:
-        overview = await self.signal_overview()
+    async def radar_feed(self, *, limit: int = 8, vertical: str | None = None) -> dict[str, object]:
+        overview = await self.signal_overview(vertical=vertical)
+        vertical_enum = None
+        if vertical:
+            try:
+                vertical_enum = Vertical(vertical.strip().upper())
+            except ValueError:
+                vertical_enum = None
         async with self.session_factory() as session:
-            changes_rows = (
-                await session.execute(
-                    select(SignificantChange, Contact, Lead)
-                    .join(Contact, Contact.id == SignificantChange.contact_id)
-                    .join(Lead, Lead.id == SignificantChange.lead_id)
-                    .order_by(desc(SignificantChange.created_at))
-                    .limit(limit)
+            changes_stmt = (
+                select(SignificantChange, Contact, Lead)
+                .join(Contact, Contact.id == SignificantChange.contact_id)
+                .join(Lead, Lead.id == SignificantChange.lead_id)
+                .order_by(desc(SignificantChange.created_at))
+                .limit(limit)
+            )
+            if vertical_enum is not None:
+                changes_stmt = changes_stmt.where(Lead.vertical == vertical_enum)
+            changes_rows = (await session.execute(changes_stmt)).all()
+            hot_stmt = (
+                select(Lead, Contact, Comment, Competitor)
+                .join(Contact, Contact.id == Lead.contact_id)
+                .join(Comment, Comment.id == Lead.comment_id)
+                .join(Competitor, Competitor.id == Lead.competitor_id)
+                .where(
+                    Lead.lead_score >= self.hot_threshold,
+                    Lead.status.in_(OPEN_LEAD_STATUSES),
                 )
-            ).all()
-            hot_rows = (
-                await session.execute(
-                    select(Lead, Contact, Comment, Competitor)
-                    .join(Contact, Contact.id == Lead.contact_id)
-                    .join(Comment, Comment.id == Lead.comment_id)
-                    .join(Competitor, Competitor.id == Lead.competitor_id)
-                    .where(
-                        Lead.lead_score >= self.hot_threshold,
-                        Lead.status.in_(OPEN_LEAD_STATUSES),
-                    )
-                    .order_by(desc(Lead.lead_score), desc(Lead.created_at))
-                    .limit(limit)
-                )
-            ).all()
+                .order_by(desc(Lead.lead_score), desc(Lead.created_at))
+                .limit(limit)
+            )
+            if vertical_enum is not None:
+                hot_stmt = hot_stmt.where(Lead.vertical == vertical_enum)
+            hot_rows = (await session.execute(hot_stmt)).all()
+            analyzing_filters = [Lead.status == LeadStatus.ANALYZING]
+            pending_filters = [Lead.status == LeadStatus.AI_PENDING]
+            if vertical_enum is not None:
+                analyzing_filters.append(Lead.vertical == vertical_enum)
+                pending_filters.append(Lead.vertical == vertical_enum)
             analyzing = int(
                 await session.scalar(
-                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.ANALYZING)
+                    select(func.count(Lead.id)).where(*analyzing_filters)
                 )
                 or 0
             )
             ai_pending = int(
                 await session.scalar(
-                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.AI_PENDING)
+                    select(func.count(Lead.id)).where(*pending_filters)
                 )
                 or 0
             )
@@ -652,14 +776,38 @@ class WebQueryService:
             ],
         }
 
+    async def gpt_queue_counts(self) -> dict[str, int]:
+        """Лёгкий счётчик очереди GPT для global header."""
+        async with self.session_factory() as session:
+            analyzing = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.ANALYZING)
+                )
+                or 0
+            )
+            ai_pending = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.AI_PENDING)
+                )
+                or 0
+            )
+        return {"analyzing": analyzing, "ai_pending": ai_pending}
+
     async def signals(
         self,
         *,
         q: str = "",
         competitor: str = "",
         kind: str = "",
+        vertical: str | None = None,
         limit: int = 300,
     ) -> list:
+        vertical_enum = None
+        if vertical:
+            try:
+                vertical_enum = Vertical(vertical.strip().upper())
+            except ValueError:
+                vertical_enum = None
         async with self.session_factory() as session:
             stmt = (
                 select(Comment, Contact, Competitor, Post, Lead)
@@ -670,6 +818,8 @@ class WebQueryService:
                 .order_by(desc(Comment.discovered_at), desc(Comment.id))
                 .limit(limit)
             )
+            if vertical_enum is not None:
+                stmt = stmt.where(Competitor.vertical == vertical_enum)
             if q.strip():
                 pattern = f"%{q.strip().lower()}%"
                 stmt = stmt.where(
@@ -686,10 +836,15 @@ class WebQueryService:
             normalized_kind = kind.strip().lower()
             if normalized_kind == "new":
                 stmt = stmt.where(Comment.is_baseline.is_(False))
-            elif normalized_kind == "history":
+            elif normalized_kind in {"history", "archive", "baseline"}:
                 stmt = stmt.where(Comment.is_baseline.is_(True))
             elif normalized_kind == "hot":
                 stmt = stmt.where(Lead.lead_score >= self.hot_threshold)
+            elif normalized_kind == "warm":
+                stmt = stmt.where(
+                    Lead.lead_score >= 50,
+                    Lead.lead_score < self.hot_threshold,
+                )
             elif normalized_kind == "pending":
                 stmt = stmt.where(
                     or_(
@@ -697,6 +852,8 @@ class WebQueryService:
                         Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING]),
                     )
                 )
+            elif normalized_kind != "history":
+                stmt = stmt.where(fresh_signal_clause(max_age_days=self.signal_max_age_days))
             return (await session.execute(stmt)).all()
 
     async def leads(
@@ -704,10 +861,18 @@ class WebQueryService:
         *,
         q: str = "",
         status: str = "",
+        quality: str = "",
         contact_id: int | None = None,
+        vertical: str | None = None,
         limit: int = 300,
         include_not_leads: bool = False,
     ) -> list:
+        vertical_enum = None
+        if vertical:
+            try:
+                vertical_enum = Vertical(vertical.strip().upper())
+            except ValueError:
+                vertical_enum = None
         async with self.session_factory() as session:
             stmt = (
                 select(Lead, Contact, Comment, Competitor, Post, Deal)
@@ -719,6 +884,8 @@ class WebQueryService:
                 .order_by(desc(Lead.lead_score), desc(Lead.created_at))
                 .limit(limit)
             )
+            if vertical_enum is not None:
+                stmt = stmt.where(Lead.vertical == vertical_enum)
             if q.strip():
                 pattern = f"%{q.strip().lower()}%"
                 stmt = stmt.where(
@@ -732,14 +899,167 @@ class WebQueryService:
                 )
             if contact_id is not None:
                 stmt = stmt.where(Lead.contact_id == contact_id)
+            normalized_quality = quality.strip().lower()
+            if normalized_quality == "hot":
+                stmt = stmt.where(
+                    Lead.lead_score >= self.hot_threshold,
+                    Lead.status.notin_([LeadStatus.NOT_LEAD, LeadStatus.LOST]),
+                )
+            elif normalized_quality == "not_lead":
+                stmt = stmt.where(Lead.status == LeadStatus.NOT_LEAD)
+            elif normalized_quality == "off_catalog":
+                stmt = stmt.where(
+                    or_(
+                        Lead.status == LeadStatus.NOT_LEAD,
+                        func.lower(func.coalesce(Lead.ai_reason, "")).like("%вне каталога%"),
+                        Lead.analysis_details.astext.like("%Не наш ассортимент%"),
+                    )
+                )
+            elif normalized_quality == "garbage":
+                stmt = stmt.where(
+                    or_(
+                        Lead.status == LeadStatus.NOT_LEAD,
+                        func.lower(func.coalesce(Lead.ai_reason, "")).like("%вне каталога%"),
+                        Lead.analysis_details.astext.like("%Не наш ассортимент%"),
+                        Lead.intent.in_(["REACTION", "SPAM"]),
+                    )
+                )
             if status.strip():
                 try:
                     stmt = stmt.where(Lead.status == LeadStatus(status.strip().upper()))
                 except ValueError:
                     return []
-            elif not include_not_leads:
+            elif not include_not_leads and normalized_quality not in {
+                "not_lead",
+                "off_catalog",
+                "garbage",
+            }:
                 stmt = stmt.where(Lead.status != LeadStatus.NOT_LEAD)
             return (await session.execute(stmt)).all()
+
+    async def lead_recent_events(
+        self,
+        lead_ids: list[int],
+        *,
+        limit_per_lead: int = 5,
+    ) -> dict[int, list[ContactEvent]]:
+        """Последние CRM-события по лидам (batch, без N+1)."""
+        if not lead_ids:
+            return {}
+        limit_per_lead = max(1, min(limit_per_lead, 10))
+        async with self.session_factory() as session:
+            mappings = (
+                await session.execute(
+                    select(Lead.id, Lead.contact_id).where(Lead.id.in_(lead_ids))
+                )
+            ).all()
+            if not mappings:
+                return {}
+            contact_ids = {contact_id for _, contact_id in mappings}
+            contact_to_leads: dict[int, list[int]] = {}
+            for lead_id, contact_id in mappings:
+                contact_to_leads.setdefault(contact_id, []).append(lead_id)
+            events = (
+                await session.scalars(
+                    select(ContactEvent)
+                    .where(
+                        or_(
+                            ContactEvent.lead_id.in_(lead_ids),
+                            ContactEvent.contact_id.in_(contact_ids),
+                        )
+                    )
+                    .order_by(desc(ContactEvent.created_at))
+                    .limit(max(len(lead_ids) * limit_per_lead * 4, 80))
+                )
+            ).all()
+        buckets: dict[int, list[ContactEvent]] = {lead_id: [] for lead_id in lead_ids}
+        for event in events:
+            target_leads: set[int] = set()
+            if event.lead_id and event.lead_id in buckets:
+                target_leads.add(event.lead_id)
+            if event.contact_id in contact_to_leads:
+                for lead_id in contact_to_leads[event.contact_id]:
+                    if event.lead_id is None or event.lead_id == lead_id:
+                        target_leads.add(lead_id)
+            for lead_id in target_leads:
+                bucket = buckets[lead_id]
+                if len(bucket) >= limit_per_lead:
+                    continue
+                if not any(existing.id == event.id for existing in bucket):
+                    bucket.append(event)
+        return buckets
+
+    async def manager_feedback_quality(self) -> dict[str, object]:
+        """Live FP: менеджер сказал «не лид», модель дала HOT/высокий score."""
+        async with self.session_factory() as session:
+            reviewed = int(
+                await session.scalar(
+                    select(func.count(AIFeedback.id)).where(
+                        AIFeedback.manager_is_lead.is_not(None)
+                    )
+                )
+                or 0
+            )
+            false_positives = int(
+                await session.scalar(
+                    select(func.count(AIFeedback.id)).where(
+                        AIFeedback.manager_is_lead.is_(False),
+                        AIFeedback.predicted_score >= self.hot_threshold,
+                    )
+                )
+                or 0
+            )
+            manager_not_lead = int(
+                await session.scalar(
+                    select(func.count(AIFeedback.id)).where(
+                        AIFeedback.manager_is_lead.is_(False)
+                    )
+                )
+                or 0
+            )
+        rate = (
+            round(false_positives / reviewed, 4) if reviewed > 0 else None
+        )
+        return {
+            "reviewed": reviewed,
+            "manager_not_lead": manager_not_lead,
+            "hot_false_positives": false_positives,
+            "hot_false_positive_rate": rate,
+        }
+
+    async def rules_reanalyze_status(self, current_version: str) -> dict[str, object]:
+        """Сколько actionable лидов без stamp текущей версии правил."""
+        version = (current_version or "").strip() or "3.2"
+        async with self.session_factory() as session:
+            actionable = (
+                await session.execute(
+                    select(Lead.id, Lead.analysis_details)
+                    .join(Comment, Comment.id == Lead.comment_id)
+                    .where(
+                        Lead.status.in_(
+                            [
+                                LeadStatus.NEW,
+                                LeadStatus.AI_PENDING,
+                                LeadStatus.ANALYZING,
+                            ]
+                        ),
+                        fresh_signal_clause(max_age_days=self.signal_max_age_days),
+                    )
+                )
+            ).all()
+        stale = 0
+        for _lead_id, details in actionable:
+            stamped = None
+            if isinstance(details, dict):
+                stamped = details.get("rules_version")
+            if stamped != version:
+                stale += 1
+        return {
+            "current_version": version,
+            "actionable_total": len(actionable),
+            "stale_count": stale,
+            "needs_reanalyze": stale > 0,
+        }
 
     async def lead_detail(self, lead_id: int) -> dict | None:
         async with self.session_factory() as session:
@@ -778,6 +1098,19 @@ class WebQueryService:
                     .order_by(ContactTask.due_at)
                 )
             ).all()
+            openai_events = list(
+                await session.scalars(
+                    select(CostEvent).where(
+                        CostEvent.lead_id == lead_id,
+                        CostEvent.provider == "openai",
+                    )
+                )
+            )
+            openai_spend = sum(
+                (event.cost_usd or Decimal("0")) for event in openai_events
+            )
+            openai_tokens_in = sum(int(event.input_tokens or 0) for event in openai_events)
+            openai_tokens_out = sum(int(event.output_tokens or 0) for event in openai_events)
             return {
                 "lead": lead,
                 "contact": contact,
@@ -787,6 +1120,107 @@ class WebQueryService:
                 "deal": deal,
                 "history": history,
                 "tasks": tasks,
+                "openai_cost": {
+                    "events": len(openai_events),
+                    "known_spend_usd": openai_spend,
+                    "input_tokens": openai_tokens_in,
+                    "output_tokens": openai_tokens_out,
+                },
+            }
+
+    async def lead_explain(self, lead_id: int) -> dict | None:
+        """Grounded explain для UI: только сохранённые factors/evidence, без GPT."""
+        factor_labels = {
+            "intent_score": "Сила коммерческого намерения",
+            "intent_strength": "Прямой сигнал покупки",
+            "specificity_score": "Конкретика (товар / количество)",
+            "value_score": "Потенциальный объём",
+            "activity_score": "Активность по сигналам",
+            "fit_score": "Совпадение с ассортиментом",
+            "source_quality_score": "Качество источника",
+            "urgency_score": "Срочность",
+            "confidence_score": "Уверенность модели",
+            "priority_score": "Итоговый приоритет",
+            "role_score": "Роль покупателя",
+            "history_boost": "История контакта",
+            "sequence_score": "Последовательность сигналов",
+            "validated_commercial_count": "Подтверждённые коммерческие сигналы",
+            "validated_competitor_count": "Сигналы у разных конкурентов",
+            "objection_penalty": "Штраф за возражения",
+        }
+        async with self.session_factory() as session:
+            row = (
+                await session.execute(
+                    select(Lead, Contact, Comment, Competitor)
+                    .join(Contact, Contact.id == Lead.contact_id)
+                    .join(Comment, Comment.id == Lead.comment_id)
+                    .join(Competitor, Competitor.id == Lead.competitor_id)
+                    .where(Lead.id == lead_id)
+                )
+            ).one_or_none()
+            if row is None:
+                return None
+            lead, contact, comment, competitor = row
+            details = lead.analysis_details if isinstance(lead.analysis_details, dict) else {}
+            factors_raw = details.get("factors") if isinstance(details.get("factors"), dict) else {}
+            contributions: list[dict[str, object]] = []
+            for key, label in factor_labels.items():
+                value = factors_raw.get(key, details.get(key))
+                if value is None:
+                    continue
+                try:
+                    score = int(value)
+                except (TypeError, ValueError):
+                    continue
+                if score == 0:
+                    continue
+                contributions.append(
+                    {
+                        "key": key,
+                        "label": label,
+                        "score": score,
+                    }
+                )
+            contributions.sort(key=lambda item: int(item["score"]), reverse=True)
+            evidence_texts = [
+                str(item)
+                for item in (details.get("evidence") or [])
+                if item not in (None, "")
+            ]
+            evidence_ids = [
+                int(item)
+                for item in (details.get("evidence_ids") or [])
+                if isinstance(item, int) or (isinstance(item, str) and str(item).isdigit())
+            ]
+            confidence = details.get("confidence", details.get("confidence_score"))
+            try:
+                confidence_int = int(confidence) if confidence is not None else None
+            except (TypeError, ValueError):
+                confidence_int = None
+            return {
+                "lead_id": lead.id,
+                "username": contact.username,
+                "score": lead.lead_score,
+                "intent": lead.intent,
+                "product_category": lead.product_category,
+                "status": lead.status.value,
+                "reason": lead.ai_reason or details.get("short_reason") or "",
+                "short_reason": details.get("short_reason") or "",
+                "buyer_role": details.get("buyer_role") or "UNKNOWN",
+                "confidence": confidence_int,
+                "quantity": details.get("quantity"),
+                "location": details.get("location"),
+                "comment_preview": (comment.text or "")[:280],
+                "competitor": competitor.normalized_handle,
+                "contributions": contributions,
+                "evidence": evidence_texts,
+                "evidence_ids": evidence_ids,
+                "risk_flags": [
+                    str(item)
+                    for item in (details.get("risk_flags") or [])
+                    if item not in (None, "")
+                ],
+                "grounded": True,
             }
 
     async def contacts(self, *, q: str = "", limit: int = 300) -> list:
@@ -926,10 +1360,12 @@ class WebQueryService:
                     .limit(30)
                 )
             )
+            event_groups = self.compact_contact_events(events)
             return {
                 "contact": contact,
                 "signals": signals,
                 "events": events,
+                "event_groups": event_groups,
                 "deals": deals,
                 "leads": leads,
                 "tasks": tasks,
@@ -940,6 +1376,46 @@ class WebQueryService:
                 "audiences": audiences,
                 "significant_changes": significant_changes,
             }
+
+    @staticmethod
+    def compact_contact_events(events: list[ContactEvent]) -> list[dict[str, object]]:
+        """Сжимает однотипные CRM-события внутри одного дня в компактные группы."""
+        compactable = frozenset(
+            {
+                ContactEventType.LEAD_SCORE_CHANGED,
+                ContactEventType.COMMENT_FOUND,
+                ContactEventType.SIGNIFICANT_CHANGE,
+            }
+        )
+        groups: list[dict[str, object]] = []
+        for event in events:
+            day = event.created_at.astimezone(UTC).strftime("%Y-%m-%d") if event.created_at else ""
+            can_compact = event.event_type in compactable
+            if (
+                groups
+                and can_compact
+                and groups[-1]["compactable"]
+                and groups[-1]["event_type"] == event.event_type
+                and groups[-1]["day"] == day
+            ):
+                groups[-1]["count"] = int(groups[-1]["count"]) + 1
+                groups[-1]["latest"] = event
+                cast_events = groups[-1]["events"]
+                assert isinstance(cast_events, list)
+                cast_events.append(event)
+            else:
+                groups.append(
+                    {
+                        "event_type": event.event_type,
+                        "day": day,
+                        "compactable": can_compact,
+                        "count": 1,
+                        "first": event,
+                        "latest": event,
+                        "events": [event],
+                    }
+                )
+        return groups
 
     async def audiences(self, vertical: str = "FURNITURE") -> list[dict]:
         quality = await AudienceQualityService(self.session_factory).snapshot(vertical)
@@ -960,53 +1436,77 @@ class WebQueryService:
                     .order_by(AudienceSegment.name)
                 )
             )
+            if not segments:
+                return []
+            segment_ids = [segment.id for segment in segments]
+            # Один batch вместо N+1: все active memberships + intelligence.
+            member_rows = (
+                await session.execute(
+                    select(
+                        AudienceMembership.segment_id,
+                        ContactIntelligence.activity_score,
+                        ContactIntelligence.value_score,
+                        ContactIntelligence.product_interests_json,
+                        ContactIntelligence.top_intents_json,
+                    )
+                    .join(
+                        ContactIntelligence,
+                        ContactIntelligence.contact_id == AudienceMembership.contact_id,
+                    )
+                    .where(
+                        AudienceMembership.segment_id.in_(segment_ids),
+                        AudienceMembership.active.is_(True),
+                    )
+                )
+            ).all()
+            member_counts: Counter[int] = Counter()
+            activity_sums: Counter[int] = Counter()
+            value_sums: Counter[int] = Counter()
+            products_by_segment: dict[int, Counter[str]] = {
+                segment_id: Counter() for segment_id in segment_ids
+            }
+            intents_by_segment: dict[int, Counter[str]] = {
+                segment_id: Counter() for segment_id in segment_ids
+            }
+            for (
+                segment_id,
+                activity_score,
+                value_score,
+                product_interests,
+                top_intents,
+            ) in member_rows:
+                member_counts[segment_id] += 1
+                activity_sums[segment_id] += int(activity_score or 0)
+                value_sums[segment_id] += int(value_score or 0)
+                if isinstance(product_interests, list):
+                    for row in product_interests:
+                        if not isinstance(row, dict) or row.get("value") is None:
+                            continue
+                        products_by_segment[segment_id][str(row["value"])] += int(
+                            row.get("count") or 0
+                        )
+                if isinstance(top_intents, list):
+                    for row in top_intents:
+                        if not isinstance(row, dict) or row.get("value") is None:
+                            continue
+                        intents_by_segment[segment_id][str(row["value"])] += int(
+                            row.get("count") or 0
+                        )
             result: list[dict] = []
             for segment in segments:
-                members = (
-                    (
-                        await session.execute(
-                            select(ContactIntelligence)
-                            .join(
-                                AudienceMembership,
-                                AudienceMembership.contact_id == ContactIntelligence.contact_id,
-                            )
-                            .where(
-                                AudienceMembership.segment_id == segment.id,
-                                AudienceMembership.active.is_(True),
-                            )
-                        )
-                    )
-                    .scalars()
-                    .all()
-                )
-                product_counts: Counter[str] = Counter()
-                intent_counts: Counter[str] = Counter()
-                for item in members:
-                    product_counts.update(
-                        {
-                            str(row["value"]): int(row["count"])
-                            for row in item.product_interests_json
-                        }
-                    )
-                    intent_counts.update(
-                        {str(row["value"]): int(row["count"]) for row in item.top_intents_json}
-                    )
+                members = member_counts[segment.id]
+                products = products_by_segment[segment.id]
+                intents = intents_by_segment[segment.id]
                 result.append(
                     {
                         "segment": segment,
-                        "members": len(members),
-                        "avg_activity": round(
-                            sum(item.activity_score for item in members) / len(members)
-                        )
-                        if members
-                        else 0,
-                        "avg_value": round(sum(item.value_score for item in members) / len(members))
-                        if members
-                        else 0,
-                        "top_product": product_counts.most_common(1)[0][0]
-                        if product_counts
-                        else None,
-                        "top_intent": intent_counts.most_common(1)[0][0] if intent_counts else None,
+                        "members": members,
+                        "avg_activity": (
+                            round(activity_sums[segment.id] / members) if members else 0
+                        ),
+                        "avg_value": (round(value_sums[segment.id] / members) if members else 0),
+                        "top_product": products.most_common(1)[0][0] if products else None,
+                        "top_intent": intents.most_common(1)[0][0] if intents else None,
                         "health": health_by_slug.get(segment.slug),
                     }
                 )
@@ -1153,66 +1653,77 @@ class WebQueryService:
             f"Посадочная страница: {item}, наличие, цены, доставка и короткая форма консультации.",
         )
 
-    async def competitors(self) -> list[dict]:
+    async def competitors(self, *, vertical: str | None = None) -> list[dict]:
+        vertical_enum = None
+        if vertical:
+            try:
+                vertical_enum = Vertical(vertical.strip().upper())
+            except ValueError:
+                vertical_enum = None
         async with self.session_factory() as session:
-            competitors = (
-                await session.scalars(
-                    select(Competitor).order_by(Competitor.tier, Competitor.normalized_handle)
+            stmt = select(Competitor).order_by(Competitor.tier, Competitor.normalized_handle)
+            if vertical_enum is not None:
+                stmt = stmt.where(Competitor.vertical == vertical_enum)
+            competitors = list(await session.scalars(stmt))
+            if not competitors:
+                return []
+            competitor_ids = [competitor.id for competitor in competitors]
+            stats_by_id = await self._competitor_stats_map(session, competitor_ids)
+            won_rows = (
+                await session.execute(
+                    select(Lead.competitor_id, func.count(Deal.id))
+                    .join(Deal, Deal.lead_id == Lead.id)
+                    .where(
+                        Lead.competitor_id.in_(competitor_ids),
+                        Deal.status == DealStatus.WON,
+                    )
+                    .group_by(Lead.competitor_id)
                 )
             ).all()
+            won_by_id = {int(competitor_id): int(count) for competitor_id, count in won_rows}
+            snapshot_rows = (
+                await session.execute(
+                    select(
+                        Lead.competitor_id,
+                        func.count(DealSaleSnapshot.id),
+                        func.sum(DealSaleSnapshot.sale_amount),
+                    )
+                    .join(Deal, Deal.lead_id == Lead.id)
+                    .join(DealSaleSnapshot, DealSaleSnapshot.deal_id == Deal.id)
+                    .where(
+                        Lead.competitor_id.in_(competitor_ids),
+                        Deal.status == DealStatus.WON,
+                        DealSaleSnapshot.sale_currency == "UZS",
+                    )
+                    .group_by(Lead.competitor_id)
+                )
+            ).all()
+            snapshot_by_id = {
+                int(competitor_id): (int(count or 0), amount)
+                for competitor_id, count, amount in snapshot_rows
+            }
             result = []
             for competitor in competitors:
-                stats = await self._competitor_stats(session, competitor)
-                won = int(
-                    await session.scalar(
-                        select(func.count(Deal.id))
-                        .join(Lead, Lead.id == Deal.lead_id)
-                        .where(
-                            Lead.competitor_id == competitor.id,
-                            Deal.status == DealStatus.WON,
-                        )
-                    )
-                    or 0
-                )
-                snapshot_count = int(
-                    await session.scalar(
-                        select(func.count(DealSaleSnapshot.id))
-                        .join(Deal, Deal.id == DealSaleSnapshot.deal_id)
-                        .join(Lead, Lead.id == Deal.lead_id)
-                        .where(
-                            Lead.competitor_id == competitor.id,
-                            Deal.status == DealStatus.WON,
-                            DealSaleSnapshot.sale_currency == "UZS",
-                        )
-                    )
-                    or 0
-                )
-                revenue = (
-                    await session.scalar(
-                        select(func.sum(DealSaleSnapshot.sale_amount))
-                        .join(Deal, Deal.id == DealSaleSnapshot.deal_id)
-                        .join(Lead, Lead.id == Deal.lead_id)
-                        .where(
-                            Lead.competitor_id == competitor.id,
-                            Deal.status == DealStatus.WON,
-                            DealSaleSnapshot.sale_currency == "UZS",
-                        )
-                    )
-                    if snapshot_count == won
-                    else None
-                )
+                stats = stats_by_id[competitor.id]
+                won = won_by_id.get(competitor.id, 0)
+                snapshot_count, snapshot_sum = snapshot_by_id.get(competitor.id, (0, None))
+                revenue = snapshot_sum if snapshot_count == won else None
                 if stats["comments"] < 10:
                     recommendation = "Набираем данные"
                     recommendation_tone = "muted"
+                    suggested_tier = None
                 elif stats["commercial_rate"] >= 15 or won > 0:
                     recommendation = "Усилить мониторинг"
                     recommendation_tone = "good"
+                    suggested_tier = "A"
                 elif stats["commercial_rate"] >= 5:
                     recommendation = "Оставить в работе"
                     recommendation_tone = "info"
+                    suggested_tier = "B"
                 else:
                     recommendation = "Фоновый приоритет"
                     recommendation_tone = "warn"
+                    suggested_tier = "C"
                 result.append(
                     {
                         "competitor": competitor,
@@ -1221,6 +1732,7 @@ class WebQueryService:
                         "revenue": revenue,
                         "recommendation": recommendation,
                         "recommendation_tone": recommendation_tone,
+                        "suggested_tier": suggested_tier,
                     }
                 )
             return result
@@ -1315,6 +1827,7 @@ class WebQueryService:
                 overlaps = [{"competitor": item, "contacts": count} for item, count in overlap_rows]
             gap = await self.demand_gap_score(competitor_id)
             heatmap = await self.demand_heatmap(competitor_id=competitor_id, days=30)
+            commercial_trend = await self._competitor_commercial_trend(session, competitor_id)
             return {
                 "competitor": competitor,
                 **stats,
@@ -1326,6 +1839,7 @@ class WebQueryService:
                 "overlaps": overlaps,
                 "demand_gap": gap,
                 "heatmap": heatmap,
+                "commercial_trend": commercial_trend,
                 "public_response_observable": False,
             }
 
@@ -1355,6 +1869,167 @@ class WebQueryService:
             }
             for (left, right), count in pair_counts.most_common(20)
         ]
+
+    async def competitor_overlap_graph(self) -> dict[str, object]:
+        overlaps = await self.competitor_overlap_network()
+        if not overlaps:
+            return {"nodes": [], "edges": [], "max_weight": 1, "width": 300, "height": 240}
+
+        nodes_map: dict[int, dict[str, object]] = {}
+        edges: list[dict[str, object]] = []
+        max_weight = 1
+        for pair in overlaps:
+            nodes_map[pair["left_id"]] = {"id": pair["left_id"], "label": pair["left"]}
+            nodes_map[pair["right_id"]] = {"id": pair["right_id"], "label": pair["right"]}
+            edges.append(
+                {
+                    "source_id": pair["left_id"],
+                    "target_id": pair["right_id"],
+                    "weight": pair["contacts"],
+                }
+            )
+            max_weight = max(max_weight, int(pair["contacts"]))
+
+        nodes_list = list(nodes_map.values())
+        node_count = len(nodes_list)
+        center_x, center_y, radius = 150.0, 120.0, 85.0
+        positioned: list[dict[str, object]] = []
+        for index, node in enumerate(nodes_list):
+            angle = (2 * math.pi * index / node_count) - math.pi / 2
+            positioned.append(
+                {
+                    **node,
+                    "x": round(center_x + radius * math.cos(angle), 1),
+                    "y": round(center_y + radius * math.sin(angle), 1),
+                }
+            )
+
+        node_by_id = {int(node["id"]): node for node in positioned}
+        positioned_edges: list[dict[str, object]] = []
+        for edge in edges:
+            source = node_by_id.get(int(edge["source_id"]))
+            target = node_by_id.get(int(edge["target_id"]))
+            if source is None or target is None:
+                continue
+            positioned_edges.append(
+                {
+                    **edge,
+                    "x1": source["x"],
+                    "y1": source["y"],
+                    "x2": target["x"],
+                    "y2": target["y"],
+                }
+            )
+
+        return {
+            "nodes": positioned,
+            "edges": positioned_edges,
+            "max_weight": max_weight,
+            "width": 300,
+            "height": 240,
+        }
+
+    async def _competitor_commercial_trend(
+        self,
+        session: AsyncSession,
+        competitor_id: int,
+        weeks: int = 8,
+    ) -> list[dict[str, object]]:
+        now = datetime.now(UTC)
+        series: list[dict[str, object]] = []
+        for offset in range(weeks - 1, -1, -1):
+            week_end = now - timedelta(days=offset * 7)
+            week_start = week_end - timedelta(days=7)
+            comments = int(
+                await session.scalar(
+                    select(func.count(Comment.id)).where(
+                        Comment.competitor_id == competitor_id,
+                        Comment.discovered_at >= week_start,
+                        Comment.discovered_at < week_end,
+                    )
+                )
+                or 0
+            )
+            commercial = int(
+                await session.scalar(
+                    select(func.count(Lead.id))
+                    .join(Comment, Comment.id == Lead.comment_id)
+                    .where(
+                        Lead.competitor_id == competitor_id,
+                        Lead.status != LeadStatus.NOT_LEAD,
+                        Lead.lead_score >= 50,
+                        Comment.discovered_at >= week_start,
+                        Comment.discovered_at < week_end,
+                    )
+                )
+                or 0
+            )
+            series.append(
+                {
+                    "label": week_start.strftime("%d.%m"),
+                    "comments": comments,
+                    "commercial": commercial,
+                    "rate": round(commercial / comments * 100, 1) if comments else 0.0,
+                    "is_current": offset == 0,
+                }
+            )
+        return series
+
+    async def competitor_compare(self, left_id: int, right_id: int) -> dict | None:
+        async with self.session_factory() as session:
+            left = await session.get(Competitor, left_id)
+            right = await session.get(Competitor, right_id)
+            if left is None or right is None:
+                return None
+            left_stats = await self._competitor_stats(session, left)
+            right_stats = await self._competitor_stats(session, right)
+            left_contacts = set(
+                await session.scalars(
+                    select(Comment.contact_id)
+                    .where(Comment.competitor_id == left_id)
+                    .distinct()
+                )
+            )
+            right_contacts = set(
+                await session.scalars(
+                    select(Comment.contact_id)
+                    .where(Comment.competitor_id == right_id)
+                    .distinct()
+                )
+            )
+            shared_buyers = len(left_contacts & right_contacts)
+            metrics = (
+                ("comments", "Комментариев", "comments"),
+                ("commercial", "Коммерческих", "commercial"),
+                ("commercial_rate", "Доля коммерческих, %", "commercial_rate"),
+                ("unique_buyers", "Уникальных покупателей", "unique_buyers"),
+                ("hot", "HOT лидов", "hot"),
+                ("hot_rate", "HOT, %", "hot_rate"),
+                ("multi_competitor", "Сравнивают рынок", "multi_competitor"),
+                ("price_rate", "Вопросы о цене, %", "price_rate"),
+                ("availability_rate", "Наличие, %", "availability_rate"),
+                ("delivery_rate", "Доставка, %", "delivery_rate"),
+            )
+            rows = [
+                {
+                    "key": key,
+                    "label": label,
+                    "left": left_stats[left_key],
+                    "right": right_stats[right_key],
+                }
+                for key, label, left_key in metrics
+                for right_key in [left_key]
+            ]
+            return {
+                "left": left,
+                "right": right,
+                "left_stats": left_stats,
+                "right_stats": right_stats,
+                "left_trend": await self._competitor_commercial_trend(session, left_id),
+                "right_trend": await self._competitor_commercial_trend(session, right_id),
+                "shared_buyers": shared_buyers,
+                "rows": rows,
+            }
 
     async def competitor_intelligence_overview(self) -> dict[str, int | float]:
         async with self.session_factory() as session:
@@ -1595,103 +2270,152 @@ class WebQueryService:
             }
 
     async def _competitor_stats(self, session: AsyncSession, competitor: Competitor) -> dict:
+        stats_map = await self._competitor_stats_map(session, [competitor.id])
+        return stats_map[competitor.id]
+
+    async def _competitor_stats_map(
+        self, session: AsyncSession, competitor_ids: list[int]
+    ) -> dict[int, dict]:
+        """Batch-метрики конкурентов: фиксированное число запросов вместо N+1."""
+        empty = {
+            "posts": [],
+            "comments": 0,
+            "leads": 0,
+            "commercial": 0,
+            "commercial_rate": 0.0,
+            "hot": 0,
+            "hot_rate": 0.0,
+            "unique_buyers": 0,
+            "multi_competitor": 0,
+            "price_rate": 0.0,
+            "availability_rate": 0.0,
+            "delivery_rate": 0.0,
+            "quantity_rate": 0.0,
+        }
+        if not competitor_ids:
+            return {}
+        result = {competitor_id: {**empty, "posts": []} for competitor_id in competitor_ids}
         posts = list(
             await session.scalars(
                 select(Post)
-                .where(Post.competitor_id == competitor.id)
+                .where(Post.competitor_id.in_(competitor_ids))
                 .order_by(desc(Post.published_at), desc(Post.id))
             )
         )
-        comments = int(
-            await session.scalar(
-                select(func.count(Comment.id)).where(Comment.competitor_id == competitor.id)
-            )
-            or 0
-        )
-        leads = int(
-            await session.scalar(
-                select(func.count(Lead.id)).where(Lead.competitor_id == competitor.id)
-            )
-            or 0
-        )
-        commercial = int(
-            await session.scalar(
-                select(func.count(Lead.id)).where(
-                    Lead.competitor_id == competitor.id,
-                    Lead.status != LeadStatus.NOT_LEAD,
-                    Lead.lead_score >= 50,
-                )
-            )
-            or 0
-        )
-        hot = int(
-            await session.scalar(
-                select(func.count(Lead.id)).where(
-                    Lead.competitor_id == competitor.id,
-                    Lead.lead_score >= self.hot_threshold,
-                    Lead.status != LeadStatus.NOT_LEAD,
-                )
-            )
-            or 0
-        )
-        unique_buyers = int(
-            await session.scalar(
-                select(func.count(func.distinct(Lead.contact_id))).where(
-                    Lead.competitor_id == competitor.id,
-                    Lead.status != LeadStatus.NOT_LEAD,
-                    Lead.lead_score >= 50,
-                )
-            )
-            or 0
-        )
-        intent_rows = (
+        for post in posts:
+            result[post.competitor_id]["posts"].append(post)
+
+        comment_rows = (
             await session.execute(
-                select(Lead.intent, func.count(Lead.id))
-                .where(
-                    Lead.competitor_id == competitor.id,
-                    Lead.status != LeadStatus.NOT_LEAD,
-                    Lead.lead_score >= 50,
-                )
-                .group_by(Lead.intent)
+                select(Comment.competitor_id, func.count(Comment.id))
+                .where(Comment.competitor_id.in_(competitor_ids))
+                .group_by(Comment.competitor_id)
             )
         ).all()
-        intents = Counter({str(intent): int(count) for intent, count in intent_rows})
+        for competitor_id, count in comment_rows:
+            result[int(competitor_id)]["comments"] = int(count)
+
+        commercial_case = case(
+            (and_(Lead.status != LeadStatus.NOT_LEAD, Lead.lead_score >= 50), 1),
+            else_=0,
+        )
+        hot_case = case(
+            (
+                and_(
+                    Lead.status != LeadStatus.NOT_LEAD,
+                    Lead.lead_score >= self.hot_threshold,
+                ),
+                1,
+            ),
+            else_=0,
+        )
+        unique_buyer_case = case(
+            (
+                and_(Lead.status != LeadStatus.NOT_LEAD, Lead.lead_score >= 50),
+                Lead.contact_id,
+            ),
+        )
+        lead_rows = (
+            await session.execute(
+                select(
+                    Lead.competitor_id,
+                    func.count(Lead.id),
+                    func.coalesce(func.sum(commercial_case), 0),
+                    func.coalesce(func.sum(hot_case), 0),
+                    func.count(func.distinct(unique_buyer_case)),
+                )
+                .where(Lead.competitor_id.in_(competitor_ids))
+                .group_by(Lead.competitor_id)
+            )
+        ).all()
+        for competitor_id, leads, commercial, hot, unique_buyers in lead_rows:
+            bucket = result[int(competitor_id)]
+            bucket["leads"] = int(leads)
+            bucket["commercial"] = int(commercial)
+            bucket["hot"] = int(hot)
+            bucket["unique_buyers"] = int(unique_buyers)
+
+        intent_rows = (
+            await session.execute(
+                select(Lead.competitor_id, Lead.intent, func.count(Lead.id))
+                .where(
+                    Lead.competitor_id.in_(competitor_ids),
+                    Lead.status != LeadStatus.NOT_LEAD,
+                    Lead.lead_score >= 50,
+                )
+                .group_by(Lead.competitor_id, Lead.intent)
+            )
+        ).all()
+        intents_by_id: dict[int, Counter[str]] = {
+            competitor_id: Counter() for competitor_id in competitor_ids
+        }
+        for competitor_id, intent, count in intent_rows:
+            intents_by_id[int(competitor_id)][str(intent)] += int(count)
+
         contact_source_counts = (
             select(Comment.contact_id, func.count(func.distinct(Comment.competitor_id)).label("n"))
             .group_by(Comment.contact_id)
             .subquery()
         )
-        multi_competitor = int(
-            await session.scalar(
-                select(func.count(func.distinct(Comment.contact_id)))
+        multi_rows = (
+            await session.execute(
+                select(Comment.competitor_id, func.count(func.distinct(Comment.contact_id)))
                 .join(
                     contact_source_counts,
                     contact_source_counts.c.contact_id == Comment.contact_id,
                 )
                 .where(
-                    Comment.competitor_id == competitor.id,
+                    Comment.competitor_id.in_(competitor_ids),
                     contact_source_counts.c.n >= 2,
                 )
+                .group_by(Comment.competitor_id)
             )
-            or 0
-        )
-        return {
-            "posts": posts,
-            "comments": comments,
-            "leads": leads,
-            "commercial": commercial,
-            "commercial_rate": round(commercial / comments * 100, 1) if comments else 0.0,
-            "hot": hot,
-            "hot_rate": round(hot / comments * 100, 1) if comments else 0.0,
-            "unique_buyers": unique_buyers,
-            "multi_competitor": multi_competitor,
-            "price_rate": round(intents["PRICE"] / comments * 100, 1) if comments else 0.0,
-            "availability_rate": (
+        ).all()
+        for competitor_id, count in multi_rows:
+            result[int(competitor_id)]["multi_competitor"] = int(count)
+
+        for competitor_id, bucket in result.items():
+            comments = int(bucket["comments"])
+            commercial = int(bucket["commercial"])
+            hot = int(bucket["hot"])
+            intents = intents_by_id[competitor_id]
+            bucket["commercial_rate"] = (
+                round(commercial / comments * 100, 1) if comments else 0.0
+            )
+            bucket["hot_rate"] = round(hot / comments * 100, 1) if comments else 0.0
+            bucket["price_rate"] = (
+                round(intents["PRICE"] / comments * 100, 1) if comments else 0.0
+            )
+            bucket["availability_rate"] = (
                 round(intents["AVAILABILITY"] / comments * 100, 1) if comments else 0.0
-            ),
-            "delivery_rate": (round(intents["DELIVERY"] / comments * 100, 1) if comments else 0.0),
-            "quantity_rate": (round(intents["QUANTITY"] / comments * 100, 1) if comments else 0.0),
-        }
+            )
+            bucket["delivery_rate"] = (
+                round(intents["DELIVERY"] / comments * 100, 1) if comments else 0.0
+            )
+            bucket["quantity_rate"] = (
+                round(intents["QUANTITY"] / comments * 100, 1) if comments else 0.0
+            )
+        return result
 
     @staticmethod
     def _competitor_opportunities(intents: Counter, products: Counter) -> list[dict[str, object]]:
@@ -1932,6 +2656,7 @@ class WebQueryService:
         max_units_per_scan: int,
         daily_remaining: int,
         live_enabled: bool,
+        vertical: str | None = None,
     ) -> dict[str, int | bool]:
         """Build a zero-cost estimate from data already stored in our DB.
 
@@ -1939,17 +2664,26 @@ class WebQueryService:
         to understand what a manual live scan is likely to do, while the provider-level scan budget
         remains the hard enforcement mechanism.
         """
+        vertical_enum = None
+        if vertical:
+            try:
+                vertical_enum = Vertical(vertical.strip().upper())
+            except ValueError:
+                vertical_enum = None
+        competitor_filter = [Competitor.active.is_(True)]
+        if vertical_enum is not None:
+            competitor_filter.append(Competitor.vertical == vertical_enum)
         async with self.session_factory() as session:
             active_competitors = int(
                 await session.scalar(
-                    select(func.count(Competitor.id)).where(Competitor.active.is_(True))
+                    select(func.count(Competitor.id)).where(*competitor_filter)
                 )
                 or 0
             )
             due_competitors = int(
                 await session.scalar(
                     select(func.count(Competitor.id)).where(
-                        Competitor.active.is_(True),
+                        *competitor_filter,
                         or_(
                             Competitor.next_scan_at.is_(None),
                             Competitor.next_scan_at <= datetime.now(UTC),
@@ -1963,7 +2697,7 @@ class WebQueryService:
                     select(func.count(Post.id))
                     .join(Competitor, Competitor.id == Post.competitor_id)
                     .where(
-                        Competitor.active.is_(True),
+                        *competitor_filter,
                         Post.comments_count > 0,
                         or_(
                             Post.last_synced_remote_count.is_(None),
@@ -1978,14 +2712,15 @@ class WebQueryService:
                     select(func.count(Post.id))
                     .join(Competitor, Competitor.id == Post.competitor_id)
                     .where(
-                        Competitor.active.is_(True),
+                        *competitor_filter,
                         Post.coverage_status.in_(["PARTIAL", "LATEST_ONLY", "UNKNOWN"]),
                     )
                 )
                 or 0
             )
 
-        hard_cap = max(0, min(max_units_per_scan, daily_remaining)) if live_enabled else 0
+        # daily_remaining — только метрика в UI; scan cap задаёт effective budget preview.
+        hard_cap = max(0, max_units_per_scan) if live_enabled else 0
         # One get_reels per active competitor + usually one comments page per changed Reel. Fallback
         # and pagination can make the real number higher, but never above hard_cap.
         expected_min = active_competitors + comment_candidates if live_enabled else 0
@@ -1998,6 +2733,7 @@ class WebQueryService:
             "expected_min_units": min(expected_min, hard_cap) if hard_cap else 0,
             "hard_cap_units": hard_cap,
             "daily_remaining": max(0, daily_remaining),
+            "vertical": vertical_enum.value if vertical_enum is not None else None,
         }
 
     @staticmethod

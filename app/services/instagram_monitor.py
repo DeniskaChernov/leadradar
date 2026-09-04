@@ -19,6 +19,8 @@ from app.services.contact_service import ContactService
 from app.services.lead_analysis_pipeline import LeadAnalysisPipeline
 from app.services.lead_service import LeadService
 from app.services.notification_service import LeadNotifier
+from app.services.scan_progress import ScanProgressTracker
+from app.services.signal_recency import is_signal_within_window
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,8 @@ class CycleStats:
     competitors_not_due: int = 0
     budget_deferred_candidates: int = 0
     avoided_requests: int = 0
+    comments_skipped_stale: int = 0
+    fresh_backfilled: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +89,8 @@ class InstagramMonitor:
         retry_pending_enabled: bool = False,
         retry_pending_batch_size: int = 5,
         retry_pending_cooldown_seconds: int = 3600,
+        max_signal_age_days: int = 30,
+        auto_analyze_fresh_batch_size: int = 0,
         analysis_pipeline: LeadAnalysisPipeline | None = None,
     ) -> None:
         self.session_factory = session_factory
@@ -103,15 +109,25 @@ class InstagramMonitor:
         self.retry_pending_enabled = retry_pending_enabled
         self.retry_pending_batch_size = retry_pending_batch_size
         self.retry_pending_cooldown_seconds = retry_pending_cooldown_seconds
+        self.max_signal_age_days = max(0, max_signal_age_days)
+        self.auto_analyze_fresh_batch_size = max(0, auto_analyze_fresh_batch_size)
         self.analysis_pipeline = analysis_pipeline
         self.adaptive_monitoring = AdaptiveMonitoringService(
             session_factory,
             hot_threshold=lead_service.hot_threshold,
         )
 
-    async def run_cycle(self, *, force: bool = True) -> CycleStats:
+    async def run_cycle(
+        self,
+        *,
+        force: bool = True,
+        progress: ScanProgressTracker | None = None,
+        vertical: str | None = None,
+    ) -> CycleStats:
         self.provider.begin_cycle()
         stats = CycleStats()
+        if progress is not None:
+            progress.set_prepare("Подготовка очереди…")
         try:
             stats.hot_notifications += await self.notifier.flush_pending()
         except Exception as exc:
@@ -127,6 +143,8 @@ class InstagramMonitor:
             if self.retry_pending_enabled
             else []
         )
+        if progress is not None and pending_leads:
+            progress.set_prepare(f"Дооценка очереди · {len(pending_leads)}")
         for lead in pending_leads:
             stats.leads_created += 1
             try:
@@ -142,8 +160,23 @@ class InstagramMonitor:
                     lead.lead_id,
                     type(exc).__name__,
                 )
+        if self.auto_analyze_fresh_batch_size > 0:
+            try:
+                if progress is not None:
+                    progress.set_prepare("Оценка свежих комментариев…")
+                fresh = await self.lead_service.backfill_unanalyzed_comments(
+                    self.auto_analyze_fresh_batch_size
+                )
+                stats.fresh_backfilled += len(fresh)
+            except Exception as exc:
+                stats.errors += 1
+                logger.exception(
+                    "fresh_backfill_failed error_type=%s", type(exc).__name__
+                )
         if self.analyze_baseline_comments and self.historical_analysis_batch_size > 0:
             try:
+                if progress is not None:
+                    progress.set_prepare("Историческая дооценка…")
                 historical = await self.lead_service.backfill_unanalyzed_comments(
                     self.historical_analysis_batch_size
                 )
@@ -158,6 +191,7 @@ class InstagramMonitor:
             await self.adaptive_monitoring.ranked_due_competitors(
                 self.competitors,
                 force=force,
+                vertical=vertical,
             )
         )
         stats.avoided_requests += stats.competitors_not_due
@@ -169,6 +203,8 @@ class InstagramMonitor:
 
         # Фаза A: сначала распределяем discovery coverage между источниками.
         for index, plan in enumerate(plans):
+            if progress is not None:
+                progress.set_discover(completed=index, total=len(plans), handle=plan.handle)
             budget = self.provider.scan_budget_status()
             if (
                 candidates
@@ -184,6 +220,16 @@ class InstagramMonitor:
                 discovered_handles.add(plan.handle)
                 stats.competitors_checked += 1
                 stats.reels_found += len(reels)
+                if progress is not None:
+                    progress.set_discover(
+                        completed=index + 1,
+                        total=len(plans),
+                        handle=plan.handle,
+                    )
+                    progress.update_stats(
+                        competitors_checked=stats.competitors_checked,
+                        reels_found=stats.reels_found,
+                    )
                 logger.info(
                     "competitor_discovery_complete competitor=%s state=%s priority=%s reels=%s",
                     plan.handle,
@@ -243,7 +289,16 @@ class InstagramMonitor:
 
         # Фаза B: тратим остаток на лучшие comment refresh среди всех найденных Reel.
         candidates.sort(key=lambda item: (-item.priority_score, item.reel.platform_post_id))
+        if progress is not None and not candidates:
+            progress.set_comments(completed=0, total=0, handle="")
+            progress.set_finalize("Нет новых комментариев к загрузке")
         for index, candidate in enumerate(candidates):
+            if progress is not None:
+                progress.set_comments(
+                    completed=index,
+                    total=len(candidates),
+                    handle=candidate.competitor.handle,
+                )
             try:
                 await self._process_prepared_reel(
                     candidate.reel,
@@ -253,6 +308,16 @@ class InstagramMonitor:
                 processed_by_handle[candidate.competitor.handle] = (
                     processed_by_handle.get(candidate.competitor.handle, 0) + 1
                 )
+                if progress is not None:
+                    progress.set_comments(
+                        completed=index + 1,
+                        total=len(candidates),
+                        handle=candidate.competitor.handle,
+                    )
+                    progress.update_stats(
+                        comments_created=stats.comments_created,
+                        leads_created=stats.leads_created,
+                    )
             except ProviderUsageBlockedError as exc:
                 stats.budget_stops += 1
                 deferred = len(candidates) - index
@@ -275,6 +340,8 @@ class InstagramMonitor:
                     type(exc).__name__,
                 )
 
+        if progress is not None:
+            progress.set_finalize("Сохранение статусов источников…")
         for handle in discovered_handles:
             all_required_processed = processed_by_handle.get(handle, 0) == required_by_handle.get(
                 handle, 0
@@ -286,6 +353,8 @@ class InstagramMonitor:
                 success=handle not in discovery_failed,
             )
         if self.analysis_pipeline is not None:
+            if progress is not None:
+                progress.set_finalize("Постановка в очередь умной оценки…")
             await self.analysis_pipeline.enqueue_pending_batch(
                 limit=self.retry_pending_batch_size or 10
             )
@@ -318,6 +387,12 @@ class InstagramMonitor:
             )
             stats.avoided_requests += max(0, configured_pages - batch.pages_fetched)
         for comment in comments:
+            if not is_signal_within_window(
+                comment.created_at,
+                max_age_days=self.max_signal_age_days,
+            ):
+                stats.comments_skipped_stale += 1
+                continue
             signal = await self.contact_service.persist_signal(
                 reel, comment, is_baseline=check.is_baseline
             )

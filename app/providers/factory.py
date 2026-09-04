@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from app.config import Settings
 from app.providers.base import InstagramProvider
@@ -18,6 +18,7 @@ def create_instagram_provider(
     usage: ExternalUsageService | None = None,
     *,
     live_gate: Callable[[], bool] | None = None,
+    live_refresh: Callable[[], Awaitable[bool]] | None = None,
 ) -> InstagramProvider:
     if settings.instagram_provider == "mock":
         return MockInstagramProvider()
@@ -36,6 +37,7 @@ def create_instagram_provider(
             daily_limit=settings.instagram_daily_request_limit,
             scan_budget=scan_budget,
             live_gate=live_gate,
+            live_refresh=live_refresh,
         )
 
     brightdata = guarded(

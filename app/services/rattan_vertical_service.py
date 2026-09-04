@@ -48,7 +48,7 @@ class RattanRebuildStats:
 
 
 class RattanVerticalService:
-    """Taxonomy labels signal/lead. Rattan portfolio is explicit Competitor.vertical only."""
+    """Taxonomy labels evidence; portfolio vertical = Competitor.vertical only."""
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self.session_factory = session_factory
@@ -81,9 +81,12 @@ class RattanVerticalService:
                     "material_profiles": list(taxonomy.material_profiles),
                     "evidence": list(taxonomy.evidence),
                     "negative_evidence": list(taxonomy.negative_evidence),
+                    "taxonomy_vertical": taxonomy.vertical.value,
                 }
-                signal.vertical = taxonomy.vertical
-                evidence.vertical = taxonomy.vertical
+                # Портфель строго по источнику — taxonomy не переносит мебель в ротанг.
+                portfolio_vertical = competitor.vertical
+                signal.vertical = portfolio_vertical
+                evidence.vertical = portfolio_vertical
                 evidence.topic = taxonomy.products[0] if taxonomy.products else None
                 evidence.intent = (
                     taxonomy.layer.value
@@ -93,12 +96,16 @@ class RattanVerticalService:
                 evidence.strength = taxonomy.confidence if taxonomy.is_rattan else 0
                 evidence.raw_data = {**(evidence.raw_data or {}), "rattan_taxonomy": payload}
                 if lead is not None:
-                    lead.vertical = taxonomy.vertical
+                    lead.vertical = portfolio_vertical
                     details = dict(lead.analysis_details or {})
-                    details["vertical"] = taxonomy.vertical.value
+                    details["vertical"] = portfolio_vertical.value
                     details["rattan_taxonomy"] = payload
                     lead.analysis_details = details
-                    if taxonomy.layer.value == "RAW_MATERIAL" and taxonomy.products:
+                    if (
+                        portfolio_vertical == Vertical.ARTIFICIAL_RATTAN
+                        and taxonomy.layer.value == "RAW_MATERIAL"
+                        and taxonomy.products
+                    ):
                         lead.product_category = taxonomy.products[0]
                 if taxonomy.is_rattan:
                     if signal.id not in seen_signals:
@@ -143,6 +150,31 @@ class RattanVerticalService:
             if competitor.business_id:
                 business = await session.get(BusinessEntity, competitor.business_id)
                 sync_business_vertical_enrollment(business, vertical=vertical)
+            # Синхронизируем уже собранные signal/lead с портфелем источника.
+            signals = list(
+                await session.scalars(
+                    select(PublicSignal).where(PublicSignal.competitor_id == competitor_id)
+                )
+            )
+            for signal in signals:
+                signal.vertical = vertical
+            leads = list(
+                await session.scalars(select(Lead).where(Lead.competitor_id == competitor_id))
+            )
+            for lead in leads:
+                lead.vertical = vertical
+                details = dict(lead.analysis_details or {})
+                details["vertical"] = vertical.value
+                lead.analysis_details = details
+            evidence_rows = list(
+                await session.scalars(
+                    select(Evidence).where(
+                        Evidence.public_signal_id.in_([item.id for item in signals] or [-1])
+                    )
+                )
+            )
+            for evidence in evidence_rows:
+                evidence.vertical = vertical
             await session.commit()
             await session.refresh(competitor)
             return competitor

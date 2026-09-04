@@ -38,11 +38,15 @@ class CountingMockProvider(MockInstagramProvider):
         *,
         known_comment_ids: set[str] | None = None,
         max_pages: int | None = None,
+        cursor: str | None = None,
     ) -> CommentFetchResult:
         self.comment_batch_calls += 1
         self.max_pages_seen.append(max_pages)
         return await super().get_comment_batch(
-            post, known_comment_ids=known_comment_ids, max_pages=max_pages
+            post,
+            known_comment_ids=known_comment_ids,
+            max_pages=max_pages,
+            cursor=cursor,
         )
 
 
@@ -210,6 +214,7 @@ class TwoPhaseProvider(InstagramProvider):
         *,
         known_comment_ids: set[str] | None = None,
         max_pages: int | None = None,
+        cursor: str | None = None,
     ) -> CommentFetchResult:
         self.events.append(f"comments:{post.competitor}")
         return CommentFetchResult(
@@ -245,7 +250,9 @@ async def test_fallback_cannot_bypass_one_unit_scan_budget(session_factory):
     from sqlalchemy import select
 
     from app.db.models import ExternalBudgetReservation, ReservationStatus
+    from tests.conftest import seed_scrapecreators_instagram_policy
 
+    await seed_scrapecreators_instagram_policy(session_factory)
     usage = ExternalUsageService(session_factory)
     shared = ScanBudget(default_limit=1)
     primary_inner = ProfileProvider("scrapecreators", fail=True)

@@ -10,15 +10,17 @@
 <section class="hero-status system-hero safe" data-motion-root>
   <div>
     <span class="eyebrow">КАБИНА СИСТЕМЫ</span>
-    <h2>Диагностика, AI и расходы</h2>
-    <p>Локальный разбор · hybrid retry AI_PENDING · OpenAI live · quality gates</p>
+    <h2>Диагностика, оценка лидов и расходы</h2>
+    <p>Те же кнопки оценки, что на Главной и в «Найти лидов». Ниже — лимиты, тумблеры и диагностика.</p>
   </div>
   <div class="hero-actions">
-    <button class="btn primary" type="button" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Локальный разбор</button>
-    <button class="btn" type="button" data-api-action="/api/leads/retry-pending" data-payload='{"limit":10}' data-async-retry="1">Повторить очередь AI</button>
-    <a class="btn ghost" href="/radar?kind=pending">Очередь</a>
+    {% include "partials/signal_review_actions.html" %}
+    {% include "partials/lead_reanalyze_actions.html" %}
+    <a class="btn ghost" href="/radar?kind=pending">Спорные лиды</a>
   </div>
 </section>
+<section class="panel plain-help compact"><div class="alert ok"><b>Качество лидов</b><span>«Переоценить лиды» прогоняет свежие NEW/AI_PENDING через новые правила и GPT. Часы и чужие категории отсекаются автоматически.</span></div></section>
+{% include "partials/signal_review_help.html" %}
 
 <nav class="system-toc panel" aria-label="Разделы системной страницы">
   <a href="#ops-arm">Live тумблеры</a>
@@ -33,8 +35,8 @@
 </nav>
 
 <section class="panel" id="ops-arm">
-  <div class="panel-head"><div><h2>Live Radar и OpenAI</h2><p>Включение из интерфейса. Состояние хранится в БД</p></div>
-    <span class="tag {% if ops.radar_live_armed %}success{% else %}muted-tag{% endif %}">{% if ops.radar_live_armed %}Radar включён{% else %}Radar выключен{% endif %}</span>
+  <div class="panel-head"><div><h2>Live-поиск и OpenAI</h2><p>Включение из интерфейса. Состояние хранится в БД</p></div>
+    <span class="tag {% if ops.radar_live_armed %}success{% else %}muted-tag{% endif %}">{% if ops.radar_live_armed %}Live-поиск включён{% else %}Live-поиск выключен{% endif %}</span>
   </div>
   {% if not master_live_ready %}
   <div class="alert warn"><b>Master unlock не готов</b><span>Нужны scrapecreators + INSTAGRAM_LIVE_CALLS_ENABLED + EXTERNAL_LIVE_UNLOCK в .env.</span></div>
@@ -43,7 +45,7 @@
     <form data-api-form method="post" action="/api/ops/radar-live" data-reload="1">
       <input type="hidden" name="armed" value="{{ 'false' if ops.radar_live_armed else 'true' }}">
       <input type="hidden" name="default_scan_credits" value="{{ ops.default_scan_credits }}">
-      <button class="btn {% if ops.radar_live_armed %}ghost{% else %}success{% endif %}" type="submit">{% if ops.radar_live_armed %}Выключить Live Radar{% else %}Включить Live Radar{% endif %}</button>
+      <button class="btn {% if ops.radar_live_armed %}ghost{% else %}success{% endif %}" type="submit">{% if ops.radar_live_armed %}Выключить Live-поиск{% else %}Включить Live-поиск{% endif %}</button>
     </form>
   </div>
   {% endif %}
@@ -53,7 +55,7 @@
       <button class="btn {% if ops.openai_live_armed %}ghost{% else %}primary{% endif %}" type="submit" {% if not settings.openai_live_enabled %}disabled{% endif %}>{% if ops.openai_live_armed %}Выключить OpenAI{% else %}Включить OpenAI анализ{% endif %}</button>
     </form>
   </div>
-  <div class="explain-line"><span>Hybrid: правила → при неоднозначности GPT пишет разбор в карточку лида. Расход OpenAI сейчас: {% if openai_spend_allowed %}разрешён{% else %}заблокирован{% endif %}. Telegram-уведомления требуют полного запуска <code>python -m app.main</code> (не web-only).</span></div>
+  <div class="explain-line"><span>Сначала бесплатные правила, затем GPT для спорных лидов. Расход GPT сейчас: {% if openai_spend_allowed %}разрешён{% else %}выключен{% endif %}. Telegram-уведомления работают при полном запуске сервера (<code>python -m app.main</code>).</span></div>
   <form class="ops-concurrency-form" data-api-form method="post" action="/api/ops/ai-concurrency" data-reload="1">
     <label>Параллельных OpenAI-разборов
       <input type="number" name="max_concurrency" min="1" max="10" value="{{ ops.ai_analysis_max_concurrency }}" required>
@@ -63,7 +65,7 @@
   </form>
 </section>
 
-<section class="cost-guard panel {% if safe_mode %}safe{% else %}live{% endif %}" id="cost-guard"><div><span class="eyebrow">КОНТРОЛЬ РАСХОДОВ</span><h2>{% if safe_mode %}Внешние Instagram-запросы заблокированы{% else %}Live-запросы разрешены{% endif %}</h2><p>{% if safe_mode %}Master unlock + тумблер Live Radar на этой странице. Без обоих режимов credits не списываются.{% else %}Каждая внешняя операция в журнале. Расписание может быть отдельно ограничено INSTAGRAM_MANUAL_LIVE_SCAN_ONLY.{% endif %}</p></div><div class="budget-box"><div><span>Instagram сегодня</span><b>{{ usage.get('instagram',0) }} / {{ settings.instagram_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('instagram',0) / (settings.instagram_daily_request_limit if settings.instagram_daily_request_limit else 1) * 100]|min }}%"></i></div><div><span>OpenAI сегодня</span><b>{{ usage.get('openai',0) }} / {{ settings.openai_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('openai',0) / (settings.openai_daily_request_limit if settings.openai_daily_request_limit else 1) * 100]|min }}%"></i></div></div></section>
+<section class="cost-guard panel {% if safe_mode %}safe{% else %}live{% endif %}" id="cost-guard"><div><span class="eyebrow">КОНТРОЛЬ РАСХОДОВ</span><h2>{% if safe_mode %}Внешние Instagram-запросы заблокированы{% else %}Live-запросы разрешены{% endif %}</h2><p>{% if safe_mode %}Master unlock + тумблер Live-поиска на этой странице. Без обоих режимов credits не списываются.{% else %}Каждая внешняя операция в журнале. Расписание может быть отдельно ограничено INSTAGRAM_MANUAL_LIVE_SCAN_ONLY.{% endif %}</p></div><div class="budget-box"><div><span>Instagram сегодня</span><b>{{ usage.get('instagram',0) }} / {{ settings.instagram_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('instagram',0) / (settings.instagram_daily_request_limit if settings.instagram_daily_request_limit else 1) * 100]|min }}%"></i></div><div><span>OpenAI сегодня</span><b>{{ usage.get('openai',0) }} / {{ settings.openai_daily_request_limit }}</b></div><div class="budget-track"><i style="width: {{ [100, usage.get('openai',0) / (settings.openai_daily_request_limit if settings.openai_daily_request_limit else 1) * 100]|min }}%"></i></div></div></section>
 
 <section class="panel scan-plan" id="scan-plan">
   <div class="panel-head"><div><h2>План следующей проверки</h2><p>Расчёт строится только по нашей базе и сам по себе ничего не тратит</p></div><span class="tag {% if scan_plan.live_enabled %}status-contacted{% else %}neutral{% endif %}">{% if scan_plan.live_enabled %}live разрешён{% else %}без внешних запросов{% endif %}</span></div>
@@ -155,6 +157,8 @@
     <span><b>{{ ai_safety.stale_ai_leases }}</b> просроченных AI lease</span>
     <span><b>{{ ai_safety.uncertain_reservations }}</b> неопределённых списаний</span>
     <span><b>{{ ai_safety.cost_events }}</b> записей себестоимости</span>
+    <span><b>{{ ai_safety.openai_cost_events }}</b> OpenAI cost-событий</span>
+    <span><b>{% if ai_safety.cache_hit_rate is not none %}{{ '%.1f'|format(ai_safety.cache_hit_rate * 100) }}%{% else %}—{% endif %}</b> proxy cache-hit</span>
   </div>
   {% if uncertain_budget_reservations %}
   <p class="table-scroll-hint">Неопределённые списания ScrapeCreators/OpenAI — подтвердите факт charge или закройте без spend.</p>
@@ -183,6 +187,90 @@
   {% endif %}
 </section>
 
+</section>
+
+{% if rules_reanalyze and rules_reanalyze.needs_reanalyze %}
+<section class="panel compact rules-reanalyze-alert">
+  <div class="alert warn">
+    <b>Правила обновились · {{ rules_reanalyze.current_version }}</b>
+    <span>{{ rules_reanalyze.stale_count }} из {{ rules_reanalyze.actionable_total }} свежих лидов ещё без stamp этой версии. Переоценка идемпотентна и пишет новый stamp.</span>
+    {% include "partials/lead_reanalyze_actions.html" %}
+  </div>
+</section>
+{% endif %}
+
+<section class="panel manager-feedback-quality" aria-labelledby="manager-fp-title">
+  <div class="panel-head"><div><span class="eyebrow">PRODUCTION FEEDBACK</span><h2 id="manager-fp-title">False-positive по решению менеджера</h2><p>Считается из AIFeedback: модель дала HOT, менеджер отметил «не лид». Offline challenge ниже — отдельно.</p></div>
+    <span class="tag {% if manager_feedback_quality.reviewed == 0 %}neutral{% elif (manager_feedback_quality.hot_false_positive_rate or 0) <= 0.1 %}success{% else %}warning{% endif %}">
+      {% if manager_feedback_quality.reviewed == 0 %}нет отзывов{% else %}{{ '%.1f'|format((manager_feedback_quality.hot_false_positive_rate or 0) * 100) }}% HOT FP{% endif %}
+    </span>
+  </div>
+  <div class="mini-metrics">
+    <span><b>{{ manager_feedback_quality.reviewed }}</b> отзывов менеджера</span>
+    <span><b>{{ manager_feedback_quality.manager_not_lead }}</b> «не лид»</span>
+    <span><b>{{ manager_feedback_quality.hot_false_positives }}</b> HOT → не лид</span>
+    <span><b>v{{ settings.lead_analysis_version }}</b> текущие правила</span>
+  </div>
+</section>
+
+<section class="panel ai-version-info" aria-labelledby="ai-version-title">
+  <div class="panel-head">
+    <div>
+      <span class="eyebrow">AI VERSIONS</span>
+      <h2 id="ai-version-title">Версии классификации</h2>
+      <p>Rule-based stamp и OpenAI prompt/schema для cache fingerprint и переоценки.</p>
+    </div>
+  </div>
+  <div class="mini-metrics">
+    <span><b>v{{ ai_version_info.rules_version }}</b> правила (LEAD_ANALYSIS_VERSION)</span>
+    <span><code>{{ ai_version_info.openai_prompt_version }}</code> GPT prompt</span>
+    <span><code>{{ ai_version_info.openai_schema_version }}</code> GPT schema</span>
+  </div>
+</section>
+
+<section class="panel feedback-learning" aria-labelledby="feedback-learning-title">
+  <div class="panel-head">
+    <div>
+      <span class="eyebrow">FEEDBACK LOOP · OFFLINE</span>
+      <h2 id="feedback-learning-title">Обучение из NOT_LEAD</h2>
+      <p>HOT false-positive из AIFeedback для ручного переноса в eval-фикстуры. Правила в рантайме не меняются.</p>
+    </div>
+    <a class="btn secondary" href="/api/system/feedback-export">Export JSON</a>
+  </div>
+  <div class="mini-metrics">
+    <span><b>{{ feedback_learning.hot_false_positives }}</b> HOT→не лид за {{ feedback_learning.days }} дн.</span>
+    <span><b>{{ feedback_learning.reviewed }}</b> отзывов</span>
+    <span><b>{{ feedback_learning.reopened_after_not_lead }}</b> reopen после «не лид»</span>
+  </div>
+  {% if feedback_learning.top_intents %}
+  <div class="mini-metrics">
+    {% for item in feedback_learning.top_intents %}
+    <span><code>{{ item.intent }}</code> · {{ item.count }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <p class="muted">{{ feedback_learning.export_hint }}</p>
+  {% if feedback_learning_rows %}
+  <div class="table-wrap embedded system-table-wrap">
+    <table class="responsive-table system-table">
+      <thead><tr><th>Lead</th><th>Score</th><th>Intent</th><th>Комментарий</th></tr></thead>
+      <tbody>
+        {% for row in feedback_learning_rows %}
+        <tr>
+          <td data-label="Lead"><a href="/leads/{{ row.lead_id }}">#{{ row.lead_id }}</a></td>
+          <td data-label="Score">{{ row.predicted_score }}</td>
+          <td data-label="Intent"><code>{{ row.predicted_intent }}</code></td>
+          <td data-label="Комментарий">{{ row.comment_preview }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Пока нет HOT false-positive за последние 30 дней.</p>
+  {% endif %}
+</section>
+
 <section class="panel intelligence-quality">
   <div class="panel-head"><div><span class="eyebrow">ОФЛАЙН-ПРОВЕРКА · {{ intelligence_quality.dataset_version }}</span><h2>Качество локального интеллекта</h2><p>Фиксированный RU / UZ Latin / UZ Cyrillic набор работает без базы, сети и AI-токенов. Это проверка регрессий, а не заявление о production accuracy.</p></div><span class="tag {% if intelligence_quality.passed %}status-contacted{% else %}neutral{% endif %}">{% if intelligence_quality.passed %}внутренний gate пройден{% else %}gate заблокирован{% endif %}</span></div>
   <div class="mini-metrics">
@@ -197,7 +285,7 @@
   <div class="table-wrap embedded system-table-wrap"><table class="responsive-table system-table"><thead><tr><th>Язык</th><th>Сценариев</th><th>Lead accuracy</th><th>Intent accuracy</th><th>Role accuracy</th></tr></thead><tbody>
     {% for item in intelligence_quality.language_scores %}<tr><td data-label="Язык"><code>{{ item.language }}</code></td><td data-label="Сценариев">{{ item.cases }}</td><td data-label="Lead accuracy">{{ '%.1f'|format(item.lead_accuracy * 100) }}%</td><td data-label="Intent accuracy">{{ '%.1f'|format(item.intent_accuracy * 100) }}%</td><td data-label="Role accuracy">{{ '%.1f'|format(item.role_accuracy * 100) }}%</td></tr>{% endfor %}
   </tbody></table></div>
-  {% if intelligence_quality.mismatches %}<details class="quality-errors"><summary>Открыть оставшиеся ошибки: {{ intelligence_quality.mismatches|length }}</summary><div class="table-wrap embedded"><table><thead><tr><th>Case</th><th>Фраза</th><th>Ожидалось</th><th>Получено</th></tr></thead><tbody>{% for item in intelligence_quality.mismatches %}<tr><td><code>{{ item.case_id }}</code><br><small>{{ item.language }}</small></td><td>{{ item.comment }}</td><td>{{ item.expected }}</td><td>{{ item.predicted }}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
+  {% if intelligence_quality.mismatches %}<details class="quality-errors"><summary>Открыть оставшиеся ошибки: {{ intelligence_quality.mismatches|length }}</summary><div class="table-wrap embedded"><table class="responsive-table system-table"><thead><tr><th>Case</th><th>Фраза</th><th>Ожидалось</th><th>Получено</th></tr></thead><tbody>{% for item in intelligence_quality.mismatches %}<tr><td data-label="Case"><code>{{ item.case_id }}</code><br><small>{{ item.language }}</small></td><td data-label="Фраза">{{ item.comment }}</td><td data-label="Ожидалось">{{ item.expected }}</td><td data-label="Получено">{{ item.predicted }}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
 </section>
 
 <section class="panel intelligence-quality" id="quality-gates" aria-labelledby="quality-gates-title">
@@ -206,6 +294,7 @@
     <span><b>{{ quality_gates.calibration_cases }}</b> calibration roots</span>
     <span><b>{{ quality_gates.challenge_cases }}</b> challenge cases</span>
     <span><b>{{ quality_gates.robustness_cases }}</b> robustness roots</span>
+    <span><b>{{ quality_gates.rules_version }}</b> rules version</span>
   </div>
   {% for gate in [quality_gates.lead_unseen, quality_gates.rattan_unseen, quality_gates.audience_unseen] %}
   <div class="quality-gate-card">
@@ -221,7 +310,7 @@
     {% if gate.confusion %}
     <div class="table-wrap embedded system-table-wrap"><table class="responsive-table system-table"><thead><tr><th>Expected</th><th>Predicted</th><th>Count</th></tr></thead><tbody>{% for cell in gate.confusion[:8] %}<tr><td data-label="Expected"><code>{{ cell.expected }}</code></td><td data-label="Predicted"><code>{{ cell.predicted }}</code></td><td data-label="Count">{{ cell.count }}</td></tr>{% endfor %}</tbody></table></div>
     {% endif %}
-    {% if gate.mismatches %}<details class="quality-errors"><summary>Ошибки: {{ gate.mismatches|length }}</summary><div class="table-wrap embedded"><table><thead><tr><th>Case</th><th>Ожидалось</th><th>Получено</th><th>Деталь</th></tr></thead><tbody>{% for item in gate.mismatches[:12] %}<tr><td><code>{{ item.case_id }}</code></td><td>{{ item.expected }}</td><td>{{ item.predicted }}</td><td>{{ item.detail }}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
+    {% if gate.mismatches %}<details class="quality-errors"><summary>Ошибки: {{ gate.mismatches|length }}</summary><div class="table-wrap embedded"><table class="responsive-table system-table"><thead><tr><th>Case</th><th>Ожидалось</th><th>Получено</th><th>Деталь</th></tr></thead><tbody>{% for item in gate.mismatches[:12] %}<tr><td data-label="Case"><code>{{ item.case_id }}</code></td><td data-label="Ожидалось">{{ item.expected }}</td><td data-label="Получено">{{ item.predicted }}</td><td data-label="Деталь">{{ item.detail }}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
   </div>
   {% endfor %}
 </section>
@@ -281,7 +370,7 @@
   <div class="panel-head"><div><span class="eyebrow">АССИСТЕНТ · ТОЛЬКО БАЗА</span><h2 id="agent-workspace-title">Read-only ассистент</h2><p>Ответ только из MCP read tools и evidence_ids. GPT не вызывается; write tools остаются NOT_CONNECTED.</p></div><span class="tag status-contacted">DB-backed</span></div>
   <div class="agent-presets inline" role="group" aria-label="Примеры вопросов">
     <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи quality gates"}'>Quality gates</button>
-    <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи горячие лиды"}'>HOT лиды</button>
+    <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи горячие лиды"}'>Горячие клиенты</button>
     <button class="agent-preset" type="button" data-agent-preset='{"query":"lead_id=1"}'>Лид #1</button>
   </div>
   <form class="agent-query-form form-grid" data-agent-query data-agent-target="#agent-query-result">
@@ -312,9 +401,9 @@
 <div class="integration-grid">{% for name, item in integrations.items() %}<div class="integration"><span class="pulse {% if item.enabled %}{% elif item.configured %}busy{% else %}bad{% endif %}"></span><div><b>{{ name }}</b><small>{% if item.enabled %}работает{% elif item.configured %}настроен, но расход выключен{% else %}не настроен{% endif %}</small><p>{{ item.detail }}</p></div></div>{% endfor %}</div>
 
 <div class="grid two system-actions">
-<section class="panel action-form-card"><h3>Разобрать сохранённую историю</h3><p>Сначала сработают бесплатные локальные правила. Неоднозначные комментарии останутся в очереди AI, если OpenAI-запросы выключены.</p><div class="form-row"><button class="btn primary" data-api-action="/api/history/analyze-local" data-payload='{"limit":100}' data-reload="1">Обработать до 100 сигналов</button><a class="btn ghost" href="/radar?kind=pending">Посмотреть очередь AI</a></div></section>
+<section class="panel action-form-card"><h3>Накопившиеся сигналы</h3><p>После первого поиска у источника в базе лежит «история» — сигналы без оценки. Нажмите <strong>«Оценить накопившееся»</strong> вверху страницы: система создаст клиентов и при необходимости поставит спорные в GPT.</p><div class="form-row"><a class="btn ghost" href="/radar?kind=pending">Спорные в поиске</a></div></section>
 <section class="panel action-form-card"><h3>Как тестировать без потерь</h3><ol class="plain-steps"><li>Оставить <code>INSTAGRAM_LIVE_CALLS_ENABLED=false</code>.</li><li>Проверить интерфейс и логику на mock и сохранённой базе.</li><li>Перед контрольным тестом включить live-запросы, поставить маленький дневной лимит и только тогда задать <code>EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS</code>.</li><li>После теста снова выключить live-режим.</li></ol></section>
 </div>
 
-<section class="panel"><div class="panel-head"><div><h2>История проверок</h2><p>Что происходило в каждом цикле, без технических загадок</p></div></div><p class="table-scroll-hint">Широкая таблица — горизонтальная прокрутка на мобильных.</p><div class="table-wrap embedded system-table-wrap system-run-wrap"><table class="system-run-history"><thead><tr><th>Время</th><th>Кто запустил</th><th>Источник</th><th>Результат</th><th>Reels</th><th>Страниц API</th><th>Комментариев увидели</th><th>Новых сохранили</th><th>История разобрана</th><th>Ошибки</th></tr></thead><tbody>{% for run in runs %}<tr><td>{{ run.started_at | display_dt('%d.%m %H:%M:%S') }}</td><td>{{ trigger_label(run.trigger) }}</td><td>{{ run.provider or '—' }}</td><td><span class="tag run-{{ run.status.value|lower }}">{{ run_status_label(run.status) }}</span></td><td>{{ run.stats_json.get('reels_found',0) }}</td><td>{{ run.stats_json.get('comment_requests',0) }}</td><td>{{ run.stats_json.get('comments_seen',0) }}</td><td>{{ run.stats_json.get('comments_created',0) }}</td><td>{{ run.stats_json.get('historical_analyzed',0) }}</td><td>{% if run.error %}<span class="warn">{{ run.error }}</span>{% else %}{{ run.stats_json.get('errors',0) }}{% endif %}</td></tr>{% else %}<tr><td colspan="10" class="empty">Проверок пока не было.</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="panel"><div class="panel-head"><div><h2>История проверок</h2><p>Что происходило в каждом цикле, без технических загадок</p></div></div><p class="table-scroll-hint">Широкая таблица — горизонтальная прокрутка на мобильных.</p><div class="table-wrap embedded system-table-wrap system-run-wrap"><table class="responsive-table system-run-history"><thead><tr><th>Время</th><th>Кто запустил</th><th>Источник</th><th>Результат</th><th>Reels</th><th>Страниц API</th><th>Комментариев увидели</th><th>Новых сохранили</th><th>Оценено за цикл</th><th>Ошибки</th></tr></thead><tbody>{% for run in runs %}<tr><td>{{ run.started_at | display_dt('%d.%m %H:%M:%S') }}</td><td>{{ trigger_label(run.trigger) }}</td><td>{{ run.provider or '—' }}</td><td><span class="tag run-{{ run.status.value|lower }}">{{ run_status_label(run.status) }}</span></td><td>{{ run.stats_json.get('reels_found',0) }}</td><td>{{ run.stats_json.get('comment_requests',0) }}</td><td>{{ run.stats_json.get('comments_seen',0) }}</td><td>{{ run.stats_json.get('comments_created',0) }}</td><td>{{ run.stats_json.get('fresh_backfilled', run.stats_json.get('historical_analyzed', 0)) }}</td><td>{% if run.error %}<span class="warn">{{ run.error }}</span>{% else %}{{ run.stats_json.get('errors',0) }}{% endif %}</td></tr>{% else %}<tr><td colspan="10" class="empty">Проверок пока не было.</td></tr>{% endfor %}</tbody></table></div></section>
 {% endblock %}

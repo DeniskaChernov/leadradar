@@ -27,7 +27,7 @@ def test_base_template_includes_economics_navigation_link():
 
     content = Path("app/web/templates/base.html").read_text(encoding="utf-8")
     assert 'href="/economics"' in content
-    assert "Экономика" in content
+    assert "Расходы" in content
 
 
 async def _seed_scrapecreators_policy(session_factory) -> None:
@@ -57,6 +57,28 @@ async def _seed_scrapecreators_policy(session_factory) -> None:
             )
         )
         await session.commit()
+
+
+async def test_month_credits_low_when_remaining_under_20_percent(session_factory):
+    await _seed_scrapecreators_policy(session_factory)
+    service = ProviderCreditBudgetService(session_factory)
+    async with session_factory() as session:
+        session.add(
+            CostEvent(
+                idempotency_key="economics:month-low",
+                service="instagram",
+                provider="scrapecreators",
+                operation="get_comment_batch",
+                units=3500,
+                cost_usd=Decimal("10.000000"),
+            )
+        )
+        await session.commit()
+
+    snapshot = await service.snapshot("scrapecreators")
+    assert snapshot is not None
+    assert snapshot.monthly_remaining <= int(snapshot.monthly_hard_limit * 0.2)
+    assert snapshot.month_credits_low is True
 
 
 async def test_provider_snapshot_reports_burn_months_and_status(session_factory):
@@ -91,6 +113,10 @@ async def test_provider_snapshot_reports_burn_months_and_status(session_factory)
     assert snapshot.average_daily_burn_7d >= 0
     assert snapshot.projected_monthly_burn > 0
     assert snapshot.months_remaining is not None
+    assert len(snapshot.daily_burn_series) == 7
+    assert all(isinstance(day, str) and isinstance(units, int) for day, units in snapshot.daily_burn_series)
+    assert sum(units for _day, units in snapshot.daily_burn_series) >= 120
+    assert snapshot.month_credits_low is False
     assert snapshot.budget_status in {
         "HEALTHY",
         "WATCH",

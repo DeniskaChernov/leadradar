@@ -124,6 +124,7 @@
     "id": "ru_plus_cta_01",
     "comment": "+",
     "post_caption": "Напишите плюс в комментариях, чтобы получить каталог и цены",
+    "defer_to_openai": true,
     "expected_is_lead": true,
     "expected_intent": "BUY",
     "expected_buyer_role": "B2C_CONSUMER",
@@ -194,6 +195,7 @@
     "id": "uz_lat_delivery_01",
     "comment": "Samarqandga yetkazib berish bormi?",
     "post_caption": "Barcha viloyatlarga xizmat ko'rsatamiz",
+    "defer_to_openai": true,
     "expected_is_lead": true,
     "expected_intent": "DELIVERY",
     "expected_buyer_role": "B2C_CONSUMER",
@@ -274,6 +276,7 @@
     "id": "uz_cyrl_delivery_01",
     "comment": "Етказиб бериш борми?",
     "post_caption": "Тошкент ва вилоятлар",
+    "defer_to_openai": true,
     "expected_is_lead": true,
     "expected_intent": "DELIVERY",
     "expected_buyer_role": "B2C_CONSUMER",
@@ -299,5 +302,42 @@
     "expected_buyer_role": "UNKNOWN",
     "max_score": 20,
     "language": "uz-cyrl"
+  },
+  {
+    "id": "watch_price_uz",
+    "comment": "Narxi qancha?",
+    "post_caption": "Rolex Submariner yangi kolleksiya soatlar",
+    "expected_is_lead": false,
+    "expected_intent": "OTHER",
+    "expected_buyer_role": "UNKNOWN",
+    "max_score": 35,
+    "language": "uz"
+  },
+  {
+    "id": "watch_price_ru",
+    "comment": "Сколько стоит?",
+    "post_caption": "Rolex Submariner — новая коллекция часов",
+    "expected_is_lead": false,
+    "expected_intent": "OTHER",
+    "expected_buyer_role": "UNKNOWN",
+    "max_score": 35,
+    "language": "ru"
+  },
+  {
+    "id": "watch_plus_defer",
+    "comment": "+",
+    "post_caption": "Оставьте плюс под Reel с часами Rolex — пришлём прайс",
+    "defer_to_openai": true,
+    "language": "ru"
+  },
+  {
+    "id": "jewelry_price_ru",
+    "comment": "Сколько стоит браслет?",
+    "post_caption": "Новая коллекция золотых браслетов и серёг",
+    "expected_is_lead": false,
+    "expected_intent": "OTHER",
+    "expected_buyer_role": "UNKNOWN",
+    "max_score": 35,
+    "language": "ru"
   }
 ]

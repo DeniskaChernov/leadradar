@@ -1,0 +1,32 @@
+{# Краткая CRM-история для tooltip на kanban-карточке #}
+{% set events = events_by_lead.get(lead.id, []) if events_by_lead is defined else [] %}
+<button
+  class="kanban-event-tip-trigger"
+  type="button"
+  aria-label="История действий по лиду"
+  aria-expanded="false"
+  data-kanban-event-tip
+>
+  <span aria-hidden="true">🕐</span>
+</button>
+<div class="kanban-event-tip-panel" role="tooltip" hidden>
+  <b>Последние действия</b>
+  {% if events %}
+  <ul class="kanban-event-tip-list">
+    {% for event in events %}
+    <li>
+      <small>{{ event.created_at | display_dt }}</small>
+      <span>{{ event_label(event.event_type) }}</span>
+      {% if event.payload_json.get('text') %}<em>{{ event.payload_json.get('text')[:80] }}{% if event.payload_json.get('text')|length > 80 %}…{% endif %}</em>
+      {% elif event.payload_json.get('reason') %}<em>{{ event.payload_json.get('reason')[:80] }}</em>
+      {% elif event.payload_json.get('to') %}<em>→ {{ lead_status_label(event.payload_json.get('to')) }}</em>
+      {% elif event.payload_json.get('note') %}<em>{{ event.payload_json.get('note')[:80] }}</em>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  <a class="kanban-event-tip-link" href="/contacts/{{ contact.id }}">Вся история →</a>
+  {% else %}
+  <p class="muted">Пока нет CRM-действий по этому лиду.</p>
+  {% endif %}
+</div>

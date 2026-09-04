@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from math import prod
 from typing import Any
 
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -31,6 +33,8 @@ from app.services.audience_registry import (
     AUDIENCE_DEFINITIONS,
 )
 from app.services.b2b_policy import B2BPolicy
+
+logger = logging.getLogger(__name__)
 
 _BUYER_ROLE_PRIORITY = {
     "B2B_HORECA": 4,
@@ -439,9 +443,49 @@ class AudienceEngine:
         await self.sync_segments()
         async with self.session_factory() as session:
             contact_ids = list(await session.scalars(select(Contact.id).order_by(Contact.id)))
+        processed = 0
+        failures = 0
         for contact_id in contact_ids:
-            await self.recalculate_contact(contact_id)
-        return len(contact_ids)
+            try:
+                await self.recalculate_contact(contact_id)
+                processed += 1
+            except Exception:
+                failures += 1
+                logger.exception("Audience recalc failed for contact_id=%s", contact_id)
+        if failures:
+            logger.warning(
+                "Audience recalculate_all finished with failures: ok=%s failed=%s total=%s",
+                processed,
+                failures,
+                len(contact_ids),
+            )
+        return processed
+
+    @staticmethod
+    def _interest_evidence_rank(item: InterestEvidence) -> tuple[datetime, int]:
+        return AudienceEngine._aware(item.observed_at), item.id
+
+    async def _dedupe_interest_evidence(
+        self,
+        session: AsyncSession,
+        rows: list[InterestEvidence],
+    ) -> dict[str, InterestEvidence]:
+        """Оставляем одну строку на interest_key; дубликаты удаляем до sync."""
+        survivors: dict[str, InterestEvidence] = {}
+        for item in rows:
+            current = survivors.get(item.interest_key)
+            if current is None:
+                survivors[item.interest_key] = item
+                continue
+            keeper, duplicate = (
+                (item, current)
+                if self._interest_evidence_rank(item) >= self._interest_evidence_rank(current)
+                else (current, item)
+            )
+            survivors[item.interest_key] = keeper
+            if sa_inspect(duplicate).has_identity:
+                await session.delete(duplicate)
+        return survivors
 
     async def _sync_interest_evidence(
         self,
@@ -482,8 +526,8 @@ class AudienceEngine:
                 select(InterestEvidence).where(InterestEvidence.contact_id == contact_id)
             )
         )
-        existing_by_key = {item.interest_key: item for item in existing}
-        for item in existing:
+        existing_by_key = await self._dedupe_interest_evidence(session, existing)
+        for item in existing_by_key.values():
             item.active = False
 
         evidenced_comment_ids: set[int] = set()

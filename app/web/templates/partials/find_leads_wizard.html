@@ -1,0 +1,263 @@
+{# Wizard «Найти лидов» — UI поверх существующего /api/scan. #}
+{% set rv = radar_vertical or selected_vertical or 'FURNITURE' %}
+{% set ig_ready = scan_budget.can_start or (not scan_budget.is_live) %}
+<section class="find-leads" data-find-leads data-find-vertical="{{ rv }}">
+  <header class="find-leads-hero">
+    <h2>Найдите новых клиентов для вашего бизнеса</h2>
+    <p>{% if rv == 'ARTIFICIAL_RATTAN' %}Выберите источники, задайте простую цель — Lead Radar найдёт людей и компании, которым нужен искусственный ротанг.{% else %}Выберите источники, задайте простую цель — Lead Radar найдёт людей, которым нужна мебель.{% endif %}</p>
+  </header>
+
+  <ol class="find-steps" data-find-steps aria-label="Шаги поиска">
+    <li class="is-active" data-find-step-tab="1"><span>1</span>Источник</li>
+    <li data-find-step-tab="2"><span>2</span>Что ищем</li>
+    <li data-find-step-tab="3"><span>3</span>Параметры</li>
+    <li data-find-step-tab="4"><span>4</span>Запуск</li>
+  </ol>
+
+  <div class="find-layout">
+    <div class="find-main">
+      {# —— Шаг 1 —— #}
+      <section class="find-panel is-active" data-find-panel="1">
+        <h3>Где искать?</h3>
+        <p class="find-lead">Можно выбрать несколько источников. Неподключённые помечены честно.</p>
+        <div class="find-sources" data-find-sources>
+          <label class="find-source is-available is-selected" data-source="instagram" data-source-available="1">
+            <input type="checkbox" name="find_source" value="instagram" checked>
+            <span class="find-source-check" aria-hidden="true"></span>
+            <span class="find-source-icon" aria-hidden="true"><i data-lucide="instagram"></i></span>
+            <b>Instagram</b>
+            <small>Комментарии, Reels, посты, публичные сигналы</small>
+            <em class="find-badge">Самый мощный источник</em>
+          </label>
+          <label class="find-source is-soon" data-source="telegram" data-source-available="0" title="Пока не подключён как источник поиска">
+            <input type="checkbox" name="find_source" value="telegram" disabled>
+            <span class="find-source-check" aria-hidden="true"></span>
+            <span class="find-source-icon" aria-hidden="true"><i data-lucide="send"></i></span>
+            <b>Telegram</b>
+            <small>Группы, каналы, чаты, сообщения</small>
+            <em class="find-badge muted">Скоро · Сильный B2B</em>
+          </label>
+          <label class="find-source is-soon" data-source="tiktok" data-source-available="0">
+            <input type="checkbox" name="find_source" value="tiktok" disabled>
+            <span class="find-source-check" aria-hidden="true"></span>
+            <span class="find-source-icon" aria-hidden="true"><i data-lucide="video"></i></span>
+            <b>TikTok</b>
+            <small>Видео и комментарии</small>
+            <em class="find-badge muted">Не подключено</em>
+          </label>
+          <label class="find-source is-soon" data-source="facebook" data-source-available="0">
+            <input type="checkbox" name="find_source" value="facebook" disabled>
+            <span class="find-source-check" aria-hidden="true"></span>
+            <span class="find-source-icon" aria-hidden="true"><i data-lucide="facebook"></i></span>
+            <b>Facebook</b>
+            <small>Посты, группы, комментарии</small>
+            <em class="find-badge muted">Не подключено</em>
+          </label>
+          <label class="find-source is-soon" data-source="maps" data-source-available="0">
+            <input type="checkbox" name="find_source" value="maps" disabled>
+            <span class="find-source-check" aria-hidden="true"></span>
+            <span class="find-source-icon" aria-hidden="true"><i data-lucide="map-pin"></i></span>
+            <b>Google / Карты</b>
+            <small>Новые кафе, рестораны, гостиницы и компании</small>
+            <em class="find-badge muted">Скоро · Ранние возможности</em>
+          </label>
+          <label class="find-source is-soon" data-source="olx" data-source-available="0">
+            <input type="checkbox" name="find_source" value="olx" disabled>
+            <span class="find-source-check" aria-hidden="true"></span>
+            <span class="find-source-icon" aria-hidden="true"><i data-lucide="shopping-bag"></i></span>
+            <b>OLX.uz</b>
+            <small>«Куплю», «ищу», «нужна мебель»</small>
+            <em class="find-badge muted">Скоро · Прямой спрос</em>
+          </label>
+          <label class="find-source is-soon" data-source="glotr" data-source-available="0">
+            <input type="checkbox" name="find_source" value="glotr" disabled>
+            <span class="find-source-check" aria-hidden="true"></span>
+            <span class="find-source-icon" aria-hidden="true"><i data-lucide="briefcase"></i></span>
+            <b>Glotr.uz</b>
+            <small>Заявки поставщикам и B2B-компании</small>
+            <em class="find-badge muted">Скоро · Горячие B2B</em>
+          </label>
+          <label class="find-source is-soon" data-source="tenders" data-source-available="0">
+            <input type="checkbox" name="find_source" value="tenders" disabled>
+            <span class="find-source-check" aria-hidden="true"></span>
+            <span class="find-source-icon" aria-hidden="true"><i data-lucide="file-text"></i></span>
+            <b>Тендеры / закупки</b>
+            <small>Государственные и коммерческие закупки мебели</small>
+            <em class="find-badge muted">Скоро · Крупные объёмы</em>
+          </label>
+          <label class="find-source is-soon" data-source="web" data-source-available="0">
+            <input type="checkbox" name="find_source" value="web" disabled>
+            <span class="find-source-check" aria-hidden="true"></span>
+            <span class="find-source-icon" aria-hidden="true"><i data-lucide="globe"></i></span>
+            <b>Web</b>
+            <small>Сайты, новости, публикации</small>
+            <em class="find-badge muted">Скоро · Доп. сигналы</em>
+          </label>
+        </div>
+
+        <div class="find-presets">
+          <h4>Не знаете, с чего начать?</h4>
+          <div class="find-preset-grid">
+            <button type="button" class="find-preset" data-find-preset="quick">
+              <span aria-hidden="true"><i data-lucide="flame"></i></span>
+              <b>Быстрый старт</b>
+              <small>Прямая потребность в уже подключённых источниках</small>
+            </button>
+            <button type="button" class="find-preset" data-find-preset="horeca">
+              <span aria-hidden="true"><i data-lucide="utensils"></i></span>
+              <b>Рестораны и кафе</b>
+              <small>HoReCa, новые заведения, открывающиеся точки</small>
+            </button>
+            <button type="button" class="find-preset" data-find-preset="wholesale">
+              <span aria-hidden="true"><i data-lucide="factory"></i></span>
+              <b>Производители и опт</b>
+              <small>Цеха, дилеры, опт, искусственный ротанг</small>
+            </button>
+          </div>
+        </div>
+        <div class="find-nav-row">
+          <a class="btn ghost" href="/">Отмена</a>
+          <button type="button" class="btn primary" data-find-next>Далее →</button>
+        </div>
+      </section>
+
+      {# —— Шаг 2 —— #}
+      <section class="find-panel" data-find-panel="2" hidden>
+        <h3>Кого вы хотите найти?</h3>
+        <div class="find-audience" data-find-audience>
+          <label class="find-choice is-selected"><input type="radio" name="find_audience" value="buyers_now" checked><b>Люди, которым прямо сейчас нужна мебель</b><small>Сколько стоит? Есть в наличии? Нужна доставка. Нужно 20 штук. Опт есть?</small></label>
+          <label class="find-choice"><input type="radio" name="find_audience" value="interested"><b>Люди, которые интересуются мебелью</b><small>Обсуждают мебель, общие вопросы, более слабые сигналы</small></label>
+          <label class="find-choice"><input type="radio" name="find_audience" value="companies_soon"><b>Компании, которым скоро понадобится мебель</b><small>Открывается кафе, гостиница, офис, ремонт, новый филиал</small></label>
+          <label class="find-choice"><input type="radio" name="find_audience" value="makers"><b>Производители / дилеры</b><small>Мебельщики, плетёнка, цеха, оптовики, сырьё из ротанга</small></label>
+        </div>
+        <h4>Категория товара</h4>
+        <div class="find-chips" data-find-categories>
+          {% for value, label in [
+            ('chairs','Стулья'),('tables','Столы'),('sets','Комплекты'),('outdoor','Уличная мебель'),
+            ('horeca','HoReCa мебель'),('office','Офисная мебель'),('custom','Мебель на заказ'),
+            ('rattan','Искусственный ротанг'),('all','Всё')
+          ] %}
+          <label class="find-chip {% if value == 'all' or (rv == 'ARTIFICIAL_RATTAN' and value == 'rattan') %}is-selected{% endif %}">
+            <input type="checkbox" name="find_category" value="{{ value }}" {% if value == 'all' or (rv == 'ARTIFICIAL_RATTAN' and value == 'rattan') %}checked{% endif %}>{{ label }}
+          </label>
+          {% endfor %}
+        </div>
+        <div class="find-nav-row">
+          <button type="button" class="btn ghost" data-find-prev>← Назад</button>
+          <button type="button" class="btn primary" data-find-next>Далее →</button>
+        </div>
+      </section>
+
+      {# —— Шаг 3 —— #}
+      <section class="find-panel" data-find-panel="3" hidden>
+        <h3>Параметры поиска</h3>
+        <h4>Языки</h4>
+        <div class="find-chips" data-find-languages>
+          {% for value, label in [('ru','Русский'),('uz_lat','O‘zbek lotin'),('uz_cyr','Ўзбек кирилл'),('mixed','Смешанный RU/UZ')] %}
+          <label class="find-chip is-selected"><input type="checkbox" name="find_lang" value="{{ value }}" checked>{{ label }}</label>
+          {% endfor %}
+        </div>
+        <p class="muted find-note find-soft-tip" data-find-lang-soft>Язык — ваш ориентир для чтения сигналов. Поиск не режет выдачу по языку и не выдумывает перевод.</p>
+        <h4>География</h4>
+        <div class="find-chips" data-find-geo>
+          <label class="find-chip is-selected"><input type="radio" name="find_geo" value="UZ" checked>Узбекистан</label>
+          {% for value, label in [('Tashkent','Ташкент'),('Samarkand','Самарканд'),('Bukhara','Бухара'),('Andijan','Андижан'),('Fergana','Фергана')] %}
+          <label class="find-chip"><input type="radio" name="find_geo" value="{{ value }}">{{ label }}</label>
+          {% endfor %}
+        </div>
+        <p class="muted find-note find-soft-tip" data-find-geo-soft>География — мягкий ориентир. Если в сигнале город не подтверждён, мы оставляем «неизвестно» и не подставляем выбранный город.</p>
+        <h4>Сила сигнала</h4>
+        <div class="find-audience" data-find-heat>
+          <label class="find-choice is-selected"><input type="radio" name="find_heat" value="hot" checked><b>🔥 Только горячие</b><small>Прямая коммерческая потребность. Рекомендуем.</small></label>
+          <label class="find-choice"><input type="radio" name="find_heat" value="warm"><b>🟠 Горячие + тёплые</b><small>Добавляет потенциальный интерес</small></label>
+          <label class="find-choice"><input type="radio" name="find_heat" value="all"><b>🔵 Все потенциальные</b><small>Может сильно увеличить нерелевантные результаты и расход credits</small></label>
+        </div>
+        <div class="alert warn" data-find-heat-warn hidden><b>Внимание</b><span>Режим «Все потенциальные» может заметно увеличить расход credits и шум в выдаче.</span></div>
+        <div class="find-nav-row">
+          <button type="button" class="btn ghost" data-find-prev>← Назад</button>
+          <button type="button" class="btn primary" data-find-next>Далее →</button>
+        </div>
+      </section>
+
+      {# —— Шаг 4 —— #}
+      <section class="find-panel" data-find-panel="4" hidden>
+        <h3>Запуск поиска</h3>
+        <p class="find-lead">Проверка идёт по публичным сигналам Instagram конкурентов в вашей вертикали. Технические детали остаются внутри системы.</p>
+
+        {% if not master_live_ready and scan_budget.is_live %}
+        <div class="alert warn"><b>Live пока недоступен</b><span>Нужен master unlock в настройках. Offline/replay можно запускать без расхода.</span></div>
+        {% elif scan_budget.is_live and not ops.radar_live_armed %}
+        <div class="alert warn">
+          <b>Мониторинг выключен</b>
+          <span>Включите Live-поиск, чтобы искать в Instagram.</span>
+          <form data-api-form method="post" action="/api/ops/radar-live" data-reload="1" class="inline-form">
+            <input type="hidden" name="armed" value="true">
+            <input type="hidden" name="default_scan_credits" value="{{ ops.default_scan_credits or 5 }}">
+            <button class="btn success tiny" type="submit">Включить Live-поиск</button>
+          </form>
+        </div>
+        {% endif %}
+
+        <div class="find-budget-facts">
+          <div><span>Максимальный расход</span><b data-find-budget-max>до {{ scan_budget.effective_max_credits }} credits</b></div>
+          <div><span>Использовано за месяц</span><b>{{ scan_budget.used_this_month }} / {{ scan_budget.monthly_hard_limit or '—' }}</b></div>
+          <div><span>Остаток месяца</span><b data-find-budget-monthly>{{ scan_budget.monthly_remaining if scan_budget.monthly_remaining is not none else '—' }}</b></div>
+          <div><span>Сегодня / scan cap</span><b data-find-budget-daily>{{ scan_budget.daily_remaining }} · cap {{ settings.instagram_max_units_per_scan }}</b></div>
+          <div><span>Баланс</span><b>{% if scan_budget.credits_remaining is not none %}{{ '{:,}'.format(scan_budget.credits_remaining).replace(',', ' ') }}{% else %}не подтверждён{% endif %}</b></div>
+        </div>
+        <p class="muted">Лимит на этот запуск выбирается в блоке <a href="#radar-budget-card">Бюджет проверки</a> ниже. Формулировка: максимальный расход, а не фиксированная цена.</p>
+        <div class="find-nav-row find-launch-row">
+          <button type="button" class="btn ghost" data-find-prev>← Назад</button>
+          <button
+            type="button"
+            class="btn primary find-launch"
+            data-scan
+            data-find-launch
+            {% if not scan_budget.can_start and scan_budget.is_live %}disabled{% endif %}
+          >Найти лидов →</button>
+        </div>
+        <p class="muted find-note">Кнопка использует существующие лимиты, kill switch и controlled pilot. Фактический расход может быть меньше максимума.</p>
+        {% if settings.monitor_schedule_enabled %}
+        <a class="btn ghost" href="/system{% if rv == 'ARTIFICIAL_RATTAN' %}?vertical=ARTIFICIAL_RATTAN{% endif %}" data-find-monitor title="Планировщик уже в конфигурации — управляйте в Системе">Следить постоянно · в Системе</a>
+        {% else %}
+        <button type="button" class="btn ghost" data-find-monitor disabled title="Автомониторинг не включён в конфигурации. Включается только вручную и безопасно через Систему.">Следить постоянно</button>
+        <small class="muted find-note">Постоянный мониторинг не запускается сам. Когда будет безопасно — включите его в <a href="/system{% if rv == 'ARTIFICIAL_RATTAN' %}?vertical=ARTIFICIAL_RATTAN{% endif %}">Системе</a>.</small>
+        {% endif %}
+      </section>
+    </div>
+
+    <aside class="find-summary" aria-label="Сводка поиска">
+      <div class="find-summary-card tip">
+        <b>Просто. Быстро. По делу.</b>
+        <span>Без сложных технических настроек на виду.</span>
+      </div>
+      <div class="find-summary-card" data-find-summary>
+        <h3>Ваш поиск</h3>
+        <dl>
+          <div><dt>Источники</dt><dd data-sum-sources>Instagram</dd></div>
+          <div><dt>Ищем</dt><dd data-sum-audience>Покупателей мебели</dd></div>
+          <div><dt>Категория</dt><dd data-sum-category>Всё</dd></div>
+          <div><dt>География</dt><dd data-sum-geo>Узбекистан</dd></div>
+          <div><dt>Язык</dt><dd data-sum-lang>RU + UZ</dd></div>
+          <div><dt>Сигналы</dt><dd data-sum-heat>Только горячие</dd></div>
+        </dl>
+        <p class="find-summary-soft" data-sum-soft>Язык и город — ориентир для вас, не жёсткий фильтр запуска.</p>
+      </div>
+      <div class="find-summary-card example">
+        <h3>Пример результата</h3>
+        <article class="find-example-lead" aria-hidden="true">
+          <header><b>@tashkent_cafe</b><small>Instagram · пример</small></header>
+          <p>«Нужно 20 стульев для нашего кафе. Есть доставка в Ташкент?»</p>
+          <div class="find-example-tags"><span>B2B</span><span>20 стульев</span><span>Ташкент</span><span class="hot">HOT</span></div>
+          <small>Confidence: 96% · UI-пример, не сохранён в базе</small>
+        </article>
+      </div>
+      <div class="find-summary-card value">
+        <b>Lead Radar найдёт таких людей автоматически</b>
+        <span>Вы получите готовых потенциальных клиентов, а не просто список комментариев.</span>
+      </div>
+      <button type="button" class="btn primary find-summary-cta" data-find-next data-find-summary-cta>Далее →</button>
+      <small class="find-summary-cta-hint" data-find-summary-hint>Следующий шаг: что ищем</small>
+    </aside>
+  </div>
+</section>

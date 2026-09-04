@@ -131,6 +131,244 @@ async def test_lead_stage_api_moves_funnel(session_factory):
     assert qualified.json()["status"] == "QUALIFIED"
 
 
+async def test_reanalyze_batch_api(session_factory):
+    lead_id = await create_lead(session_factory)
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/leads/reanalyze-batch", json={"limit": 5})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["processed"] >= 1
+    assert "message" in body
+    assert lead_id  # lead создан и должен попасть в выборку NEW
+
+
+async def test_bulk_lead_action_api(session_factory):
+    lead_id = await create_lead(session_factory)
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/leads/bulk-action",
+            json={"action": "take", "lead_ids": [lead_id]},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["processed"] == 1
+    assert "Сохранено" in body["message"]
+
+
+async def test_follow_up_api_schedules_task(session_factory):
+    lead_id = await create_lead(session_factory)
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            f"/api/leads/{lead_id}/follow-up",
+            json={"hours": 24},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["task_id"]
+    assert "напоминание" in body["message"].lower()
+
+
+async def test_bulk_competitors_active_api(session_factory):
+    crm = CRMService(session_factory)
+    first = await crm.add_competitor("wave5pause1", display_name="Wave5 Pause 1", tier="B")
+    second = await crm.add_competitor("wave5pause2", display_name="Wave5 Pause 2", tier="C")
+    assert first.active is True
+    assert second.active is True
+
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=crm,
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        pause = await client.post(
+            "/api/competitors/bulk-active",
+            json={"competitor_ids": [first.id, second.id], "active": False},
+        )
+        resume = await client.post(
+            "/api/competitors/bulk-active",
+            json={"competitor_ids": [first.id], "active": True},
+        )
+        page = await client.get("/competitors")
+
+    assert pause.status_code == 200
+    pause_body = pause.json()
+    assert pause_body["ok"] is True
+    assert pause_body["changed"] == 2
+    assert "паузу" in pause_body["message"].lower()
+
+    assert resume.status_code == 200
+    resume_body = resume.json()
+    assert resume_body["ok"] is True
+    assert resume_body["changed"] == 1
+    assert resume_body["active"] is True
+
+    assert page.status_code == 200
+    assert "data-competitor-bulk" in page.text
+    assert "competitors-plain-help" in page.text
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        noop = await client.post(
+            "/api/competitors/bulk-active",
+            json={"competitor_ids": [first.id], "active": True},
+        )
+    assert noop.status_code == 200
+    assert noop.json()["changed"] == 0
+
+
+async def test_leads_export_csv_and_scan_progress_gpt_queue(session_factory):
+    lead_id = await create_lead(session_factory)
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        export = await client.get("/api/leads/export.csv")
+        progress = await client.get("/api/scan/progress")
+        system = await client.get("/system")
+        discovery = await client.get("/discovery")
+
+    assert export.status_code == 200
+    assert "text/csv" in export.headers.get("content-type", "")
+    body = export.text
+    assert "lead_id" in body
+    assert str(lead_id) in body
+    assert "username" in body
+
+    assert progress.status_code == 200
+    progress_body = progress.json()
+    assert "ai_pending" in progress_body
+    assert "analyzing" in progress_body
+    assert "gpt_queue_total" in progress_body
+
+    assert system.status_code == 200
+    assert "manager-feedback-quality" in system.text
+    assert "HOT → не лид" in system.text or "HOT FP" in system.text
+    assert "Правила обновились" in system.text or "rules_reanalyze" in system.text or "v3.2" in system.text or "текущие правила" in system.text
+
+    assert discovery.status_code == 200
+    from pathlib import Path
+
+    discovery_tpl = Path("app/web/templates/discovery.html").read_text(encoding="utf-8")
+    assert "В радар активно" in discovery_tpl
+    assert "discovery-promote-handle" in discovery_tpl
+    assert "discovery-import" in discovery.text
+
+
+async def test_wave8_economics_export_assign_analyze_new(session_factory):
+    lead_id = await create_lead(session_factory)
+    settings = Settings(
+        _env_file=None,
+        web_enabled=True,
+        instagram_provider="replay",
+        web_manager_id=1001,
+        telegram_admin_chat_ids=[1001, 2002],
+    )
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        economics_csv = await client.get("/api/economics/export.csv?days=30")
+        detail = await client.get(f"/leads/{lead_id}")
+        assign = await client.post(
+            f"/api/leads/{lead_id}/assign",
+            json={"manager_id": 1001, "reassign": True},
+        )
+        analyze = await client.post(f"/api/leads/{lead_id}/analyze", json={})
+        system = await client.get("/system")
+
+    assert economics_csv.status_code == 200
+    assert "openai_usd_per_lead" in economics_csv.text
+    assert "roi_status" in economics_csv.text
+
+    assert detail.status_code == 200
+    assert "lead-assign" in detail.text
+    assert "GPT выключен" in detail.text or "openai_spend_allowed" in detail.text
+    assert "/api/leads/" in detail.text and "/analyze" in detail.text
+
+    assert assign.status_code == 200
+    assert assign.json()["assigned_manager_telegram_id"] == 1001
+
+    # После assign статус TAKEN — analyze должен вернуть 409
+    assert analyze.status_code == 409
+
+    assert system.status_code == 200
+    assert "proxy cache-hit" in system.text
+    assert "OpenAI cost-событий" in system.text
+
+    # Отдельный NEW-лид: analyze локальными правилами, затем назначение
+    new_lead_id = await create_lead(
+        session_factory, comment_id="comment-wave8-new", user_id="user-wave8-new"
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        analyze_new = await client.post(f"/api/leads/{new_lead_id}/analyze", json={})
+        assert analyze_new.status_code == 200
+        assert analyze_new.json()["ok"] is True
+        assign_new = await client.post(
+            f"/api/leads/{new_lead_id}/assign",
+            json={"manager_id": 1001, "reassign": True},
+        )
+        # Если анализ уже закрыл лид как NOT_LEAD — assign ожидаемо 409
+        if assign_new.status_code == 200:
+            assert assign_new.json()["assigned_manager_telegram_id"] == 1001
+            reassign = await client.post(
+                f"/api/leads/{new_lead_id}/assign",
+                json={"manager_id": 2002, "reassign": True},
+            )
+            assert reassign.status_code == 200
+            assert reassign.json()["assigned_manager_telegram_id"] == 2002
+        else:
+            assert assign_new.status_code == 409
+            assert analyze_new.json().get("status") == "NOT_LEAD"
+
+
 async def test_uncertain_notification_resolve_api(session_factory):
     from sqlalchemy import select
 

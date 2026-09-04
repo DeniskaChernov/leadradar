@@ -116,6 +116,12 @@ class ContactService:
                     text=comment_data.text,
                     created_at_platform=comment_data.created_at,
                     is_baseline=is_baseline,
+                    parent_platform_comment_id=comment_data.parent_platform_comment_id,
+                    parent_comment_text=await self._resolve_parent_comment_text(
+                        session,
+                        post_id=post.id,
+                        parent_platform_comment_id=comment_data.parent_platform_comment_id,
+                    ),
                     raw_data=comment_data.raw_data,
                 )
                 session.add(comment)
@@ -227,6 +233,23 @@ class ContactService:
                     public_signal_id=public_signal.id if public_signal else None,
                     vertical=public_signal.vertical if public_signal else Vertical.FURNITURE,
                 )
+
+    @staticmethod
+    async def _resolve_parent_comment_text(
+        session: AsyncSession,
+        *,
+        post_id: int,
+        parent_platform_comment_id: str | None,
+    ) -> str | None:
+        if not parent_platform_comment_id:
+            return None
+        parent_text = await session.scalar(
+            select(Comment.text).where(
+                Comment.post_id == post_id,
+                Comment.platform_comment_id == parent_platform_comment_id,
+            )
+        )
+        return (parent_text or "").strip() or None
 
     @staticmethod
     def _comment_dedupe_key(platform: str, external_id: str) -> str:

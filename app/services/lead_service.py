@@ -33,6 +33,11 @@ from app.services.ai_service import (
     ValidatedPreviousSignal,
 )
 from app.services.contact_service import PersistedSignal
+from app.services.signal_recency import (
+    fresh_signal_clause,
+    is_signal_within_window,
+    signal_observed_at,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,17 +69,24 @@ class LeadService:
         hot_threshold: int,
         audience_engine: AudienceEngine | None = None,
         change_detector: SignificantChangeDetector | None = None,
+        *,
+        signal_max_age_days: int = 30,
+        rules_version: str = "3.2",
     ) -> None:
         self.session_factory = session_factory
         self.analyzer = analyzer
         self.hot_threshold = hot_threshold
         self.audience_engine = audience_engine
         self.change_detector = change_detector
+        self.signal_max_age_days = max(0, signal_max_age_days)
+        self.rules_version = (rules_version or "3.2").strip() or "3.2"
 
     async def process_signal(
         self, signal: PersistedSignal, *, allow_baseline: bool = False
     ) -> ProcessedLead | None:
         if not signal.created or (signal.is_baseline and not allow_baseline):
+            return None
+        if not await self._signal_is_fresh(signal.comment_id):
             return None
 
         prepared = await self.ensure_analyzing(signal)
@@ -234,11 +246,12 @@ class LeadService:
             lead.ai_reason = analysis.reason
             lead.analysis_details = analysis.model_dump(mode="json")
             lead.analysis_details["vertical"] = lead.vertical.value
+            lead.analysis_details["rules_version"] = self.rules_version
             if taxonomy:
                 lead.analysis_details["rattan_taxonomy"] = taxonomy
             lead.language = analysis.language
             lead.ai_source = analysis_source
-            if lead.status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING}:
+            if lead.status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING, LeadStatus.NOT_LEAD}:
                 lead.status = LeadStatus.NEW if analysis.is_lead else LeadStatus.NOT_LEAD
             contact.current_lead_score = max(contact.current_lead_score, analysis.lead_score)
             feedback = await session.scalar(select(AIFeedback).where(AIFeedback.lead_id == lead.id))
@@ -327,7 +340,10 @@ class LeadService:
                     await session.execute(
                         select(Comment)
                         .outerjoin(Lead, Lead.comment_id == Comment.id)
-                        .where(Lead.id.is_(None))
+                        .where(
+                            Lead.id.is_(None),
+                            fresh_signal_clause(max_age_days=self.signal_max_age_days),
+                        )
                         .order_by(Comment.created_at_platform.desc(), Comment.id.desc())
                         .limit(limit)
                     )
@@ -367,7 +383,9 @@ class LeadService:
             return list(
                 await session.scalars(
                     select(Lead.id)
+                    .join(Comment, Comment.id == Lead.comment_id)
                     .where(
+                        fresh_signal_clause(max_age_days=self.signal_max_age_days),
                         or_(
                             (
                                 (Lead.status == LeadStatus.AI_PENDING)
@@ -383,12 +401,68 @@ class LeadService:
                                     | (Lead.ai_last_attempt_at <= stale_analyzing)
                                 )
                             ),
-                        )
+                        ),
                     )
                     .order_by(Lead.created_at)
                     .limit(limit)
                 )
             )
+
+    async def list_reanalyze_lead_ids(
+        self,
+        limit: int = 50,
+        *,
+        include_not_lead_high_score: bool = False,
+        min_not_lead_score: int = 50,
+    ) -> list[int]:
+        """Свежие лиды NEW/AI_PENDING или спорные NOT_LEAD для переоценки."""
+        if limit <= 0:
+            return []
+        statuses = [LeadStatus.NEW, LeadStatus.AI_PENDING, LeadStatus.ANALYZING]
+        if include_not_lead_high_score:
+            statuses.append(LeadStatus.NOT_LEAD)
+        async with self.session_factory() as session:
+            stmt = (
+                select(Lead.id)
+                .join(Comment, Comment.id == Lead.comment_id)
+                .where(
+                    fresh_signal_clause(max_age_days=self.signal_max_age_days),
+                    Lead.status.in_(statuses),
+                )
+            )
+            if include_not_lead_high_score:
+                stmt = stmt.where(
+                    or_(
+                        Lead.status != LeadStatus.NOT_LEAD,
+                        Lead.lead_score >= min_not_lead_score,
+                    )
+                )
+            return list(
+                await session.scalars(
+                    stmt.order_by(Lead.lead_score.desc(), Lead.updated_at.asc()).limit(limit)
+                )
+            )
+
+    async def reanalyze_batch(
+        self,
+        limit: int = 25,
+        *,
+        include_not_lead_high_score: bool = False,
+        min_not_lead_score: int = 50,
+    ) -> list[ProcessedLead]:
+        """Повторный полный analyze_lead для накопившихся лидов."""
+        lead_ids = await self.list_reanalyze_lead_ids(
+            limit,
+            include_not_lead_high_score=include_not_lead_high_score,
+            min_not_lead_score=min_not_lead_score,
+        )
+        results: list[ProcessedLead] = []
+        for lead_id in lead_ids:
+            try:
+                results.append(await self.analyze_lead(lead_id))
+            except Exception:
+                logger.exception("reanalyze_batch_failed lead_id=%s", lead_id)
+        return results
 
     async def retry_pending(
         self,
@@ -645,6 +719,7 @@ class LeadService:
             competitor=competitor.normalized_handle,
             post_caption=post.caption,
             comment=comment.text,
+            parent_comment=(comment.parent_comment_text or "").strip(),
             username=contact.username,
             previous_signals=previous,
             previous_interests=previous_interests,
@@ -680,6 +755,19 @@ class LeadService:
         if analyze_with_source is not None:
             return await analyze_with_source(context)
         return await self.analyzer.analyze(context), "custom_analyzer"
+
+    async def _signal_is_fresh(self, comment_id: int) -> bool:
+        async with self.session_factory() as session:
+            comment = await session.get(Comment, comment_id)
+            if comment is None:
+                return False
+            return is_signal_within_window(
+                signal_observed_at(
+                    created_at_platform=comment.created_at_platform,
+                    discovered_at=comment.discovered_at,
+                ),
+                max_age_days=self.signal_max_age_days,
+            )
 
     def _to_result(self, lead: Lead, *, created: bool) -> ProcessedLead:
         return ProcessedLead(

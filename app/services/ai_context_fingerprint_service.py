@@ -53,6 +53,7 @@ class AIContextFingerprintService:
             "competitor": (context.competitor or "").strip().lower(),
             "post_caption": (context.post_caption or "").strip(),
             "comment": (context.comment or "").strip(),
+            "parent_comment": (context.parent_comment or "").strip(),
             "username": (context.username or "").strip().lower(),
             "stable_contact_id": context.stable_contact_id,
             "vertical": context.vertical,

@@ -26,6 +26,7 @@ def _live_settings(**changes) -> Settings:
         "ai_mode": "rules",
         "telegram_bot_token": "configured-for-test",
         "telegram_admin_chat_ids": [1001],
+        "telegram_manager_chat_ids": [1001],
     }
     values.update(changes)
     return Settings(_env_file=None, **values)
@@ -47,6 +48,11 @@ def test_live_readiness_is_fail_closed_for_every_required_boundary():
         (_live_settings(scrapecreators_api_key=""), _healthy_state(), "API_KEY"),
         (_live_settings(telegram_bot_token=""), _healthy_state(), "TELEGRAM_BOT_TOKEN"),
         (_live_settings(telegram_admin_chat_ids=[]), _healthy_state(), "admin ID"),
+        (
+            _live_settings(telegram_manager_chat_ids=[]),
+            _healthy_state(),
+            "TELEGRAM_MANAGER_CHAT_IDS",
+        ),
         (_live_settings(), _healthy_state(backup_present=False), "backup"),
         (
             _live_settings(),

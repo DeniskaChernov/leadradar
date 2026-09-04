@@ -68,7 +68,7 @@ class NotificationReadinessService:
         session_factory: async_sessionmaker[AsyncSession],
         workflow: LeadWorkflowService,
         *,
-        admin_chat_ids: list[int],
+        manager_chat_ids: list[int],
         default_policy: NotificationPolicy,
         hot_threshold: int,
         token_configured: bool,
@@ -77,7 +77,7 @@ class NotificationReadinessService:
     ) -> None:
         self.session_factory = session_factory
         self.workflow = workflow
-        self.admin_chat_ids = list(dict.fromkeys(admin_chat_ids))
+        self.manager_chat_ids = list(dict.fromkeys(manager_chat_ids))
         self.default_policy = default_policy
         self.hot_threshold = hot_threshold
         self.token_configured = token_configured
@@ -117,7 +117,7 @@ class NotificationReadinessService:
         for row in rows:
             card = await self.workflow.get_lead_card(int(row.id))
             policy = row.notification_policy or self.default_policy
-            target_count = 1 if row.assigned_manager_telegram_id else len(self.admin_chat_ids)
+            target_count = 1 if row.assigned_manager_telegram_id else len(self.manager_chat_ids)
             decision, reason = self._decision(
                 card.status,
                 card.score,
@@ -159,7 +159,7 @@ class NotificationReadinessService:
             token_configured=self.token_configured,
             delivery_allowed_by_config=self.delivery_allowed_by_config,
             worker_active=self.worker_active,
-            admin_target_count=len(self.admin_chat_ids),
+            admin_target_count=len(self.manager_chat_ids),
             total_reviewed=len(previews),
             eligible=counts["ELIGIBLE"],
             queued=counts["QUEUED"],

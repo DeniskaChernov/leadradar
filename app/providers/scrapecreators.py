@@ -153,11 +153,12 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         *,
         known_comment_ids: set[str] | None = None,
         max_pages: int | None = None,
+        cursor: str | None = None,
     ) -> CommentFetchResult:
         comments: list[InstagramComment] = []
         seen_ids: set[str] = set()
         known_comment_ids = known_comment_ids or set()
-        cursor: str | None = None
+        page_cursor: str | None = cursor
         pages = 0
         cursor_exhausted = False
         stopped_on_known = False
@@ -166,9 +167,9 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             page_limit = max(1, min(page_limit, int(max_pages)))
 
         while pages < page_limit:
-            params = {"url": post.url, "include_replies": "false"}
-            if cursor:
-                params["cursor"] = cursor
+            params = {"url": post.url, "include_replies": "true"}
+            if page_cursor:
+                params["cursor"] = page_cursor
             payload = await self._request_json(
                 "GET",
                 f"{self.base_url}/v2/instagram/post/comments",
@@ -196,15 +197,18 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             # we already fetched. Stopping here usually turns a 10-page refresh into one request.
             if page_has_known:
                 stopped_on_known = True
+                page_cursor = None
                 break
 
             next_cursor = payload.get("cursor") if isinstance(payload, dict) else None
             if not next_cursor:
                 cursor_exhausted = True
+                page_cursor = None
                 break
-            if str(next_cursor) == cursor:
+            if str(next_cursor) == page_cursor:
+                page_cursor = None
                 break
-            cursor = str(next_cursor)
+            page_cursor = str(next_cursor)
 
         coverage = "FULL" if cursor_exhausted else "UNKNOWN" if stopped_on_known else "PARTIAL"
         return CommentFetchResult(
@@ -214,6 +218,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             coverage_status=coverage,
             cursor_exhausted=cursor_exhausted,
             stopped_on_known_comment=stopped_on_known,
+            next_cursor=None if cursor_exhausted or stopped_on_known else page_cursor,
         )
 
     @staticmethod
@@ -241,6 +246,13 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         if not isinstance(user, dict):
             raise ProviderResponseError("ScrapeCreators comment has no user")
         username = _required_string(user, "username")
+        parent_id = _optional_string(
+            item.get("parent_comment_id")
+            or item.get("replied_to_comment_id")
+            or item.get("parent_id")
+        )
+        if parent_id is None and isinstance(item.get("parent"), dict):
+            parent_id = _optional_string(item["parent"].get("id") or item["parent"].get("pk"))
         return InstagramComment(
             platform_comment_id=_required_string(item, "id"),
             platform_user_id=_optional_string(user.get("id") or user.get("pk")),
@@ -249,6 +261,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             profile_url=f"https://www.instagram.com/{username}/",
             text=_required_string(item, "text", allow_empty=True),
             created_at=parse_datetime(item.get("created_at")),
+            parent_platform_comment_id=parent_id,
             raw_data=item,
         )
 

@@ -239,6 +239,9 @@ async def inspect_integrity() -> IntegrityResult:
                 "evidence/public-signal vertical mismatches": select(Evidence.id)
                 .join(PublicSignal, PublicSignal.id == Evidence.public_signal_id)
                 .where(Evidence.vertical != PublicSignal.vertical),
+                "leads without comments": select(Lead.id)
+                .outerjoin(Comment, Comment.id == Lead.comment_id)
+                .where(Comment.id.is_(None)),
             }
             duplicates = {
                 name: len((await session.execute(query)).all()) for name, query in checks.items()

@@ -20,6 +20,7 @@ from app.services.usage_service import ExternalBudgetExceeded, ExternalUsageServ
 
 T = TypeVar("T")
 LiveGate = Callable[[], bool]
+LiveRefresh = Callable[[], Awaitable[bool]]
 
 
 class LiveCallsDisabledError(ProviderUsageBlockedError):
@@ -88,6 +89,16 @@ class ScanBudget:
     def refund(self, units: int) -> None:
         self.used = max(0, self.used - max(0, units))
 
+    def record_confirmed_spend(self, *, reserved: int, confirmed: int) -> None:
+        """Сверка ScanBudget и PROVIDER_CONFIRMED credits после reserve."""
+        safe_reserved = max(0, int(reserved))
+        safe_confirmed = max(0, int(confirmed))
+        if safe_confirmed > safe_reserved:
+            # Overshoot: фиксируем фактический spend (даже сверх cap) и останавливаем цикл выше.
+            self.used += safe_confirmed - safe_reserved
+        elif safe_confirmed < safe_reserved:
+            self.refund(safe_reserved - safe_confirmed)
+
 
 class BudgetedInstagramProvider(InstagramProvider):
     """Fail-closed wrapper for one live provider.
@@ -106,11 +117,13 @@ class BudgetedInstagramProvider(InstagramProvider):
         daily_limit: int,
         scan_budget: ScanBudget | None = None,
         live_gate: LiveGate | None = None,
+        live_refresh: LiveRefresh | None = None,
     ) -> None:
         self.inner = inner
         self.usage = usage
         self._master_enabled = enabled
         self._live_gate = live_gate
+        self._live_refresh = live_refresh
         self.daily_limit = daily_limit
         self.scan_budget = scan_budget
         self.name = inner.name
@@ -147,7 +160,15 @@ class BudgetedInstagramProvider(InstagramProvider):
         }
 
     async def _ensure_enabled(self, *, units: int = 1) -> None:
-        if not self.enabled:
+        # Перед spend всегда сверяем тумблер с БД (не только in-process cache).
+        if self._live_refresh is not None:
+            armed = await self._live_refresh()
+            if not self._master_enabled or not armed:
+                raise LiveCallsDisabledError(
+                    "Реальные Instagram-запросы выключены. "
+                    "Включайте их только перед контрольным тестом."
+                )
+        elif not self.enabled:
             raise LiveCallsDisabledError(
                 "Реальные Instagram-запросы выключены. "
                 "Включайте их только перед контрольным тестом."
@@ -155,7 +176,12 @@ class BudgetedInstagramProvider(InstagramProvider):
         if self.scan_budget is not None:
             self.scan_budget.assert_available(units)
         try:
-            await self.usage.assert_available("instagram", self.daily_limit, units=units)
+            await self.usage.assert_available(
+                "instagram",
+                self.daily_limit,
+                units=units,
+                enforce_daily_limit=False,
+            )
         except ExternalBudgetExceeded as exc:
             raise LiveCallsDisabledError(str(exc)) from exc
 
@@ -167,6 +193,7 @@ class BudgetedInstagramProvider(InstagramProvider):
                 operation,
                 self.daily_limit,
                 units=units,
+                enforce_daily_limit=False,
                 provider=self.inner.name,
             )
         except ExternalBudgetExceeded as exc:
@@ -201,8 +228,8 @@ class BudgetedInstagramProvider(InstagramProvider):
             ) from exc
         confirmed_units = await self._persist_credit_observations()
         actual_units = confirmed_units if confirmed_units is not None else 1
-        if self.scan_budget is not None and actual_units == 0:
-            self.scan_budget.refund(1)
+        if self.scan_budget is not None:
+            self.scan_budget.record_confirmed_spend(reserved=1, confirmed=actual_units)
         await self.usage.finalize_reservation(
             reservation_id,
             units=actual_units,
@@ -214,8 +241,8 @@ class BudgetedInstagramProvider(InstagramProvider):
         )
         if actual_units > 1:
             raise ScanBudgetExceededError(
-                "Фактическое списание провайдера превысило резерв одной операции. "
-                "Проверка остановлена для сверки бюджета."
+                f"Фактическое списание провайдера {actual_units} credits при резерве 1. "
+                "превысило резерв. Проверка остановлена для сверки бюджета."
             )
         return result
 
@@ -245,90 +272,114 @@ class BudgetedInstagramProvider(InstagramProvider):
         *,
         known_comment_ids: set[str] | None = None,
         max_pages: int | None = None,
+        cursor: str | None = None,
     ) -> CommentFetchResult:
-        # We cannot know the exact number of pages before the provider responds. Constrain the
-        # provider to the smaller of its requested page limit, the daily remainder and the scan
-        # remainder. This guarantees one Reel can never silently consume the whole quota.
+        """Комменты по одной странице: scan/daily учитывают PROVIDER_CONFIRMED credits, не «страницы»."""
         await self._ensure_enabled()
-        daily_remaining = (
-            await self.usage.snapshot("instagram", self.daily_limit)
-        ).remaining
-        scan_remaining = self.scan_budget.remaining if self.scan_budget is not None else daily_remaining
-        remaining = min(daily_remaining, scan_remaining)
-        if remaining <= 0:
-            raise ScanBudgetExceededError("На эту проверку больше нет разрешённых внешних операций")
+        page_cap = max(1, int(max_pages)) if max_pages is not None else None
+        source_account = post.competitor.strip().lower().lstrip("@")
 
-        effective_pages = remaining
-        if max_pages is not None:
-            effective_pages = min(effective_pages, max(1, int(max_pages)))
+        all_comments: list[InstagramComment] = []
+        seen_ids: set[str] = set()
+        pages_fetched = 0
+        cursor_exhausted = False
+        stopped_on_known = False
+        coverage = "UNKNOWN"
+        page_cursor = cursor
+        provider_name = self.inner.name
 
-        reservation_id = await self._reserve("get_comment_batch", effective_pages)
-        await self.usage.mark_call_started(reservation_id)
+        while page_cap is None or pages_fetched < page_cap:
+            remaining_before = self.scan_budget.remaining if self.scan_budget is not None else 1
+            if remaining_before <= 0:
+                if pages_fetched == 0:
+                    raise ScanBudgetExceededError(
+                        "На эту проверку больше нет разрешённых внешних операций"
+                    )
+                break
 
-        try:
-            result = await self.inner.get_comment_batch(
-                post,
-                known_comment_ids=known_comment_ids,
-                max_pages=effective_pages,
+            reservation_id = await self._reserve("get_comment_batch", 1)
+            await self.usage.mark_call_started(reservation_id)
+            details = {
+                "provider": self.inner.name,
+                "reserved_pages": 1,
+                "source_account": source_account,
+                "page_index": pages_fetched + 1,
+            }
+            try:
+                result = await self.inner.get_comment_batch(
+                    post,
+                    known_comment_ids=known_comment_ids,
+                    max_pages=1,
+                    cursor=page_cursor,
+                )
+            except Exception as exc:
+                await self._settle_failed_call(
+                    reservation_id,
+                    reserved_units=1,
+                    details=details,
+                    uncertain_reason="comment_batch_failed_without_provider_credit_observation",
+                )
+                raise ProviderCallUncertainError(
+                    "Comment batch failed after delivery started without provider credit proof"
+                ) from exc
+
+            confirmed_units = await self._persist_credit_observations()
+            units = (
+                confirmed_units
+                if confirmed_units is not None
+                else max(1, int(result.pages_fetched or 1))
             )
-        except Exception as exc:
-            await self._settle_failed_call(
-                reservation_id,
-                reserved_units=effective_pages,
-                details={
-                    "provider": self.inner.name,
-                    "reserved_pages": effective_pages,
-                    "source_account": post.competitor.strip().lower().lstrip("@"),
-                },
-                uncertain_reason="comment_batch_failed_without_provider_credit_observation",
-            )
-            raise ProviderCallUncertainError(
-                "Comment batch failed after delivery started without provider credit proof"
-            ) from exc
-
-        confirmed_units = await self._persist_credit_observations()
-        units = (
-            confirmed_units
-            if confirmed_units is not None
-            else max(1, int(result.pages_fetched or 1))
-        )
-        if units > remaining:
-            # A provider adapter that ignored max_pages is unsafe. Block further work and surface it.
+            if self.scan_budget is not None:
+                self.scan_budget.record_confirmed_spend(reserved=1, confirmed=units)
             await self.usage.finalize_reservation(
                 reservation_id,
                 units=units,
                 success=True,
                 details={
-                    "provider": self.inner.name,
-                    "pages": units,
-                    "over_budget_adapter": True,
-                    "source_account": post.competitor.strip().lower().lstrip("@"),
+                    **details,
+                    "credits": units,
+                    "pages_fetched": int(result.pages_fetched or 1),
+                    "over_budget_adapter": units > remaining_before,
                 },
                 unit_source=(
                     "PROVIDER_CONFIRMED" if confirmed_units is not None else "ESTIMATED"
                 ),
             )
-            raise ScanBudgetExceededError(
-                f"Провайдер вернул {units} страниц при разрешённом лимите {remaining}. "
-                "Проверка остановлена для защиты квоты."
-            )
 
-        if self.scan_budget is not None and units < effective_pages:
-            self.scan_budget.refund(effective_pages - units)
-        await self.usage.finalize_reservation(
-            reservation_id,
-            units=units,
-            success=True,
-            details={
-                "provider": self.inner.name,
-                "pages": units,
-                "source_account": post.competitor.strip().lower().lstrip("@"),
-            },
-            unit_source=(
-                "PROVIDER_CONFIRMED" if confirmed_units is not None else "ESTIMATED"
-            ),
+            pages_fetched += max(1, int(result.pages_fetched or 1))
+            provider_name = result.provider or provider_name
+            coverage = result.coverage_status or coverage
+            cursor_exhausted = bool(result.cursor_exhausted)
+            stopped_on_known = stopped_on_known or bool(result.stopped_on_known_comment)
+            for comment in result.comments:
+                if comment.platform_comment_id in seen_ids:
+                    continue
+                seen_ids.add(comment.platform_comment_id)
+                all_comments.append(comment)
+
+            if units > remaining_before:
+                raise ScanBudgetExceededError(
+                    f"Провайдер списал {units} credits при остатке scan {remaining_before}. "
+                    "Проверка остановлена для защиты квоты."
+                )
+
+            if stopped_on_known or cursor_exhausted or not result.next_cursor:
+                page_cursor = None
+                break
+            page_cursor = result.next_cursor
+
+        if pages_fetched == 0:
+            raise ScanBudgetExceededError("На эту проверку больше нет разрешённых внешних операций")
+
+        return CommentFetchResult(
+            comments=all_comments,
+            provider=provider_name,
+            pages_fetched=pages_fetched,
+            coverage_status=coverage,
+            cursor_exhausted=cursor_exhausted,
+            stopped_on_known_comment=stopped_on_known,
+            next_cursor=page_cursor,
         )
-        return result
 
     async def _settle_failed_call(
         self,
@@ -350,8 +401,11 @@ class BudgetedInstagramProvider(InstagramProvider):
                 details=details,
             )
             return
-        if self.scan_budget is not None and confirmed_units < reserved_units:
-            self.scan_budget.refund(reserved_units - confirmed_units)
+        if self.scan_budget is not None:
+            self.scan_budget.record_confirmed_spend(
+                reserved=reserved_units,
+                confirmed=confirmed_units,
+            )
         await self.usage.finalize_reservation(
             reservation_id,
             units=confirmed_units,

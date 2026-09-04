@@ -69,6 +69,7 @@ class MockInstagramProvider(InstagramProvider):
         *,
         known_comment_ids: set[str] | None = None,
         max_pages: int | None = None,
+        cursor: str | None = None,
     ) -> CommentFetchResult:
         if post.platform_post_id != self._post.platform_post_id:
             raise ProviderResponseError(f"Unknown mock post: {post.platform_post_id}")

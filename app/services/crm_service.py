@@ -16,9 +16,11 @@ from app.db.models import (
     ContactTask,
     Deal,
     DealStatus,
+    Evidence,
     Lead,
     LeadStatus,
     NotificationPolicy,
+    PublicSignal,
     TaskStatus,
     Vertical,
 )
@@ -29,16 +31,42 @@ from app.services.rattan_vertical_service import sync_business_vertical_enrollme
 ALLOWED_STAGE_TRANSITIONS: dict[LeadStatus, set[LeadStatus]] = {
     LeadStatus.ANALYZING: {LeadStatus.TAKEN, LeadStatus.NOT_LEAD},
     LeadStatus.NEW: {LeadStatus.TAKEN, LeadStatus.NOT_LEAD},
-    LeadStatus.TAKEN: {LeadStatus.CONTACTED, LeadStatus.QUALIFIED, LeadStatus.LOST, LeadStatus.NOT_LEAD},
-    LeadStatus.CONTACTED: {LeadStatus.QUALIFIED, LeadStatus.OFFER_SENT, LeadStatus.NEGOTIATION, LeadStatus.LOST},
-    LeadStatus.QUALIFIED: {LeadStatus.OFFER_SENT, LeadStatus.NEGOTIATION, LeadStatus.LOST},
-    LeadStatus.OFFER_SENT: {LeadStatus.NEGOTIATION, LeadStatus.WON, LeadStatus.LOST},
-    LeadStatus.NEGOTIATION: {LeadStatus.OFFER_SENT, LeadStatus.WON, LeadStatus.LOST},
+    LeadStatus.TAKEN: {LeadStatus.CONTACTED, LeadStatus.QUALIFIED, LeadStatus.NOT_LEAD},
+    LeadStatus.CONTACTED: {LeadStatus.QUALIFIED, LeadStatus.OFFER_SENT, LeadStatus.NEGOTIATION},
+    LeadStatus.QUALIFIED: {LeadStatus.OFFER_SENT, LeadStatus.NEGOTIATION},
+    LeadStatus.OFFER_SENT: {LeadStatus.NEGOTIATION},
+    LeadStatus.NEGOTIATION: {LeadStatus.OFFER_SENT},
     LeadStatus.AI_PENDING: {LeadStatus.TAKEN, LeadStatus.NOT_LEAD},
     LeadStatus.WON: set(),
     LeadStatus.LOST: set(),
     LeadStatus.NOT_LEAD: set(),
 }
+
+
+def stage_path(start: LeadStatus, target: LeadStatus) -> list[LeadStatus] | None:
+    """Кратчайшая цепочка разрешённых переходов (без WON/LOST)."""
+    if start == target:
+        return []
+    if target in {LeadStatus.WON, LeadStatus.LOST}:
+        return None
+    from collections import deque
+
+    queue: deque[tuple[LeadStatus, list[LeadStatus]]] = deque([(start, [])])
+    seen = {start}
+    while queue:
+        current, path = queue.popleft()
+        for nxt in ALLOWED_STAGE_TRANSITIONS.get(current, set()):
+            if nxt in {LeadStatus.WON, LeadStatus.LOST}:
+                continue
+            if nxt == LeadStatus.NOT_LEAD and target != LeadStatus.NOT_LEAD:
+                continue
+            next_path = [*path, nxt]
+            if nxt == target:
+                return next_path
+            if nxt not in seen:
+                seen.add(nxt)
+                queue.append((nxt, next_path))
+    return None
 
 
 class CRMService:
@@ -54,6 +82,12 @@ class CRMService:
                 raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
             if target == lead.status:
                 return lead
+            # WON/LOST только через win_deal/lose_deal — нужны Deal + SaleSnapshot.
+            if target in {LeadStatus.WON, LeadStatus.LOST}:
+                raise LeadWorkflowError(
+                    "Продажу и отказ закрывайте через карточку сделки "
+                    "(сумма, товар или причина) — не перетаскиванием на доске"
+                )
             allowed = ALLOWED_STAGE_TRANSITIONS.get(lead.status, set())
             if target not in allowed:
                 raise LeadWorkflowError(
@@ -62,26 +96,78 @@ class CRMService:
             previous = lead.status
             lead.status = target
             contact = await session.get(Contact, lead.contact_id)
+            assigned_now = False
             if lead.assigned_manager_telegram_id is None and target not in {LeadStatus.NOT_LEAD}:
                 lead.assigned_manager_telegram_id = manager_id
                 if contact is not None:
                     contact.assigned_manager_telegram_id = manager_id
+                assigned_now = True
             if target == LeadStatus.CONTACTED and contact is not None:
                 contact.last_contacted_at = datetime.now(UTC)
-            event_type = {
-                LeadStatus.CONTACTED: ContactEventType.CONTACTED,
-                LeadStatus.OFFER_SENT: ContactEventType.OFFER_SENT,
-                LeadStatus.NEGOTIATION: ContactEventType.NEGOTIATION_STARTED,
-            }.get(target, ContactEventType.LEAD_STATUS_CHANGED)
+            # NEW/AI_* → TAKEN через stage = то же, что «взять в работу».
+            if target == LeadStatus.TAKEN and previous in {
+                LeadStatus.NEW,
+                LeadStatus.AI_PENDING,
+                LeadStatus.ANALYZING,
+            }:
+                feedback = await session.scalar(
+                    select(AIFeedback).where(AIFeedback.lead_id == lead.id)
+                )
+                if feedback is not None:
+                    feedback.manager_is_lead = True
+                event_type = ContactEventType.MANAGER_ASSIGNED
+                payload = {
+                    "from": previous.value,
+                    "to": target.value,
+                    "manager_telegram_id": manager_id,
+                    "via": "stage",
+                    "assigned_now": assigned_now,
+                }
+            else:
+                event_type = {
+                    LeadStatus.CONTACTED: ContactEventType.CONTACTED,
+                    LeadStatus.OFFER_SENT: ContactEventType.OFFER_SENT,
+                    LeadStatus.NEGOTIATION: ContactEventType.NEGOTIATION_STARTED,
+                }.get(target, ContactEventType.LEAD_STATUS_CHANGED)
+                payload = {"from": previous.value, "to": target.value}
             await ContactEventRepository(session).add(
                 lead.contact_id,
                 event_type,
                 lead_id=lead.id,
                 manager_telegram_id=manager_id,
-                payload={"from": previous.value, "to": target.value},
+                payload=payload,
             )
             await session.commit()
             return lead
+
+    async def move_lead_toward(
+        self, lead_id: int, manager_id: int, target: LeadStatus
+    ) -> Lead:
+        """Двигает лид к целевой стадии по кратчайшей разрешённой цепочке."""
+        if target in {LeadStatus.WON, LeadStatus.LOST}:
+            raise LeadWorkflowError(
+                "Продажу и отказ закрывайте через карточку сделки "
+                "(сумма, товар или причина) — не перетаскиванием на доске"
+            )
+        async with self.session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise LeadWorkflowError("Лид не найден")
+            current = lead.status
+            if current == target:
+                session.expunge(lead)
+                return lead
+        path = stage_path(current, target)
+        if path is None:
+            raise LeadWorkflowError(
+                f"Нельзя перейти со стадии {current.value} на {target.value}"
+            )
+        result: Lead | None = None
+        for step in path:
+            result = await self.move_lead(lead_id, manager_id, step)
+        if result is None:
+            raise LeadWorkflowError("Не удалось обновить стадию лида")
+        return result
 
     async def record_customer_reply(
         self,
@@ -496,6 +582,36 @@ class CRMService:
                     sync_business_vertical_enrollment(
                         business, vertical=enrolled_vertical
                     )
+                # Лиды/сигналы источника следуют за портфелем — как enroll_competitor.
+                signals = list(
+                    await session.scalars(
+                        select(PublicSignal).where(
+                            PublicSignal.competitor_id == competitor.id
+                        )
+                    )
+                )
+                for signal in signals:
+                    signal.vertical = enrolled_vertical
+                leads = list(
+                    await session.scalars(
+                        select(Lead).where(Lead.competitor_id == competitor.id)
+                    )
+                )
+                for lead in leads:
+                    lead.vertical = enrolled_vertical
+                    details = dict(lead.analysis_details or {})
+                    details["vertical"] = enrolled_vertical.value
+                    lead.analysis_details = details
+                if signals:
+                    evidence_rows = list(
+                        await session.scalars(
+                            select(Evidence).where(
+                                Evidence.public_signal_id.in_([item.id for item in signals])
+                            )
+                        )
+                    )
+                    for evidence in evidence_rows:
+                        evidence.vertical = enrolled_vertical
             if notification_policy is not None:
                 normalized_policy = notification_policy.strip().upper()
                 if normalized_policy == "INHERIT":
@@ -507,6 +623,29 @@ class CRMService:
                         raise LeadWorkflowError("Неизвестный режим уведомлений") from exc
             await session.commit()
             return competitor
+
+    async def bulk_set_competitors_active(
+        self,
+        competitor_ids: list[int],
+        *,
+        active: bool,
+    ) -> int:
+        """Массово включить/поставить на паузу. Возвращает число обновлённых."""
+        if not competitor_ids:
+            return 0
+        unique_ids = list(dict.fromkeys(int(item) for item in competitor_ids[:200]))
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Competitor).where(Competitor.id.in_(unique_ids))
+            )
+            rows = list(result.scalars().all())
+            changed = 0
+            for competitor in rows:
+                if competitor.active != active:
+                    competitor.active = active
+                    changed += 1
+            await session.commit()
+            return changed
 
 
 def _clean_optional(value: str | None, max_length: int) -> str | None:

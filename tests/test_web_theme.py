@@ -27,8 +27,12 @@ def test_lead_detail_and_radar_expose_deep_responsive_analysis():
         encoding="utf-8"
     )
     radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    signal_buttons = (
+        PROJECT_ROOT / "app/web/templates/partials/signal_review_buttons.html"
+    ).read_text(encoding="utf-8")
 
-    assert "AI-РАЗБОР СИГНАЛА" in lead_detail
+    assert "AI-РАЗБОР" in lead_detail
+    assert "Почему этот клиент важен" in lead_detail
     assert "recommended_action" in lead_detail
     assert "next_best_action" in lead_detail
     assert "ai_source_label(lead.ai_source)" in lead_detail
@@ -36,9 +40,11 @@ def test_lead_detail_and_radar_expose_deep_responsive_analysis():
     assert "catalog_recommendation.match_reasons" in lead_detail
     assert "risk_flags" in lead_detail
     assert 'data-lucide="circle-help"' in lead_detail
-    assert 'data-label="AI-оценка"' in radar
-    assert "РАДАР СИГНАЛОВ" in radar
-    assert "Повторить очередь AI" in radar
+    assert 'data-label="Оценка"' in radar
+    assert "РЕЗУЛЬТАТЫ ПОИСКА" in radar
+    assert "partials/signal_review_actions.html" in radar
+    assert "Оценить накопившееся" in signal_buttons
+    assert "/api/signals/review-all" in signal_buttons
 
 
 def test_v41_signal_first_states_and_notification_modes_are_manager_readable():
@@ -55,10 +61,17 @@ def test_v41_signal_first_states_and_notification_modes_are_manager_readable():
     assert "Качество локального интеллекта" in system
     assert "production accuracy" in system
     assert "INDEPENDENT QUALITY GATES" in system or "НЕЗАВИСИМЫЕ GATES" in system
-    assert "Каждый новый комментарий" in competitors
-    assert "Только покупательский интерес" in competitors
-    assert "Только горячие лиды" in competitors
-    assert "Сигнал уже сохранён и виден менеджеру" in radar
+    assert "Каждый новый комментарий" in (
+        PROJECT_ROOT / "app/web/labels.py"
+    ).read_text(encoding="utf-8")
+    assert "Только покупательский интерес" in (
+        PROJECT_ROOT / "app/web/labels.py"
+    ).read_text(encoding="utf-8")
+    assert "Только горячие лиды" in (
+        PROJECT_ROOT / "app/web/labels.py"
+    ).read_text(encoding="utf-8")
+    assert "notification_policy_label" in competitors
+    assert "Лид уже виден менеджеру" in radar
 
 
 def test_audience_pages_explain_privacy_boundary_and_campaign_action():
@@ -73,9 +86,10 @@ def test_audience_pages_explain_privacy_boundary_and_campaign_action():
         encoding="utf-8"
     )
 
-    assert 'href="/audiences"' in base
-    assert "Чувствительные признаки не собираются" in audiences
-    assert "quality workspace" in audiences or "рабочее пространство качества" in audiences
+    assert 'href="/audiences' in base
+    assert "ГРУППЫ СПРОСА" in audiences
+    assert "автоматически" in audiences
+    assert "Качество аудиторий" in audiences
     assert "Instagram username не превращается" in audiences
     assert "CAMPAIGN BRIEF" in detail or "БРИФ КАМПАНИИ" in detail
     assert "АУДИТОРИЯ И ИНТЕРЕСЫ" in contact
@@ -122,7 +136,14 @@ def test_audit_fixes_navigation_alignment_and_accessible_filters():
     )
     discovery = (PROJECT_ROOT / "app/web/templates/discovery.html").read_text(encoding="utf-8")
 
-    assert "--primary: #3155ff" in css
+    assert "--primary: #15803d" in css
+    assert "--brand: #16a34a" in css
+    assert "--brand-2: #15803d" in css
+    assert "--muted: #475569" in css
+    assert "--text: #e8eef9" not in css
+    assert "#745cff" not in css
+    assert "#6c63f4" not in css
+    assert "#eee6df" not in css
     assert ".sidebar .nav { flex: 0 0 56px; }" in css
     assert "dashboard-metrics" in dashboard
     assert 'class="metric warn" href="/tasks"' in dashboard
@@ -166,7 +187,7 @@ def test_mobile_rattan_cards_and_opening_review_use_shared_safe_actions():
     )
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
 
-    assert 'class="rattan-table"' in rattan
+    assert 'class="responsive-table rattan-table"' in rattan
     assert 'data-label="Сигнал"' in rattan
     assert "Портфель пуст" in rattan
     assert "источников с вертикалью Ротанг" in rattan
@@ -193,7 +214,7 @@ def test_pilot_cockpit_quick_actions_and_scan_modal():
     assert "scan_budget_quick" in base
     assert "quick-actions" in dashboard
     assert 'href="/agent"' in dashboard
-    assert "Кабина пилота" in dashboard
+    assert "Найти лидов" in dashboard or "нужна мебель" in dashboard
     assert "openScanQuickModal" in javascript
     assert "runScan" in javascript
     assert ".quick-actions" in css
@@ -220,12 +241,12 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.11.2-crm-pages" in base
-    assert "13.11.2-crm-pages" in auth
+    assert "13.45.0-ops-live" in base
+    assert "13.45.0-ops-live" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
-    assert 'href="/catalog"' in base
+    assert 'href="/catalog' in base
     assert 'href="/discovery"' in base
     assert 'id="agent-quick"' in base
     assert "data-agent-open" in base
@@ -235,7 +256,7 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     assert 'aria-current="page"' in base
     assert 'data-toast-message' in base
     assert 'class="responsive-table"' in contacts
-    assert 'data-label="Клиент"' in contacts
+    assert 'data-label="Клиент"' in contacts or 'data-label="Человек"' in contacts
 
     assert "--motion-base: 240ms" in css
     assert ".nav-secondary.is-open" in css
@@ -249,6 +270,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     assert "sessionStorage.setItem('lr:scroll-y'" in javascript
     assert "setLoading" in javascript
     assert "prefers-reduced-motion: reduce" in javascript
+    assert "let radarWasBusy" in javascript
+    assert "if (radarWasBusy && !stillBusy && !radarQuietReloadScheduled)" in javascript
 
 
 def test_mobile_responsive_tables_and_economics_wrap_at_720px():
@@ -332,10 +355,10 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "АССИСТЕНТ · ТОЛЬКО БАЗА" in system
     assert "system-hero" in system
     assert "system-toc" in system
-    assert "retry-pending" in system
+    assert "review-all" in system or "signal_review_actions" in system
     assert "responsive-table system-table" in system
     assert "system-run-history" in system
-    assert "/api/leads/retry-pending" in radar
+    assert "partials/signal_review_actions.html" in radar
     assert "rattan-metrics" in (PROJECT_ROOT / "app/web/templates/rattan.html").read_text(encoding="utf-8")
     assert ".rattan-metrics" in css
     assert 'name="contact_id"' in contact_detail
@@ -360,12 +383,99 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "radar-metrics" in radar
     assert ".radar-metrics" in css
     assert "leads-hero" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "partials/lead_funnel_quick_action.html" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    funnel_partial = (PROJECT_ROOT / "app/web/templates/partials/lead_funnel_quick_action.html").read_text(encoding="utf-8")
+    assert "data-stage" in funnel_partial
+    assert "data-lead-action" in funnel_partial
+    assert "leads-save-trust" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "partials/lead_reanalyze_actions.html" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
+    assert "reanalyze-batch" in (PROJECT_ROOT / "app/web/templates/partials/lead_reanalyze_actions.html").read_text(encoding="utf-8")
+    assert "include_not_lead_high_score" in (PROJECT_ROOT / "app/web/templates/partials/lead_reanalyze_actions.html").read_text(encoding="utf-8")
+    assert "feedback-learning" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
+    assert "feedback-export" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
+    assert "lead_event_history_tip.html" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "kanban-event-tip-trigger" in (PROJECT_ROOT / "app/web/templates/partials/lead_event_history_tip.html").read_text(encoding="utf-8")
+    assert "kanban-mobile-nav" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "data-toast-undo" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "enhanceKanbanMobile" in (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
+    assert "competitors-hero" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
+    assert "lead_quality_badge.html" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "quality=garbage" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "radar_plain_help" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "WON" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "lead_bulk_actions.html" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "dashboard_plain_help" in (PROJECT_ROOT / "app/web/templates/dashboard.html").read_text(encoding="utf-8")
+    assert "data-lead-followup" in (PROJECT_ROOT / "app/web/templates/partials/lead_funnel_quick_action.html").read_text(encoding="utf-8")
+    assert "Вернуть в работу" in (PROJECT_ROOT / "app/web/templates/partials/lead_funnel_quick_action.html").read_text(encoding="utf-8")
+    assert "Просрочен контакт" in (PROJECT_ROOT / "app/web/templates/partials/lead_quality_badge.html").read_text(encoding="utf-8")
+    assert "Спорные" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "LEAD_SEARCH_ENABLED=false" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "провайдер подтвердил" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert "Очередь оценки" in (PROJECT_ROOT / "app/web/templates/agent.html").read_text(encoding="utf-8")
+    assert "data-lead-followup" in javascript
+    assert "/api/leads/" in javascript and "follow-up" in javascript
+    assert ".leads-bulk-bar" in css
+    assert "showScanSummary" in javascript
+    assert "scan-summary" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert ".scan-summary-grid" in css
+    assert "main-sticky-head" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "data-scan-progress-banner" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert ".main-sticky-head" in css
+    assert "data-scan-progress-block" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "applyScanProgress" in javascript
+    assert "/api/scan/progress" in javascript
+    assert ".scan-progress-banner" in css
+    assert ".scan-progress-track" in css
+    assert "competitor_tier_label" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "radar-table-empty" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert 'href="#radar-live-arm"' in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "data-competitor-bulk" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
+    assert "competitors-plain-help" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
+    assert "notification_policy_label" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
+    assert "data-confirm-danger" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
+    assert "confirmAction" in javascript and "options.danger" in javascript
+    assert "/api/competitors/bulk-active" in javascript
+    assert ".competitors-bulk-bar" in css
+    assert "data-budget-plan" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "data-scan-quick-plan" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "formatScanPreviewMeta" in javascript
+    assert "burn-sparkline" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert "economics-low-alert" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert 'href="/radar#radar-budget-title"' in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert "credits/HOT" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert "tier-suggest" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
+    assert "Ошибки скана" in (PROJECT_ROOT / "app/web/templates/competitors.html").read_text(encoding="utf-8")
+    assert "data-gpt-queue" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "applyGptQueueChip" in javascript
+    assert "readAgentContext" in javascript
+    assert "/api/leads/export.csv" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "manager-feedback-quality" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
+    assert "В радар активно" in (PROJECT_ROOT / "app/web/templates/discovery.html").read_text(encoding="utf-8")
+    assert "data-agent-context" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
+    assert "13.45.0-ops-live" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "kanban-drag-handle" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
+    assert "data-economics-budget-sim" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert "ai-version-info" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
+    assert "enhanceEconomicsBudgetSim" in (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
+    assert "is-loading" in (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
+    assert "/api/economics/export.csv" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert "openai_usd_per_lead" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
+    assert "proxy cache-hit" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
+    assert "lead-assign" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
+    assert "GPT выключен" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
+    assert "focusKeyForElement" in javascript
+    assert "openai_cost" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
     assert "contacts-hero" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert 'href="/agent"' in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert "ОЧЕРЕДЬ КОНТАКТОВ" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")
-    assert "ВОРОНКА СДЕЛОК" in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
+    assert "РЕЗУЛЬТАТ ПРОДАЖ" in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
+    assert "ВОРОНКА СДЕЛОК" not in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
     assert "tasks-hero" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")
     assert "deals-hero" in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
+    assert "БАЗА ЛЮДЕЙ" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
+    assert "Найти лидов" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
+    assert "Статус поиска" in (PROJECT_ROOT / "app/web/templates/agent.html").read_text(encoding="utf-8")
+    assert "Горячие сегодня" in (PROJECT_ROOT / "app/web/templates/agent.html").read_text(encoding="utf-8")
     assert "V3.5 · unified airy rhythm" in css
     assert "--space-8: 40px" in css
     assert "audience-quality-hero" in (PROJECT_ROOT / "app/web/templates/audience_quality.html").read_text(encoding="utf-8")

@@ -111,6 +111,24 @@ MONITORED_COMPETITORS: tuple[CompetitorSeed, ...] = (
         "Производитель и импортёр мебели для офиса и бизнеса; потенциальные B2B-сигналы.",
         "https://b2b.ergo.uz",
     ),
+    CompetitorSeed(
+        "sellamenza.uz", "Sella & Menza", "DIRECT", "A",
+        "Прямой конкурент: обеденные комплекты, столы и стулья; reels-канал продаж.",
+        "https://www.instagram.com/sellamenza.uz/",
+        True,
+    ),
+    CompetitorSeed(
+        "pantera_mebel_uz", "Pantera Mebel", "DIRECT", "B",
+        "Мебель на заказ и готовые комплекты; салон в Эшангузаре.",
+        "https://www.instagram.com/pantera_mebel_uz/",
+        True,
+    ),
+    CompetitorSeed(
+        "lazuno.uz", "Lazuno Ok", "DIRECT", "A",
+        "Искусственный ротанг, садовая и HoReCa-мебель; производство в Ташкенте.",
+        "https://lazunok.uz",
+        True,
+    ),
 )
 
 
@@ -122,13 +140,13 @@ MARKET_CANDIDATES: tuple[MarketCandidateSeed, ...] = (
         "BOTANIST",
         "RATTAN",
         "B",
-        "Ручной кандидат для проверки; публичные сайт, аккаунт и ownership пока не подтверждены.",
-        confidence=20,
+        "Поставщик/бренд искусственного ротанга; портфель ARTIFICIAL_RATTAN. Instagram ещё не подтверждён.",
+        confidence=80,
         vertical="ARTIFICIAL_RATTAN",
         contact_hint="Emil",
         status="NEEDS_VERIFICATION",
     ),
-    MarketCandidateSeed("Lazuno Ok", "DIRECT", "A", "Искусственный ротанг, столы, стулья и комплекты.", "https://lazunok.uz", confidence=95),
+    MarketCandidateSeed("Lazuno Ok", "DIRECT", "A", "Искусственный ротанг, столы, стулья и комплекты.", "https://lazunok.uz", "lazuno.uz", 95),
     MarketCandidateSeed("Rotan", "DIRECT", "A", "Производство искусственного ротанга, столовая и HoReCa.", "https://rotan.uz", confidence=95),
     MarketCandidateSeed("Rotang Asia", "DIRECT", "A", "Бренд искусственного ротанга, представлен в Atlas Mebel.", confidence=85),
     MarketCandidateSeed("Miss Madi", "OUTDOOR", "B", "Бренд дачной мебели, отмечен среди outdoor-брендов Atlas Mebel.", confidence=65),

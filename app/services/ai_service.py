@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import socket
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar, Protocol
@@ -66,6 +66,7 @@ class LeadAnalysisContext:
     username: str
     previous_signals: list[ValidatedPreviousSignal]
     previous_interests: list[str]
+    parent_comment: str = ""
     known_customer_context: dict[str, str | int | None] = field(default_factory=dict)
     evidence_ids: list[int] = field(default_factory=list)
     public_signal_id: int | None = None
@@ -115,6 +116,149 @@ class RuleBasedLeadAnalyzer:
         "nasib",
         "насиб",
     }
+
+    # Контекст мебели/ротанга в caption или комментарии — без этого ценовые маркеры не считаем лидом локально.
+    _FURNITURE_CONTEXT_MARKERS: ClassVar[tuple[str, ...]] = (
+        "мебел",
+        "mebel",
+        "mebell",
+        "интерьер",
+        "interior",
+        "стол",
+        "stol",
+        "стул",
+        "stul",
+        "диван",
+        "divan",
+        "кресл",
+        "kreslo",
+        "ротанг",
+        "rattan",
+        "плетен",
+        "pleten",
+        "комплект",
+        "komplekt",
+        "террас",
+        "terrace",
+        "балкон",
+        "сад",
+        "bog'",
+        "bog ",
+        "horeca",
+        "кафе",
+        "kafe",
+        "ресторан",
+        "restoran",
+        "шоурум",
+        "showroom",
+        "гарнитур",
+        "качел",
+        "swing",
+        "пергол",
+        "pergola",
+        "кухн",
+        "oshxona",
+        "обеден",
+        "dining",
+    )
+
+    # Явно чужие категории — отсекаем локально, без OpenAI.
+    _OFF_CATALOG_MARKERS: ClassVar[tuple[str, ...]] = (
+        "iphone",
+        "айфон",
+        "samsung",
+        "galaxy",
+        "xiaomi",
+        "redmi",
+        "smartphone",
+        "smart phone",
+        "telefon",
+        "телефон",
+        "rolex",
+        "casio",
+        "apple watch",
+        "smartwatch",
+        "smart watch",
+        "наручные",
+        "naruchn",
+        "avtomobil",
+        "автомобил",
+        " mashina",
+        " avto ",
+        " avto.",
+        "car sale",
+        "kiyim",
+        "одежд",
+        "платье",
+        "dress",
+        "kosmetika",
+        "косметик",
+        "parfum",
+        "парфюм",
+        "atir",
+        "soatlar",
+        "soat kolleksiya",
+        "watch collection",
+        "watches",
+        # Украшения / бижутерия
+        "ювелир",
+        "украшен",
+        "бижутер",
+        "серьг",
+        "кольц",
+        "браслет",
+        "ожерел",
+        "цепочк",
+        "jewelry",
+        "jewellery",
+        "necklace",
+        "bracelet",
+        "earring",
+        "zargarlik",
+        "zirak",
+        "uzuk",
+        # Обувь
+        "обув",
+        "кроссов",
+        "туфл",
+        "ботин",
+        "сапог",
+        "sneakers",
+        "shoes",
+        "oyoq kiyim",
+        "krassovka",
+        # Техника / электроника (кроме уже покрытых телефонов)
+        "ноутбук",
+        "laptop",
+        "планшет",
+        "tablet",
+        "наушник",
+        "наушники",
+        "headphones",
+        "playstation",
+        "xbox",
+        "телевизор",
+        "televizor",
+        "пылесос",
+        "микроволн",
+        "холодильник",
+        "стиральн",
+        "электроник",
+        "texnika",
+        "texnikasi",
+    )
+
+    _DEFER_WITHOUT_FURNITURE_INTENTS: ClassVar[frozenset[Intent]] = frozenset(
+        {
+            Intent.PRICE,
+            Intent.AVAILABILITY,
+            Intent.DELIVERY,
+            Intent.CATALOG,
+            Intent.COLOR,
+            Intent.SIZE,
+            Intent.LOCATION,
+        }
+    )
 
     def classify(self, context: LeadAnalysisContext) -> LeadAnalysis | None:
         raw = (context.comment or "").strip()
@@ -214,27 +358,27 @@ class RuleBasedLeadAnalyzer:
             )
 
         if re.fullmatch(r"\+{1,3}[?!.,…🙏]*", raw.replace(" ", "")):
-            if self._caption_has_commercial_plus_cta(caption):
-                score = 92
-                return self._result(
-                    True,
-                    score,
-                    Intent.BUY,
-                    self._product(caption),
-                    language,
-                    "Пользователь выполнил коммерческий призыв публикации и оставил «+» для получения цены, каталога или связи.",
-                    context,
-                )
-            return self._result(
-                False,
-                15,
-                Intent.REACTION,
-                self._product(caption),
-                language,
-                "Сам по себе «+» не доказывает покупательский интерес: в публикации не найден коммерческий призыв оставить плюс.",
-                context,
-                risk_flags=["Смысл «+» зависит от призыва в публикации"],
-            )
+            parent = self._norm(context.parent_comment or "")
+            caption = self._norm(context.post_caption or "")
+            if parent:
+                combined = f"{parent}\n{caption}".strip()
+                if self._has_furniture_context(combined) and (
+                    self._has_price_or_purchase_signal(parent)
+                    or self._caption_has_commercial_plus_cta(caption)
+                ):
+                    product = self._product(f"{parent} {caption}")
+                    return self._result(
+                        True,
+                        72,
+                        Intent.PRICE,
+                        product,
+                        language,
+                        "Ответ «+» на коммерческий вопрос в родительском комментарии.",
+                        context,
+                        evidence=[f"Родительский комментарий: {parent[:120]}"],
+                    )
+            # «+» без parent или без явного контекста — OpenAI по caption Reel.
+            return None
 
         designer_markers = (
             "дизайн-проект",
@@ -303,6 +447,9 @@ class RuleBasedLeadAnalyzer:
             text,
         )
         if quantity_pattern and not any(marker in text for marker in explicit_purchase):
+            rejected = self._reject_off_catalog(caption, text, language, context)
+            if rejected is not None:
+                return rejected
             return self._result(
                 True,
                 90,
@@ -531,6 +678,14 @@ class RuleBasedLeadAnalyzer:
                 for extra_intent, _score, extra_reason, _matched in matched_checks
                 if extra_intent != intent
             )
+            rejected = self._reject_off_catalog(caption, text, language, context)
+            if rejected is not None:
+                return rejected
+            if (
+                intent in self._DEFER_WITHOUT_FURNITURE_INTENTS
+                and self._defer_without_furniture_context(caption, text)
+            ):
+                return None
             return self._result(
                 score >= 65,
                 score,
@@ -547,6 +702,11 @@ class RuleBasedLeadAnalyzer:
             )
 
         if has_price_objection:
+            rejected = self._reject_off_catalog(caption, text, language, context)
+            if rejected is not None:
+                return rejected
+            if self._defer_without_furniture_context(caption, text):
+                return None
             score = 58
             return self._result(
                 score >= 65,
@@ -648,6 +808,70 @@ class RuleBasedLeadAnalyzer:
             return False
         stripped = re.sub(r"[\W_]+", "", raw, flags=re.UNICODE)
         return stripped == "" and "+" not in raw
+
+    def _has_furniture_context(self, combined: str) -> bool:
+        if self._product(combined):
+            return True
+        return any(marker in combined for marker in self._FURNITURE_CONTEXT_MARKERS)
+
+    def _is_off_catalog_topic(self, combined: str) -> bool:
+        if any(marker in combined for marker in self._OFF_CATALOG_MARKERS):
+            return True
+        if re.search(r"\b(?:через|after|dan keyin)\s+\d+\s+час", combined):
+            return False
+        if re.search(r"\b\d+\s+час(?:а|ов)\b", combined) and "достав" in combined:
+            return False
+        watch_product = re.search(r"\b(?:час(?:ы|ов)|soat(?:lar|ni)?|watch(?:es)?)\b", combined)
+        if watch_product and not self._has_furniture_context(combined):
+            return True
+        return False
+
+    def _reject_off_catalog(
+        self,
+        caption: str,
+        text: str,
+        language: str,
+        context: LeadAnalysisContext,
+    ) -> LeadAnalysis | None:
+        combined = self._norm(f"{caption} {text}")
+        if not self._is_off_catalog_topic(combined):
+            return None
+        return self._result(
+            False,
+            8,
+            Intent.OTHER,
+            None,
+            language,
+            "Запрос относится к товару вне каталога мебели и ротанга.",
+            context,
+            risk_flags=["Не наш ассортимент"],
+        )
+
+    def _defer_without_furniture_context(self, caption: str, text: str) -> bool:
+        combined = self._norm(f"{caption} {text}")
+        return not self._has_furniture_context(combined)
+
+    @staticmethod
+    def _has_price_or_purchase_signal(text: str) -> bool:
+        lowered = (text or "").lower()
+        markers = (
+            "сколько",
+            "qancha",
+            "нарх",
+            "narx",
+            "цена",
+            "стоим",
+            "прайс",
+            "price",
+            "buyurtma",
+            "заказ",
+            "купить",
+            "комплект",
+            "стол",
+            "stul",
+            "stol",
+        )
+        return any(marker in lowered for marker in markers)
 
     @staticmethod
     def _caption_has_commercial_plus_cta(caption: str) -> bool:
@@ -1055,8 +1279,12 @@ class OpenAILeadAnalyzer:
             "Use only CurrentSignal, PostContext, EvidenceBundle, ValidatedCommercialHistory, ContactCRMContext, and ProductCatalogFacts supplied in the input. Never infer private traits, contact details, income, or "
             "facts that are not present. Evaluate the comment together with the Reel caption and "
             "CTA, product fit, request specificity, repetition across prior signals, comparison "
-            "across competitors, buyer role (B2C, HoReCa/B2B, Designer), and manager-entered CRM context. A plus sign is commercial only "
-            "when the Reel explicitly asks for it to receive a price, catalog, or contact. Praise, "
+            "across competitors, buyer role (B2C, HoReCa/B2B, Designer), and manager-entered CRM context. "
+            "The business sells furniture and artificial rattan only. Reject leads about watches, phones, cars, "
+            "clothing, cosmetics, and other off-catalog products even if the comment asks for a price. "
+            "A plus sign is a signal to interpret using the Reel caption and, when present, "
+            "ParentComment on a reply thread: commercial when the parent or post explicitly "
+            "invites a plus for price, catalog, or contact; otherwise not a lead. Praise, "
             "emoji, congratulations, job requests, and unrelated conversation are not leads. "
             "Negation overrides keyword matches. Distinguish active purchase intent from research, "
             "price objections, and ambiguous questions. Score 0–100 consistently; confidence means "
@@ -1136,12 +1364,14 @@ class BudgetedCachedOpenAIAnalyzer:
         lease_seconds: int = 180,
         max_attempts: int = 3,
         live_gate: Callable[[], bool] | None = None,
+        live_refresh: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         self.inner = inner
         self.session_factory = session_factory
         self.usage = usage
         self._master_enabled = enabled
         self._live_gate = live_gate
+        self._live_refresh = live_refresh
         self.daily_limit = daily_limit
         self.analysis_version = analysis_version
         self.lease_seconds = lease_seconds
@@ -1166,6 +1396,13 @@ class BudgetedCachedOpenAIAnalyzer:
             return bool(self._live_gate())
         return True
 
+    async def _live_enabled(self) -> bool:
+        if not self._master_enabled:
+            return False
+        if self._live_refresh is not None:
+            return bool(await self._live_refresh())
+        return self.enabled
+
     def context_fingerprint(self, context: LeadAnalysisContext) -> str:
         return self.fingerprint_service.fingerprint(context)
 
@@ -1185,7 +1422,7 @@ class BudgetedCachedOpenAIAnalyzer:
                 "AI анализ для данного контекста уже выполняется другим процессом."
             )
 
-        if not self.enabled:
+        if not await self._live_enabled():
             await self._release_request_claim(
                 request_id,
                 claim_token,

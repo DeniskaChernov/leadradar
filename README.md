@@ -142,7 +142,9 @@ MONITOR_SCHEDULE_ENABLED=false
 - `bormi?`, `борми?`, `мавжуд`;
 - `доставка`, `yetkazib berish`, `етказиб бериш`;
 - конкретное количество;
-- `+`, только если в Reel есть коммерческий CTA оставить плюс.
+- `+` — всегда сигнал для OpenAI: смысл определяется по описанию Reel (CTA на плюс, мебель и т.д.).
+- Запросы цены по чужим категориям (часы, телефоны, авто и т.п.) локально отсекаются как «не наш ассортимент».
+- Ценовые маркеры без контекста мебели в Reel уходят в OpenAI, а не становятся лидом по умолчанию.
 
 Похвала, эмодзи и обычные реакции также отсекаются локально.
 
@@ -300,6 +302,12 @@ python -m ruff check .
 python -m compileall -q app alembic tests
 python -m alembic check
 python -m scripts.check_data_integrity
+```
+
+Browser E2E (Chromium) входит в `pytest`. Один раз после установки зависимостей:
+
+```powershell
+python -m playwright install chromium
 ```
 
 Контрольная точка 2026-08-30: 238 тестов, Ruff, compileall, integrity и `alembic check`

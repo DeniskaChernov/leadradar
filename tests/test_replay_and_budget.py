@@ -115,7 +115,9 @@ async def test_fallback_blocked_after_uncertain_primary_call(session_factory):
     from sqlalchemy import select
 
     from app.db.models import ExternalBudgetReservation, ReservationStatus
+    from tests.conftest import seed_scrapecreators_instagram_policy
 
+    await seed_scrapecreators_instagram_policy(session_factory)
     usage = ExternalUsageService(session_factory)
     primary = BudgetedInstagramProvider(
         StubProfileProvider("scrapecreators", True), usage, enabled=True, daily_limit=10
@@ -149,6 +151,9 @@ async def test_fallback_blocked_after_uncertain_primary_call(session_factory):
 async def test_provider_confirmed_response_reconciles_wallet_and_actual_usage(
     session_factory,
 ):
+    from tests.conftest import seed_scrapecreators_instagram_policy
+
+    await seed_scrapecreators_instagram_policy(session_factory)
     usage = ExternalUsageService(session_factory)
     provider = BudgetedInstagramProvider(
         CreditAwareProfileProvider(),
@@ -190,6 +195,6 @@ async def test_tasks_page_renders_in_russian(session_factory):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/tasks")
     assert response.status_code == 200
-    assert "Задачи менеджера" in response.text
+    assert "Задачи менеджера" in response.text or "Кому писать" in response.text
     assert "ОЧЕРЕДЬ КОНТАКТОВ" in response.text
     assert "tasks-hero" in response.text

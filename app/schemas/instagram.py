@@ -39,6 +39,7 @@ class InstagramComment(BaseModel):
     profile_url: str
     text: str
     created_at: datetime | None = None
+    parent_platform_comment_id: str | None = None
     raw_data: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -52,6 +53,8 @@ class CommentFetchResult(BaseModel):
     coverage_status: str = "UNKNOWN"
     cursor_exhausted: bool = True
     stopped_on_known_comment: bool = False
+    # Курсор следующей страницы (ScrapeCreators); None = продолжать нечего.
+    next_cursor: str | None = None
 
 
 class ProviderCreditObservation(BaseModel):

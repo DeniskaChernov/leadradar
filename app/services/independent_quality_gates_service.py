@@ -74,13 +74,14 @@ class QualityGateReport:
                 and (self.layer_accuracy or 0.0) >= 0.90
             )
         if self.gate_id == "audience_unseen":
-            return self.labeled_decisions >= 100 and self.accuracy >= 0.90
+            return self.labeled_decisions >= 160 and self.accuracy >= 0.90
         return False
 
 
 @dataclass(frozen=True, slots=True)
 class IndependentQualityGatesSnapshot:
     generated_at: datetime
+    rules_version: str
     lead_unseen: QualityGateReport
     rattan_unseen: QualityGateReport
     audience_unseen: QualityGateReport
@@ -96,19 +97,35 @@ class IndependentQualityGatesSnapshot:
             and self.audience_unseen.passed
         )
 
+    def openai_live_allowed(self) -> tuple[bool, str]:
+        """После смены rules_version live GPT разрешён только при PASS unseen gates."""
+        if self.passed:
+            return True, ""
+        blocked = [
+            gate.label
+            for gate in (self.lead_unseen, self.rattan_unseen, self.audience_unseen)
+            if not gate.passed
+        ]
+        return (
+            False,
+            "Unseen quality gates не пройдены для правил "
+            f"{self.rules_version}: {', '.join(blocked)}. "
+            "Исправьте классификатор и прогоните pytest перед arm OpenAI.",
+        )
+
 
 class IndependentQualityGatesService:
     """Оффлайн-оценка независимых наборов без БД и внешних вызовов."""
 
     LEAD_DATASET = "unseen:v1"
     RATTAN_DATASET = "unseen:v1"
-    AUDIENCE_DATASET = "unseen:v1"
+    AUDIENCE_DATASET = "unseen:v2"
 
     def __init__(self, fixtures_dir: str | Path = "fixtures") -> None:
         self.fixtures_dir = Path(fixtures_dir)
         self.lead_analyzer = RuleBasedLeadAnalyzer()
 
-    def snapshot(self) -> IndependentQualityGatesSnapshot:
+    def snapshot(self, *, rules_version: str = "3.2") -> IndependentQualityGatesSnapshot:
         now = datetime.now(UTC)
         lead_unseen = self.evaluate_lead_unseen()
         rattan_unseen = self.evaluate_rattan_unseen()
@@ -120,6 +137,7 @@ class IndependentQualityGatesService:
         )
         return IndependentQualityGatesSnapshot(
             generated_at=now,
+            rules_version=(rules_version or "3.2").strip() or "3.2",
             lead_unseen=lead_unseen,
             rattan_unseen=rattan_unseen,
             audience_unseen=audience_unseen,
@@ -237,8 +255,10 @@ class IndependentQualityGatesService:
                 definition = AUDIENCE_BY_SLUG.get(slug)
                 if definition is None:
                     raise KeyError(f"Unknown audience slug in unseen gate: {slug}")
+                # Как в AudienceEngine.sync: vertical из registry входит в criteria_json.
+                criteria = {**definition.criteria, "vertical": definition.vertical}
                 active, _, _, _ = AudienceEngine._evaluate(
-                    definition.criteria,
+                    criteria,
                     facts,
                     last_seen,
                 )
