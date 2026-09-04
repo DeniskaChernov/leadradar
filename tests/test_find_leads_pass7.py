@@ -21,4 +21,4 @@ def test_find_leads_pass7_geo_lang_soft_hints():
     assert "data-find-lang-soft" in js
     assert "data-find-geo-soft" in js
     assert "find-soft-tip" in css
-    assert "13.43.0-work-pages" in base
+    assert "13.44.0-copy-sweep" in base

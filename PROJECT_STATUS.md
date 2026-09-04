@@ -4,6 +4,10 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-04 (copy-sweep): rattan/openings/offline leftovers;
+competitors Live-поиск; cache **13.44.0-copy-sweep**. Ops Live Radar labels
+на system/radar advanced сохранены.
+
 Контрольная точка 2026-09-04 (audit-fix): BOTANIST без выдуманного IG;
 тесты copy sync; nav Люди vs Компании; leftovers Radar→поиск;
 cache **13.43.0-work-pages**.

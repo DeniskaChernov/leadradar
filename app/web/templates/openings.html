@@ -1,17 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Очередь открытий заведений — Lead Radar{% endblock %}
-{% block heading %}Радар открытий B2B-заведений{% endblock %}
-{% block subheading %}Отслеживание открывающихся ресторанов, кафе, отелей и офисов по публичным сигналам{% endblock %}
+{% block title %}Открытия заведений · Lead Radar{% endblock %}
+{% block heading %}Новые заведения{% endblock %}
+{% block subheading %}Открывающиеся рестораны, кафе, отели и офисы — публичные сигналы для B2B{% endblock %}
 {% block content %}
 <section class="hero-status safe openings-hero" data-motion-root>
   <div>
     <span class="eyebrow">B2B ОТКРЫТИЯ</span>
     <h2>{{ queue|length }} сигналов в очереди</h2>
-    <p>Сформированная очередь потенциальных B2B-заказов на мебель и ротанг для новых мест.</p>
+    <p>Очередь потенциальных B2B-заказов на мебель и ротанг для новых мест.</p>
   </div>
   <div class="hero-actions">
+    <a class="btn primary" href="/radar">Найти лидов</a>
+    <a class="btn ghost" href="/leads">Воронка</a>
     <a class="btn ghost" href="/system#agent-workspace">AI · google.openings</a>
-    <a class="btn ghost" href="/leads?kind=b2b">Лиды B2B</a>
   </div>
 </section>
 

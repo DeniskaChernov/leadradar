@@ -30,6 +30,6 @@ def test_work_pages_human_find_leads_language():
     assert ">Радар<" not in agent
     assert "Горячие клиенты" in base
     assert "HOT лиды" not in base
-    assert "13.43.0-work-pages" in base
-    assert "13.43.0-work-pages" in auth
-    assert "13.43.0-work-pages" in sw
+    assert "13.44.0-copy-sweep" in base
+    assert "13.44.0-copy-sweep" in auth
+    assert "13.44.0-copy-sweep" in sw

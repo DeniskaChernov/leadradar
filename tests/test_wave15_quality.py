@@ -59,7 +59,7 @@ async def test_base_template_links_pwa_manifest(session_factory):
     assert response.status_code == 200
     assert 'rel="manifest"' in response.text
     assert "/static/icons/icon.svg" in response.text
-    assert "13.43.0-work-pages" in response.text
+    assert "13.44.0-copy-sweep" in response.text
     assert 'navigator.serviceWorker.register("/sw.js"' in response.text or "navigator.serviceWorker.register('/sw.js'" in response.text
 
 
@@ -78,7 +78,7 @@ async def test_pwa_service_worker_served_with_root_scope(session_factory):
         offline = await client.get("/static/offline.html")
     assert response.status_code == 200
     assert response.headers.get("service-worker-allowed") == "/"
-    assert "leadradar-shell-13.43.0-work-pages" in response.text
+    assert "leadradar-shell-13.44.0-copy-sweep" in response.text
     assert "/static/offline.html" in response.text
     assert offline.status_code == 200
     assert 'data-offline-shell="1"' in offline.text
@@ -89,7 +89,7 @@ def test_pwa_service_worker_source_exists():
     assert path.is_file()
     text = path.read_text(encoding="utf-8")
     assert "CACHE_VERSION" in text
-    assert "13.43.0-work-pages" in text
+    assert "13.44.0-copy-sweep" in text
 
 
 async def test_dedupe_interest_evidence_keeps_newest(session_factory):
