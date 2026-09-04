@@ -4,6 +4,10 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-04 (ops-live + ship): Live Radar → «Live-поиск»
+на system/radar/wizard; cache **13.45.0-ops-live**. Find-leads UI closed;
+push ветки в PR #2 для CI.
+
 Контрольная точка 2026-09-04 (copy-sweep): rattan/openings/offline leftovers;
 competitors Live-поиск; cache **13.44.0-copy-sweep**. Ops Live Radar labels
 на system/radar advanced сохранены.

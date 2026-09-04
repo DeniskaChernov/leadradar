@@ -26,4 +26,4 @@ def test_crm_hot_human_copy_and_empty_states():
     assert ">Клиенты<" in base.replace(" ", "") or "<b>Клиенты</b>" in base
     assert "<b>Клиенты</b>" in dashboard
     assert ".kanban-empty" in css
-    assert "13.44.0-copy-sweep" in base
+    assert "13.45.0-ops-live" in base

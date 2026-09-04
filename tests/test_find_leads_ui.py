@@ -42,8 +42,8 @@ def test_find_leads_wizard_partial_and_radar_wire():
     assert ".find-leads" in css
     assert ".find-layout" in css
     assert ".find-source" in css
-    assert "13.44.0-copy-sweep" in sw
-    assert "13.44.0-copy-sweep" in base
+    assert "13.45.0-ops-live" in sw
+    assert "13.45.0-ops-live" in base
     # Safety/backend UI preserved on radar page
     assert "Сколько разрешить на эту проверку?" in radar
     assert "Максимальный расход" in radar

@@ -27,4 +27,4 @@ def test_find_leads_pass6_reset_sync_and_pages():
     assert "Найти лидов" in economics
     assert "РАСХОДЫ НА ПОИСК" in economics
     assert "Новые источники" in base
-    assert "13.44.0-copy-sweep" in base
+    assert "13.45.0-ops-live" in base

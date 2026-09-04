@@ -48,17 +48,17 @@
   {% include "partials/radar_plain_help.html" %}
 
 <section class="panel ops-arm-card" id="radar-live-arm">
-  <div class="panel-head"><div><h2>Управление Live</h2><p>Тумблеры пишутся в БД. Master unlock остаётся в .env</p></div>
-    <span class="tag {% if ops.radar_live_armed %}success{% else %}muted-tag{% endif %}">{% if ops.radar_live_armed %}Radar включён{% else %}Radar выключен{% endif %}</span>
+  <div class="panel-head"><div><h2>Управление Live-поиском</h2><p>Тумблеры пишутся в БД. Master unlock остаётся в .env</p></div>
+    <span class="tag {% if ops.radar_live_armed %}success{% else %}muted-tag{% endif %}">{% if ops.radar_live_armed %}Live-поиск включён{% else %}Live-поиск выключен{% endif %}</span>
   </div>
   {% if not master_live_ready %}
-  <div class="alert warn"><b>Master unlock не готов</b><span>В .env нужны scrapecreators + live flags + EXTERNAL_LIVE_UNLOCK. Без этого тумблер Radar не включится.</span></div>
+  <div class="alert warn"><b>Master unlock не готов</b><span>В .env нужны scrapecreators + live flags + EXTERNAL_LIVE_UNLOCK. Без этого тумблер Live-поиска не включится.</span></div>
   {% else %}
   <div class="form-row">
     <form data-api-form method="post" action="/api/ops/radar-live" data-reload="1">
       <input type="hidden" name="armed" value="{{ 'false' if ops.radar_live_armed else 'true' }}">
       <input type="hidden" name="default_scan_credits" value="{{ ops.default_scan_credits }}">
-      <button class="btn {% if ops.radar_live_armed %}ghost{% else %}success{% endif %}" type="submit">{% if ops.radar_live_armed %}Выключить Live Radar{% else %}Включить Live Radar{% endif %}</button>
+      <button class="btn {% if ops.radar_live_armed %}ghost{% else %}success{% endif %}" type="submit">{% if ops.radar_live_armed %}Выключить Live-поиск{% else %}Включить Live-поиск{% endif %}</button>
     </form>
   </div>
   {% endif %}
@@ -322,9 +322,9 @@
       <span>Сбросьте фильтры или запустите поиск.</span>
       <a class="btn tiny ghost" href="{{ radar_base }}">Сбросить фильтры</a>
       {% elif not ops.radar_live_armed %}
-      <b>Сигналов пока нет — Live Radar выключен</b>
-      <span>Включите Live, чтобы поиск Instagram мог собирать новые комментарии.</span>
-      <a class="btn tiny primary" href="#radar-live-arm">Включить Live Radar</a>
+      <b>Сигналов пока нет — Live-поиск выключен</b>
+      <span>Включите Live-поиск, чтобы Instagram мог собирать новые комментарии.</span>
+      <a class="btn tiny primary" href="#radar-live-arm">Включить Live-поиск</a>
       {% else %}
       <b>Сигналов пока нет</b>
       <span>Запустите поиск — свежие сигналы появятся здесь.</span>

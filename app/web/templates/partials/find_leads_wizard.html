@@ -189,11 +189,11 @@
         {% elif scan_budget.is_live and not ops.radar_live_armed %}
         <div class="alert warn">
           <b>Мониторинг выключен</b>
-          <span>Включите Live Radar, чтобы искать в Instagram.</span>
+          <span>Включите Live-поиск, чтобы искать в Instagram.</span>
           <form data-api-form method="post" action="/api/ops/radar-live" data-reload="1" class="inline-form">
             <input type="hidden" name="armed" value="true">
             <input type="hidden" name="default_scan_credits" value="{{ ops.default_scan_credits or 5 }}">
-            <button class="btn success tiny" type="submit">Включить Live Radar</button>
+            <button class="btn success tiny" type="submit">Включить Live-поиск</button>
           </form>
         </div>
         {% endif %}

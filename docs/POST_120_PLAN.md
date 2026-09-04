@@ -39,6 +39,13 @@
 - [x] D2. Playwright browser E2E (Chromium; CI installs browsers; HTTP smoke сохранён)
 - [x] D3. Audience golden expansion beyond current unseen (`unseen:v2`, 76 cases / 210 decisions)
 - [x] D4. Service worker для PWA offline shell (`/sw.js`, cache `13.29.6-pwa`)
+- [x] D5. Find-leads UI redesign (`/radar` wizard → human CRM shell, cache `13.45.0-ops-live`)
+
+## E. Outside this plan (не фейкать)
+
+- Coming Soon источники поиска (Telegram/TikTok/Facebook/Maps/OLX/Glotr/тендеры/Web) — отдельные интеграции
+- Push/merge PR + production Railway — доставка ветки
+- Повторный live pilot — только после «разрешаю live»
 
 ## Правило
 

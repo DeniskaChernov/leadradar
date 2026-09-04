@@ -21,7 +21,17 @@ def test_copy_sweep_rattan_openings_offline():
     assert "Новые заведения" in openings
     assert "Радар открытий" not in openings
     assert "Найти лидов" in openings
-    assert "13.44.0-copy-sweep" in offline
+    assert "13.45.0-ops-live" in offline
     assert "данные CRM и API" not in offline
     assert "нужен Live-поиск" in competitors
-    assert "13.44.0-copy-sweep" in base
+    assert "13.45.0-ops-live" in base
+    system = (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
+    radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    wizard = (
+        PROJECT_ROOT / "app/web/templates/partials/find_leads_wizard.html"
+    ).read_text(encoding="utf-8")
+    assert "Live-поиск" in system
+    assert "Включить Live Radar" not in system
+    assert "Включить Live-поиск" in radar
+    assert "Включить Live Radar" not in radar
+    assert "Включить Live-поиск" in wizard
