@@ -92,6 +92,7 @@ class ExternalUsageService:
         daily_limit: int,
         *,
         units: int = 1,
+        enforce_daily_limit: bool = True,
         estimated_cost: Decimal | float = 0.0,
         request_fingerprint: str | None = None,
         lease_seconds: int = 60,
@@ -99,7 +100,7 @@ class ExternalUsageService:
         worker_id: str | None = None,
         provider: str | None = None,
     ) -> int:
-        if daily_limit <= 0:
+        if enforce_daily_limit and daily_limit <= 0:
             raise ExternalBudgetExceeded(f"Лимит внешних запросов {service} установлен в 0")
         if units <= 0:
             raise ValueError("units must be positive")
@@ -155,7 +156,7 @@ class ExternalUsageService:
                     )
                 )
                 total_committed = int(used or 0) + int(active_res or 0)
-                if total_committed + units > daily_limit:
+                if enforce_daily_limit and total_committed + units > daily_limit:
                     raise ExternalBudgetExceeded(
                         f"Дневной лимит {service} исчерпан (использовано: {used}, зарезервировано: {active_res}, лимит: {daily_limit})"
                     )
@@ -472,7 +473,16 @@ class ExternalUsageService:
             )
             await session.commit()
 
-    async def assert_available(self, service: str, daily_limit: int, units: int = 1) -> None:
+    async def assert_available(
+        self,
+        service: str,
+        daily_limit: int,
+        units: int = 1,
+        *,
+        enforce_daily_limit: bool = True,
+    ) -> None:
+        if not enforce_daily_limit:
+            return
         if daily_limit <= 0:
             raise ExternalBudgetExceeded(f"Лимит внешних запросов {service} установлен в 0")
         used = await self.used_today(service)

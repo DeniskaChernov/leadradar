@@ -116,7 +116,7 @@ async def test_lead_funnel_api_chain(session_factory):
         ("/catalog", "ИСТОЧНИК ИСТИНЫ"),
         ("/audiences", "ГРУППЫ СПРОСА"),
         ("/openings", "B2B ОТКРЫТИЯ"),
-        ("/agent", "ОБОСНОВАННО"),
+        ("/agent", "ТОЛЬКО ИЗ БАЗЫ"),
     ],
 )
 async def test_admin_pages_show_russian_eyebrows(session_factory, path: str, marker: str):

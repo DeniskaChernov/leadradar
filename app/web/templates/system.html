@@ -11,7 +11,7 @@
   <div>
     <span class="eyebrow">КАБИНА СИСТЕМЫ</span>
     <h2>Диагностика, оценка лидов и расходы</h2>
-    <p>Те же кнопки оценки, что на Обзоре и Радаре. Ниже — лимиты, тумблеры и диагностика.</p>
+    <p>Те же кнопки оценки, что на Главной и в «Найти лидов». Ниже — лимиты, тумблеры и диагностика.</p>
   </div>
   <div class="hero-actions">
     {% include "partials/signal_review_actions.html" %}
@@ -401,7 +401,7 @@
 <div class="integration-grid">{% for name, item in integrations.items() %}<div class="integration"><span class="pulse {% if item.enabled %}{% elif item.configured %}busy{% else %}bad{% endif %}"></span><div><b>{{ name }}</b><small>{% if item.enabled %}работает{% elif item.configured %}настроен, но расход выключен{% else %}не настроен{% endif %}</small><p>{{ item.detail }}</p></div></div>{% endfor %}</div>
 
 <div class="grid two system-actions">
-<section class="panel action-form-card"><h3>Накопившиеся комментарии</h3><p>После первого скана у конкурента в базе лежит «история» — комментарии без оценки. Нажмите <strong>«Оценить накопившееся»</strong> вверху страницы: система создаст лиды и при необходимости поставит спорные в GPT.</p><div class="form-row"><a class="btn ghost" href="/radar?kind=pending">Спорные лиды в Радаре</a></div></section>
+<section class="panel action-form-card"><h3>Накопившиеся сигналы</h3><p>После первого поиска у источника в базе лежит «история» — сигналы без оценки. Нажмите <strong>«Оценить накопившееся»</strong> вверху страницы: система создаст клиентов и при необходимости поставит спорные в GPT.</p><div class="form-row"><a class="btn ghost" href="/radar?kind=pending">Спорные в поиске</a></div></section>
 <section class="panel action-form-card"><h3>Как тестировать без потерь</h3><ol class="plain-steps"><li>Оставить <code>INSTAGRAM_LIVE_CALLS_ENABLED=false</code>.</li><li>Проверить интерфейс и логику на mock и сохранённой базе.</li><li>Перед контрольным тестом включить live-запросы, поставить маленький дневной лимит и только тогда задать <code>EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS</code>.</li><li>После теста снова выключить live-режим.</li></ol></section>
 </div>
 

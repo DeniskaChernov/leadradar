@@ -284,17 +284,55 @@ class WebQueryService:
                         .limit(100)
                     )
                 ).all()
+            # «Сироты»: текст про ротанг, но источник не в портфеле (taxonomy в evidence).
             orphan_rattan_signals = int(
                 await session.scalar(
-                    select(func.count(Lead.id))
-                    .join(Competitor, Competitor.id == Lead.competitor_id)
+                    select(func.count(func.distinct(PublicSignal.id)))
+                    .join(Evidence, Evidence.public_signal_id == PublicSignal.id)
+                    .join(Competitor, Competitor.id == PublicSignal.competitor_id)
                     .where(
-                        Lead.vertical == Vertical.ARTIFICIAL_RATTAN,
                         Competitor.vertical != Vertical.ARTIFICIAL_RATTAN,
+                        Evidence.intent.is_not(None),
                     )
                 )
                 or 0
             )
+            # Кандидаты в портфель: у источника есть ротанг-таксономия, но вертикаль ещё не ротанг.
+            enroll_rows = (
+                await session.execute(
+                    select(
+                        Competitor.id,
+                        Competitor.normalized_handle,
+                        Competitor.active,
+                        Competitor.tier,
+                        func.count(func.distinct(PublicSignal.id)).label("signal_count"),
+                    )
+                    .join(PublicSignal, PublicSignal.competitor_id == Competitor.id)
+                    .join(Evidence, Evidence.public_signal_id == PublicSignal.id)
+                    .where(
+                        Competitor.vertical != Vertical.ARTIFICIAL_RATTAN,
+                        Evidence.intent.is_not(None),
+                    )
+                    .group_by(
+                        Competitor.id,
+                        Competitor.normalized_handle,
+                        Competitor.active,
+                        Competitor.tier,
+                    )
+                    .order_by(desc("signal_count"))
+                    .limit(24)
+                )
+            ).all()
+            enroll_candidates = [
+                {
+                    "id": row.id,
+                    "handle": row.normalized_handle,
+                    "active": row.active,
+                    "tier": row.tier,
+                    "signal_count": int(row.signal_count or 0),
+                }
+                for row in enroll_rows
+            ]
         layers: Counter[str] = Counter()
         roles: Counter[str] = Counter()
         products: Counter[str] = Counter()
@@ -308,6 +346,7 @@ class WebQueryService:
         return {
             "rattan_rows": rows,
             "rattan_companies": enrolled,
+            "rattan_enroll_candidates": enroll_candidates,
             "rattan_layers": layers,
             "rattan_roles": roles.most_common(),
             "rattan_products": products.most_common(),
@@ -318,18 +357,27 @@ class WebQueryService:
                 "raw": layers.get("RAW_MATERIAL", 0),
                 "ready": layers.get("READY_FURNITURE", 0),
                 "orphan_rattan_signals": orphan_rattan_signals,
+                "enroll_candidates": len(enroll_candidates),
                 "portfolio_empty": len(enrolled) == 0,
             },
         }
 
     async def _comments_without_lead_count(
-        self, session: AsyncSession, *, fresh_only: bool
+        self,
+        session: AsyncSession,
+        *,
+        fresh_only: bool,
+        vertical: Vertical | None = None,
     ) -> int:
         stmt = (
             select(func.count(Comment.id))
             .outerjoin(Lead, Lead.comment_id == Comment.id)
             .where(Lead.id.is_(None))
         )
+        if vertical is not None:
+            stmt = stmt.join(Competitor, Competitor.id == Comment.competitor_id).where(
+                Competitor.vertical == vertical
+            )
         if fresh_only:
             stmt = stmt.where(fresh_signal_clause(max_age_days=self.signal_max_age_days))
         return int(await session.scalar(stmt) or 0)
@@ -561,38 +609,73 @@ class WebQueryService:
             "funnel": {getattr(key, "value", str(key)): value for key, value in funnel_rows},
         }
 
-    async def signal_overview(self) -> dict[str, int]:
+    async def signal_overview(self, *, vertical: str | None = None) -> dict[str, int]:
+        vertical_enum = None
+        if vertical:
+            try:
+                vertical_enum = Vertical(vertical.strip().upper())
+            except ValueError:
+                vertical_enum = None
         async with self.session_factory() as session:
-            total = int(await session.scalar(select(func.count(Comment.id))) or 0)
-            unprocessed = await self._comments_without_lead_count(session, fresh_only=False)
-            unprocessed_actionable = await self._comments_without_lead_count(
-                session, fresh_only=True
+            comment_stmt = select(func.count(Comment.id))
+            if vertical_enum is not None:
+                comment_stmt = comment_stmt.join(
+                    Competitor, Competitor.id == Comment.competitor_id
+                ).where(Competitor.vertical == vertical_enum)
+            total = int(await session.scalar(comment_stmt) or 0)
+            unprocessed = await self._comments_without_lead_count(
+                session, fresh_only=False, vertical=vertical_enum
             )
+            unprocessed_actionable = await self._comments_without_lead_count(
+                session, fresh_only=True, vertical=vertical_enum
+            )
+            lead_filters = []
+            if vertical_enum is not None:
+                lead_filters.append(Lead.vertical == vertical_enum)
             hot = int(
                 await session.scalar(
                     select(func.count(Lead.id)).where(
                         Lead.lead_score >= self.hot_threshold,
                         Lead.status.in_(OPEN_LEAD_STATUSES),
+                        *lead_filters,
+                    )
+                )
+                or 0
+            )
+            warm = int(
+                await session.scalar(
+                    select(func.count(Lead.id)).where(
+                        Lead.lead_score >= 50,
+                        Lead.lead_score < self.hot_threshold,
+                        Lead.status.in_(OPEN_LEAD_STATUSES),
+                        *lead_filters,
                     )
                 )
                 or 0
             )
             qualified = int(
                 await session.scalar(
-                    select(func.count(Lead.id)).where(Lead.status.in_(OPEN_LEAD_STATUSES))
+                    select(func.count(Lead.id)).where(
+                        Lead.status.in_(OPEN_LEAD_STATUSES),
+                        *lead_filters,
+                    )
                 )
                 or 0
             )
             rejected = int(
                 await session.scalar(
-                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.NOT_LEAD)
+                    select(func.count(Lead.id)).where(
+                        Lead.status == LeadStatus.NOT_LEAD,
+                        *lead_filters,
+                    )
                 )
                 or 0
             )
             pending = int(
                 await session.scalar(
                     select(func.count(Lead.id)).where(
-                        Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING])
+                        Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING]),
+                        *lead_filters,
                     )
                 )
                 or 0
@@ -603,45 +686,59 @@ class WebQueryService:
             "unprocessed_actionable": unprocessed_actionable,
             "qualified": qualified,
             "hot": hot,
+            "warm": warm,
             "rejected": rejected,
             "pending": pending,
         }
 
-    async def radar_feed(self, *, limit: int = 8) -> dict[str, object]:
-        overview = await self.signal_overview()
+    async def radar_feed(self, *, limit: int = 8, vertical: str | None = None) -> dict[str, object]:
+        overview = await self.signal_overview(vertical=vertical)
+        vertical_enum = None
+        if vertical:
+            try:
+                vertical_enum = Vertical(vertical.strip().upper())
+            except ValueError:
+                vertical_enum = None
         async with self.session_factory() as session:
-            changes_rows = (
-                await session.execute(
-                    select(SignificantChange, Contact, Lead)
-                    .join(Contact, Contact.id == SignificantChange.contact_id)
-                    .join(Lead, Lead.id == SignificantChange.lead_id)
-                    .order_by(desc(SignificantChange.created_at))
-                    .limit(limit)
+            changes_stmt = (
+                select(SignificantChange, Contact, Lead)
+                .join(Contact, Contact.id == SignificantChange.contact_id)
+                .join(Lead, Lead.id == SignificantChange.lead_id)
+                .order_by(desc(SignificantChange.created_at))
+                .limit(limit)
+            )
+            if vertical_enum is not None:
+                changes_stmt = changes_stmt.where(Lead.vertical == vertical_enum)
+            changes_rows = (await session.execute(changes_stmt)).all()
+            hot_stmt = (
+                select(Lead, Contact, Comment, Competitor)
+                .join(Contact, Contact.id == Lead.contact_id)
+                .join(Comment, Comment.id == Lead.comment_id)
+                .join(Competitor, Competitor.id == Lead.competitor_id)
+                .where(
+                    Lead.lead_score >= self.hot_threshold,
+                    Lead.status.in_(OPEN_LEAD_STATUSES),
                 )
-            ).all()
-            hot_rows = (
-                await session.execute(
-                    select(Lead, Contact, Comment, Competitor)
-                    .join(Contact, Contact.id == Lead.contact_id)
-                    .join(Comment, Comment.id == Lead.comment_id)
-                    .join(Competitor, Competitor.id == Lead.competitor_id)
-                    .where(
-                        Lead.lead_score >= self.hot_threshold,
-                        Lead.status.in_(OPEN_LEAD_STATUSES),
-                    )
-                    .order_by(desc(Lead.lead_score), desc(Lead.created_at))
-                    .limit(limit)
-                )
-            ).all()
+                .order_by(desc(Lead.lead_score), desc(Lead.created_at))
+                .limit(limit)
+            )
+            if vertical_enum is not None:
+                hot_stmt = hot_stmt.where(Lead.vertical == vertical_enum)
+            hot_rows = (await session.execute(hot_stmt)).all()
+            analyzing_filters = [Lead.status == LeadStatus.ANALYZING]
+            pending_filters = [Lead.status == LeadStatus.AI_PENDING]
+            if vertical_enum is not None:
+                analyzing_filters.append(Lead.vertical == vertical_enum)
+                pending_filters.append(Lead.vertical == vertical_enum)
             analyzing = int(
                 await session.scalar(
-                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.ANALYZING)
+                    select(func.count(Lead.id)).where(*analyzing_filters)
                 )
                 or 0
             )
             ai_pending = int(
                 await session.scalar(
-                    select(func.count(Lead.id)).where(Lead.status == LeadStatus.AI_PENDING)
+                    select(func.count(Lead.id)).where(*pending_filters)
                 )
                 or 0
             )
@@ -702,8 +799,15 @@ class WebQueryService:
         q: str = "",
         competitor: str = "",
         kind: str = "",
+        vertical: str | None = None,
         limit: int = 300,
     ) -> list:
+        vertical_enum = None
+        if vertical:
+            try:
+                vertical_enum = Vertical(vertical.strip().upper())
+            except ValueError:
+                vertical_enum = None
         async with self.session_factory() as session:
             stmt = (
                 select(Comment, Contact, Competitor, Post, Lead)
@@ -714,6 +818,8 @@ class WebQueryService:
                 .order_by(desc(Comment.discovered_at), desc(Comment.id))
                 .limit(limit)
             )
+            if vertical_enum is not None:
+                stmt = stmt.where(Competitor.vertical == vertical_enum)
             if q.strip():
                 pattern = f"%{q.strip().lower()}%"
                 stmt = stmt.where(
@@ -734,6 +840,11 @@ class WebQueryService:
                 stmt = stmt.where(Comment.is_baseline.is_(True))
             elif normalized_kind == "hot":
                 stmt = stmt.where(Lead.lead_score >= self.hot_threshold)
+            elif normalized_kind == "warm":
+                stmt = stmt.where(
+                    Lead.lead_score >= 50,
+                    Lead.lead_score < self.hot_threshold,
+                )
             elif normalized_kind == "pending":
                 stmt = stmt.where(
                     or_(
@@ -752,9 +863,16 @@ class WebQueryService:
         status: str = "",
         quality: str = "",
         contact_id: int | None = None,
+        vertical: str | None = None,
         limit: int = 300,
         include_not_leads: bool = False,
     ) -> list:
+        vertical_enum = None
+        if vertical:
+            try:
+                vertical_enum = Vertical(vertical.strip().upper())
+            except ValueError:
+                vertical_enum = None
         async with self.session_factory() as session:
             stmt = (
                 select(Lead, Contact, Comment, Competitor, Post, Deal)
@@ -766,6 +884,8 @@ class WebQueryService:
                 .order_by(desc(Lead.lead_score), desc(Lead.created_at))
                 .limit(limit)
             )
+            if vertical_enum is not None:
+                stmt = stmt.where(Lead.vertical == vertical_enum)
             if q.strip():
                 pattern = f"%{q.strip().lower()}%"
                 stmt = stmt.where(
@@ -1006,6 +1126,101 @@ class WebQueryService:
                     "input_tokens": openai_tokens_in,
                     "output_tokens": openai_tokens_out,
                 },
+            }
+
+    async def lead_explain(self, lead_id: int) -> dict | None:
+        """Grounded explain для UI: только сохранённые factors/evidence, без GPT."""
+        factor_labels = {
+            "intent_score": "Сила коммерческого намерения",
+            "intent_strength": "Прямой сигнал покупки",
+            "specificity_score": "Конкретика (товар / количество)",
+            "value_score": "Потенциальный объём",
+            "activity_score": "Активность по сигналам",
+            "fit_score": "Совпадение с ассортиментом",
+            "source_quality_score": "Качество источника",
+            "urgency_score": "Срочность",
+            "confidence_score": "Уверенность модели",
+            "priority_score": "Итоговый приоритет",
+            "role_score": "Роль покупателя",
+            "history_boost": "История контакта",
+            "sequence_score": "Последовательность сигналов",
+            "validated_commercial_count": "Подтверждённые коммерческие сигналы",
+            "validated_competitor_count": "Сигналы у разных конкурентов",
+            "objection_penalty": "Штраф за возражения",
+        }
+        async with self.session_factory() as session:
+            row = (
+                await session.execute(
+                    select(Lead, Contact, Comment, Competitor)
+                    .join(Contact, Contact.id == Lead.contact_id)
+                    .join(Comment, Comment.id == Lead.comment_id)
+                    .join(Competitor, Competitor.id == Lead.competitor_id)
+                    .where(Lead.id == lead_id)
+                )
+            ).one_or_none()
+            if row is None:
+                return None
+            lead, contact, comment, competitor = row
+            details = lead.analysis_details if isinstance(lead.analysis_details, dict) else {}
+            factors_raw = details.get("factors") if isinstance(details.get("factors"), dict) else {}
+            contributions: list[dict[str, object]] = []
+            for key, label in factor_labels.items():
+                value = factors_raw.get(key, details.get(key))
+                if value is None:
+                    continue
+                try:
+                    score = int(value)
+                except (TypeError, ValueError):
+                    continue
+                if score == 0:
+                    continue
+                contributions.append(
+                    {
+                        "key": key,
+                        "label": label,
+                        "score": score,
+                    }
+                )
+            contributions.sort(key=lambda item: int(item["score"]), reverse=True)
+            evidence_texts = [
+                str(item)
+                for item in (details.get("evidence") or [])
+                if item not in (None, "")
+            ]
+            evidence_ids = [
+                int(item)
+                for item in (details.get("evidence_ids") or [])
+                if isinstance(item, int) or (isinstance(item, str) and str(item).isdigit())
+            ]
+            confidence = details.get("confidence", details.get("confidence_score"))
+            try:
+                confidence_int = int(confidence) if confidence is not None else None
+            except (TypeError, ValueError):
+                confidence_int = None
+            return {
+                "lead_id": lead.id,
+                "username": contact.username,
+                "score": lead.lead_score,
+                "intent": lead.intent,
+                "product_category": lead.product_category,
+                "status": lead.status.value,
+                "reason": lead.ai_reason or details.get("short_reason") or "",
+                "short_reason": details.get("short_reason") or "",
+                "buyer_role": details.get("buyer_role") or "UNKNOWN",
+                "confidence": confidence_int,
+                "quantity": details.get("quantity"),
+                "location": details.get("location"),
+                "comment_preview": (comment.text or "")[:280],
+                "competitor": competitor.normalized_handle,
+                "contributions": contributions,
+                "evidence": evidence_texts,
+                "evidence_ids": evidence_ids,
+                "risk_flags": [
+                    str(item)
+                    for item in (details.get("risk_flags") or [])
+                    if item not in (None, "")
+                ],
+                "grounded": True,
             }
 
     async def contacts(self, *, q: str = "", limit: int = 300) -> list:
@@ -1438,13 +1653,18 @@ class WebQueryService:
             f"Посадочная страница: {item}, наличие, цены, доставка и короткая форма консультации.",
         )
 
-    async def competitors(self) -> list[dict]:
+    async def competitors(self, *, vertical: str | None = None) -> list[dict]:
+        vertical_enum = None
+        if vertical:
+            try:
+                vertical_enum = Vertical(vertical.strip().upper())
+            except ValueError:
+                vertical_enum = None
         async with self.session_factory() as session:
-            competitors = list(
-                await session.scalars(
-                    select(Competitor).order_by(Competitor.tier, Competitor.normalized_handle)
-                )
-            )
+            stmt = select(Competitor).order_by(Competitor.tier, Competitor.normalized_handle)
+            if vertical_enum is not None:
+                stmt = stmt.where(Competitor.vertical == vertical_enum)
+            competitors = list(await session.scalars(stmt))
             if not competitors:
                 return []
             competitor_ids = [competitor.id for competitor in competitors]
@@ -2436,6 +2656,7 @@ class WebQueryService:
         max_units_per_scan: int,
         daily_remaining: int,
         live_enabled: bool,
+        vertical: str | None = None,
     ) -> dict[str, int | bool]:
         """Build a zero-cost estimate from data already stored in our DB.
 
@@ -2443,17 +2664,26 @@ class WebQueryService:
         to understand what a manual live scan is likely to do, while the provider-level scan budget
         remains the hard enforcement mechanism.
         """
+        vertical_enum = None
+        if vertical:
+            try:
+                vertical_enum = Vertical(vertical.strip().upper())
+            except ValueError:
+                vertical_enum = None
+        competitor_filter = [Competitor.active.is_(True)]
+        if vertical_enum is not None:
+            competitor_filter.append(Competitor.vertical == vertical_enum)
         async with self.session_factory() as session:
             active_competitors = int(
                 await session.scalar(
-                    select(func.count(Competitor.id)).where(Competitor.active.is_(True))
+                    select(func.count(Competitor.id)).where(*competitor_filter)
                 )
                 or 0
             )
             due_competitors = int(
                 await session.scalar(
                     select(func.count(Competitor.id)).where(
-                        Competitor.active.is_(True),
+                        *competitor_filter,
                         or_(
                             Competitor.next_scan_at.is_(None),
                             Competitor.next_scan_at <= datetime.now(UTC),
@@ -2467,7 +2697,7 @@ class WebQueryService:
                     select(func.count(Post.id))
                     .join(Competitor, Competitor.id == Post.competitor_id)
                     .where(
-                        Competitor.active.is_(True),
+                        *competitor_filter,
                         Post.comments_count > 0,
                         or_(
                             Post.last_synced_remote_count.is_(None),
@@ -2482,14 +2712,15 @@ class WebQueryService:
                     select(func.count(Post.id))
                     .join(Competitor, Competitor.id == Post.competitor_id)
                     .where(
-                        Competitor.active.is_(True),
+                        *competitor_filter,
                         Post.coverage_status.in_(["PARTIAL", "LATEST_ONLY", "UNKNOWN"]),
                     )
                 )
                 or 0
             )
 
-        hard_cap = max(0, min(max_units_per_scan, daily_remaining)) if live_enabled else 0
+        # daily_remaining — только метрика в UI; scan cap задаёт effective budget preview.
+        hard_cap = max(0, max_units_per_scan) if live_enabled else 0
         # One get_reels per active competitor + usually one comments page per changed Reel. Fallback
         # and pagination can make the real number higher, but never above hard_cap.
         expected_min = active_competitors + comment_candidates if live_enabled else 0
@@ -2502,6 +2733,7 @@ class WebQueryService:
             "expected_min_units": min(expected_min, hard_cap) if hard_cap else 0,
             "hard_cap_units": hard_cap,
             "daily_remaining": max(0, daily_remaining),
+            "vertical": vertical_enum.value if vertical_enum is not None else None,
         }
 
     @staticmethod

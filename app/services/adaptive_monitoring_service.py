@@ -41,6 +41,7 @@ class AdaptiveMonitoringService:
         configured_handles: list[str],
         *,
         force: bool,
+        vertical: str | None = None,
     ) -> tuple[list[CompetitorScanPlan], int]:
         now = datetime.now(UTC)
         async with self.session_factory() as session:
@@ -48,11 +49,17 @@ class AdaptiveMonitoringService:
             for handle in configured_handles:
                 await repo.get_or_create(handle)
             await session.flush()
-            competitors = list(
-                await session.scalars(
-                    select(Competitor).where(Competitor.active.is_(True))
-                )
-            )
+            query = select(Competitor).where(Competitor.active.is_(True))
+            if vertical:
+                from app.db.models import Vertical
+
+                try:
+                    vertical_enum = Vertical(vertical)
+                except ValueError:
+                    vertical_enum = None
+                if vertical_enum is not None:
+                    query = query.where(Competitor.vertical == vertical_enum)
+            competitors = list(await session.scalars(query))
             decisions = await self._decisions(session, competitors, now)
             plans: list[CompetitorScanPlan] = []
             not_due = 0

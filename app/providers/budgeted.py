@@ -176,7 +176,12 @@ class BudgetedInstagramProvider(InstagramProvider):
         if self.scan_budget is not None:
             self.scan_budget.assert_available(units)
         try:
-            await self.usage.assert_available("instagram", self.daily_limit, units=units)
+            await self.usage.assert_available(
+                "instagram",
+                self.daily_limit,
+                units=units,
+                enforce_daily_limit=False,
+            )
         except ExternalBudgetExceeded as exc:
             raise LiveCallsDisabledError(str(exc)) from exc
 
@@ -188,6 +193,7 @@ class BudgetedInstagramProvider(InstagramProvider):
                 operation,
                 self.daily_limit,
                 units=units,
+                enforce_daily_limit=False,
                 provider=self.inner.name,
             )
         except ExternalBudgetExceeded as exc:
@@ -236,7 +242,7 @@ class BudgetedInstagramProvider(InstagramProvider):
         if actual_units > 1:
             raise ScanBudgetExceededError(
                 f"Фактическое списание провайдера {actual_units} credits при резерве 1. "
-                "Проверка остановлена для сверки бюджета."
+                "превысило резерв. Проверка остановлена для сверки бюджета."
             )
         return result
 
@@ -283,13 +289,7 @@ class BudgetedInstagramProvider(InstagramProvider):
         provider_name = self.inner.name
 
         while page_cap is None or pages_fetched < page_cap:
-            daily_remaining = (
-                await self.usage.snapshot("instagram", self.daily_limit)
-            ).remaining
-            scan_remaining = (
-                self.scan_budget.remaining if self.scan_budget is not None else daily_remaining
-            )
-            remaining_before = min(daily_remaining, scan_remaining)
+            remaining_before = self.scan_budget.remaining if self.scan_budget is not None else 1
             if remaining_before <= 0:
                 if pages_fetched == 0:
                     raise ScanBudgetExceededError(
@@ -359,7 +359,7 @@ class BudgetedInstagramProvider(InstagramProvider):
 
             if units > remaining_before:
                 raise ScanBudgetExceededError(
-                    f"Провайдер списал {units} credits при остатке scan/daily {remaining_before}. "
+                    f"Провайдер списал {units} credits при остатке scan {remaining_before}. "
                     "Проверка остановлена для защиты квоты."
                 )
 

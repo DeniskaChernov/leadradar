@@ -27,7 +27,7 @@ def test_base_template_includes_economics_navigation_link():
 
     content = Path("app/web/templates/base.html").read_text(encoding="utf-8")
     assert 'href="/economics"' in content
-    assert "Экономика" in content
+    assert "Расходы" in content
 
 
 async def _seed_scrapecreators_policy(session_factory) -> None:

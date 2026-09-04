@@ -10,13 +10,44 @@
     <p>{% if rattan_counts.portfolio_empty %}Добавьте Instagram-источники в портфель на странице «Конкуренты» (вертикаль = Ротанг). Пока источников нет — сканы мебели сюда не попадают.{% else %}Только источники с вертикалью «Ротанг» и коммерческие сигналы по ним.{% endif %}</p>
   </div>
   <div class="hero-actions">
-    <a class="btn primary" href="/competitors">Портфель источников</a>
+    <a class="btn primary" href="/hot?vertical=ARTIFICIAL_RATTAN">HOT очередь</a>
+    <a class="btn" href="/leads?vertical=ARTIFICIAL_RATTAN">Лиды ротанга</a>
+    <a class="btn ghost" href="/radar?vertical=ARTIFICIAL_RATTAN">Найти лидов · ротанг</a>
+    <a class="btn ghost" href="/competitors?vertical=ARTIFICIAL_RATTAN">Портфель источников</a>
     <a class="btn ghost" href="/audiences?vertical=ARTIFICIAL_RATTAN">Аудитории</a>
   </div>
 </section>
 
 {% if rattan_counts.orphan_rattan_signals %}
 <section class="alert warn"><b>{{ rattan_counts.orphan_rattan_signals }} сигналов с текстом про ротанг</b><span>Классификатор нашёл ротанг в комментариях мебельных источников. Они не входят в портфель, пока источник не переведён на вертикаль «Ротанг».</span></section>
+{% endif %}
+
+{% if rattan_enroll_candidates %}
+<section class="panel rattan-enroll-panel" id="enroll">
+  <div class="panel-head"><div><h2>Добавить в портфель ротанга</h2><p>Источники с ротанг-сигналами, ещё не в вертикали. Один клик — лиды/сигналы переедут вместе с источником.</p></div></div>
+  <div class="rattan-enroll-list">
+    {% for item in rattan_enroll_candidates %}
+    <article class="rattan-enroll-item">
+      <div>
+        <b>@{{ item.handle }}</b>
+        <small>{{ item.signal_count }} ротанг-сигнал{% if item.signal_count != 1 %}ов{% endif %} · {% if item.active %}мониторинг{% else %}пауза{% endif %} · {{ item.tier }}</small>
+      </div>
+      <div class="rattan-enroll-actions">
+        <a class="btn tiny ghost" href="/competitors/{{ item.id }}">Карточка</a>
+        <button
+          class="btn tiny primary"
+          type="button"
+          data-api-action="/api/competitors/{{ item.id }}/settings"
+          data-payload='{"vertical":"ARTIFICIAL_RATTAN"}'
+          data-reload="1"
+          data-confirm-title="В портфель ротанга?"
+          data-confirm="Источник @{{ item.handle }} и его лиды перейдут в вертикаль «Ротанг». Мебельный радар их больше не подхватит."
+        >В ротанг</button>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
 {% endif %}
 
 <div class="metrics rattan-metrics">
@@ -31,7 +62,7 @@
   {% if rattan_companies %}
   <div class="audience-chip-list">{% for company in rattan_companies %}<a href="/competitors/{{ company.id }}">@{{ company.normalized_handle }}{% if company.active %} · мониторинг{% else %} · пауза{% endif %}</a>{% endfor %}</div>
   {% else %}
-  <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="building-2"></i></span><b>Источников пока нет</b><span>Откройте конкурента → вертикаль «Ротанг» → при необходимости включите мониторинг.</span></div>
+  <div class="empty-box"><span class="empty-icon" aria-hidden="true"><i data-lucide="building-2"></i></span><b>Источников пока нет</b><span>{% if rattan_enroll_candidates %}Ниже — кандидаты с ротанг-текстом: нажмите «В ротанг».{% else %}Добавьте вручную на <a href="/competitors?vertical=ARTIFICIAL_RATTAN">Конкуренты</a> (вертикаль «Ротанг») или найдите в Разведке.{% endif %}</span></div>
   {% endif %}
 </section>
 

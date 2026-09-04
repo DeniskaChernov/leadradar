@@ -16,9 +16,11 @@ from app.db.models import (
     ContactTask,
     Deal,
     DealStatus,
+    Evidence,
     Lead,
     LeadStatus,
     NotificationPolicy,
+    PublicSignal,
     TaskStatus,
     Vertical,
 )
@@ -39,6 +41,32 @@ ALLOWED_STAGE_TRANSITIONS: dict[LeadStatus, set[LeadStatus]] = {
     LeadStatus.LOST: set(),
     LeadStatus.NOT_LEAD: set(),
 }
+
+
+def stage_path(start: LeadStatus, target: LeadStatus) -> list[LeadStatus] | None:
+    """Кратчайшая цепочка разрешённых переходов (без WON/LOST)."""
+    if start == target:
+        return []
+    if target in {LeadStatus.WON, LeadStatus.LOST}:
+        return None
+    from collections import deque
+
+    queue: deque[tuple[LeadStatus, list[LeadStatus]]] = deque([(start, [])])
+    seen = {start}
+    while queue:
+        current, path = queue.popleft()
+        for nxt in ALLOWED_STAGE_TRANSITIONS.get(current, set()):
+            if nxt in {LeadStatus.WON, LeadStatus.LOST}:
+                continue
+            if nxt == LeadStatus.NOT_LEAD and target != LeadStatus.NOT_LEAD:
+                continue
+            next_path = [*path, nxt]
+            if nxt == target:
+                return next_path
+            if nxt not in seen:
+                seen.add(nxt)
+                queue.append((nxt, next_path))
+    return None
 
 
 class CRMService:
@@ -111,6 +139,35 @@ class CRMService:
             )
             await session.commit()
             return lead
+
+    async def move_lead_toward(
+        self, lead_id: int, manager_id: int, target: LeadStatus
+    ) -> Lead:
+        """Двигает лид к целевой стадии по кратчайшей разрешённой цепочке."""
+        if target in {LeadStatus.WON, LeadStatus.LOST}:
+            raise LeadWorkflowError(
+                "Продажу и отказ закрывайте через карточку сделки "
+                "(сумма, товар или причина) — не перетаскиванием на доске"
+            )
+        async with self.session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise LeadWorkflowError("Лид не найден")
+            current = lead.status
+            if current == target:
+                session.expunge(lead)
+                return lead
+        path = stage_path(current, target)
+        if path is None:
+            raise LeadWorkflowError(
+                f"Нельзя перейти со стадии {current.value} на {target.value}"
+            )
+        result: Lead | None = None
+        for step in path:
+            result = await self.move_lead(lead_id, manager_id, step)
+        if result is None:
+            raise LeadWorkflowError("Не удалось обновить стадию лида")
+        return result
 
     async def record_customer_reply(
         self,
@@ -525,6 +582,36 @@ class CRMService:
                     sync_business_vertical_enrollment(
                         business, vertical=enrolled_vertical
                     )
+                # Лиды/сигналы источника следуют за портфелем — как enroll_competitor.
+                signals = list(
+                    await session.scalars(
+                        select(PublicSignal).where(
+                            PublicSignal.competitor_id == competitor.id
+                        )
+                    )
+                )
+                for signal in signals:
+                    signal.vertical = enrolled_vertical
+                leads = list(
+                    await session.scalars(
+                        select(Lead).where(Lead.competitor_id == competitor.id)
+                    )
+                )
+                for lead in leads:
+                    lead.vertical = enrolled_vertical
+                    details = dict(lead.analysis_details or {})
+                    details["vertical"] = enrolled_vertical.value
+                    lead.analysis_details = details
+                if signals:
+                    evidence_rows = list(
+                        await session.scalars(
+                            select(Evidence).where(
+                                Evidence.public_signal_id.in_([item.id for item in signals])
+                            )
+                        )
+                    )
+                    for evidence in evidence_rows:
+                        evidence.vertical = enrolled_vertical
             if notification_policy is not None:
                 normalized_policy = notification_policy.strip().upper()
                 if normalized_policy == "INHERIT":

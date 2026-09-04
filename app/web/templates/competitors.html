@@ -1,16 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Конкуренты · Lead Radar{% endblock %}
-{% block heading %}Карта конкурентов{% endblock %}
-{% block subheading %}Все найденные игроки рынка, приоритеты и качество мониторинга{% endblock %}
+{% block heading %}Источники поиска{% endblock %}
+{% block subheading %}Компании, под которыми Lead Radar ищет людей с потребностью в мебели{% endblock %}
 {% block content %}
 <section class="hero-status safe market-hero competitors-hero" data-motion-root>
   <div>
-    <span class="eyebrow">КОНКУРЕНТЫ В РАДАРЕ</span>
+    <span class="eyebrow">ИСТОЧНИКИ · INSTAGRAM</span>
     <h2>{{ market_overview.active }} активных · {{ market_overview.paused }} на паузе</h2>
-    <p>Только компании, которые вы добавили. Новые — через <a href="/discovery"><b>Разведку</b></a>. Пауза = бесплатно, без API.</p>
+    <p>Это не просто список конкурентов — это источники сигналов для «Найти лидов». Пауза = бесплатно, без расхода credits.</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn primary" href="/radar">Найти лидов</a>
+    <a class="btn ghost" href="/discovery">Добавить источник</a>
   </div>
   <div class="market-kpis">
-    <div><strong>{{ market_overview.verified }}</strong><span>в радаре</span></div>
+    <div><strong>{{ market_overview.verified }}</strong><span>в поиске</span></div>
     <div><strong>{{ market_overview.active }}</strong><span>активно</span></div>
     <div><strong>{{ market_overview.paused }}</strong><span>на паузе</span></div>
     <div><strong>{{ market_overview.candidates }}</strong><span>кандидатов</span></div>
@@ -121,7 +125,7 @@
 </section>
 {% endif %}
 
-<details class="panel add-competitor"><summary><div><b>+ Добавить компанию вручную</b><span>Если вы нашли ещё один Instagram-аккаунт, он сразу попадёт в карту рынка</span></div></summary><form data-api-form action="/api/competitors" data-reload="1" class="form-grid"><label>Instagram username<input name="handle" placeholder="company.uz" required></label><label>Название<input name="display_name" placeholder="Название компании"></label><label>Сегмент<select name="category">{% for value, text in categories.items() %}<option value="{{ value }}">{{ text }}</option>{% endfor %}</select></label><label>Приоритет<select name="tier"><option value="A">A · главный конкурент</option><option value="B">B · важный</option><option value="C">C · фоновый</option></select></label><label>Вертикаль<select name="vertical"><option value="FURNITURE">Мебель</option><option value="ARTIFICIAL_RATTAN">Ротанг</option></select></label><label class="wide">Почему отслеживаем<input name="notes" placeholder="Например: плетёные обеденные комплекты и высокая активность в комментариях"></label><div class="wide"><button class="btn primary" type="submit">Добавить в радар</button></div></form></details>
+<details class="panel add-competitor"><summary><div><b>+ Добавить компанию вручную</b><span>Если вы нашли ещё один Instagram-аккаунт, он сразу попадёт в карту рынка</span></div></summary><form data-api-form action="/api/competitors" data-reload="1" class="form-grid"><label>Instagram username<input name="handle" placeholder="company.uz" required></label><label>Название<input name="display_name" placeholder="Название компании"></label><label>Сегмент<select name="category">{% for value, text in categories.items() %}<option value="{{ value }}">{{ text }}</option>{% endfor %}</select></label><label>Приоритет<select name="tier"><option value="A">A · главный конкурент</option><option value="B">B · важный</option><option value="C">C · фоновый</option></select></label><label>Вертикаль<select name="vertical"><option value="FURNITURE" {% if selected_vertical != 'ARTIFICIAL_RATTAN' %}selected{% endif %}>Мебель</option><option value="ARTIFICIAL_RATTAN" {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}selected{% endif %}>Ротанг</option></select></label><label class="wide">Почему отслеживаем<input name="notes" placeholder="Например: плетёные обеденные комплекты и высокая активность в комментариях"></label><div class="wide"><button class="btn primary" type="submit">Добавить в радар</button></div></form></details>
 
 <div class="section-title-row"><div><span class="eyebrow">МОНИТОРИНГ</span><h2>Компании в радаре</h2><p>Приоритет A проверяем чаще, B умеренно, C в фоне. Система со временем сможет менять приоритет по фактическим лидам и продажам.</p></div></div>
 

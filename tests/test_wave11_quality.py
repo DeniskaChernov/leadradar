@@ -83,7 +83,8 @@ async def test_radar_baseline_archive_filter(session_factory):
         response = await client.get("/radar?kind=baseline")
 
     assert response.status_code == 200
-    assert "Baseline архив" in response.text
+    assert "Архив" in response.text
+    assert "kind=baseline" in response.text or "baseline" in response.text.lower()
 
 
 def test_integrity_reports_orphan_leads_check():

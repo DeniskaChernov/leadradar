@@ -115,6 +115,29 @@ async def test_kanban_drag_drop_stage_api(session_factory):
     assert "сделк" in blocked_won.json()["detail"].lower()
 
 
+async def test_stage_toward_chains_new_to_offer(session_factory):
+    """Операторский drop на «Предложение»: NEW → … → OFFER_SENT одной командой."""
+    lead_id = await create_lead(session_factory)
+    settings = Settings(
+        _env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001
+    )
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(None),  # type: ignore[arg-type]
+        crm=CRMService(session_factory),
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        jumped = await client.post(
+            f"/api/leads/{lead_id}/stage", json={"status": "OFFER_SENT"}
+        )
+    assert jumped.status_code == 200
+    assert jumped.json()["status"] == "OFFER_SENT"
+
+
 async def test_stage_taken_sets_manager_assigned_and_feedback(session_factory):
     from sqlalchemy import select
 
@@ -146,6 +169,7 @@ def test_kanban_drag_drop_js_wired():
     assert "data-kanban-drag-handle" in js
     assert "CLOSED_STAGES" in js
     assert "dropInFlight" in js
+    assert "kanbanDropStatus" in js
 
 
 async def test_leads_board_shows_ai_pending_columns(session_factory):
@@ -168,8 +192,9 @@ async def test_leads_board_shows_ai_pending_columns(session_factory):
         response = await client.get("/leads")
     assert response.status_code == 200
     html = response.text
-    assert 'data-kanban-stage="AI_PENDING"' in html
-    assert 'data-kanban-stage="ANALYZING"' in html
+    assert 'data-operator-board' in html
+    assert 'data-kanban-col-key="pending"' in html
+    assert 'data-kanban-stages="ANALYZING,AI_PENDING"' in html
     assert f'data-lead-card="{lead_id}"' in html
     assert 'data-lead-stage="AI_PENDING"' in html
 

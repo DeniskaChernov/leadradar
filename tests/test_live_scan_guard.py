@@ -119,3 +119,77 @@ async def test_safe_replay_scan_does_not_require_confirmation(session_factory):
     assert response.status_code == 200
     assert response.json()["ok"] is True
     await controller.wait_current()
+
+
+async def test_live_scan_not_blocked_when_instagram_daily_limit_exhausted(session_factory):
+    async with session_factory() as session:
+        session.add(
+            ProviderBudgetPolicy(
+                provider="scrapecreators",
+                service="instagram",
+                monthly_target_units=3000,
+                monthly_soft_limit_units=3500,
+                monthly_hard_limit_units=3800,
+                default_scan_budget_units=10,
+                maximum_manual_scan_budget_units=50,
+                target_minimum_months=6,
+                comments_target_units=2400,
+                discovery_target_units=600,
+                enrichment_target_units=200,
+                reserve_target_units=600,
+                active=True,
+            )
+        )
+        await session.commit()
+    settings = Settings(
+        _env_file=None,
+        lead_search_enabled=True,
+        web_enabled=True,
+        instagram_provider="scrapecreators",
+        instagram_live_calls_enabled=True,
+        external_live_unlock="ALLOW_EXTERNAL_CALLS",
+        external_kill_switch=False,
+        instagram_max_units_per_scan=2,
+        instagram_daily_request_limit=1,
+        web_manager_id=1001,
+    )
+    usage = ExternalUsageService(session_factory)
+    reservation_id = await usage.reserve_budget(
+        "instagram",
+        "seed_usage",
+        settings.instagram_daily_request_limit,
+        units=1,
+        provider="scrapecreators",
+    )
+    await usage.finalize_reservation(reservation_id, units=1)
+
+    ops = OperationalControlService(session_factory)
+    await ops.load()
+    await ops.set_radar_live(True, manager_id=1001)
+    controller = MonitorController(FakeMonitor())  # type: ignore[arg-type]
+    workflow = LeadWorkflowService(session_factory, hot_threshold=70)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        workflow,
+        controller,
+        usage,
+        ops_control=ops,
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        preview = await client.get("/api/scan/preview?max_credits=5")
+        confirmed = await client.post(
+            "/api/scan",
+            json={"confirm_live": True, "max_credits": 2},
+        )
+
+    assert preview.status_code == 200
+    payload = preview.json()
+    assert payload["daily_remaining"] == 0
+    assert payload["effective_max_credits"] == 5
+    assert payload["can_start"] is True
+    assert "Дневной лимит внешних операций исчерпан." not in payload["blocking_reasons"]
+    assert confirmed.status_code == 200
+    assert confirmed.json()["ok"] is True
+    await controller.wait_current()

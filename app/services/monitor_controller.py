@@ -44,6 +44,7 @@ class MonitorController:
         self._cycle_trigger: str | None = None
         self._requested_credit_budget: int | None = None
         self._effective_credit_budget: int | None = None
+        self._scan_vertical: str | None = None
         self._task: asyncio.Task[CycleStats] | None = None
         self._progress = ScanProgressTracker()
 
@@ -53,12 +54,14 @@ class MonitorController:
         *,
         max_units: int | None = None,
         requested_units: int | None = None,
+        vertical: str | None = None,
     ) -> bool:
         if self._task is not None and not self._task.done():
             return False
         self._cycle_trigger = trigger
         self._requested_credit_budget = requested_units
         self._effective_credit_budget = max_units
+        self._scan_vertical = (vertical or "").strip().upper() or None
         provider = getattr(self.monitor, "provider", None)
         if provider is not None:
             if max_units is not None:
@@ -119,6 +122,8 @@ class MonitorController:
                 kwargs["force"] = force
             if "progress" in parameters:
                 kwargs["progress"] = self._progress
+            if "vertical" in parameters and self._scan_vertical:
+                kwargs["vertical"] = self._scan_vertical
             stats = await self.monitor.run_cycle(**kwargs)
             self.last_stats = stats
             self.cycles_completed += 1

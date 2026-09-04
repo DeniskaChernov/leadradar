@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Лид #{{ lead.id }} · Lead Radar{% endblock %}
-{% block heading %}Лид #{{ lead.id }}{% endblock %}
+{% block title %}Клиент #{{ lead.id }} · Lead Radar{% endblock %}
+{% block heading %}Клиент #{{ lead.id }}{% endblock %}
 {% block subheading %}@{{ contact.username }} · {{ lead_status_label(lead.status) }}{% endblock %}
 {% block content %}
 <div class="detail-back-bar">
-  {% set breadcrumbs = [{"href": "/leads", "label": "Лиды"}, {"label": "#" ~ lead.id}] %}
+  {% set breadcrumbs = [{"href": "/leads", "label": "Клиенты"}, {"label": "#" ~ lead.id}] %}
   {% include "partials/breadcrumbs.html" %}
-  <span class="pill primary">Карточка лида #{{ lead.id }}</span>
-  <button class="btn ghost btn-sm" type="button" onclick="window.print()" aria-label="Печать карточки лида">Печать</button>
+  <span class="pill primary">Карточка #{{ lead.id }}</span>
+  <button class="btn ghost btn-sm" type="button" onclick="window.print()" aria-label="Печать карточки">Печать</button>
 </div>
 
 <article class="lead-print-sheet">
@@ -22,7 +22,7 @@
 {% if ai or lead.status.value in ['AI_PENDING', 'NEW', 'ANALYZING'] %}
 <section class="ai-intelligence panel" id="lead-ai">
   <div class="ai-intelligence-head">
-    <div><span class="eyebrow">AI-РАЗБОР СИГНАЛА</span><h2>Почему этот сигнал важен</h2><p>Не просто оценка, а решение для следующего действия менеджера.</p></div>
+    <div><span class="eyebrow">AI-РАЗБОР</span><h2>Почему этот клиент важен</h2><p>Не просто оценка — подсказка для следующего шага менеджера.</p></div>
     {% if ai %}<div class="confidence-orb"><strong>{{ ai.get('confidence', 50) }}%</strong><span>уверенность</span></div>{% endif %}
   </div>
   {% if not openai_spend_allowed %}
@@ -45,7 +45,7 @@
     {% if ai.get('next_best_action') %}<div class="wide"><span>Следующий лучший шаг</span><b>{{ ai.get('next_best_action') }}</b></div>{% endif %}
     {% if ai.get('short_reason') %}<div class="wide"><span>Краткий вывод</span><b>{{ ai.get('short_reason') }}</b></div>{% endif %}
   </div>
-  <div class="ai-evidence-grid">
+  <div class="ai-evidence-grid" id="ai-evidence">
     <div><h3>На чём основано решение</h3>{% for item in ai.get('evidence', []) %}<p><span class="evidence-check">✓</span>{{ item }}</p>{% else %}<p class="muted">Дополнительные признаки не сохранены.</p>{% endfor %}</div>
     <div><h3>Риски и неопределённость</h3>{% for item in ai.get('risk_flags', []) %}<p><span class="risk-mark">!</span>{{ item }}</p>{% else %}<p><span class="evidence-check">✓</span>Существенных рисков классификации не найдено.</p>{% endfor %}</div>
   </div>
@@ -77,7 +77,7 @@
 <div class="lead-layout">
   <div class="lead-main">
     <section class="panel funnel-action-panel" id="funnel" data-motion-root>
-      <div class="panel-head"><div><h2>Следующее действие</h2><p>Переводите лид по воронке только после реального действия менеджера</p></div></div>
+      <div class="panel-head"><div><h2>Следующее действие</h2><p>Двигайте по воронке только после реального контакта</p></div></div>
       {% set funnel_steps = ['NEW','TAKEN','CONTACTED','QUALIFIED','OFFER_SENT','NEGOTIATION'] %}
       {% set funnel_labels = ['Новый','В работе','Связались','Квалиф.','Предлож.','Переговоры'] %}
       {% if lead.status.value in funnel_steps %}

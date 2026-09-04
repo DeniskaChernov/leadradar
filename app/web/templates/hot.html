@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}HOT · Lead Radar{% endblock %}
+{% block heading %}Новые лиды{% endblock %}
+{% block subheading %}Горячие клиенты: подготовить текст → написать в Instagram → отметить «Отправил»{% endblock %}
+{% block content %}
+{% set rv = selected_vertical or 'FURNITURE' %}
+{% set hot_base = '/hot?vertical=' ~ rv %}
+{% set leads_hot = '/leads?quality=hot&vertical=' ~ rv %}
+
+<section class="hero-status hot-hero {% if openai_spend_allowed %}live{% else %}safe{% endif %}" data-motion-root>
+  <div>
+    <span class="eyebrow">НОВЫЕ КЛИЕНТЫ · {% if rv == 'ARTIFICIAL_RATTAN' %}РОТАНГ{% else %}МЕБЕЛЬ{% endif %}</span>
+    <h2>{% if queue %}{{ queue|length }} готовы к контакту{% else %}Пока нет готовых к контакту{% endif %}</h2>
+    <p>{% if queue %}Подготовить текст → написать в Instagram → «Отправил».{% elif openai_spend_allowed %}Сначала найдите лидов — горячие появятся здесь.{% else %}OpenAI выключен: тексты не генерируются. Сначала найдите лидов или включите GPT в Системе.{% endif %}</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn primary" href="{% if rv == 'ARTIFICIAL_RATTAN' %}/radar?vertical=ARTIFICIAL_RATTAN{% else %}/radar{% endif %}">Найти лидов</a>
+    <a class="btn ghost" href="{% if rv == 'ARTIFICIAL_RATTAN' %}/radar?vertical=ARTIFICIAL_RATTAN&kind=hot{% else %}/radar?kind=hot{% endif %}">Горячие в поиске</a>
+    <a class="btn ghost" href="{{ leads_hot }}">Клиенты HOT</a>
+    <a class="btn ghost" href="/leads?vertical={{ rv }}">Воронка</a>
+  </div>
+</section>
+
+{% if openai_spend_allowed %}
+<section class="panel hot-openai-meter compact" aria-label="Дневной лимит OpenAI">
+  <div class="alert {% if openai_usage.remaining <= 0 %}danger{% elif openai_usage.remaining <= 10 %}warn{% else %}ok{% endif %}">
+    <b>GPT сегодня: {{ openai_usage.used }} / {{ openai_usage.limit }}</b>
+    <span>{% if openai_usage.remaining <= 0 %}Лимит исчерпан — новые тексты не зарезервируются до завтра.{% else %}Осталось {{ openai_usage.remaining }} запросов на анализ и HOT-тексты.{% endif %}</span>
+  </div>
+</section>
+{% elif not openai_spend_allowed %}
+<section class="alert warn hot-openai-hint"><b>OpenAI выключен</b><span>Черновики не генерируются. Включите тумблер OpenAI в <a href="/system{% if rv == 'ARTIFICIAL_RATTAN' %}?vertical=ARTIFICIAL_RATTAN{% endif %}">Системе</a> — или копируйте вручную, если текст уже есть.</span></section>
+{% endif %}
+
+<div class="hot-workspace" data-hot-workspace data-hot-vertical="{{ rv }}">
+  <aside class="panel hot-queue" aria-label="Очередь HOT">
+    <div class="panel-head"><div><h2>Кого писать</h2><p>Сильный интерес · ещё без предложения</p></div></div>
+    <div class="hot-queue-list" data-hot-queue>
+      {% for item in queue %}
+      <a class="hot-queue-item {% if selected and selected.lead_id == item.lead_id %}is-active{% endif %} {% if item.already_contacted %}is-prior{% endif %}" href="{{ hot_base }}&lead_id={{ item.lead_id }}" data-hot-lead-id="{{ item.lead_id }}">
+        <div class="hot-queue-top">
+          <b>@{{ item.username }}</b>
+          <strong class="hot-score">{{ item.score }}</strong>
+        </div>
+        <p>{{ item.comment_preview }}</p>
+        <small>@{{ item.competitor }} · {{ lead_status_label(item.status) }}{% if item.already_contacted %} · уже писали{% endif %}{% if item.has_draft %} · текст готов{% endif %}{% if item.sent %} · отправлено{% endif %}</small>
+      </a>
+      {% else %}
+      <div class="empty-box">
+        <span class="empty-icon" aria-hidden="true"><i data-lucide="flame"></i></span>
+        <b>Пока некого писать</b>
+        <span>Запустите «Найти лидов» — сюда попадут люди с прямой потребностью.</span>
+        <a class="btn primary tiny" href="{% if rv == 'ARTIFICIAL_RATTAN' %}/radar?vertical=ARTIFICIAL_RATTAN{% else %}/radar{% endif %}">Найти лидов</a>
+      </div>
+      {% endfor %}
+    </div>
+  </aside>
+
+  <section class="panel hot-detail" aria-label="Работа с лидом" data-hot-detail>
+    {% if selected %}
+    <div class="panel-head">
+      <div>
+        <span class="eyebrow">ЛИД #{{ selected.lead_id }}</span>
+        <h2>@{{ selected.username }} · {{ selected.score }}/100</h2>
+        <p>{{ lead_status_label(selected.status) }} · {{ intent_label(selected.intent) }} · {{ product_label(selected.product_category) }}</p>
+      </div>
+      <div class="hot-detail-links">
+        <a class="btn" target="_blank" rel="noopener" href="{{ selected.profile_url }}" data-hot-profile>Профиль Instagram ↗</a>
+        <a class="btn ghost" target="_blank" rel="noopener" href="{{ selected.post_url }}">Reel ↗</a>
+        <a class="btn ghost" href="/leads/{{ selected.lead_id }}">Карточка лида</a>
+      </div>
+    </div>
+
+    {% if selected.contact_history and selected.contact_history.already_contacted %}
+    <div class="alert warn hot-prior-alert">
+      <b>Уже писали этому контакту</b>
+      <span>{{ selected.contact_history.prior_count }} предыдущих касаний ·
+        <a href="/contacts/{{ selected.contact_id }}">история клиента</a>
+        {% if selected.contact_history.priors %}
+          · ранее: {% for p in selected.contact_history.priors %}<a href="/leads/{{ p.lead_id }}">#{{ p.lead_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+        {% endif %}
+      </span>
+    </div>
+    {% endif %}
+
+    <blockquote class="hot-comment">{{ selected.comment_text or 'Пустой комментарий' }}</blockquote>
+    <p class="muted">Источник: @{{ selected.competitor }} · {{ selected.ai_reason or 'Причина оценки не сохранена' }}</p>
+
+    <div class="hot-rec">
+      <span class="eyebrow">КАТАЛОГ</span>
+      <b>{{ selected.recommendation.title }}</b>
+      <p>{{ selected.recommendation.description }}</p>
+    </div>
+
+    <div class="hot-draft-box">
+      <div class="hot-draft-head">
+        <h3>Текст для Instagram</h3>
+        <span class="tag {% if selected.draft %}success{% else %}muted-tag{% endif %}" data-hot-draft-badge>{% if selected.draft and selected.draft.sent_at %}Отправлено{% elif selected.draft %}Готов{% else %}Нет текста{% endif %}</span>
+      </div>
+      <textarea class="hot-draft-text" rows="7" readonly data-hot-draft-text placeholder="Нажмите «Подготовить текст» — GPT соберёт предложение по комментарию и каталогу.">{% if selected.draft %}{{ selected.draft.message }}{% endif %}</textarea>
+      <div class="hot-draft-actions">
+        <button class="btn primary" type="button" data-hot-prepare data-lead-id="{{ selected.lead_id }}" {% if not openai_spend_allowed and not selected.draft %}disabled{% endif %}>Подготовить текст</button>
+        <button class="btn" type="button" data-hot-copy {% if not selected.draft %}disabled{% endif %}>Скопировать</button>
+        <a class="btn" target="_blank" rel="noopener" href="{{ selected.profile_url }}" data-hot-open-ig {% if not selected.draft %}aria-disabled="true"{% endif %}>Открыть профиль</a>
+        <button class="btn success" type="button" data-hot-sent data-lead-id="{{ selected.lead_id }}" {% if not selected.can_mark_sent %}disabled{% endif %}>Отправил</button>
+      </div>
+      <p class="muted hot-hint">«Отправил» → воронка до «Предложение отправлено», затем сразу следующий HOT. Копирование статус не меняет.</p>
+    </div>
+    {% else %}
+    <div class="empty-box large">
+      <span class="empty-icon" aria-hidden="true"><i data-lucide="message-circle"></i></span>
+      <b>Выберите клиента слева</b>
+      <span>Дальше: подготовить текст → скопировать → написать в Instagram → «Отправил» → следующий.</span>
+      {% if not queue %}
+      <a class="btn primary" href="{% if rv == 'ARTIFICIAL_RATTAN' %}/radar?vertical=ARTIFICIAL_RATTAN{% else %}/radar{% endif %}">Найти лидов</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

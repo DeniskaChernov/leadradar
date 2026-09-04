@@ -4,14 +4,14 @@
 {% block subheading %}Вся история клиента, интерес, задачи и сделки в одном месте{% endblock %}
 {% block content %}
 <div class="detail-back-bar">
-  {% set breadcrumbs = [{"href": "/contacts", "label": "Клиенты"}, {"label": "@" ~ contact.username}] %}
+  {% set breadcrumbs = [{"href": "/contacts", "label": "Люди"}, {"label": "@" ~ contact.username}] %}
   {% include "partials/breadcrumbs.html" %}
-  <span class="pill primary">Карточка клиента</span>
+  <span class="pill primary">История человека</span>
 </div>
 <div class="hero-status safe contact-header" data-motion-root>
   <div class="profile-avatar">{{ (contact.display_name or contact.username)[:1]|upper }}</div>
   <div>
-    <span class="eyebrow">КЛИЕНТ #{{ contact.id }}</span>
+    <span class="eyebrow">ЧЕЛОВЕК #{{ contact.id }}</span>
     <h2>{{ contact.display_name or '@' ~ contact.username }}</h2>
     <div class="profile-links">
       <a target="_blank" rel="noopener" href="{{ contact.profile_url }}">Instagram @{{ contact.username }} ↗</a>

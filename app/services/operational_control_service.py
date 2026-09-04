@@ -82,7 +82,7 @@ class OperationalControlService:
             row = await self._get_or_create(session)
             row.radar_live_armed = bool(armed)
             if default_scan_credits is not None:
-                row.default_scan_credits = max(1, min(50, int(default_scan_credits)))
+                row.default_scan_credits = max(1, min(100_000, int(default_scan_credits)))
             row.updated_by = manager_id
             row.updated_at = datetime.now(UTC)
             await session.commit()

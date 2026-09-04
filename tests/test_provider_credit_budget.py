@@ -104,7 +104,7 @@ async def test_wallet_prefers_provider_confirmed_balance_and_is_idempotent(
 
 
 @pytest.mark.asyncio
-async def test_available_scan_is_clamped_by_month_daily_manual_and_confirmed_wallet(
+async def test_available_scan_is_clamped_by_month_and_confirmed_wallet(
     session_factory,
 ):
     await _add_policy(session_factory, hard=20)
@@ -128,3 +128,29 @@ async def test_available_scan_is_clamped_by_month_daily_manual_and_confirmed_wal
     assert availability.effective_units == 4
     assert availability.provider_balance == 4
     assert availability.provider_balance_source == "API_RESPONSE"
+
+
+@pytest.mark.asyncio
+async def test_available_scan_honors_requested_units_without_legacy_50_cap(
+    session_factory,
+):
+    await _add_policy(session_factory, hard=500)
+    service = ProviderCreditBudgetService(session_factory)
+    await service.record_credit_snapshot(
+        idempotency_key="wallet:large-confirmed",
+        provider="scrapecreators",
+        operation="get_reels",
+        source="API_RESPONSE",
+        credits_remaining=50_000,
+        credits_charged=1,
+    )
+
+    availability = await service.available_for_scan(
+        provider="scrapecreators",
+        requested_units=150,
+        daily_remaining=0,
+    )
+
+    assert availability.effective_units == 150
+    assert availability.blocking_reasons == ()
+    assert "Дневной лимит" not in " ".join(availability.blocking_reasons)

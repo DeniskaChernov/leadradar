@@ -343,8 +343,9 @@
 
   const enhanceMotion = () => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // Канбан не участвует: translateY/scale ломает выравнивание колонок и даёт наложение.
     const elements = document.querySelectorAll(
-      '[data-motion-root] > *, .cards > *, .kanban-stack > *, .kanban-col, .task-list-page > *, .catalog-grid > *, .lead-layout > .panel, .stage-actions > .stage-btn, .funnel-track-step, .quick-actions > *, .metrics > *, .deal-grid > *'
+      '[data-motion-root]:not([data-kanban-board]) > *, .cards > *, .task-list-page > *, .catalog-grid > *, .lead-layout > .panel, .stage-actions > .stage-btn, .funnel-track-step, .quick-actions > *, .metrics > *, .deal-grid > *'
     );
     if (!elements.length) return;
     document.documentElement.classList.add('motion-ready');
@@ -497,6 +498,13 @@
     };
 
     const CLOSED_STAGES = new Set(['WON', 'LOST']);
+    const colStages = (col) =>
+      String(col.dataset.kanbanStages || col.dataset.kanbanStage || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    const dropStatusOf = (col) =>
+      String(col.dataset.kanbanDropStatus || '').trim().toUpperCase();
 
     board.querySelectorAll('[data-kanban-drag-handle]').forEach((handle) => {
       handle.addEventListener('dragstart', (event) => {
@@ -524,12 +532,12 @@
     board.querySelectorAll('[data-kanban-drop]').forEach((stack) => {
       const col = stack.closest('[data-kanban-stage]');
       if (!(col instanceof HTMLElement)) return;
-      const targetStage = col.dataset.kanbanStage || '';
-      if (CLOSED_STAGES.has(targetStage)) return;
+      const targetStage = dropStatusOf(col);
+      if (!targetStage || CLOSED_STAGES.has(targetStage)) return;
 
       stack.addEventListener('dragover', (event) => {
-        if (!draggedCard || dropInFlight || !targetStage || targetStage === fromStage) return;
-        if (CLOSED_STAGES.has(targetStage)) return;
+        if (!draggedCard || dropInFlight || !targetStage) return;
+        if (colStages(col).includes(fromStage)) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
         col.classList.add('is-drop-target');
@@ -543,8 +551,8 @@
       stack.addEventListener('drop', async (event) => {
         event.preventDefault();
         col.classList.remove('is-drop-target');
-        if (dropInFlight || !draggedCard || !targetStage || targetStage === fromStage) return;
-        if (CLOSED_STAGES.has(targetStage)) return;
+        if (dropInFlight || !draggedCard || !targetStage) return;
+        if (colStages(col).includes(fromStage)) return;
         const leadId = draggedCard.dataset.leadCard;
         if (!leadId) return;
         dropInFlight = true;
@@ -565,6 +573,101 @@
     });
   };
 
+  const scanVertical = () => {
+    const raw = (document.body.dataset.scanVertical || 'FURNITURE').trim().toUpperCase();
+    return raw === 'ARTIFICIAL_RATTAN' ? 'ARTIFICIAL_RATTAN' : 'FURNITURE';
+  };
+
+  const withScanVertical = (url) => {
+    if (/[?&]vertical=/.test(url)) return url;
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}vertical=${encodeURIComponent(scanVertical())}`;
+  };
+
+
+  const enhanceHotWorkspace = () => {
+    const root = document.querySelector('[data-hot-workspace]');
+    if (!(root instanceof HTMLElement)) return;
+    const draftEl = root.querySelector('[data-hot-draft-text]');
+    const badge = root.querySelector('[data-hot-draft-badge]');
+    const prepareBtn = root.querySelector('[data-hot-prepare]');
+    const copyBtn = root.querySelector('[data-hot-copy]');
+    const sentBtn = root.querySelector('[data-hot-sent]');
+    const setDraft = (detail) => {
+      const draft = detail && detail.draft;
+      if (draftEl instanceof HTMLTextAreaElement) {
+        draftEl.value = draft && draft.message ? draft.message : '';
+      }
+      if (badge) {
+        if (draft && draft.sent_at) badge.textContent = 'Отправлено';
+        else if (draft && draft.message) badge.textContent = 'Готов';
+        else badge.textContent = 'Нет текста';
+        badge.className = `tag ${draft && draft.message ? 'success' : 'muted-tag'}`;
+      }
+      if (copyBtn instanceof HTMLButtonElement) copyBtn.disabled = !(draft && draft.message);
+      if (sentBtn instanceof HTMLButtonElement) {
+        sentBtn.disabled = !(detail && detail.can_mark_sent);
+      }
+    };
+    prepareBtn?.addEventListener('click', async () => {
+      const leadId = prepareBtn.getAttribute('data-lead-id');
+      if (!leadId) return;
+      setLoading(prepareBtn, true);
+      try {
+        const data = await api(`/api/hot/${leadId}/prepare`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        });
+        setDraft(data.detail);
+        toast(data.message || 'Текст готов');
+      } catch (error) {
+        toast(error.message, true);
+      } finally {
+        setLoading(prepareBtn, false);
+      }
+    });
+    copyBtn?.addEventListener('click', async () => {
+      const text = draftEl instanceof HTMLTextAreaElement ? draftEl.value.trim() : '';
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        toast('Текст скопирован');
+      } catch (_error) {
+        draftEl.focus();
+        draftEl.select();
+        toast('Выделите текст и скопируйте вручную (Ctrl+C)', true);
+      }
+    });
+    sentBtn?.addEventListener('click', async () => {
+      const leadId = sentBtn.getAttribute('data-lead-id');
+      if (!leadId) return;
+      const ok = await confirmAction(
+        'Отметить отправку?',
+        'Лид перейдёт по воронке до «Предложение отправлено». Нажимайте только после реальной отправки в Instagram.'
+      );
+      if (!ok) return;
+      setLoading(sentBtn, true);
+      try {
+        const data = await api(`/api/hot/${leadId}/sent`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        });
+        setDraft(data.detail);
+        const nextUrl = data.next_url
+          || (data.detail && data.detail.next_lead_id
+            ? `/hot?vertical=${encodeURIComponent(root.getAttribute('data-hot-vertical') || 'FURNITURE')}&lead_id=${data.detail.next_lead_id}`
+            : `/hot?vertical=${encodeURIComponent(root.getAttribute('data-hot-vertical') || 'FURNITURE')}`);
+        toast(data.detail && data.detail.next_lead_id
+          ? `${data.message || 'Отмечено'} · следующий HOT`
+          : `${data.message || 'Отмечено'} · очередь пуста`);
+        window.location.assign(nextUrl);
+      } catch (error) {
+        toast(error.message, true);
+        setLoading(sentBtn, false);
+      }
+    });
+  };
+
   const enhanceEconomicsBudgetSim = () => {
     const root = document.querySelector('[data-economics-budget-sim]');
     if (!(root instanceof HTMLElement)) return;
@@ -577,7 +680,7 @@
       if (valueEl) valueEl.textContent = credits;
       try {
         const preview = await api(
-          `/api/scan/preview?max_credits=${encodeURIComponent(credits)}`,
+          withScanVertical(`/api/scan/preview?max_credits=${encodeURIComponent(credits)}`),
           { method: 'GET' },
         );
         const maxEl = root.querySelector('[data-budget-sim-max]');
@@ -714,6 +817,7 @@
   enhanceKanbanMobile();
   enhanceKanbanDragDrop();
   enhanceEconomicsBudgetSim();
+  enhanceHotWorkspace();
   initKanbanLoadingState();
   restoreViewState();
 
@@ -810,12 +914,23 @@
     return { meta, plan, block };
   };
 
+  const syncScanButtonsFromPreview = (preview) => {
+    if (!preview) return;
+    const scanAllowed = Boolean(preview.search_enabled)
+      && (!preview.is_live || (preview.live_enabled && preview.can_start));
+    document.querySelectorAll('[data-scan], [data-scan-quick-go]').forEach((btn) => {
+      if (!(btn instanceof HTMLButtonElement)) return;
+      if (btn.dataset.scanBusy === '1') return;
+      btn.disabled = !scanAllowed;
+    });
+  };
+
   const refreshScanBudgetPreview = async (root = document) => {
     const credits = readScanBudgetSelection(root);
     if (!credits) return null;
     try {
       const preview = await api(
-        `/api/scan/preview?max_credits=${encodeURIComponent(credits)}`,
+        withScanVertical(`/api/scan/preview?max_credits=${encodeURIComponent(credits)}`),
         { method: 'GET' },
       );
       const maxEl = root.querySelector('[data-budget-max]');
@@ -858,6 +973,7 @@
           blockQuick.hidden = !formatted.block;
         }
       }
+      syncScanButtonsFromPreview(preview);
       return preview;
     } catch (_error) {
       return null;
@@ -910,9 +1026,11 @@
     try {
       let credits = requestedCredits;
       if (credits == null) credits = readScanBudgetSelection(document);
-      const previewUrl = credits
-        ? `/api/scan/preview?max_credits=${encodeURIComponent(credits)}`
-        : '/api/scan/preview';
+      const previewUrl = withScanVertical(
+        credits
+          ? `/api/scan/preview?max_credits=${encodeURIComponent(credits)}`
+          : '/api/scan/preview'
+      );
       const preview = await api(previewUrl, { method: 'GET' });
       if (!preview.search_enabled) {
         throw new Error('Поиск лидов временно приостановлен. Credits не расходуются.');
@@ -935,8 +1053,8 @@
           ? 'неизвестен'
           : `~${preview.package_months_remaining_estimate} месяца`;
         const proceed = await confirmAction(
-          'Запустить Radar?',
-          `ScrapeCreators. Максимум: ${hardCap} credits. `
+          'Найти лидов?',
+          `Максимум на запуск: ${hardCap} credits. `
           + `Использовано за месяц: ${monthlyUsed}/${monthlyHard}. Остаток: ${balance}. Запас: ${months}.`
         );
         if (!proceed) return;
@@ -949,15 +1067,21 @@
         body: JSON.stringify({
           confirm_live: confirmLive,
           max_credits: credits ? Number(credits) : 0,
+          vertical: scanVertical(),
         }),
       });
-      toast(data.message || 'Проверка запущена');
+      toast(data.message || 'Поиск запущен');
       if (data.ok) {
+        try {
+          sessionStorage.setItem('lr:find-leads-pending-results', '1');
+        } catch (_error) {
+          /* ignore */
+        }
         const onRadar = (document.body.dataset.page || '').startsWith('/radar');
         if (onRadar) {
           startRadarPolling();
         } else {
-          setTimeout(() => { window.location.href = '/radar'; }, 1200);
+          setTimeout(() => { window.location.href = findLeadsResultsUrl(); }, 1200);
         }
       }
     } catch (error) {
@@ -1577,36 +1701,66 @@
   const applyScanProgress = (payload) => {
     applyGptQueueChip(payload);
     const progress = payload.progress || payload.scan_progress || {};
-    const busy = Boolean(payload.cycle_running)
-      || Number(payload.analysis_queue || 0) > 0
+    const cycleRunning = Boolean(payload.cycle_running);
+    const analysisBusy = Number(payload.analysis_queue || 0) > 0
       || Number(payload.analysis_in_flight || 0) > 0;
+    const busy = cycleRunning || analysisBusy;
     const percent = Number(progress.percent || 0);
+    const phase = String(progress.phase || 'idle');
     const phaseLabel = progress.phase_label || '';
     const detail = progress.detail || '';
     const handle = progress.current_handle ? `@${progress.current_handle}` : '';
+    const runningDetail = [detail, handle].filter(Boolean).join(' · ')
+      || (phase === 'comments'
+        ? 'Сбор комментариев…'
+        : phase === 'discover'
+          ? 'Поиск Reels…'
+          : phase === 'prepare'
+            ? 'Подготовка…'
+            : phase === 'finalize'
+              ? 'Завершение…'
+              : 'Идёт работа…');
+
+    const statusPill = document.querySelector('[data-live-status-pill]');
+    if (statusPill) {
+      statusPill.classList.remove('busy', 'ok', 'error', 'safe', 'paused');
+      if (payload.last_error && !cycleRunning) {
+        statusPill.classList.add('error');
+        statusPill.textContent = 'Есть ошибка';
+      } else if (cycleRunning) {
+        statusPill.classList.add('busy');
+        statusPill.textContent = `Проверяем… ${percent}%`;
+      } else if (analysisBusy) {
+        statusPill.classList.add('busy');
+        statusPill.textContent = 'Оценка сигналов…';
+      } else {
+        statusPill.classList.add('ok');
+        statusPill.textContent = 'Готов · проверка не запущена';
+      }
+    }
 
     const banner = document.querySelector('[data-scan-progress-banner]');
     if (banner) {
-      banner.hidden = !payload.cycle_running;
+      banner.hidden = !cycleRunning;
       const title = banner.querySelector('[data-scan-banner-title]');
       const detailEl = banner.querySelector('[data-scan-banner-detail]');
       const fill = banner.querySelector('[data-scan-banner-fill]');
       const pct = banner.querySelector('[data-scan-banner-percent]');
       const bar = banner.querySelector('[role="progressbar"]');
-      if (title) title.textContent = phaseLabel || 'Идёт проверка Instagram';
-      if (detailEl) {
-        detailEl.textContent = [detail, handle].filter(Boolean).join(' · ') || 'Сбор комментариев…';
+      if (cycleRunning) {
+        if (title) title.textContent = phaseLabel || 'Идёт проверка Instagram';
+        if (detailEl) detailEl.textContent = runningDetail;
+        if (fill) fill.style.width = `${percent}%`;
+        if (pct) pct.textContent = `${percent}%`;
+        if (bar) bar.setAttribute('aria-valuenow', String(percent));
       }
-      if (fill) fill.style.width = `${percent}%`;
-      if (pct) pct.textContent = `${percent}%`;
-      if (bar) bar.setAttribute('aria-valuenow', String(percent));
     }
 
     const sideTitle = document.querySelector('[data-scan-side-title]');
     const sideDetail = document.querySelector('[data-scan-side-detail]');
     const sidePulse = document.querySelector('[data-scan-side-pulse]');
     if (sideTitle && sideDetail) {
-      if (payload.cycle_running) {
+      if (cycleRunning) {
         sideTitle.textContent = 'Идёт проверка';
         sideDetail.textContent = `${percent}% · ${phaseLabel || 'Instagram'}${handle ? ` · ${handle}` : ''}`;
         if (sidePulse) {
@@ -1620,12 +1774,18 @@
           sidePulse.classList.add('bad');
           sidePulse.classList.remove('busy');
         }
-      } else if (Number(payload.analysis_in_flight || 0) > 0 || Number(payload.analysis_queue || 0) > 0) {
+      } else if (analysisBusy) {
         sideTitle.textContent = 'Оценка сигналов';
         sideDetail.textContent = `В работе: ${payload.analysis_in_flight || 0} · очередь: ${payload.analysis_queue || 0}`;
         if (sidePulse) {
           sidePulse.classList.add('busy');
           sidePulse.classList.remove('bad');
+        }
+      } else {
+        sideTitle.textContent = 'Готов к запуску';
+        sideDetail.textContent = 'Поиск не запущен · нажмите «Найти лидов»';
+        if (sidePulse) {
+          sidePulse.classList.remove('busy', 'bad');
         }
       }
     }
@@ -1637,11 +1797,9 @@
       const detailEl = live.querySelector('[data-radar-live-detail]');
       const pct = live.querySelector('[data-radar-live-percent]');
       const block = live.querySelector('[data-scan-progress-block]');
-      if (payload.cycle_running) {
+      if (cycleRunning) {
         if (title) title.textContent = phaseLabel || 'Идёт проверка Instagram';
-        if (detailEl) {
-          detailEl.textContent = [detail, handle].filter(Boolean).join(' · ') || 'Сбор комментариев и Reels…';
-        }
+        if (detailEl) detailEl.textContent = runningDetail;
         if (pct) {
           pct.hidden = false;
           pct.textContent = `${percent}%`;
@@ -1650,11 +1808,11 @@
           block.hidden = false;
           const fill = block.querySelector('[data-scan-progress-fill]');
           const bar = block.querySelector('[data-scan-progress-bar]');
-          const phase = block.querySelector('[data-scan-progress-phase]');
+          const phaseEl = block.querySelector('[data-scan-progress-phase]');
           const handleEl = block.querySelector('[data-scan-progress-handle]');
           if (fill) fill.style.width = `${percent}%`;
           if (bar) bar.setAttribute('aria-valuenow', String(percent));
-          if (phase) phase.textContent = phaseLabel || 'Проверка';
+          if (phaseEl) phaseEl.textContent = phaseLabel || 'Проверка';
           if (handleEl) handleEl.textContent = handle;
           const setStat = (sel, value) => {
             const el = block.querySelector(sel);
@@ -1682,7 +1840,7 @@
 
     document.querySelectorAll('[data-scan]').forEach((btn) => {
       if (!(btn instanceof HTMLButtonElement)) return;
-      if (payload.cycle_running) {
+      if (cycleRunning) {
         if (!btn.dataset.scanBusy) {
           btn.dataset.scanBusy = '1';
           btn.dataset.wasDisabled = btn.disabled ? '1' : '0';
@@ -1692,12 +1850,16 @@
         btn.textContent = `Проверка ${percent}%`;
       } else if (btn.dataset.scanBusy) {
         btn.textContent = btn.dataset.scanLabel || btn.textContent;
-        btn.disabled = btn.dataset.wasDisabled === '1';
         delete btn.dataset.scanBusy;
         delete btn.dataset.scanLabel;
         delete btn.dataset.wasDisabled;
+        btn.disabled = false;
       }
     });
+    if (!cycleRunning) {
+      const budgetRoot = document.querySelector('.radar-budget-card, #scan-quick');
+      if (budgetRoot) refreshScanBudgetPreview(budgetRoot);
+    }
 
     return busy;
   };
@@ -1712,11 +1874,10 @@
   let scanProgressBusy = false;
   let cycleWasRunning = false;
   let scanSummaryShownForCycle = false;
-  let radarWasBusy = (() => {
-    const banner = document.querySelector('[data-radar-live]');
-    const strip = document.querySelector('[data-scan-progress-banner]');
-    return (banner && !banner.hidden) || (strip && !strip.hidden);
-  })();
+  // Нельзя брать busy из DOM-баннера: AI_PENDING в HTML ≠ pipeline queue →
+  // busy→idle на каждом poll давал бесконечный location.reload().
+  let radarWasBusy = false;
+  let radarQuietReloadScheduled = false;
 
   const showScanSummary = (payload) => {
     if (scanSummaryShownForCycle) return;
@@ -1732,8 +1893,8 @@
 
     toast(
       payload.last_error
-        ? `Проверка остановилась · ${String(payload.last_error).slice(0, 80)}`
-        : `Готово · ${comments} комм. · ${leads} лидов · ${competitors} ист.`,
+        ? `Поиск остановился · ${String(payload.last_error).slice(0, 80)}`
+        : `Поиск завершён · ${leads} лидов · ${comments} сигналов · ${competitors} источников`,
       Boolean(payload.last_error)
     );
 
@@ -1756,7 +1917,7 @@
     if (subtitle) {
       subtitle.textContent = payload.last_error
         ? `Завершено с ошибкой: ${String(payload.last_error).slice(0, 120)}`
-        : 'Итог последнего запуска Radar';
+        : `Найдено потенциальных клиентов: ${leads}. Фактический расход может быть меньше максимума.`;
     }
 
     const previouslyFocused = document.activeElement;
@@ -1771,7 +1932,12 @@
       setTimeout(() => {
         root.hidden = true;
         if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
-        if ((document.body.dataset.page || '').startsWith('/radar')) reloadSoon(400);
+        if ((document.body.dataset.page || '').startsWith('/radar')) {
+          const next = findLeadsResultsUrl();
+          setTimeout(() => { window.location.href = next; }, 400);
+        } else {
+          reloadSoon(400);
+        }
       }, 180);
     };
     const onKeydown = (event) => {
@@ -1800,7 +1966,7 @@
     if (radarPollBusy) return;
     radarPollBusy = true;
     try {
-      const feed = await api('/api/radar/feed?limit=8', { method: 'GET' });
+      const feed = await api(withScanVertical('/api/radar/feed?limit=8'), { method: 'GET' });
       notifyNewRadarChanges(feed);
       renderRadarFeed(feed);
       updateRadarLiveBanner(feed);
@@ -1808,11 +1974,15 @@
       const stillBusy = feed.cycle_running
         || Number(feed.analysis_queue || 0) > 0
         || Number(feed.analysis_in_flight || 0) > 0;
-      // Reload после затишья очереди, если summary уже закрыт.
-      if (radarWasBusy && !stillBusy) {
+      // Один reload после реального busy→idle (скан/очередь GPT), без цикла.
+      if (radarWasBusy && !stillBusy && !radarQuietReloadScheduled) {
         const summary = document.getElementById('scan-summary');
-        if (!summary || summary.hidden) reloadSoon(800);
+        if (!summary || summary.hidden) {
+          radarQuietReloadScheduled = true;
+          reloadSoon(800);
+        }
       }
+      if (stillBusy) radarQuietReloadScheduled = false;
       radarWasBusy = stillBusy;
     } catch (_error) {
       /* тихий poll */
@@ -1860,7 +2030,7 @@
     startGlobalScanProgressPolling();
   }
 
-  document.addEventListener('change', (event) => {
+  const onScanBudgetInput = (event) => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
     if (
@@ -1871,7 +2041,9 @@
       const root = target.closest('.radar-budget-card, #scan-quick') || document;
       refreshScanBudgetPreview(root);
     }
-  });
+  };
+  document.addEventListener('change', onScanBudgetInput);
+  document.addEventListener('input', onScanBudgetInput);
 
   const chatRoot = document.querySelector('[data-agent-chat-root]');
   if (chatRoot) {
@@ -2032,4 +2204,642 @@
       }
     })();
   }
+
+  const refreshNavUsage = async () => {
+    const root = document.querySelector('[data-nav-usage]');
+    if (!(root instanceof HTMLElement)) return;
+    try {
+      const preview = await api(withScanVertical('/api/scan/preview'), { method: 'GET' });
+      const used = Number(preview.used_this_month || 0);
+      const limit = preview.monthly_hard_limit;
+      const text = root.querySelector('[data-nav-usage-text]');
+      const fill = root.querySelector('[data-nav-usage-fill]');
+      const bar = root.querySelector('[data-nav-usage-bar]');
+      const usedLabel = used.toLocaleString('ru-RU');
+      if (text) {
+        text.textContent = limit != null
+          ? `${usedLabel} / ${Number(limit).toLocaleString('ru-RU')} credits`
+          : `${usedLabel} credits за месяц`;
+      }
+      const pct = limit ? Math.max(0, Math.min(100, Math.round((used / Number(limit)) * 100))) : 0;
+      if (fill instanceof HTMLElement) fill.style.width = `${pct}%`;
+      if (bar instanceof HTMLElement) bar.setAttribute('aria-valuenow', String(pct));
+    } catch (_error) {
+      /* usage preview недоступен — не подставляем fake */
+    }
+  };
+
+  const refreshNavHotBadge = async () => {
+    const badge = document.querySelector('[data-nav-hot-badge]');
+    if (!(badge instanceof HTMLElement)) return;
+    try {
+      const feed = await api(withScanVertical('/api/radar/feed?limit=1'), { method: 'GET' });
+      const hot = Number((feed.overview && feed.overview.hot) || (feed.hot_leads || []).length || 0);
+      if (hot > 0) {
+        badge.hidden = false;
+        badge.textContent = hot > 99 ? '99+' : String(hot);
+      } else {
+        badge.hidden = true;
+      }
+    } catch (_error) {
+      badge.hidden = true;
+    }
+  };
+
+  const closeLeadExplain = () => {
+    const root = document.getElementById('lead-explain');
+    if (!(root instanceof HTMLElement)) return;
+    root.classList.remove('is-open');
+    setTimeout(() => { root.hidden = true; }, 180);
+  };
+
+  const showLeadExplain = async (leadId) => {
+    const root = document.getElementById('lead-explain');
+    if (!(root instanceof HTMLElement)) return;
+    const body = root.querySelector('[data-lead-explain-body]');
+    const subtitle = root.querySelector('[data-lead-explain-subtitle]');
+    const openLink = root.querySelector('[data-lead-explain-open]');
+    if (body) body.innerHTML = '<p class="muted">Загружаю grounded explain…</p>';
+    root.hidden = false;
+    requestAnimationFrame(() => root.classList.add('is-open'));
+    try {
+      const data = await api(`/api/leads/${leadId}/explain`, { method: 'GET' });
+      if (subtitle) {
+        subtitle.textContent = `@${data.username || '—'} · score ${data.score}/100 · только данные из БД`;
+      }
+      if (openLink instanceof HTMLAnchorElement) {
+        openLink.href = `/leads/${leadId}#ai-evidence`;
+      }
+      const contributions = (data.contributions || [])
+        .map((item) => `<li><b>+${escapeHtml(String(item.score))}</b> ${escapeHtml(item.label || item.key)}</li>`)
+        .join('');
+      const evidence = (data.evidence || [])
+        .map((item) => `<li>${escapeHtml(String(item))}</li>`)
+        .join('');
+      const evidenceIds = (data.evidence_ids || []).length
+        ? `<p class="muted">Evidence IDs: ${(data.evidence_ids || []).map((id) => escapeHtml(String(id))).join(', ')}</p>`
+        : '<p class="muted">Evidence IDs не сохранены для этого лида.</p>';
+      if (body) {
+        body.innerHTML = `
+          <p class="lead-explain-reason">${escapeHtml(data.reason || data.short_reason || 'Объяснение ещё не сформировано.')}</p>
+          <p class="muted">${escapeHtml(data.comment_preview || '')}</p>
+          <h4>Почему Lead Radar считает его покупателем</h4>
+          <ul class="lead-explain-factors">${contributions || '<li class="muted">Факторы оценки не сохранены</li>'}</ul>
+          <h4>Evidence</h4>
+          <ul class="lead-explain-evidence">${evidence || '<li class="muted">Текстовые evidence не сохранены</li>'}</ul>
+          ${evidenceIds}
+        `;
+      }
+    } catch (error) {
+      if (body) body.innerHTML = `<p class="alert error">${escapeHtml(error.message || 'Не удалось загрузить')}</p>`;
+    }
+  };
+
+  const takeLeadIntoWork = async (leadId, button) => {
+    setLoading(button, true);
+    try {
+      const data = await api(`/api/leads/${leadId}/take`, { method: 'POST', body: '{}' });
+      toast(data.message || 'Лид взят в работу');
+      reloadSoon(500);
+    } catch (error) {
+      toast(error.message, true);
+      setLoading(button, false);
+    }
+  };
+
+  const readFindLeadsPrefs = () => {
+    try {
+      return JSON.parse(sessionStorage.getItem('lr:find-leads') || '{}') || {};
+    } catch (_error) {
+      return {};
+    }
+  };
+
+  const findLeadsResultsUrl = () => {
+    const prefs = readFindLeadsPrefs();
+    const heat = prefs.heat || 'hot';
+    const kind = heat === 'hot' ? 'hot' : (heat === 'warm' ? 'warm' : '');
+    const base = withScanVertical('/radar');
+    if (!kind) return `${base}#find-results`;
+    const join = base.includes('?') ? '&' : '?';
+    return `${base}${join}kind=${encodeURIComponent(kind)}#find-results`;
+  };
+
+  const FIND_CATEGORY_PRODUCTS = {
+    chairs: ['CHAIR', 'ARMCHAIR', 'STOOL', 'RATTAN_ARMCHAIR', 'RATTAN_BAR_STOOL'],
+    tables: ['TABLE', 'DINING'],
+    sets: ['SET', 'DINING_SET', 'GARDEN_SET', 'KOMPLEKT'],
+    outdoor: ['OUTDOOR', 'GARDEN', 'TERRACE', 'RATTAN_GARDEN'],
+    horeca: ['HORECA', 'CAFE', 'RESTAURANT', 'BAR'],
+    office: ['OFFICE'],
+    custom: ['CUSTOM', 'ORDER', 'НА ЗАКАЗ'],
+    rattan: ['RATTAN', 'РОТАНГ', 'ПЛЕТЕН'],
+    all: [],
+  };
+
+  const FIND_AUDIENCE_INTENTS = {
+    buyers_now: ['BUY', 'QUANTITY', 'PRICE', 'AVAILABILITY', 'DELIVERY', 'CONTACT'],
+    interested: ['CATALOG', 'COLOR', 'SIZE', 'LOCATION', 'PRICE', 'OTHER'],
+    companies_soon: ['BUY', 'QUANTITY', 'DELIVERY', 'CONTACT', 'LOCATION'],
+    makers: ['QUANTITY', 'CATALOG', 'BUY', 'PRICE'],
+  };
+
+  const FIND_AUDIENCE_ROLES = {
+    buyers_now: [],
+    interested: [],
+    companies_soon: ['B2B_HORECA', 'DESIGNER_CONTRACTOR'],
+    makers: ['WHOLESALER', 'MANUFACTURER', 'DEALER', 'RAW_MATERIAL_BUYER'],
+  };
+
+  const cardMatchesFindPrefs = (card, prefs, kind) => {
+    const heat = card.getAttribute('data-lead-heat') || 'cool';
+    if (kind === 'hot' && heat !== 'hot') return false;
+    if (kind === 'warm' && heat !== 'hot' && heat !== 'warm') return false;
+
+    const intent = String(card.getAttribute('data-lead-intent') || '').toUpperCase();
+    const role = String(card.getAttribute('data-lead-role') || 'UNKNOWN').toUpperCase();
+    const product = String(card.getAttribute('data-lead-product') || '').toUpperCase();
+    const audience = prefs.audience || '';
+
+    if (audience && audience !== 'interested') {
+      const intents = FIND_AUDIENCE_INTENTS[audience] || [];
+      const roles = FIND_AUDIENCE_ROLES[audience] || [];
+      const intentOk = !intents.length || intents.includes(intent);
+      const roleOk = !roles.length || roles.includes(role) || role === 'UNKNOWN';
+      // Для makers/companies роль усиливает, но UNKNOWN не отсекаем жёстко.
+      if (audience === 'makers') {
+        const makerish = roles.includes(role)
+          || product.includes('RATTAN')
+          || intents.includes(intent);
+        if (!makerish && role !== 'UNKNOWN') return false;
+      } else if (audience === 'buyers_now' && intents.length && !intentOk) {
+        return false;
+      } else if (audience === 'companies_soon') {
+        if (!(roleOk || product.includes('HORECA') || intents.includes(intent))) {
+          return false;
+        }
+      }
+    }
+
+    const categories = Array.isArray(prefs.categories) ? prefs.categories : [];
+    const activeCats = categories.filter((value) => value && value !== 'all');
+    if (activeCats.length) {
+      const matched = activeCats.some((cat) => {
+        const needles = FIND_CATEGORY_PRODUCTS[cat] || [String(cat).toUpperCase()];
+        if (!needles.length) return true;
+        return needles.some((needle) => product.includes(String(needle).toUpperCase()));
+      });
+      // Пустой product не отсекаем — scoring мог ещё не проставить категорию.
+      if (product && !matched) return false;
+    }
+    return true;
+  };
+
+  const applyFindLeadsCardFilter = (kind) => {
+    const root = document.querySelector('[data-find-results]');
+    const prefs = readFindLeadsPrefs();
+    const note = root instanceof HTMLElement ? root.querySelector('[data-find-filter-note]') : null;
+    const empty = root instanceof HTMLElement ? root.querySelector('[data-find-filter-empty]') : null;
+    const cards = root instanceof HTMLElement ? [...root.querySelectorAll('.find-lead-card')] : [];
+    let visibleCards = 0;
+    cards.forEach((card) => {
+      if (!(card instanceof HTMLElement)) return;
+      const show = cardMatchesFindPrefs(card, prefs, kind);
+      card.hidden = !show;
+      if (show) visibleCards += 1;
+    });
+
+    const rows = [...document.querySelectorAll('[data-find-row]')];
+    let visibleRows = 0;
+    rows.forEach((row) => {
+      if (!(row instanceof HTMLElement)) return;
+      const heat = row.getAttribute('data-lead-heat') || 'none';
+      // Строки без лида скрываем при любом heat-фильтре; при «все» оставляем.
+      let show = true;
+      if (kind === 'hot' || kind === 'warm') {
+        if (heat === 'none') show = false;
+        else show = cardMatchesFindPrefs(row, prefs, kind);
+      } else if (prefs.audience || (Array.isArray(prefs.categories) && prefs.categories.filter((v) => v && v !== 'all').length)) {
+        if (heat === 'none') show = false;
+        else show = cardMatchesFindPrefs(row, prefs, kind);
+      }
+      row.hidden = !show;
+      if (show) visibleRows += 1;
+    });
+
+    const bits = [];
+    if (kind === 'hot') bits.push('только горячие');
+    else if (kind === 'warm') bits.push('горячие + тёплые');
+    if (prefs.audience) bits.push(`аудитория: ${prefs.audience}`);
+    if (Array.isArray(prefs.categoryLabels) && prefs.categoryLabels.length) {
+      bits.push(`категории: ${prefs.categoryLabels.join(', ')}`);
+    } else if (Array.isArray(prefs.categories) && prefs.categories.length) {
+      bits.push(`категории: ${prefs.categories.join(', ')}`);
+    }
+    if (note instanceof HTMLElement) {
+      if (!bits.length && !kind) {
+        note.hidden = true;
+        note.textContent = '';
+      } else {
+        note.hidden = false;
+        note.textContent = `Фильтр поиска: ${bits.join(' · ') || 'все'} · карточек ${visibleCards} · строк ${visibleRows}`;
+      }
+    }
+    if (empty instanceof HTMLElement) {
+      empty.hidden = visibleCards > 0 || cards.length === 0;
+    }
+    if (root instanceof HTMLElement) {
+      root.querySelectorAll('[data-find-filter-kind]').forEach((btn) => {
+        if (!(btn instanceof HTMLElement)) return;
+        const value = btn.getAttribute('data-find-filter-kind') || '';
+        btn.classList.toggle('primary', value === (kind || ''));
+        btn.classList.toggle('ghost', value !== (kind || ''));
+      });
+    }
+  };
+
+  const scrollToFindResultsIfNeeded = () => {
+    const target = document.getElementById('find-results') || document.querySelector('[data-find-results]');
+    if (!(target instanceof HTMLElement)) return;
+    let shouldScroll = window.location.hash === '#find-results';
+    try {
+      if (sessionStorage.getItem('lr:find-leads-pending-results') === '1') {
+        shouldScroll = true;
+        sessionStorage.removeItem('lr:find-leads-pending-results');
+      }
+    } catch (_error) {
+      /* ignore */
+    }
+    if (!shouldScroll) return;
+    requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const syncRadarKindSelect = (kind) => {
+    const select = document.querySelector('.radar-filters select[name="kind"]');
+    if (!(select instanceof HTMLSelectElement)) return;
+    if (kind === 'hot' || kind === 'warm' || kind === '') {
+      select.value = kind;
+    }
+  };
+
+  const clearFindLeadsPrefsFilter = () => {
+    const prefs = readFindLeadsPrefs();
+    const next = {
+      ...prefs,
+      heat: 'all',
+      audience: '',
+      categories: ['all'],
+      categoryLabels: ['Всё'],
+    };
+    try {
+      sessionStorage.setItem('lr:find-leads', JSON.stringify(next));
+    } catch (_error) {
+      /* ignore */
+    }
+    applyFindLeadsCardFilter('');
+    syncRadarKindSelect('');
+    const url = `${withScanVertical('/radar')}#find-results`;
+    window.history.replaceState({}, '', url);
+    toast('Фильтр поиска сброшен');
+  };
+
+  const enhanceFindLeadsResultFilters = () => {
+    const root = document.querySelector('[data-find-results]');
+    if (!(root instanceof HTMLElement)) return;
+    const params = new URLSearchParams(window.location.search);
+    const urlKind = params.get('kind') || '';
+    const prefs = readFindLeadsPrefs();
+    const initial = urlKind === 'hot' || urlKind === 'warm'
+      ? urlKind
+      : (prefs.heat === 'hot' ? 'hot' : (prefs.heat === 'warm' ? 'warm' : ''));
+    applyFindLeadsCardFilter(initial === 'all' ? '' : initial);
+    syncRadarKindSelect(initial === 'all' ? '' : initial);
+    root.addEventListener('click', (event) => {
+      const reset = event.target.closest('[data-find-filter-reset]');
+      if (reset) {
+        event.preventDefault();
+        clearFindLeadsPrefsFilter();
+        return;
+      }
+      const btn = event.target.closest('[data-find-filter-kind]');
+      if (!(btn instanceof HTMLElement)) return;
+      const kind = btn.getAttribute('data-find-filter-kind') || '';
+      const prefsNow = readFindLeadsPrefs();
+      prefsNow.heat = kind === 'hot' ? 'hot' : (kind === 'warm' ? 'warm' : 'all');
+      try {
+        sessionStorage.setItem('lr:find-leads', JSON.stringify(prefsNow));
+      } catch (_error) {
+        /* ignore */
+      }
+      applyFindLeadsCardFilter(kind);
+      syncRadarKindSelect(kind);
+      const next = withScanVertical('/radar');
+      const join = next.includes('?') ? '&' : '?';
+      const url = kind ? `${next}${join}kind=${encodeURIComponent(kind)}#find-results` : `${next}#find-results`;
+      window.history.replaceState({}, '', url);
+    });
+  };
+
+  const enhanceFindLeadsWizard = () => {
+    const root = document.querySelector('[data-find-leads]');
+    if (!(root instanceof HTMLElement)) return;
+    let step = 1;
+    const labels = {
+      audience: {
+        buyers_now: 'Покупателей мебели',
+        interested: 'Интересующихся мебелью',
+        companies_soon: 'Компании с будущей потребностью',
+        makers: 'Производители / дилеры',
+      },
+      heat: {
+        hot: 'Только горячие',
+        warm: 'Горячие + тёплые',
+        all: 'Все потенциальные',
+      },
+      geo: {
+        UZ: 'Узбекистан',
+        Tashkent: 'Ташкент',
+        Samarkand: 'Самарканд',
+        Bukhara: 'Бухара',
+        Andijan: 'Андижан',
+        Fergana: 'Фергана',
+      },
+      category: {
+        chairs: 'Стулья',
+        tables: 'Столы',
+        sets: 'Комплекты',
+        outdoor: 'Уличная мебель',
+        horeca: 'HoReCa мебель',
+        office: 'Офисная мебель',
+        custom: 'Мебель на заказ',
+        rattan: 'Искусственный ротанг',
+        all: 'Всё',
+      },
+      lang: {
+        ru: 'RU',
+        uz_lat: 'UZ lat',
+        uz_cyr: 'UZ кир',
+        mixed: 'RU/UZ',
+      },
+      source: {
+        instagram: 'Instagram',
+        telegram: 'Telegram',
+        tiktok: 'TikTok',
+        facebook: 'Facebook',
+        maps: 'Google / Карты',
+        olx: 'OLX.uz',
+        glotr: 'Glotr.uz',
+        tenders: 'Тендеры',
+        web: 'Web',
+      },
+    };
+
+    const syncChoices = (selector) => {
+      root.querySelectorAll(selector).forEach((label) => {
+        if (!(label instanceof HTMLElement)) return;
+        const input = label.querySelector('input');
+        label.classList.toggle('is-selected', Boolean(input && input.checked));
+      });
+    };
+
+    const updateSummary = () => {
+      const sources = [...root.querySelectorAll('input[name="find_source"]:checked')]
+        .map((el) => labels.source[el.value] || el.value);
+      const audience = root.querySelector('input[name="find_audience"]:checked');
+      const heat = root.querySelector('input[name="find_heat"]:checked');
+      const geo = root.querySelector('input[name="find_geo"]:checked');
+      const cats = [...root.querySelectorAll('input[name="find_category"]:checked')]
+        .map((el) => labels.category[el.value] || el.value);
+      const langs = [...root.querySelectorAll('input[name="find_lang"]:checked')]
+        .map((el) => labels.lang[el.value] || el.value);
+      const set = (sel, value) => {
+        const node = root.querySelector(sel);
+        if (node) node.textContent = value;
+      };
+      set('[data-sum-sources]', sources.length ? sources.join(', ') : 'Не выбрано');
+      set('[data-sum-audience]', audience ? (labels.audience[audience.value] || audience.value) : '—');
+      set('[data-sum-category]', cats.length ? cats.join(', ') : '—');
+      set('[data-sum-geo]', geo ? (labels.geo[geo.value] || geo.value) : '—');
+      set('[data-sum-lang]', langs.length ? langs.join(' + ') : '—');
+      set('[data-sum-heat]', heat ? (labels.heat[heat.value] || heat.value) : '—');
+      const langSoft = root.querySelector('[data-find-lang-soft]');
+      if (langSoft) {
+        langSoft.textContent = langs.length
+          ? `Ориентир: ${langs.join(' + ')}. Поиск не режет выдачу по языку и не выдумывает перевод.`
+          : 'Язык не выбран — ориентир широкий. Поиск всё равно идёт по публичным сигналам без языкового среза.';
+      }
+      const geoSoft = root.querySelector('[data-find-geo-soft]');
+      if (geoSoft) {
+        const geoLabel = geo ? (labels.geo[geo.value] || geo.value) : 'не выбрана';
+        geoSoft.textContent = geo && geo.value !== 'UZ'
+          ? `Ориентир: ${geoLabel}. Если город в сигнале не подтверждён — останется «неизвестно», без подстановки.`
+          : 'География — мягкий ориентир по Узбекистану. Неподтверждённый город не выдумываем.';
+      }
+      const sumSoft = root.querySelector('[data-sum-soft]');
+      if (sumSoft) {
+        sumSoft.textContent = 'Язык и город — ориентир для вас, не жёсткий фильтр запуска.';
+      }
+      const warn = root.querySelector('[data-find-heat-warn]');
+      if (warn) warn.hidden = !(heat && heat.value === 'all');
+      const hint = root.querySelector('[data-find-summary-hint]');
+      const cta = root.querySelector('[data-find-summary-cta]');
+      if (hint) {
+        hint.textContent = step >= 4
+          ? 'Готово к запуску'
+          : step === 1
+            ? 'Следующий шаг: что ищем'
+            : step === 2
+              ? 'Следующий шаг: параметры'
+              : 'Следующий шаг: запуск';
+      }
+      if (cta instanceof HTMLButtonElement) {
+        cta.textContent = step >= 4 ? 'Найти лидов →' : 'Далее →';
+        cta.dataset.findNext = step >= 4 ? '' : '1';
+        if (step >= 4) {
+          cta.removeAttribute('data-find-next');
+          cta.setAttribute('data-scan', '');
+          cta.setAttribute('data-find-launch', '');
+        } else {
+          cta.removeAttribute('data-scan');
+          cta.setAttribute('data-find-next', '');
+        }
+      }
+      try {
+        sessionStorage.setItem('lr:find-leads', JSON.stringify({
+          sources: [...root.querySelectorAll('input[name="find_source"]:checked')].map((el) => el.value),
+          audience: audience?.value,
+          heat: heat?.value,
+          geo: geo?.value,
+          categories: [...root.querySelectorAll('input[name="find_category"]:checked')].map((el) => el.value),
+          categoryLabels: cats,
+          languages: [...root.querySelectorAll('input[name="find_lang"]:checked')].map((el) => el.value),
+          languageLabels: langs,
+          step,
+        }));
+      } catch (_error) {
+        /* ignore quota */
+      }
+    };
+
+    const showStep = (next) => {
+      step = Math.max(1, Math.min(4, next));
+      root.querySelectorAll('[data-find-panel]').forEach((panel) => {
+        if (!(panel instanceof HTMLElement)) return;
+        const id = Number(panel.getAttribute('data-find-panel'));
+        const active = id === step;
+        panel.hidden = !active;
+        panel.classList.toggle('is-active', active);
+      });
+      root.querySelectorAll('[data-find-step-tab]').forEach((tab) => {
+        if (!(tab instanceof HTMLElement)) return;
+        const id = Number(tab.getAttribute('data-find-step-tab'));
+        tab.classList.toggle('is-active', id === step);
+        tab.classList.toggle('is-done', id < step);
+      });
+      updateSummary();
+      if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+      }
+    };
+
+    const applyPreset = (name) => {
+      const setRadio = (nameAttr, value) => {
+        const input = root.querySelector(`input[name="${nameAttr}"][value="${value}"]`);
+        if (input instanceof HTMLInputElement) {
+          input.checked = true;
+        }
+      };
+      const setCats = (values) => {
+        root.querySelectorAll('input[name="find_category"]').forEach((el) => {
+          if (el instanceof HTMLInputElement) el.checked = values.includes(el.value);
+        });
+      };
+      const ig = root.querySelector('input[name="find_source"][value="instagram"]');
+      if (ig instanceof HTMLInputElement) ig.checked = true;
+      if (name === 'quick') {
+        setRadio('find_audience', 'buyers_now');
+        setRadio('find_heat', 'hot');
+        setCats(['all']);
+      } else if (name === 'horeca') {
+        setRadio('find_audience', 'companies_soon');
+        setRadio('find_heat', 'warm');
+        setCats(['horeca', 'chairs', 'tables']);
+      } else if (name === 'wholesale') {
+        setRadio('find_audience', 'makers');
+        setRadio('find_heat', 'hot');
+        setCats(['rattan', 'custom']);
+      }
+      syncChoices('.find-source, .find-choice, .find-chip');
+      updateSummary();
+      showStep(2);
+      toast('Пресет заполнен — проверьте шаги');
+    };
+
+    root.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const next = target.closest('[data-find-next]');
+      const prev = target.closest('[data-find-prev]');
+      const preset = target.closest('[data-find-preset]');
+      const tab = target.closest('[data-find-step-tab]');
+      if (preset) {
+        applyPreset(preset.getAttribute('data-find-preset') || 'quick');
+        return;
+      }
+      if (next && !next.hasAttribute('data-scan')) {
+        event.preventDefault();
+        showStep(step + 1);
+        return;
+      }
+      if (prev) {
+        event.preventDefault();
+        showStep(step - 1);
+        return;
+      }
+      if (tab) {
+        const id = Number(tab.getAttribute('data-find-step-tab'));
+        if (id >= 1 && id <= 4) showStep(id);
+      }
+    });
+
+    root.addEventListener('change', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (target.name === 'find_source' && target.checked && target.closest('.is-soon')) {
+        target.checked = false;
+        toast('Источник ещё не подключён', true);
+      }
+      if (target.name === 'find_category' && target.value === 'all' && target.checked) {
+        root.querySelectorAll('input[name="find_category"]').forEach((el) => {
+          if (el instanceof HTMLInputElement && el.value !== 'all') el.checked = false;
+        });
+      } else if (target.name === 'find_category' && target.value !== 'all' && target.checked) {
+        const all = root.querySelector('input[name="find_category"][value="all"]');
+        if (all instanceof HTMLInputElement) all.checked = false;
+      }
+      syncChoices('.find-source, .find-choice, .find-chip');
+      updateSummary();
+    });
+
+    syncChoices('.find-source, .find-choice, .find-chip');
+    const saved = readFindLeadsPrefs();
+    if (saved.heat) {
+      const heatInput = root.querySelector(`input[name="find_heat"][value="${saved.heat}"]`);
+      if (heatInput instanceof HTMLInputElement) heatInput.checked = true;
+    }
+    if (saved.audience) {
+      const audienceInput = root.querySelector(`input[name="find_audience"][value="${saved.audience}"]`);
+      if (audienceInput instanceof HTMLInputElement) audienceInput.checked = true;
+    }
+    if (Array.isArray(saved.categories) && saved.categories.length) {
+      root.querySelectorAll('input[name="find_category"]').forEach((el) => {
+        if (el instanceof HTMLInputElement) {
+          el.checked = saved.categories.includes(el.value);
+        }
+      });
+    }
+    syncChoices('.find-source, .find-choice, .find-chip');
+    updateSummary();
+    const startStep = Number(saved.step) || 1;
+    showStep(Math.max(1, Math.min(4, startStep)));
+  };
+
+  enhanceFindLeadsWizard();
+  enhanceFindLeadsResultFilters();
+  scrollToFindResultsIfNeeded();
+  refreshNavUsage();
+  refreshNavHotBadge();
+
+  document.addEventListener('click', (event) => {
+    const explainBtn = event.target.closest('[data-lead-explain]');
+    if (explainBtn) {
+      event.preventDefault();
+      const leadId = explainBtn.getAttribute('data-lead-explain');
+      if (leadId) showLeadExplain(leadId);
+      return;
+    }
+    const takeBtn = event.target.closest('[data-lead-take]');
+    if (takeBtn) {
+      event.preventDefault();
+      const leadId = takeBtn.getAttribute('data-lead-take');
+      if (leadId) takeLeadIntoWork(leadId, takeBtn);
+      return;
+    }
+    const explainClose = event.target.closest('[data-lead-explain-close]');
+    if (explainClose) {
+      event.preventDefault();
+      closeLeadExplain();
+      return;
+    }
+    const explainRoot = document.getElementById('lead-explain');
+    if (explainRoot && event.target === explainRoot) closeLeadExplain();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    const explainRoot = document.getElementById('lead-explain');
+    if (explainRoot && !explainRoot.hidden) closeLeadExplain();
+  });
 })();

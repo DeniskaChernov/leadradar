@@ -1,31 +1,31 @@
 {% extends "base.html" %}
 {% block title %}AI-чат · Lead Radar{% endblock %}
 {% block heading %}AI-ассистент{% endblock %}
-{% block subheading %}Память сессии, read-tools по БД, write через подтверждение{% endblock %}
+{% block subheading %}Ответы только из вашей базы — без выдумок{% endblock %}
 {% block content %}
 <section class="hero-status agent-hero live" data-motion-root>
   <div>
-    <span class="eyebrow">ОБОСНОВАННО · БЕЗ ГАЛЛЮЦИНАЦИЙ</span>
-    <h2>Чат с доступом к вашей базе</h2>
-    <p>Лиды, конкуренты, экономика — только из БД. Изменения файлов и конкурентов — после вашего «Подтвердить».</p>
+    <span class="eyebrow">ТОЛЬКО ИЗ БАЗЫ</span>
+    <h2>Спросите про клиентов и поиск</h2>
+    <p>Горячие клиенты, воронка, расходы — только факты из БД. Изменения — после вашего «Подтвердить».</p>
   </div>
   <div class="hero-actions agent-hero-actions" role="group" aria-label="Быстрые вопросы">
-    <button class="btn ghost" type="button" data-agent-preset='{"query":"Покажи горячие лиды за сегодня"}'>HOT сегодня</button>
+    <button class="btn ghost" type="button" data-agent-preset='{"query":"Покажи горячие лиды за сегодня"}'>Горячие сегодня</button>
     <button class="btn ghost" type="button" data-agent-preset='{"query":"Сколько лидов ждут оценки и GPT"}'>Очередь оценки</button>
-    <button class="btn ghost" type="button" data-agent-preset='{"query":"Список активных конкурентов tier A"}'>Конкуренты A</button>
-    <button class="btn ghost" type="button" data-agent-preset='{"query":"Статус радара и последний scan"}'>Радар</button>
+    <button class="btn ghost" type="button" data-agent-preset='{"query":"Список активных конкурентов tier A"}'>Источники A</button>
+    <button class="btn ghost" type="button" data-agent-preset='{"query":"Статус поиска лидов и последний scan"}'>Статус поиска</button>
     <button class="btn ghost" type="button" data-agent-preset='{"query":"Сколько credits потратили за 7 дней"}'>Расход credits</button>
     <button class="btn ghost" type="button" data-agent-preset='{"query":"Какие лиды помечены как не наш товар"}'>Не наш товар</button>
-    <button class="btn ghost" type="button" data-agent-preset='{"query":"Объясни оценку лида"}' data-agent-needs-lead="1">Оценка лида</button>
+    <button class="btn ghost" type="button" data-agent-preset='{"query":"Объясни оценку лида"}' data-agent-needs-lead="1">Почему клиент</button>
   </div>
 </section>
 {% if agent_lead_id %}
 <section class="panel compact agent-context-bar" data-agent-context data-lead-id="{{ agent_lead_id }}"{% if agent_contact_id %} data-contact-id="{{ agent_contact_id }}"{% endif %}>
-  <div class="alert ok"><b>Контекст лида #{{ agent_lead_id }}</b><span>Presets и чат передают lead_id в tools.{% if agent_contact_id %} Ответы можно сохранить в заметку клиента.{% endif %} <a href="/leads/{{ agent_lead_id }}">Открыть карточку →</a></span></div>
+  <div class="alert ok"><b>Контекст клиента #{{ agent_lead_id }}</b><span>Вопросы идут с lead_id.{% if agent_contact_id %} Ответ можно сохранить в заметку.{% endif %} <a href="/leads/{{ agent_lead_id }}">Открыть карточку →</a></span></div>
 </section>
 {% elif agent_contact_id %}
 <section class="panel compact agent-context-bar" data-agent-context data-contact-id="{{ agent_contact_id }}">
-  <div class="alert ok"><b>Контекст клиента #{{ agent_contact_id }}</b><span>Ответы ассистента можно сохранить в заметку. <a href="/contacts/{{ agent_contact_id }}">Открыть карточку →</a></span></div>
+  <div class="alert ok"><b>Контекст человека #{{ agent_contact_id }}</b><span>Ответы можно сохранить в заметку. <a href="/contacts/{{ agent_contact_id }}">Открыть историю →</a></span></div>
 </section>
 {% endif %}
 
@@ -42,14 +42,14 @@
     </aside>
     <div class="agent-chat-main">
       <div class="agent-chat-toolbar">
-        <span class="tag status-contacted">read-tools</span>
-        <span class="tag neutral">write → approve</span>
+        <span class="tag status-contacted">только чтение базы</span>
+        <span class="tag neutral">запись → подтвердить</span>
       </div>
       <div class="agent-chat-messages" data-agent-messages aria-live="polite">
         <div class="agent-chat-empty" data-agent-empty>
           <span class="empty-icon" aria-hidden="true"><i data-lucide="bot"></i></span>
           <b>Начните диалог</b>
-          <span>Спросите про лиды, конкурентов или попросите записать заметку в State.md</span>
+          <span>Спросите про горячих клиентов, воронку или расходы — или нажмите быстрый вопрос выше</span>
         </div>
       </div>
       <div class="agent-chat-typing" data-agent-typing hidden aria-hidden="true">
@@ -58,12 +58,12 @@
       </div>
       <form class="agent-chat-composer" data-agent-chat-form>
         <input type="hidden" name="session_id" value="" data-agent-session-id>
-        <textarea name="query" rows="3" placeholder="Например: покажи лиды со score выше 70 · добавь конкурента @handle tier b · запиши в State.md: …" required autocomplete="off"></textarea>
+        <textarea name="query" rows="3" placeholder="Например: покажи горячих клиентов · статус поиска · сколько credits за неделю" required autocomplete="off"></textarea>
         <div class="composer-actions">
           <button class="btn primary" type="submit">Отправить</button>
         </div>
       </form>
-      <p class="muted agent-chat-hint">Enter — отправить · Shift+Enter — новая строка. Write-действия требуют кнопки «Подтвердить».</p>
+      <p class="muted agent-chat-hint">Enter — отправить · Shift+Enter — новая строка. Запись в базу — только после «Подтвердить».</p>
     </div>
   </div>
 </section>

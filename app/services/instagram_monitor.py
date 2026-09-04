@@ -122,6 +122,7 @@ class InstagramMonitor:
         *,
         force: bool = True,
         progress: ScanProgressTracker | None = None,
+        vertical: str | None = None,
     ) -> CycleStats:
         self.provider.begin_cycle()
         stats = CycleStats()
@@ -190,6 +191,7 @@ class InstagramMonitor:
             await self.adaptive_monitoring.ranked_due_competitors(
                 self.competitors,
                 force=force,
+                vertical=vertical,
             )
         )
         stats.avoided_requests += stats.competitors_not_due

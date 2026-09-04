@@ -1,6 +1,6 @@
 /* Lead Radar PWA offline shell — cache version must match UI ?v= in templates. */
-const CACHE_VERSION = "13.29.6-pwa";
-const CACHE_NAME = "leadradar-shell-13.29.6-pwa";
+const CACHE_VERSION = "13.43.0-work-pages";
+const CACHE_NAME = "leadradar-shell-13.43.0-work-pages";
 const OFFLINE_URL = "/static/offline.html";
 const PRECACHE_URLS = [
   OFFLINE_URL,

@@ -231,10 +231,10 @@ class ProviderCreditBudgetService:
         balance = await self.latest_balance(provider)
         balance_value = balance.credits_remaining if balance is not None else None
         balance_source = balance.source if balance is not None else "UNKNOWN"
+        # Ручной лимит менеджера — источник истины. Режем только месячным hard limit
+        # и подтверждённым балансом провайдера, не произвольным «max 50».
         effective = min(
             max(0, requested_units),
-            policy.maximum_manual_scan_budget_units,
-            max(0, daily_remaining),
             monthly_remaining,
         )
         if balance_value is not None and balance_source in self.CONFIRMED_SOURCES:
@@ -243,8 +243,6 @@ class ProviderCreditBudgetService:
         reasons: list[str] = []
         if requested_units <= 0:
             reasons.append("Лимит проверки должен быть положительным.")
-        if daily_remaining <= 0:
-            reasons.append("Дневной лимит внешних операций исчерпан.")
         if monthly_remaining <= 0:
             reasons.append("Месячный hard limit провайдера исчерпан.")
         if (

@@ -1,13 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Разведка · Lead Radar{% endblock %}
-{% block heading %}Разведка{% endblock %}
-{% block subheading %}Новые компании и изменения — сначала проверка, потом бесплатное добавление на паузу{% endblock %}
+{% block heading %}Новые источники{% endblock %}
+{% block subheading %}Добавляйте Instagram-компании в поиск лидов — сначала проверка, потом пауза без расхода{% endblock %}
 {% block content %}
 <section class="hero-status safe discovery-hero" data-motion-root>
   <div>
     <span class="eyebrow">ЦЕНТР РАЗВЕДКИ</span>
-    <h2>Один вход для рыночных находок</h2>
-    <p>Импортируйте результаты Parser Club, таблицы или ручную выгрузку. Файл обрабатывается локально: внешний поиск и AI не запускаются. Повторная загрузка не создаёт дубли — система сопоставляет Instagram, сайт и нормализованное название.</p>
+    <h2>Расширьте источники для «Найти лидов»</h2>
+    <p>Импортируйте CSV/XLSX локально — без внешнего поиска и AI. После проверки компания попадает в источники поиска на паузе (бесплатно).</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn primary" href="/radar">Найти лидов</a>
+    <a class="btn ghost" href="/competitors">Источники</a>
   </div>
   <div class="market-kpis">
     <div><strong>{{ counts.discovered }}</strong><span>не проверено</span></div>

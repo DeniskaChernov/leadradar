@@ -4,6 +4,71 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-04 (work-pages): contacts→«Люди»; deals/tasks
+CTA «Найти лидов»; auth pitch; agent presets human; cache **13.43.0-work-pages**.
+
+Контрольная точка 2026-09-04 (shell-human): scan modal/banner/confirm
+и empty states → «Найти лидов»; lead_detail «Клиент»; help/system/economics;
+cache **13.42.0-shell-human**.
+
+Контрольная точка 2026-09-04 (CRM/HOT polish): nav «Клиенты»; HOT/CRM empty
+states + CTA «Найти лидов»; kanban-empty; «Написать» вместо «В HOT»;
+cache **13.41.0-crm-hot**.
+
+Контрольная точка 2026-09-04 (find-leads pass7): soft geo/lang подсказки
+(ориентир, не фильтр scan; город не выдумываем); cache в **13.41.0-crm-hot**.
+
+Контрольная точка 2026-09-04 (find-leads pass6): сброс prefs-фильтра;
+sync kind select; wizard restore step; Discovery/Economics → «Найти лидов»;
+nav «Новые источники» / «Расходы»; cache **13.39.0-find-leads-pass6**.
+
+Контрольная точка 2026-09-04 (find-leads pass5): таблица радара синхронно
+с prefs-фильтром; autoscroll к результатам; Конкуренты → «Источники поиска»;
+cache **13.38.0-find-leads-pass5**.
+
+Контрольная точка 2026-09-04 (find-leads pass4): prefs аудитория/категории
+фильтруют карточки (intent/role/product); empty state; Главная → «Найти лидов»;
+cache **13.37.0-find-leads-pass4**.
+
+Контрольная точка 2026-09-04 (find-leads pass3): `kind=warm` + `overview.warm`;
+фильтры выдачи из wizard heat; gated «Следить постоянно»; copy CRM/HOT;
+cache **13.36.0-find-leads-pass3**.
+
+Контрольная точка 2026-09-04 (find-leads pass2): advanced Live/budget,
+HOT badge в nav, grounded `GET /api/leads/{id}/explain`, «Взять в работу»,
+человечный итог поиска; cache **13.35.0-find-leads-pass2**.
+
+Контрольная точка 2026-09-04 (find-leads UI): redesign `/radar` — wizard
+«Найти лидов» (4 шага, presets, summary, Coming Soon источники), nav IA +
+usage-card из `/api/scan/preview`, accent forest green; backend scan/safety
+без ослабления; cache **13.34.0-find-leads**; тесты `test_find_leads_ui.py`.
+
+Контрольная точка 2026-09-04 (live C3/C4): user «разрешаю live»;
+`OPENAI_LIVE_CALLS_ENABLED=true`, daily=25; arm `@aiko.uz` Radar+OpenAI;
+OpenAI smoke 3 AI_PENDING (budget 3/25); Telegram manager smoke OK;
+readiness READY FOR CONTROLLED LIVE PILOT; backup `.backups/lead_radar-20260904-070632-035824.db`.
+Rollback: kill switch / disarm тумблеры на /system.
+
+Контрольная точка 2026-09-04 (machine polish): GPT daily meter на `/hot`;
+enrollment ротанга one-click на `/rattan` (+ sync Lead/Signal при смене vertical);
+cache **13.33.0-machine-polish**. Live C3/C4 не трогали (нет «разрешаю live»).
+
+Контрольная точка 2026-09-04 (operator board D): доска лидов — 6 колонок
+(Оценка/Новый/В работе/Предложение/Переговоры/Закрыто); DnD через
+`move_lead_toward` (цепочка стадий); кнопка «В HOT»; cache **13.32.0-operator-board**.
+
+Контрольная точка 2026-09-04 (operator loop A+B): `/hot` после «Отправил»
+сразу следующий HOT; бейдж «уже писали»; `/leads?vertical=` + Лиды в nav ротанга;
+cache **13.31.0-operator-loop**. Тесты `test_hot_outreach.py` (4).
+
+Контрольная точка 2026-09-04 (HOT outreach workspace): `/hot` — очередь HOT,
+кнопка «Подготовить текст» (OpenAI), копирование, «Отправил» двигает
+`TAKEN→CONTACTED→OFFER_SENT`; nav упрощён (HOT в primary). UI **13.30.0-hot-outreach**.
+
+Контрольная точка 2026-09-03 (vertical-scoped Radar): мебель и ротанг — отдельные
+сканы/ленты/превью по `Competitor.vertical`; UI `/radar?vertical=ARTIFICIAL_RATTAN`,
+cache **13.29.10-rattan-radar**; тесты `test_vertical_scoped_scan.py`.
+
 Контрольная точка 2026-09-03 (B7 manager chat): lead/change Telegram delivery →
 `TELEGRAM_MANAGER_CHAT_IDS`; pilot readiness fail-closed если пусто; warning если = ADMIN.
 
@@ -217,6 +282,7 @@ Post-120 план: `docs/POST_120_PLAN.md`.
 - навигация упрощена: 5 primary + 5 в «Ещё»; topbar «Проверить сейчас» с любой страницы;
 - `/` dashboard: «Кабина пилота», quick-actions (Radar, HOT, задачи, экономика, конкуренты, диагностика);
 - модалка `#scan-quick`: выбор 5 / 10 / 20 / custom credits перед запуском Radar;
+- `INSTAGRAM_DAILY_REQUEST_LIMIT` больше не блокирует старт live Radar (оставлено как метрика в UI), fail-closed провайдерные бюджет-гварды остаются; покрыто тестами.
 - `ProviderCallUncertainError`: fallback не активируется после `call_started` без credit proof (P0 double-spend fix);
 - OpenAI после `call_started` → `mark_reservation_uncertain`, не `finalize(units=1)` (P1);
 - CSS/JS cache `13.3.0-pilot-cockpit`;

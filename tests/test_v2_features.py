@@ -121,7 +121,7 @@ async def test_web_dashboard_and_contacts_render(session_factory):
 
     assert dashboard.status_code == 200
     assert "dashboard-metrics" in dashboard.text
-    assert "Кабина пилота" in dashboard.text or "БЕЗ LIVE · ГОТОВО" in dashboard.text
+    assert "Найти лидов" in dashboard.text or "нужна мебель" in dashboard.text or "БЕЗ LIVE" in dashboard.text
     assert contacts.status_code == 200
     assert "БАЗА КЛИЕНТОВ" in contacts.text
     assert "Единая база людей" in contacts.text

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Экономика · Lead Radar{% endblock %}
-{% block heading %}Экономика{% endblock %}
-{% block subheading %}Расходы провайдеров, AI, воронка и результат в деньгах и credits{% endblock %}
+{% block heading %}Расходы{% endblock %}
+{% block subheading %}Сколько credits уходит на поиск клиентов и что вы получаете взамен{% endblock %}
 {% block content %}
 {% macro usd(value) -%}{% if value is not none %}${{ '%.6f'|format(value) }}{% else %}—{% endif %}{%- endmacro %}
 {% macro credits(value) -%}{% if value is not none %}{{ value }} credits{% else %}—{% endif %}{%- endmacro %}
@@ -10,23 +10,23 @@
 
 <section class="hero-status economics-hero {% if page.provider and page.provider.budget_status == 'HEALTHY' and not page.provider.month_credits_low %}live{% elif page.provider %}warn{% else %}safe{% endif %}" data-motion-root>
   <div>
-    <span class="eyebrow">ДЕНЬГИ И РЕЗУЛЬТАТ · {{ page.days }} дн.</span>
+    <span class="eyebrow">РАСХОДЫ НА ПОИСК · {{ page.days }} дн.</span>
     <h2>{% if page.provider %}Потрачено {{ page.provider.used_this_month }} из {{ page.provider.monthly_hard_limit }} credits{% else %}Расходы без live-кошелька{% endif %}</h2>
     <p>
-      Горячих: {{ economics.hot_count }}
+      Горячих клиентов: {{ economics.hot_count }}
       · credits/HOT: <b>{{ ratio(page.credits.credits_per_hot) }}</b>
       · USD/HOT: <b>{{ usd(economics.cost_per_hot_usd) }}</b>
       · продаж: {{ economics.won_count }}
       · AI: {{ page.openai.events }}
       · OpenAI $/лид: <b>{{ usd(page.openai_usd_per_lead) }}</b>
       · ROI: <b>{% if economics.roi_ratio is not none %}{{ '%.2f'|format(economics.roi_ratio * 100) }}%{% else %}—{% endif %}</b>.
-      Цифры только из базы.
+      Цифры только из базы. Максимальный расход на поиск ≠ фактический.
     </p>
   </div>
   <div class="hero-actions">
-    <a class="btn primary" href="/radar#radar-budget-title">Бюджет проверки →</a>
-    <a class="btn" href="/api/economics/export.csv?days={{ page.days }}">CSV</a>
-    <a class="btn ghost" href="/radar">Радар</a>
+    <a class="btn primary" href="/radar">Найти лидов</a>
+    <a class="btn" href="/radar#radar-budget-title">Лимит поиска →</a>
+    <a class="btn ghost" href="/api/economics/export.csv?days={{ page.days }}">CSV</a>
     <button class="btn ghost" type="button" data-agent-open>AI сводка</button>
   </div>
 </section>
@@ -55,7 +55,7 @@
     </div>
     {% if scan_budget.is_live %}<span class="tag {% if scan_budget.live_enabled %}success{% else %}warning{% endif %}">{% if scan_budget.live_enabled %}Live{% else %}Live выключен{% endif %}</span>{% else %}<span class="tag neutral">Offline</span>{% endif %}
   </div>
-  {% set sim_max = scan_budget.maximum_manual_scan_budget or 50 %}
+  {% set sim_max = scan_budget.maximum_manual_scan_budget or scan_budget.monthly_hard_limit or 3800 %}
   {% set sim_value = scan_budget.requested_credits or scan_budget.default_scan_budget or 10 %}
   <label class="budget-sim-control">
     <span>Лимит на проверку: <b data-budget-sim-value>{{ sim_value }}</b> credits</span>
@@ -68,12 +68,12 @@
     <span data-budget-sim-plan>План: ~{{ scan_budget.estimated_competitors_reachable }} конкурентов · ~{{ scan_budget.estimated_comment_pages }} стр.{% if scan_budget.expected_min_units %} · мин. {{ scan_budget.expected_min_units }} credits{% endif %}</span>
     <span class="budget-clamp" data-budget-sim-clamp {% if not scan_budget.clamped %}hidden{% endif %}>Будет урезано до <b data-budget-sim-clamp-value>{{ scan_budget.effective_max_credits }}</b> credits</span>
   </div>
-  <p class="muted">Запуск — на <a href="/radar#radar-budget-title">Радаре</a>. Здесь только расчёт без списания.</p>
+  <p class="muted">Запуск — в <a href="/radar#radar-budget-title">«Найти лидов»</a>. Здесь только расчёт без списания.</p>
 </section>
 
 <section class="panel economics-provider-card" aria-labelledby="economics-provider-title">
   <div class="panel-head">
-    <div><span class="eyebrow">КРЕДИТНЫЙ БЮДЖЕТ ПРОВАЙДЕРОВ</span><h2 id="economics-provider-title">ScrapeCreators</h2><p>Операционный wallet и месячные пределы. Лимит на запуск — на <a href="/radar#radar-budget-title">странице Радара → бюджет проверки</a>.</p></div>
+    <div><span class="eyebrow">КРЕДИТНЫЙ БЮДЖЕТ ПРОВАЙДЕРОВ</span><h2 id="economics-provider-title">ScrapeCreators</h2><p>Операционный wallet и месячные пределы. Лимит на запуск — в <a href="/radar#radar-budget-title">«Найти лидов» → бюджет проверки</a>.</p></div>
     {% if page.provider %}<span class="tag {% if page.provider.budget_status == 'HEALTHY' and not page.provider.month_credits_low %}success{% elif page.provider.budget_status in ['WATCH','UNKNOWN'] or page.provider.month_credits_low %}warning{% else %}danger{% endif %}">{{ budget_status_label(page.provider.budget_status) }}{% if page.provider.month_credits_low %} · &lt;20%{% endif %}</span>{% else %}<span class="tag neutral">{{ budget_status_label('NOT_CONFIGURED') }}</span>{% endif %}
   </div>
   {% if page.provider %}

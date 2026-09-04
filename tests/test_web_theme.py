@@ -31,7 +31,8 @@ def test_lead_detail_and_radar_expose_deep_responsive_analysis():
         PROJECT_ROOT / "app/web/templates/partials/signal_review_buttons.html"
     ).read_text(encoding="utf-8")
 
-    assert "AI-РАЗБОР СИГНАЛА" in lead_detail
+    assert "AI-РАЗБОР" in lead_detail
+    assert "Почему этот клиент важен" in lead_detail
     assert "recommended_action" in lead_detail
     assert "next_best_action" in lead_detail
     assert "ai_source_label(lead.ai_source)" in lead_detail
@@ -40,7 +41,7 @@ def test_lead_detail_and_radar_expose_deep_responsive_analysis():
     assert "risk_flags" in lead_detail
     assert 'data-lucide="circle-help"' in lead_detail
     assert 'data-label="Оценка"' in radar
-    assert "РАДАР СИГНАЛОВ" in radar
+    assert "РЕЗУЛЬТАТЫ ПОИСКА" in radar
     assert "partials/signal_review_actions.html" in radar
     assert "Оценить накопившееся" in signal_buttons
     assert "/api/signals/review-all" in signal_buttons
@@ -85,7 +86,7 @@ def test_audience_pages_explain_privacy_boundary_and_campaign_action():
         encoding="utf-8"
     )
 
-    assert 'href="/audiences"' in base
+    assert 'href="/audiences' in base
     assert "ГРУППЫ СПРОСА" in audiences
     assert "автоматически" in audiences
     assert "Качество аудиторий" in audiences
@@ -135,9 +136,9 @@ def test_audit_fixes_navigation_alignment_and_accessible_filters():
     )
     discovery = (PROJECT_ROOT / "app/web/templates/discovery.html").read_text(encoding="utf-8")
 
-    assert "--primary: #0f766e" in css
-    assert "--brand: #0d9488" in css
-    assert "--brand-2: #0f766e" in css
+    assert "--primary: #15803d" in css
+    assert "--brand: #16a34a" in css
+    assert "--brand-2: #15803d" in css
     assert "--muted: #475569" in css
     assert "--text: #e8eef9" not in css
     assert "#745cff" not in css
@@ -213,7 +214,7 @@ def test_pilot_cockpit_quick_actions_and_scan_modal():
     assert "scan_budget_quick" in base
     assert "quick-actions" in dashboard
     assert 'href="/agent"' in dashboard
-    assert "Кабина пилота" in dashboard
+    assert "Найти лидов" in dashboard or "нужна мебель" in dashboard
     assert "openScanQuickModal" in javascript
     assert "runScan" in javascript
     assert ".quick-actions" in css
@@ -240,12 +241,12 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.29.6-pwa" in base
-    assert "13.29.6-pwa" in auth
+    assert "13.43.0-work-pages" in base
+    assert "13.43.0-work-pages" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
-    assert 'href="/catalog"' in base
+    assert 'href="/catalog' in base
     assert 'href="/discovery"' in base
     assert 'id="agent-quick"' in base
     assert "data-agent-open" in base
@@ -255,7 +256,7 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     assert 'aria-current="page"' in base
     assert 'data-toast-message' in base
     assert 'class="responsive-table"' in contacts
-    assert 'data-label="Клиент"' in contacts
+    assert 'data-label="Клиент"' in contacts or 'data-label="Человек"' in contacts
 
     assert "--motion-base: 240ms" in css
     assert ".nav-secondary.is-open" in css
@@ -270,7 +271,7 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     assert "setLoading" in javascript
     assert "prefers-reduced-motion: reduce" in javascript
     assert "let radarWasBusy" in javascript
-    assert "if (radarWasBusy && !stillBusy)" in javascript
+    assert "if (radarWasBusy && !stillBusy && !radarQuietReloadScheduled)" in javascript
 
 
 def test_mobile_responsive_tables_and_economics_wrap_at_720px():
@@ -451,7 +452,7 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "manager-feedback-quality" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
     assert "В радар активно" in (PROJECT_ROOT / "app/web/templates/discovery.html").read_text(encoding="utf-8")
     assert "data-agent-context" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
-    assert "13.29.6-pwa" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "13.43.0-work-pages" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
     assert "kanban-drag-handle" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
     assert "data-economics-budget-sim" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
     assert "ai-version-info" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
@@ -467,9 +468,14 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "contacts-hero" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert 'href="/agent"' in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert "ОЧЕРЕДЬ КОНТАКТОВ" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")
-    assert "ВОРОНКА СДЕЛОК" in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
+    assert "РЕЗУЛЬТАТ ПРОДАЖ" in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
+    assert "ВОРОНКА СДЕЛОК" not in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
     assert "tasks-hero" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")
     assert "deals-hero" in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
+    assert "БАЗА ЛЮДЕЙ" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
+    assert "Найти лидов" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
+    assert "Статус поиска" in (PROJECT_ROOT / "app/web/templates/agent.html").read_text(encoding="utf-8")
+    assert "Горячие сегодня" in (PROJECT_ROOT / "app/web/templates/agent.html").read_text(encoding="utf-8")
     assert "V3.5 · unified airy rhythm" in css
     assert "--space-8: 40px" in css
     assert "audience-quality-hero" in (PROJECT_ROOT / "app/web/templates/audience_quality.html").read_text(encoding="utf-8")
