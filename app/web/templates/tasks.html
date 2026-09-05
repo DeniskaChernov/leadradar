@@ -11,16 +11,11 @@
   {% endif %}
 {% endfor %}
 
-<section class="hero-status {% if ns.overdue %}warn{% else %}live{% endif %} tasks-hero" data-motion-root>
+<section class="hero-status {% if ns.overdue %}warn{% else %}live{% endif %} tasks-hero page-task" data-motion-root data-page-task="tasks">
   <div>
     <span class="eyebrow">ОЧЕРЕДЬ КОНТАКТОВ</span>
     <h2>{% if rows %}{{ rows|length }} задач · {{ ns.open }} открытых{% else %}Задач пока нет{% endif %}</h2>
-    <p>{% if ns.overdue %}{{ ns.overdue }} просрочено — начните с них.{% elif rows %}Просроченных нет. Следующие контакты ниже.{% else %}Задачи появятся, когда вы запланируете следующий шаг по клиенту.{% endif %}</p>
-  </div>
-  <div class="hero-actions">
-    <a class="btn primary" href="/hot">Написать сейчас</a>
-    <a class="btn" href="/tasks?view=overdue">Просроченные</a>
-    <a class="btn ghost" href="/tasks?view=today">На 24 часа</a>
+    <p>{% if ns.overdue %}{{ ns.overdue }} просрочено — начните с них.{% elif rows %}Отметьте выполненное после реального контакта.{% else %}Задачи ставят из карточки клиента на следующий шаг.{% endif %}</p>
   </div>
 </section>
 
@@ -58,7 +53,7 @@
   <p>Найдите клиентов или откройте горячих — задачи появятся, когда запланируете следующий контакт.</p>
   <div class="hero-actions">
     <a class="btn primary btn-sm" href="/radar">Найти лидов</a>
-    <a class="btn ghost btn-sm" href="/hot">Новые лиды</a>
+    <a class="btn ghost btn-sm" href="/hot">HOT</a>
   </div>
 </div>
 {% endfor %}

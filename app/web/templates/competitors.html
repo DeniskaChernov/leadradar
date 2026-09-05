@@ -3,15 +3,14 @@
 {% block heading %}Источники поиска{% endblock %}
 {% block subheading %}Компании, под которыми Lead Radar ищет людей с потребностью в мебели{% endblock %}
 {% block content %}
-<section class="hero-status safe market-hero competitors-hero" data-motion-root>
+<section class="hero-status safe market-hero competitors-hero page-task" data-motion-root data-page-task="competitors">
   <div>
-    <span class="eyebrow">ИСТОЧНИКИ · INSTAGRAM</span>
+    <span class="eyebrow">ИСТОЧНИКИ ПОИСКА</span>
     <h2>{{ market_overview.active }} активных · {{ market_overview.paused }} на паузе</h2>
-    <p>Это не просто список конкурентов — это источники сигналов для «Найти лидов». Пауза = бесплатно, без расхода credits.</p>
+    <p>Компании, под которыми ищем спрос. Пауза = без расхода credits.</p>
   </div>
   <div class="hero-actions">
-    <a class="btn primary" href="/radar">Найти лидов</a>
-    <a class="btn ghost" href="/discovery">Добавить источник</a>
+    <a class="btn primary" href="/discovery">Добавить источник</a>
   </div>
   <div class="market-kpis">
     <div><strong>{{ market_overview.verified }}</strong><span>в поиске</span></div>
@@ -21,8 +20,10 @@
   </div>
 </section>
 
-<section class="competitive-command panel">
-  <div><span class="eyebrow">РАЗВЕДКА КОНКУРЕНТОВ</span><h2>Где обнаружен коммерческий спрос</h2><p>Метрики считаются только по комментариям, реально сохранённым в Lead Radar. Они не подменяют полную статистику Instagram.</p></div>
+<details class="panel page-task-secondary">
+  <summary><b>Разведка конкурентов</b><span>Метрики только по сохранённым комментариям — не полная статистика Instagram</span></summary>
+<section class="competitive-command">
+  <div><span class="eyebrow">РАЗВЕДКА КОНКУРЕНТОВ</span><p>Метрики считаются только по комментариям в Lead Radar.</p></div>
   <div class="competitive-kpis">
     <div><strong>{{ intelligence_overview.observed_comments }}</strong><span>наблюдаемых комментариев</span></div>
     <div><strong>{{ intelligence_overview.commercial_comments }}</strong><span>коммерческих</span></div>
@@ -31,10 +32,11 @@
     <div><strong>{{ intelligence_overview.multi_competitor }}</strong><span>сравнивают компании</span></div>
   </div>
 </section>
+</details>
 
 {% if rows|length >= 2 %}
-<section class="panel competitor-compare-bar compact">
-  <div class="panel-head compact"><div><h2>Сравнить двух конкурентов</h2><p>Side-by-side метрики наблюдаемого спроса</p></div></div>
+<details class="panel competitor-compare-bar compact page-task-secondary">
+  <summary><b>Сравнить двух конкурентов</b><span>Side-by-side по наблюдаемому спросу</span></summary>
   <form class="filters competitors-compare-form" method="get" action="/competitors/compare" aria-label="Быстрое сравнение конкурентов">
     <select name="left" required aria-label="Конкурент A">
       {% for item in rows %}<option value="{{ item.competitor.id }}">{{ item.competitor.display_name or '@' ~ item.competitor.normalized_handle }}</option>{% endfor %}
@@ -44,7 +46,7 @@
     </select>
     <button class="btn primary" type="submit">Сравнить</button>
   </form>
-</section>
+</details>
 {% endif %}
 
 <details class="panel competitor-import-panel">
@@ -55,8 +57,8 @@
   </div>
 </details>
 
-<section class="panel overlap-panel">
-  <div class="panel-head"><div><h2>Пересечение спроса</h2><p>Один и тот же публичный аккаунт оставлял сигналы у нескольких наблюдаемых компаний.</p></div></div>
+<details class="panel overlap-panel page-task-secondary">
+  <summary><b>Пересечение спроса</b><span>Один аккаунт оставлял сигналы у нескольких компаний</span></summary>
   {% if overlap_graph.nodes %}
   <div class="overlap-graph-wrap">
     <svg class="overlap-graph-svg" viewBox="0 0 {{ overlap_graph.width }} {{ overlap_graph.height }}" role="img" aria-label="Граф пересечений спроса между конкурентами">
@@ -79,7 +81,7 @@
     {% for pair in overlaps %}<a href="/competitors/{{ pair.left_id }}"><b>@{{ pair.left }} + @{{ pair.right }}</b><span>{{ pair.contacts }} общих контакт{% if pair.contacts != 1 %}ов{% endif %}</span></a>{% else %}<div class="empty-state compact"><span class="empty-icon" aria-hidden="true"><i data-lucide="git-merge"></i></span><b>Пересечений пока нет</b><span>Они появятся после сигналов минимум у двух компаний.</span></div>{% endfor %}
   </div>
   {% endif %}
-</section>
+</details>
 
 <div class="market-toolbar">
   <div class="explain-line"><span class="dot green"></span><b>Активный</b> проверяется по расписанию только когда live разрешён. <span class="dot grey"></span><b>На паузе</b> хранится в системе бесплатно.</div>
@@ -127,7 +129,7 @@
 
 <details class="panel add-competitor"><summary><div><b>+ Добавить компанию вручную</b><span>Если вы нашли ещё один Instagram-аккаунт, он сразу попадёт в карту рынка</span></div></summary><form data-api-form action="/api/competitors" data-reload="1" class="form-grid"><label>Instagram username<input name="handle" placeholder="company.uz" required></label><label>Название<input name="display_name" placeholder="Название компании"></label><label>Сегмент<select name="category">{% for value, text in categories.items() %}<option value="{{ value }}">{{ text }}</option>{% endfor %}</select></label><label>Приоритет<select name="tier"><option value="A">A · главный конкурент</option><option value="B">B · важный</option><option value="C">C · фоновый</option></select></label><label>Вертикаль<select name="vertical"><option value="FURNITURE" {% if selected_vertical != 'ARTIFICIAL_RATTAN' %}selected{% endif %}>Мебель</option><option value="ARTIFICIAL_RATTAN" {% if selected_vertical == 'ARTIFICIAL_RATTAN' %}selected{% endif %}>Ротанг</option></select></label><label class="wide">Почему отслеживаем<input name="notes" placeholder="Например: плетёные обеденные комплекты и высокая активность в комментариях"></label><div class="wide"><button class="btn primary" type="submit">Добавить в радар</button></div></form></details>
 
-<div class="section-title-row"><div><span class="eyebrow">МОНИТОРИНГ</span><h2>Компании в радаре</h2><p>Приоритет A проверяем чаще, B умеренно, C в фоне. Система со временем сможет менять приоритет по фактическим лидам и продажам.</p></div></div>
+<div class="section-title-row"><div><span class="eyebrow">ПОРТФЕЛЬ</span><h2>Компании в радаре</h2><p>Приоритет A проверяем чаще, B умеренно, C в фоне. Система со временем сможет менять приоритет по фактическим лидам и продажам.</p></div></div>
 
 {% for item in rows %}
 <section class="panel competitor-block {% if not item.competitor.active %}paused-block{% endif %}">

@@ -42,12 +42,13 @@ def test_find_leads_pass3_markup():
     assert "data-lead-heat" in radar
     assert "Следить постоянно" in wizard
     assert "monitor_schedule_enabled" in wizard
-    assert "Новые лиды" in hot
+    assert "{% block heading %}HOT{% endblock %}" in hot
+    assert "Новые лиды" not in hot
     assert "КЛИЕНТЫ ·" in leads or "клиентов" in leads or "Воронка" in leads
     assert "enhanceFindLeadsResultFilters" in js
     assert "findLeadsResultsUrl" in js
     assert "kind=warm" in js or "warm" in js
-    assert "13.45.0-ops-live" in base
+    assert "13.52.0-hot-nav" in base
 
 
 @pytest.mark.asyncio

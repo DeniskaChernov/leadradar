@@ -3,18 +3,15 @@
 {% block heading %}Искусственный ротанг{% endblock %}
 {% block subheading %}Отдельный портфель источников. Не наследует мебельный поиск автоматически.{% endblock %}
 {% block content %}
-<section class="hero-status safe rattan-hero" data-motion-root>
+<section class="hero-status safe rattan-hero page-task" data-motion-root data-page-task="rattan">
   <div>
     <span class="eyebrow">ПОРТФЕЛЬ РОТАНГА</span>
     <h2>{% if rattan_counts.portfolio_empty %}Портфель пуст{% else %}{{ rattan_counts.companies }} источников · {{ rattan_counts.signals }} сигналов{% endif %}</h2>
-    <p>{% if rattan_counts.portfolio_empty %}Добавьте Instagram-источники в портфель на странице «Конкуренты» (вертикаль = Ротанг). Пока источников нет — сканы мебели сюда не попадают.{% else %}Только источники с вертикалью «Ротанг» и коммерческие сигналы по ним.{% endif %}</p>
+    <p>{% if rattan_counts.portfolio_empty %}Добавьте источники с вертикалью «Ротанг» ниже или на странице конкурентов.{% else %}Только источники и сигналы этой вертикали — без мебельного портфеля.{% endif %}</p>
   </div>
   <div class="hero-actions">
-    <a class="btn primary" href="/hot?vertical=ARTIFICIAL_RATTAN">Написать сейчас</a>
-    <a class="btn" href="/leads?vertical=ARTIFICIAL_RATTAN">Клиенты · ротанг</a>
-    <a class="btn ghost" href="/radar?vertical=ARTIFICIAL_RATTAN">Найти лидов · ротанг</a>
-    <a class="btn ghost" href="/competitors?vertical=ARTIFICIAL_RATTAN">Портфель источников</a>
-    <a class="btn ghost" href="/audiences?vertical=ARTIFICIAL_RATTAN">Аудитории</a>
+    <a class="btn primary" href="/competitors?vertical=ARTIFICIAL_RATTAN">Источники</a>
+    <a class="btn ghost" href="/radar?vertical=ARTIFICIAL_RATTAN">Найти лидов</a>
   </div>
 </section>
 

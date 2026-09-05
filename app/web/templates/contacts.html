@@ -3,17 +3,11 @@
 {% block heading %}Люди{% endblock %}
 {% block subheading %}Единая база людей, которых Lead Radar уже видел{% endblock %}
 {% block content %}
-<section class="hero-status safe contacts-hero" data-motion-root>
+<section class="hero-status safe contacts-hero page-task" data-motion-root data-page-task="contacts">
   <div>
     <span class="eyebrow">БАЗА ЛЮДЕЙ</span>
     <h2>{{ rows|length }} {% if rows|length == 1 %}человек{% elif rows|length in [2,3,4] %}человека{% else %}человек{% endif %} {% if q %}по запросу{% else %}в базе{% endif %}</h2>
-    <p>Один человек — одна история. Повторные сигналы дополняют карточку, а не создают дубликат.</p>
-  </div>
-  <div class="hero-actions">
-    <a class="btn primary" href="/radar">Найти лидов</a>
-    <a class="btn" href="/leads">Воронка</a>
-    <a class="btn ghost" href="/hot">Написать сейчас</a>
-    <a class="btn ghost" href="/agent">AI по базе</a>
+    <p>Один человек — одна история. Поиск и переход в карточку.</p>
   </div>
 </section>
 

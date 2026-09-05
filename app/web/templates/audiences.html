@@ -3,10 +3,13 @@
 {% block heading %}Аудитории{% endblock %}
 {% block subheading %}Какие группы реального спроса сформировались в наблюдаемых публичных источниках{% endblock %}
 {% block content %}
-<section class="hero-status safe audience-intro" data-motion-root>
-  <div><span class="eyebrow">ГРУППЫ СПРОСА</span><h2>Кто интересуется вашими товарами</h2><p>Сегменты формируются <strong>автоматически</strong>, когда система оценивает лиды из комментариев. Отдельной кнопки нет — после «Оценить накопившееся» состав обновится сам.</p><p class="audience-quality-link"><a href="/audiences/quality?vertical={{ request.query_params.get('vertical', 'FURNITURE') }}">Качество аудиторий →</a></p></div>
-  <div class="privacy-boundary"><b>Экспорт личности закрыт по умолчанию</b><span>Instagram username не превращается в телефон или email. Для рекламного экспорта нужен законно полученный first-party контакт.</span></div>
+<section class="hero-status safe audience-intro page-task" data-motion-root data-page-task="audiences">
+  <div><span class="eyebrow">ГРУППЫ СПРОСА</span><h2>Аудитории</h2><p>Сегменты формируются <strong>автоматически</strong> после оценки лидов. <a href="/audiences/quality?vertical={{ request.query_params.get('vertical', 'FURNITURE') }}">Качество аудиторий →</a></p></div>
 </section>
+<details class="panel page-task-secondary">
+  <summary><b>Граница приватности</b><span>Что нельзя выгружать как личность</span></summary>
+  <div class="privacy-boundary"><b>Экспорт личности закрыт по умолчанию</b><span>Instagram username не превращается в телефон или email. Для рекламного экспорта нужен законно полученный first-party контакт.</span></div>
+</details>
 <div class="audience-grid">
 {% for item in rows %}
   <a class="panel audience-card {% if item.members %}has-members{% endif %}" href="/audiences/{{ item.segment.slug }}">
@@ -22,7 +25,7 @@
   <span class="empty-icon" aria-hidden="true"><i data-lucide="users"></i></span>
   <h3>Аудитории появятся после оценки лидов</h3>
   <p>Когда комментарии станут лидами с оценкой интереса, система сама соберёт группы спроса.</p>
-  <a class="btn primary btn-sm" href="/">Оценить накопившееся</a>
+  <a class="btn primary btn-sm" href="/radar">Найти лидов</a>
 </div>
 {% endfor %}
 </div>

@@ -31,15 +31,16 @@ def test_lead_detail_and_radar_expose_deep_responsive_analysis():
         PROJECT_ROOT / "app/web/templates/partials/signal_review_buttons.html"
     ).read_text(encoding="utf-8")
 
-    assert "AI-РАЗБОР" in lead_detail
-    assert "Почему этот клиент важен" in lead_detail
+    assert "AI-разбор" in lead_detail or "AI-РАЗБОР" in lead_detail
+    assert "funnel-action-panel" in lead_detail
     assert "recommended_action" in lead_detail
     assert "next_best_action" in lead_detail
     assert "ai_source_label(lead.ai_source)" in lead_detail
-    assert "РЕКОМЕНДАЦИЯ ИЗ КАТАЛОГА" in lead_detail
+    assert "ЧТО ПРЕДЛОЖИТЬ" in lead_detail or "РЕКОМЕНДАЦИЯ ИЗ КАТАЛОГА" in lead_detail
     assert "catalog_recommendation.match_reasons" in lead_detail
     assert "risk_flags" in lead_detail
     assert 'data-lucide="circle-help"' in lead_detail
+    assert 'data-page-task="lead-detail"' in lead_detail
     assert 'data-label="Оценка"' in radar
     assert "РЕЗУЛЬТАТЫ ПОИСКА" in radar
     assert "partials/signal_review_actions.html" in radar
@@ -172,7 +173,7 @@ def test_interface_hardening_keeps_dense_views_accessible():
     assert "analytics-hero" in analytics
     assert "analytics-period" in analytics
     assert 'href="/dashboard"' not in analytics
-    assert 'href="/"' in analytics
+    assert 'href="/economics' in analytics
     assert "table-scroll-hint" in css
     assert "more-navigation-open" in javascript
     assert "enhanceClickableRows" in javascript
@@ -190,7 +191,7 @@ def test_mobile_rattan_cards_and_opening_review_use_shared_safe_actions():
     assert 'class="responsive-table rattan-table"' in rattan
     assert 'data-label="Сигнал"' in rattan
     assert "Портфель пуст" in rattan
-    assert "источников с вертикалью Ротанг" in rattan
+    assert "Ротанг" in rattan
     assert "Коммерческие сигналы ротанга" in rattan
     assert ".rattan-table thead { display: none; }" in css
     assert 'data-api-action="/api/openings/' in openings
@@ -213,7 +214,8 @@ def test_pilot_cockpit_quick_actions_and_scan_modal():
     assert 'id="scan-quick"' in base
     assert "scan_budget_quick" in base
     assert "quick-actions" in dashboard
-    assert 'href="/agent"' in dashboard
+    assert 'href="/hot"' in dashboard
+    assert 'href="/agent"' not in dashboard
     assert "Найти лидов" in dashboard or "нужна мебель" in dashboard
     assert "openScanQuickModal" in javascript
     assert "runScan" in javascript
@@ -241,8 +243,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.45.0-ops-live" in base
-    assert "13.45.0-ops-live" in auth
+    assert "13.52.0-hot-nav" in base
+    assert "13.52.0-hot-nav" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
@@ -291,7 +293,7 @@ def test_mobile_responsive_tables_and_economics_wrap_at_720px():
     assert 'data-label="Статус"' in audience_quality
     assert 'data-label="Увер."' in audience_quality
     assert "body.more-navigation-open .mobile-nav-backdrop" in css
-    assert ".nav-primary { grid-template-columns: repeat(4,minmax(0,1fr))" in css
+    assert ".nav-primary { grid-template-columns: repeat(3,minmax(0,1fr))" in css
     assert "padding-bottom: calc(78px + env(safe-area-inset-bottom))" in css
     assert ".filters { top: 78px; }" in css
 
@@ -404,7 +406,7 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "radar_plain_help" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
     assert "WON" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
     assert "lead_bulk_actions.html" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
-    assert "dashboard_plain_help" in (PROJECT_ROOT / "app/web/templates/dashboard.html").read_text(encoding="utf-8")
+    assert 'data-page-task="home"' in (PROJECT_ROOT / "app/web/templates/dashboard.html").read_text(encoding="utf-8")
     assert "data-lead-followup" in (PROJECT_ROOT / "app/web/templates/partials/lead_funnel_quick_action.html").read_text(encoding="utf-8")
     assert "Вернуть в работу" in (PROJECT_ROOT / "app/web/templates/partials/lead_funnel_quick_action.html").read_text(encoding="utf-8")
     assert "Просрочен контакт" in (PROJECT_ROOT / "app/web/templates/partials/lead_quality_badge.html").read_text(encoding="utf-8")
@@ -452,7 +454,7 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "manager-feedback-quality" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
     assert "В радар активно" in (PROJECT_ROOT / "app/web/templates/discovery.html").read_text(encoding="utf-8")
     assert "data-agent-context" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
-    assert "13.45.0-ops-live" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "13.52.0-hot-nav" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
     assert "kanban-drag-handle" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
     assert "data-economics-budget-sim" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
     assert "ai-version-info" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
@@ -466,9 +468,9 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "focusKeyForElement" in javascript
     assert "openai_cost" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
     assert "contacts-hero" in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
-    assert 'href="/agent"' in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
+    assert 'data-page-task="contacts"' in (PROJECT_ROOT / "app/web/templates/contacts.html").read_text(encoding="utf-8")
     assert "ОЧЕРЕДЬ КОНТАКТОВ" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")
-    assert "РЕЗУЛЬТАТ ПРОДАЖ" in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
+    assert "СДЕЛКИ" in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
     assert "ВОРОНКА СДЕЛОК" not in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")
     assert "tasks-hero" in (PROJECT_ROOT / "app/web/templates/tasks.html").read_text(encoding="utf-8")
     assert "deals-hero" in (PROJECT_ROOT / "app/web/templates/deals.html").read_text(encoding="utf-8")

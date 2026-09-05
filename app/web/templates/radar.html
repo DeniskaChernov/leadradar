@@ -30,11 +30,11 @@
       <span class="heat">Отсеяно: {{ overview.rejected }}</span>
     </div>
   </div>
-  <div class="hero-actions">
-    <a class="btn primary" href="/leads">Клиенты ({{ overview.qualified }})</a>
-    <a class="btn" href="{{ radar_base }}&kind=hot">Горячие</a>
-    <a class="btn" href="{{ radar_base }}&kind=new">Новые</a>
-    <a class="btn ghost" href="{{ radar_base }}&kind=baseline">Архив</a>
+  <div class="hero-actions find-result-filters">
+    <a class="btn {% if kind_filter == 'hot' %}primary{% else %}ghost{% endif %}" href="{{ radar_base }}&kind=hot">Горячие</a>
+    <a class="btn {% if kind_filter == 'new' %}primary{% else %}ghost{% endif %}" href="{{ radar_base }}&kind=new">Новые</a>
+    <a class="btn {% if kind_filter == 'warm' %}primary{% else %}ghost{% endif %}" href="{{ radar_base }}&kind=warm">Тёплые</a>
+    <a class="btn {% if kind_filter == 'baseline' %}primary{% else %}ghost{% endif %}" href="{{ radar_base }}&kind=baseline">Архив</a>
     {% include "partials/signal_review_actions.html" %}
   </div>
 </section>
@@ -98,9 +98,9 @@
   </div>
 </section>
 
-<section class="panel radar-feed-panel" id="radar-feed">
+<section class="panel radar-feed-panel page-task-results" id="radar-feed" data-page-task="radar-results">
   <div class="panel-head">
-    <div><span class="eyebrow">ВНИМАНИЕ</span><h2>Что требует внимания</h2><p>Изменения приоритета и горячие лиды</p></div>
+    <div><span class="eyebrow">РЕЗУЛЬТАТЫ</span><h2>Что нашли</h2><p>HOT и рост приоритета после поиска</p></div>
     <span class="tag {% if radar_feed.ai_pending or radar_feed.analyzing %}warning{% else %}success{% endif %}" data-radar-queue-badge>{% if radar_feed.ai_pending + radar_feed.analyzing > 0 %}Оценка: {{ radar_feed.ai_pending + radar_feed.analyzing }}{% else %}Оценка готова{% endif %}</span>
   </div>
   <div class="attention-list" data-radar-feed-list>

@@ -143,7 +143,7 @@ async def test_market_pages_render_and_candidate_promotion_api(session_factory):
         )
 
     assert competitors.status_code == 200
-    assert "ИСТОЧНИКИ · INSTAGRAM" in competitors.text or "КОНКУРЕНТЫ В РАДАРЕ" in competitors.text
+    assert "ИСТОЧНИКИ ПОИСКА" in competitors.text or "ПОРТФЕЛЬ" in competitors.text
     assert "Найти лидов" in competitors.text
     assert "lazuno.uz" in competitors.text
     assert discovery.status_code == 200

@@ -9,16 +9,16 @@
   <span class="pill primary">{{ segment.audience_family }} · {{ segment.audience_level }}</span>
 </div>
 
-<section class="hero-status live audience-hero" data-motion-root>
+<section class="hero-status live audience-hero page-task" data-motion-root data-page-task="audience-detail">
   <div>
-    <span class="eyebrow">ГРУППЫ СПРОСА</span>
+    <span class="eyebrow">СЕГМЕНТ</span>
     <h2>{{ segment.name }}</h2>
     <p>{{ segment.description }}</p>
-    <div class="audience-definition-meta"><span>{{ segment.membership_strategy }}</span><span>confidence ≥ {{ segment.minimum_confidence }}</span><span>Evidence ≥ {{ segment.minimum_evidence_count }}</span><span>{{ segment.meta_use_case }}</span></div>
+    <div class="audience-definition-meta"><span>{{ segment.membership_strategy }}</span><span>confidence ≥ {{ segment.minimum_confidence }}</span><span>Evidence ≥ {{ segment.minimum_evidence_count }}</span></div>
   </div>
   <div class="audience-total">
     <strong>{{ members|length }}</strong>
-    <span>контактов в сегменте</span>
+    <span>в сегменте</span>
   </div>
 </section>
 
@@ -40,7 +40,8 @@
   {% if facets.active %}<div class="audience-definition-meta">{% for name, value in facets.active.items() %}<span>{{ name }}={{ value }}</span>{% endfor %}</div>{% endif %}
 </section>
 
-<section class="panel meta-readiness">
+<details class="panel meta-readiness page-task-secondary">
+  <summary><b>Готовность к Meta</b><span>Граница активации рекламы</span></summary>
   <div class="panel-head"><div><span class="eyebrow">ГРАНИЦА АКТИВАЦИИ META</span><h2>Готовность к активации</h2></div><span class="pill warn">{% if meta_readiness %}{{ meta_readiness.blueprint.eligibility_status }}{% else %}Не подключено{% endif %}</span></div>
   {% if meta_readiness %}
   <p>{{ meta_readiness.blueprint.reason }}</p>
@@ -51,14 +52,15 @@
     {% endfor %}
   </div>
   {% else %}<p>Blueprint будет создан при следующем локальном sync.</p>{% endif %}
-</section>
+</details>
 
 {% if export_recipe %}
-<section class="panel export-recipes-workspace" aria-labelledby="audience-export-title">
+<details class="panel export-recipes-workspace page-task-secondary" aria-labelledby="audience-export-title">
+  <summary><b>Предпросмотр экспорта</b><span>Recipe · без Meta API</span></summary>
   <div class="panel-head"><div><span class="eyebrow">META ЭКСПОРТ · ПРЕДПРОСМОТР</span><h2 id="audience-export-title">Предпросмотр экспорта сегмента</h2><p>Recipe «{{ export_recipe.name }}» · только first-party eligible · без Meta API</p></div><span class="tag neutral">Не подключено</span></div>
   <button class="btn ghost btn-sm" type="button" data-api-action="/api/audiences/export-recipes/{{ export_recipe.slug }}" data-payload='{"dry_run": true}' data-result-target="#audience-export-result">Запустить dry-run</button>
   <pre class="export-result" id="audience-export-result" hidden aria-live="polite"></pre>
-</section>
+</details>
 {% endif %}
 
 <section class="panel campaign-brief">

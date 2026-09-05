@@ -21,10 +21,9 @@ def test_find_leads_pass6_reset_sync_and_pages():
     assert "clearFindLeadsPrefsFilter" in js
     assert "syncRadarKindSelect" in js
     assert "saved.step" in js
-    assert "ЦЕНТР РАЗВЕДКИ" in discovery
-    assert "Найти лидов" in discovery
-    assert "Новые источники" in discovery or "Расширьте источники" in discovery
+    assert "НОВЫЕ ИСТОЧНИКИ" in discovery
+    assert "Новые источники" in discovery or "Проверка кандидатов" in discovery
     assert "Найти лидов" in economics
-    assert "РАСХОДЫ НА ПОИСК" in economics
+    assert "РАСХОДЫ ·" in economics or "РАСХОДЫ НА ПОИСК" in economics
     assert "Новые источники" in base
-    assert "13.45.0-ops-live" in base
+    assert "13.52.0-hot-nav" in base

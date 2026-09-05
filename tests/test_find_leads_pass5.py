@@ -20,6 +20,6 @@ def test_find_leads_pass5_table_autoscroll_competitors():
     assert "lr:find-leads-pending-results" in js
     assert "visibleRows" in js or "data-find-row" in js
     assert "Источники поиска" in competitors
-    assert "Найти лидов" in competitors
+    assert "Добавить источник" in competitors
     assert ".radar-signal-row[hidden]" in css
-    assert "13.45.0-ops-live" in base
+    assert "13.52.0-hot-nav" in base

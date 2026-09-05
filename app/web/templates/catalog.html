@@ -3,9 +3,9 @@
 {% block heading %}Каталог BTT{% endblock %}
 {% block subheading %}Только подтверждённые товары и факты — без выдуманного наличия, SKU и скидок{% endblock %}
 {% block content %}
-<section class="hero-status safe catalog-hero" data-motion-root>
-  <div><span class="eyebrow">ИСТОЧНИК ИСТИНЫ</span><h2>Что менеджер действительно может предложить</h2><p>Название, цена и технические данные загружены из подтверждённого списка. Пустые поля означают «не подтверждено», а не ноль. Категория и остаток начинают участвовать в рекомендациях только после ручной проверки.</p></div>
-  <div class="catalog-summary"><strong>{{ products|length }}</strong><span>подтверждённых позиций</span><small>{{ catalog_vertical }}</small></div>
+<section class="hero-status safe catalog-hero page-task" data-motion-root data-page-task="catalog">
+  <div><span class="eyebrow">КАТАЛОГ</span><h2>Что можно предложить клиенту</h2><p>Только подтверждённые позиции. Пустое поле = не подтверждено.</p></div>
+  <div class="catalog-summary"><strong>{{ products|length }}</strong><span>позиций</span><small>{{ catalog_vertical }}</small></div>
 </section>
 
 {% if web_role == 'ADMIN' %}

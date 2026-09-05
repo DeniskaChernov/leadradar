@@ -18,12 +18,12 @@ def test_crm_hot_human_copy_and_empty_states():
     assert "Пока некого писать" in hot
     assert "Найти лидов" in hot
     assert "Выберите клиента слева" in hot
-    assert "КЛИЕНТЫ ·" in leads
+    assert "ВОРОНКА ·" in leads
     assert "kanban-empty" in leads
     assert "leads-empty" in leads
     assert "Найти лидов" in leads
-    assert "Написать" in leads
+    assert "Написать сейчас" in leads
     assert ">Клиенты<" in base.replace(" ", "") or "<b>Клиенты</b>" in base
     assert "<b>Клиенты</b>" in dashboard
     assert ".kanban-empty" in css
-    assert "13.45.0-ops-live" in base
+    assert "13.52.0-hot-nav" in base

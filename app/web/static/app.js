@@ -325,6 +325,11 @@
       toggle?.setAttribute('aria-expanded', 'false');
       document.body.classList.remove('more-navigation-open');
     };
+    // На десктопе раскрыть «Ещё», если активен пункт системы
+    if (menu?.querySelector('.nav.active') && window.matchMedia('(min-width: 721px)').matches) {
+      menu.classList.add('is-open');
+      toggle?.setAttribute('aria-expanded', 'true');
+    }
     toggle?.addEventListener('click', () => {
       const opening = toggle.getAttribute('aria-expanded') !== 'true';
       menu?.classList.toggle('is-open', opening);

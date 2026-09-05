@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block title %}@{{ contact.username }} · Lead Radar{% endblock %}
 {% block heading %}@{{ contact.username }}{% endblock %}
-{% block subheading %}Вся история клиента, интерес, задачи и сделки в одном месте{% endblock %}
+{% block subheading %}История, лиды и следующий шаг по этому человеку{% endblock %}
 {% block content %}
 <div class="detail-back-bar">
   {% set breadcrumbs = [{"href": "/contacts", "label": "Люди"}, {"label": "@" ~ contact.username}] %}
   {% include "partials/breadcrumbs.html" %}
   <span class="pill primary">История человека</span>
 </div>
-<div class="hero-status safe contact-header" data-motion-root>
+<div class="hero-status safe contact-header page-task" data-motion-root data-page-task="contact">
   <div class="profile-avatar">{{ (contact.display_name or contact.username)[:1]|upper }}</div>
   <div>
     <span class="eyebrow">ЧЕЛОВЕК #{{ contact.id }}</span>
@@ -23,19 +23,48 @@
     <div><span>Источников</span><b>{{ source_count }}</b></div>
     <div><span>Лучшая оценка</span><b>{{ contact.current_lead_score }}</b></div>
     <div><span>Сделок</span><b>{{ deals|length }}</b></div>
-    <div><span>Последняя активность</span><b>{{ contact.last_seen_at | display_dt('%d.%m') }}</b></div>
+    <div><span>Активность</span><b>{{ contact.last_seen_at | display_dt('%d.%m') }}</b></div>
   </div>
+  {% if leads %}
+  <div class="hero-actions">
+    {% set hot_ns = namespace(id=none) %}
+    {% for item in leads %}
+      {% if hot_ns.id is none and item.lead_score >= settings.hot_lead_threshold and item.status.value not in ['WON','LOST','NOT_LEAD','OFFER_SENT'] %}
+        {% set hot_ns.id = item.id %}
+      {% endif %}
+    {% endfor %}
+    {% if hot_ns.id %}
+    <a class="btn primary" href="/hot?lead_id={{ hot_ns.id }}">Написать</a>
+    {% endif %}
+    <a class="btn ghost" href="/leads/{{ leads[0].id }}">Карточка лида</a>
+  </div>
+  {% endif %}
 </div>
 
+{% if leads %}
+<section class="panel page-task-leads compact">
+  <div class="panel-head"><div><h2>Лиды в воронке</h2><p>Рабочие карточки этого человека</p></div></div>
+  <div class="contact-leads-list">
+    {% for item in leads %}
+    <a class="contact-lead-row" href="/leads/{{ item.id }}">
+      <strong>#{{ item.id }} · {{ item.lead_score }}/100</strong>
+      <span>{{ lead_status_label(item.status) }} · {{ intent_label(item.intent) }}</span>
+      <span class="muted">{{ product_label(item.product_category) }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 {% if source_count > 1 %}
-<section class="cross-source-alert panel"><div class="attention-icon hot">{{ source_count }}</div><div><span class="eyebrow">СИЛЬНЫЙ СИГНАЛ</span><h3>Клиент сравнивает предложения у нескольких компаний</h3><p>Мы видели этого пользователя у: {% for handle in source_handles %}<b>@{{ handle }}</b>{% if not loop.last %}, {% endif %}{% endfor %}. Повторный интерес по разным источникам повышает приоритет лида.</p></div></section>
+<section class="cross-source-alert panel"><div class="attention-icon hot">{{ source_count }}</div><div><span class="eyebrow">СИЛЬНЫЙ СИГНАЛ</span><h3>Сравнивает предложения у нескольких компаний</h3><p>Видели у: {% for handle in source_handles %}<b>@{{ handle }}</b>{% if not loop.last %}, {% endif %}{% endfor %}.</p></div></section>
 {% endif %}
 
 {% if intelligence %}
-<section class="panel audience-profile">
-  <div class="panel-head"><div><span class="eyebrow">АУДИТОРИЯ И ИНТЕРЕСЫ</span><h2>Наблюдаемый коммерческий профиль</h2><p>Интересы, обнаруженные Lead Radar только в наблюдаемых публичных источниках. Это не полный портрет человека.</p></div><span class="tag {% if intelligence.customer_type=='B2B' %}status-qualified{% else %}neutral{% endif %}">{{ intelligence.customer_type }}</span></div>
+<details class="panel audience-profile page-task-secondary" {% if significant_changes %}open{% endif %}>
+  <summary><b>Аудитория и интересы</b><span>Наблюдаемый профиль из публичных сигналов</span></summary>
+  <div class="panel-head"><div><span class="eyebrow">АУДИТОРИЯ И ИНТЕРЕСЫ</span><p>Только наблюдаемые публичные источники — не полный портрет.</p></div><span class="tag {% if intelligence.customer_type=='B2B' %}status-qualified{% else %}neutral{% endif %}">{{ intelligence.customer_type }}</span></div>
   <div class="intelligence-summary"><div><span>Стадия</span><b>{{ commercial_stage_label(intelligence.commercial_stage) }}</b></div><div><span>Активность</span><b>{{ intelligence.activity_score }}/100</b></div><div><span>Ценность</span><b>{{ intelligence.value_score }}/100</b></div><div><span>Сигналов</span><b>{{ intelligence.commercial_signal_count }} коммерческих из {{ intelligence.signal_count }}</b></div><div><span>Источников</span><b>{{ intelligence.source_count }}</b></div><div><span>Экспорт</span><b>{{ export_eligibility_label(intelligence.export_eligibility) }}</b></div></div>
-  {# Phase 4 — Profile DNA: buyer role and evidence #}
   <div class="dna-profile-row">
     <div class="dna-role-card">
       <span class="eyebrow">РОЛЬ ПОКУПАТЕЛЯ</span>
@@ -58,20 +87,20 @@
     </div>
   </div>
   <div class="interest-columns"><div><h3>Коммерческие интересы</h3>{% for item in intelligence.product_interests_json %}<div class="interest-meter"><div><span>{{ product_label(item.value) }} · {{ item.count }} сигнал(а)</span><b>{{ item.current_score or item.confidence }}/100</b></div><i style="width:{{ item.current_score or item.confidence }}%"></i>{% if item.evidence_ids %}<small>Evidence: {{ item.evidence_ids | join(', ') }} · источников: {{ item.source_count }}</small>{% endif %}</div>{% else %}<div class="empty compact">Товарные интересы пока не подтверждены.</div>{% endfor %}</div><div><h3>Динамические аудитории</h3><div class="audience-chip-list">{% for membership, segment in audiences %}<a href="/audiences/{{ segment.slug }}">{{ segment.name }}</a>{% else %}<span class="muted">Контакт пока не входит в активные сегменты.</span>{% endfor %}</div></div></div>
-</section>
-{% if significant_changes %}
-<section class="panel significant-change-panel" id="significant-changes">
-  <div class="panel-head"><div><span class="eyebrow">СУЩЕСТВЕННЫЕ ИЗМЕНЕНИЯ</span><h2>Почему приоритет изменился</h2><p>Только изменения, которые влияют на решение менеджера; мелкие колебания оценки сюда не попадают.</p></div></div>
-  <div class="change-timeline">
-    {% for change in significant_changes %}
-    <article class="change-row severity-{{ change.severity|lower }}">
-      <div class="change-priority"><span>{{ change.previous_priority }}</span><b>→</b><strong>{{ change.current_priority }}</strong></div>
-      <div><div class="change-badges">{% for kind in change.change_types_json %}<span>{{ change_type_label(kind) }}</span>{% endfor %}</div><p>{{ change.summary }}</p><small>{{ change.created_at | display_dt('%d.%m.%Y %H:%M') }}</small></div>
-    </article>
-    {% endfor %}
+  {% if significant_changes %}
+  <div class="significant-change-panel" id="significant-changes">
+    <div class="panel-head"><div><span class="eyebrow">СУЩЕСТВЕННЫЕ ИЗМЕНЕНИЯ</span><h2>Почему приоритет изменился</h2><p>Только изменения, которые влияют на решение менеджера; мелкие колебания оценки сюда не попадают.</p></div></div>
+    <div class="change-timeline">
+      {% for change in significant_changes %}
+      <article class="change-row severity-{{ change.severity|lower }}">
+        <div class="change-priority"><span>{{ change.previous_priority }}</span><b>→</b><strong>{{ change.current_priority }}</strong></div>
+        <div><div class="change-badges">{% for kind in change.change_types_json %}<span>{{ change_type_label(kind) }}</span>{% endfor %}</div><p>{{ change.summary }}</p><small>{{ change.created_at | display_dt('%d.%m.%Y %H:%M') }}</small></div>
+      </article>
+      {% endfor %}
+    </div>
   </div>
-</section>
-{% endif %}
+  {% endif %}
+</details>
 {% endif %}
 
 <section class="panel customer-knowledge">

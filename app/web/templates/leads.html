@@ -19,20 +19,19 @@
 {% set board_href = '/leads?' ~ vq %}
 {% if q %}{% set board_href = board_href ~ '&q=' ~ (q|urlencode) %}{% endif %}
 
-<section class="hero-status leads-hero {% if safe_mode %}safe{% else %}live{% endif %}" data-motion-root>
+<section class="hero-status leads-hero page-task {% if safe_mode %}safe{% else %}live{% endif %}" data-motion-root data-page-task="leads">
   <div>
-    <span class="eyebrow">КЛИЕНТЫ · {% if rv == 'ARTIFICIAL_RATTAN' %}РОТАНГ{% else %}МЕБЕЛЬ{% endif %}</span>
-    <h2>{% if ns.total %}{{ ns.total }} в воронке · {{ ns.hot }} готовы к контакту{% else %}Воронка пока пуста{% endif %}</h2>
-    <p>{% if ns.total %}{{ ns.new }} новых · {{ ns.active }} в работе{% if quality_filter == 'garbage' %} · фильтр: подозрительные{% endif %}{% else %}Найдите лидов — они появятся здесь по стадиям до сделки.{% endif %}</p>
+    <span class="eyebrow">ВОРОНКА · {% if rv == 'ARTIFICIAL_RATTAN' %}РОТАНГ{% else %}МЕБЕЛЬ{% endif %}</span>
+    <h2>{% if ns.total %}{{ ns.total }} в воронке · {{ ns.hot }} к контакту{% else %}Воронка пока пуста{% endif %}</h2>
+    <p>{% if ns.total %}{{ ns.new }} новых · {{ ns.active }} в работе. Двигайте стадии после реального контакта.{% else %}Клиенты появятся здесь после «Найти лидов».{% endif %}</p>
   </div>
   <div class="hero-actions">
+    {% if not ns.total %}
     <a class="btn primary" href="/radar{% if rv == 'ARTIFICIAL_RATTAN' %}?vertical=ARTIFICIAL_RATTAN{% endif %}">Найти лидов</a>
-    <a class="btn" href="/leads?status=NEW{{ query_suffix }}">Новые ({{ ns.new }})</a>
-    <a class="btn" href="/leads?quality=hot{{ query_suffix }}">Готовые к контакту</a>
-    <a class="btn" href="/hot?vertical={{ rv }}">Написать сейчас</a>
+    {% else %}
+    <a class="btn primary" href="/hot?vertical={{ rv }}">Написать сейчас</a>
     <a class="btn ghost" href="/api/leads/export.csv?{{ vq }}&q={{ q|urlencode }}{% if status_filter %}&status={{ status_filter|urlencode }}{% endif %}{% if quality_filter %}&quality={{ quality_filter|urlencode }}{% endif %}">CSV</a>
-    {% include "partials/lead_reanalyze_actions.html" %}
-    <button class="btn ghost" type="button" data-agent-open>AI по клиентам</button>
+    {% endif %}
   </div>
 </section>
 

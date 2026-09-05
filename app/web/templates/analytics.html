@@ -3,15 +3,11 @@
 {% block heading %}Аналитика{% endblock %}
 {% block subheading %}Спрос рынка: воронка, намерения, товары и причины проигрыша{% endblock %}
 {% block content %}
-<section class="hero-status live analytics-hero" data-motion-root>
+<section class="hero-status live analytics-hero page-task" data-motion-root data-page-task="analytics">
   <div>
-    <span class="eyebrow">РЫНОЧНАЯ АНАЛИТИКА · {{ days }} дн.</span>
+    <span class="eyebrow">АНАЛИТИКА · {{ days }} дн.</span>
     <h2>Спрос, воронка и причины проигрыша</h2>
-    <p>Рыночная аналитика без credits и ROI — экономика и бюджет на <a href="/economics?days={{ days }}">/economics</a>.</p>
-  </div>
-  <div class="hero-actions">
-    <a class="btn ghost" href="/economics?days={{ days }}">Экономика</a>
-    <a class="btn ghost" href="/">Обзор</a>
+    <p>Рыночные срезы из базы. Credits и ROI — на <a href="/economics?days={{ days }}">Расходах</a>.</p>
   </div>
 </section>
 
@@ -90,12 +86,8 @@
   </section>
 </div>
 
-<section class="learning-card panel">
-  <div>
-    <span class="eyebrow">ДАННЫЕ ДЛЯ ОБУЧЕНИЯ</span>
-    <h2>{{ feedback_total }} размеченных примеров</h2>
-    <p>Из них {{ feedback_sales }} закончились продажей. Пока система накапливает фактические исходы и не меняет модель автоматически. Это защищает скоринг от случайного «самообучения» на ошибках менеджеров.</p>
-  </div>
-  <a class="btn" href="/system">Контроль AI →</a>
-</section>
+<details class="learning-card panel page-task-secondary">
+  <summary><b>Данные для обучения</b><span>{{ feedback_total }} разметок · {{ feedback_sales }} с продажей</span></summary>
+  <p>Система накапливает исходы и не меняет модель автоматически — защита от «самообучения» на ошибках.</p>
+</details>
 {% endblock %}

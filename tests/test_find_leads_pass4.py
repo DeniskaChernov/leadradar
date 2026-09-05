@@ -23,6 +23,6 @@ def test_find_leads_pass4_prefs_filter_and_dashboard():
     assert "FIND_AUDIENCE_INTENTS" in js
     assert "categoryLabels" in js
     assert "Найти лидов" in dashboard
-    assert "нужна мебель" in dashboard
+    assert "Что сделать сейчас" in dashboard
     assert "Найти лидов" in help_text
-    assert "13.45.0-ops-live" in base
+    assert "13.52.0-hot-nav" in base
