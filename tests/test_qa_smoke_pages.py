@@ -232,7 +232,7 @@ async def test_competitor_detail_renders_with_real_id(session_factory):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(f"/competitors/{competitor_id}")
     assert response.status_code == 200
-    assert "РАЗВЕДКА КОНКУРЕНТА" in response.text
+    assert "ИСТОЧНИК" in response.text
     assert "data-motion-root" in response.text
     assert "qa-competitor" in response.text
 
@@ -244,7 +244,7 @@ async def test_audience_detail_renders_with_real_slug(session_factory):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(f"/audiences/{slug}")
     assert response.status_code == 200
-    assert "ГРУППЫ СПРОСА" in response.text
+    assert "СЕГМЕНТ" in response.text
     assert "data-motion-root" in response.text
 
 
