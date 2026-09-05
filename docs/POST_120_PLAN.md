@@ -47,6 +47,19 @@
 - Push/merge PR + production Railway — доставка ветки
 - Повторный live pilot — только после «разрешаю live»
 
+## F. После page-task UI (активная очередь, 2026-09-05)
+
+UI page-task / HOT nav закрыты: PR #3 merged (`0dbb920`), cache `13.52.0-hot-nav`.
+
+Рекомендуемый порядок (offline first → gated):
+
+- [ ] F1. **Рост IG-источников** — расширить портфель tier A/B конкурентов (качество > объём API); основной рычаг лидов по ROADMAP
+- [ ] F2. **Railway production cutover** — по `docs/RAILWAY.md` / `docs/DEPLOYMENT.md` (без live spend по умолчанию)
+- [ ] F3. **Повторный controlled live pilot** — только после «разрешаю live»; backup → arm → scan → disarm
+- [ ] F4. **Новые каналы (E)** — Telegram/TikTok/Maps/… как отдельные интеграции, без stubs/Coming Soon фейков
+
+Page-task UI-полировку не продолжать без нового UX-запроса.
+
 ## Правило
 
 Любой пункт C требует явной фразы пользователя вроде «разрешаю live» / «делай pilot».

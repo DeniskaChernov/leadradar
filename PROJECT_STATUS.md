@@ -2,7 +2,10 @@
 
 ## Текущая версия
 
-**WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
+**WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED · PR #3 MERGED**
+
+Контрольная точка 2026-09-05 (ship): PR #3 merged `0dbb920`; smoke asserts
+синхронизированы с page-task copy; активная очередь POST_120 **F1–F4**.
 
 Контрольная точка 2026-09-05 (hot-nav): нав/заголовок снова **HOT**;
 system readiness + AI lease в details; cache **13.52.0-hot-nav**.
