@@ -59,9 +59,10 @@ UI page-task / HOT nav закрыты: PR #3 merged (`0dbb920`), cache `13.52.0-
 - [ ] ~~F2. Railway production cutover~~ — **снято с очереди** (не делаем, пока явно не попросят)
 - [ ] F3. **Повторный controlled live pilot** — только после «разрешаю live»; backup → arm → scan → disarm
 - [ ] F4. **Новые каналы** — Telegram/TikTok/Maps/… как отдельные интеграции, без stubs/Coming Soon фейков
-- [ ] F5. **Операционный рост лидов** — больше качественных IG A/B, HOT-цикл менеджера, без нового UI-полиша
+- [x] F5. **Операционный рост лидов** — find→HOT CTA «Написать»; editable draft + persist on sent;
+  очередь HOT: fresh first, skip already_contacted; cache `13.54.0-f5-hot-ops` (2026-09-05)
 
-Активный фокус после F1: **F3 / F5 / F4** — не Railway.
+Активный фокус после F5: **F3 live (gated)** или следующий UX/ops запрос — не Railway.
 
 Page-task UI-полировку не продолжать без нового UX-запроса.
 

@@ -24,5 +24,5 @@ def test_right_column_viewport_fit_css_present() -> None:
 
 
 def test_side_fit_cache_bumped() -> None:
-    assert "13.53.0-f1-portfolio" in BASE
-    assert "13.53.0-f1-portfolio" in SW
+    assert "13.54.0-f5-hot-ops" in BASE
+    assert "13.54.0-f5-hot-ops" in SW

@@ -159,7 +159,7 @@ class HotOutreachService:
                 session,
                 {contact.id for _lead, contact, *_rest in rows},
             )
-        return [
+        items = [
             self._queue_item(
                 lead,
                 contact,
@@ -172,6 +172,15 @@ class HotOutreachService:
             )
             for lead, contact, comment, competitor, post in rows
         ]
+        # F5: сначала свежие контакты, «уже писали» — в конце; внутри — по score.
+        items.sort(
+            key=lambda item: (
+                1 if item.get("already_contacted") else 0,
+                1 if item.get("sent") else 0,
+                -int(item.get("score") or 0),
+            )
+        )
+        return items
 
     async def next_queue_lead_id(
         self,
@@ -184,6 +193,8 @@ class HotOutreachService:
             if exclude_lead_id is not None and item["lead_id"] == exclude_lead_id:
                 continue
             if item.get("sent"):
+                continue
+            if item.get("already_contacted"):
                 continue
             return int(item["lead_id"])
         return None
@@ -364,13 +375,85 @@ class HotOutreachService:
             raise LeadWorkflowError("Лид исчез после подготовки")
         return refreshed
 
-    async def mark_sent(self, lead_id: int, manager_id: int) -> dict[str, Any]:
+    async def save_draft(
+        self,
+        lead_id: int,
+        manager_id: int,
+        message: str,
+        *,
+        source: str = "manual",
+    ) -> dict[str, Any]:
+        """Сохранить/обновить текст предложения без GPT (правка менеджера)."""
+        cleaned = (message or "").strip()
+        if not cleaned:
+            raise LeadWorkflowError("Текст предложения пустой")
+        if len(cleaned) > 4000:
+            raise LeadWorkflowError("Текст слишком длинный (макс. 4000 символов)")
+        detail = await self.detail(lead_id)
+        if detail is None:
+            raise LeadWorkflowError("HOT-лид не найден")
+        if detail.get("already_sent") or (
+            detail.get("draft") and detail["draft"].get("sent_at")
+        ):
+            raise LeadWorkflowError("Предложение уже отмечено как отправленное")
+        await self._ensure_taken(lead_id, manager_id)
+        recommendation = detail.get("recommendation") or {}
+        prepared_at = datetime.now(UTC).isoformat()
+        async with self.session_factory() as session:
+            lead = await session.get(Lead, lead_id)
+            if lead is None:
+                raise LeadWorkflowError("Лид не найден")
+            details = dict(lead.analysis_details or {})
+            existing = dict(details.get(HOT_OUTREACH_KEY) or {})
+            existing.update(
+                {
+                    "message": cleaned,
+                    "prepared_at": prepared_at,
+                    "prepared_by": manager_id,
+                    "recommendation_title": recommendation.get("title"),
+                    "product_id": recommendation.get("product_id"),
+                    "product_sku": recommendation.get("product_sku"),
+                    "source": source,
+                    "sent_at": None,
+                }
+            )
+            details[HOT_OUTREACH_KEY] = existing
+            lead.analysis_details = details
+            lead.updated_at = datetime.now(UTC)
+            await ContactEventRepository(session).add(
+                lead.contact_id,
+                ContactEventType.NOTE_ADDED,
+                lead_id=lead.id,
+                manager_telegram_id=manager_id,
+                payload={
+                    "kind": "hot_outreach_draft_saved",
+                    "source": source,
+                    "message_preview": cleaned[:240],
+                },
+            )
+            await session.commit()
+        refreshed = await self.detail(lead_id)
+        if refreshed is None:
+            raise LeadWorkflowError("Лид исчез после сохранения текста")
+        return refreshed
+
+    async def mark_sent(
+        self,
+        lead_id: int,
+        manager_id: int,
+        *,
+        message: str | None = None,
+    ) -> dict[str, Any]:
+        if message is not None and str(message).strip():
+            await self.save_draft(
+                lead_id, manager_id, str(message), source="manual_before_sent"
+            )
         detail = await self.detail(lead_id)
         if detail is None:
             raise LeadWorkflowError("HOT-лид не найден")
         draft = detail.get("draft")
         if not draft or not draft.get("message"):
-            raise LeadWorkflowError("Сначала подготовьте текст предложения")
+            raise LeadWorkflowError("Сначала подготовьте или вставьте текст предложения")
         if draft.get("sent_at"):
             return detail
 

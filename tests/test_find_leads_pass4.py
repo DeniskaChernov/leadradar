@@ -25,4 +25,4 @@ def test_find_leads_pass4_prefs_filter_and_dashboard():
     assert "Найти лидов" in dashboard
     assert "Что сделать сейчас" in dashboard
     assert "Найти лидов" in help_text
-    assert "13.53.0-f1-portfolio" in base
+    assert "13.54.0-f5-hot-ops" in base

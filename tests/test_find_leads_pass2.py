@@ -38,6 +38,8 @@ def test_find_leads_pass2_markup_and_cache():
     assert "Потенциальных покупателей" in radar or "потенциальных покупателей" in radar
     assert 'data-lead-explain="' in radar
     assert 'data-lead-take="' in radar
+    assert 'href="/hot?vertical={{ rv }}&lead_id={{ lead.id }}"' in radar
+    assert ">Написать</a>" in radar
     assert 'data-nav-hot-badge' in base
     assert 'id="lead-explain"' in base
     assert "showLeadExplain" in js
@@ -45,8 +47,8 @@ def test_find_leads_pass2_markup_and_cache():
     assert "/api/leads/" in js and "explain" in js
     assert ".nav-badge" in css
     assert ".find-advanced" in css
-    assert "13.53.0-f1-portfolio" in base
-    assert "13.53.0-f1-portfolio" in sw
+    assert "13.54.0-f5-hot-ops" in base
+    assert "13.54.0-f5-hot-ops" in sw
     # safety strings preserved
     assert "Сколько разрешить на эту проверку?" in radar
     assert 'method="post" action="/api/ops/openai-live"' in radar

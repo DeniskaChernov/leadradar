@@ -2,7 +2,11 @@
 
 ## Текущая версия
 
-**WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED · F1 DONE**
+**WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED · F5 HOT OPS**
+
+Контрольная точка 2026-09-05 (F5 hot-ops): радар → «Написать» для HOT;
+редактируемый черновик + message на «Отправил»; очередь без повторных касаний;
+cache **13.54.0-f5-hot-ops**.
 
 Контрольная точка 2026-09-05 (F1 sources): портфель A/B расширен verified IG
 (divanchi/focus/mogno); activate API/UI/script без live unlock;

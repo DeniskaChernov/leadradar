@@ -21,10 +21,10 @@ def test_copy_sweep_rattan_openings_offline():
     assert "Новые заведения" in openings
     assert "Радар открытий" not in openings
     assert "B2B ОТКРЫТИЯ" in openings
-    assert "13.53.0-f1-portfolio" in offline
+    assert "13.54.0-f5-hot-ops" in offline
     assert "данные CRM и API" not in offline
     assert "нужен Live-поиск" in competitors
-    assert "13.53.0-f1-portfolio" in base
+    assert "13.54.0-f5-hot-ops" in base
     system = (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
     radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
     wizard = (
