@@ -38,8 +38,9 @@ Lead Radar строится не как «парсер комментариев�
 искусственный ротанг V2, durable Telegram outbox, budget/cost ledger, Discovery Center,
 подтверждаемый каталог, grounded Next Best Action и 600-case robustness replay.
 
-Это не означает live/production readiness: controlled live pilot
-ещё не пройден (Phase 10). Независимые quality gates — **offline PASS**.
+Это не означает open production spend: controlled live pilot пройден один раз
+с rollback; повторный re-arm — только по явному разрешению (Phase 10 / F3).
+Независимые quality gates — **offline PASS**.
 
 ## Master work order 2026-08-31
 
@@ -130,27 +131,25 @@ Lead Radar строится не как «парсер комментариев�
 - versioned FX policy;
 - margin/ROI только при полном наборе фактов.
 
-### Stage 6. Independent quality gates — ЗАПЛАНИРОВАНО ПОСЛЕ MASTER PHASE 5
+### Stage 6. Independent quality gates — ГОТОВО
 
-- 100+ независимо размеченных audience membership cases;
-- отдельные calibration/challenge/robustness/unseen наборы;
-- importer для 500–1000 архивных публичных сигналов;
-- воспроизводимые precision/recall/confusion отчёты.
+- unseen lead / rattan / audience gates в CI и на `/system`;
+- calibration / challenge / robustness отделены от unseen;
+- audience unseen:v2 (76 cases / 210 labeled decisions);
+- воспроизводимые precision/recall/F1/confusion без сети.
 
-### Stage 7. Grounded Agent/MCP
+### Stage 7. Grounded Agent/MCP — ГОТОВО (offline)
 
-- существующий typed gateway подключается к реальным DB services;
-- read tools возвращают Evidence-backed факты;
-- write tools используют durable human approval и idempotency;
-- AI расходы проходят через существующий ledger/reservation;
-- Meta/spend tools закрыты до реального adapter contract.
+- read tools → Evidence из БД; write → human approval;
+- AI spend через ledger/reservation;
+- Meta/spend write закрыты до реального adapter unlock.
 
-### Stage 8. UI и Telegram offline hardening
+### Stage 8. UI и Telegram offline hardening — ГОТОВО
 
-- truthful состояния всех экранов;
-- desktop/mobile/accessibility/browser regression;
-- dry-run/race/retry/UNCERTAIN для Telegram;
-- реальная доставка остаётся отдельным pilot gate.
+- page-task UI (каждая вкладка = одна задача), HOT desk, find-leads wizard;
+- PWA offline shell; Playwright funnel E2E;
+- Telegram dry-run / UNCERTAIN / manager chat IDs;
+- реальная delivery — только Stage 10 / controlled pilot.
 
 ### Stage 9. Deployment readiness — ГОТОВО (offline)
 
@@ -161,16 +160,20 @@ Lead Radar строится не как «парсер комментариев�
 - SQLite + PostgreSQL CI matrix;
 - Railway/Dockerfile runbooks.
 
-### Stage 10. Controlled live integrations — ТОЛЬКО ПО ОТДЕЛЬНОМУ РАЗРЕШЕНИЮ
+### Stage 10. Controlled live integrations — ПЕРВЫЙ PILOT ПРОЙДЕН · RE-ARM GATED
+
+Первый controlled pilot (Radar + OpenAI + Telegram smoke) выполнен и
+зафиксирован в `docs/POST_120_PLAN.md` (C0–C7) с rollback
+(`EXTERNAL_KILL_SWITCH` + disarm). Повторный live spend **запрещён**
+без явной фразы пользователя («разрешаю live» / «делай pilot»).
 
 - один выбранный Instagram provider с минимальным ручным лимитом;
 - отдельный Telegram manager chat;
 - OpenAI только через budget ledger + unseen gate PASS;
 - Meta/Google только через официальные adapters, credentials, privacy и budget gates;
-- Meta Custom Audience confirmed export (сейчас dry-run / NOT_CONNECTED);
-- после пилота — reconciliation и повторное отключение live.
+- Meta Custom Audience confirmed export за fail-closed gate;
+- после каждого pilot — reconciliation и повторное отключение live.
 
-До Stage 10 любые Instagram/OpenAI/Telegram delivery/Meta/Google live-вызовы запрещены.
 Чеклист: `docs/LIVE_PILOT_CHECKLIST.md`, план: `docs/POST_120_PLAN.md`.
 
 ## Что должно увеличивать количество лидов
