@@ -162,5 +162,5 @@ def test_contact_detail_work_first() -> None:
 
 def test_page_task_css_and_cache() -> None:
     assert "Page-task structure" in CSS
-    assert "13.53.0-f1-portfolio" in BASE
-    assert "13.53.0-f1-portfolio" in (ROOT / "app/web/static/sw.js").read_text(encoding="utf-8")
+    assert "13.54.0-f5-hot-ops" in BASE
+    assert "13.54.0-f5-hot-ops" in (ROOT / "app/web/static/sw.js").read_text(encoding="utf-8")

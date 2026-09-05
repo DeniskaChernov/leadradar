@@ -253,8 +253,13 @@
         {% if ai.get('evidence_ids') %}<span>Evidence: {{ ai.get('evidence_ids')|length }}</span>{% endif %}
       </div>
       <div class="find-lead-actions">
+        {% if lead.lead_score >= settings.hot_lead_threshold %}
+        <a class="btn tiny primary" href="/hot?vertical={{ rv }}&lead_id={{ lead.id }}">Написать</a>
+        <a class="btn tiny ghost" href="/leads/{{ lead.id }}">Карточка</a>
+        {% else %}
         <a class="btn tiny primary" href="/leads/{{ lead.id }}">Открыть лида</a>
         <button type="button" class="btn tiny" data-lead-take="{{ lead.id }}">Взять в работу</button>
+        {% endif %}
         <button type="button" class="btn tiny ghost" data-lead-explain="{{ lead.id }}">Почему это лид?</button>
       </div>
     </article>
@@ -310,7 +315,7 @@
   <td data-label="Источник"><b>@{{ competitor.normalized_handle }}</b><small><span class="tier tier-{{ competitor.tier|lower }}" title="Приоритет мониторинга">{{ competitor_tier_label(competitor.tier) }}</span> · <a target="_blank" rel="noopener" href="{{ post.url }}">Открыть Reel ↗</a></small></td>
   <td data-label="Контекст Reel" class="context">{{ post.caption[:165] or 'Описание Reel не получено' }}{% if post.caption|length > 165 %}…{% endif %}</td>
   <td data-label="Оценка">{% if lead and lead.status.value == 'ANALYZING' %}<span class="tag pending">Ставим оценку</span><small>Лид уже виден менеджеру</small>{% elif lead and lead.status.value == 'AI_PENDING' %}<span class="tag pending">Система не уверена</span><small>Нужна умная оценка GPT</small>{% elif lead %}<div class="score-line"><div class="lead-score {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead.lead_score >= 50 %}warm{% endif %}">{{ lead.lead_score }}</div><div><b>{{ intent_label(lead.intent) }}</b><small>{{ product_label(lead.product_category) }} · {{ ai_source_label(lead.ai_source) }}</small></div></div>{% else %}<span class="tag pending">Нет оценки</span>{% endif %}</td>
-  <td data-label="Действие">{% if lead %}<a class="btn tiny" href="/leads/{{ lead.id }}">Открыть лид</a><small class="human-status">{{ lead_status_label(lead.status) }}</small>{% else %}<a class="btn tiny ghost" href="/contacts/{{ contact.id }}">Карточка клиента</a>{% endif %}</td>
+  <td data-label="Действие">{% if lead %}{% if lead.lead_score >= settings.hot_lead_threshold %}<a class="btn tiny primary" href="/hot?vertical={{ rv }}&lead_id={{ lead.id }}">Написать</a>{% else %}<a class="btn tiny" href="/leads/{{ lead.id }}">Открыть лид</a>{% endif %}<small class="human-status">{{ lead_status_label(lead.status) }}</small>{% else %}<a class="btn tiny ghost" href="/contacts/{{ contact.id }}">Карточка клиента</a>{% endif %}</td>
 </tr>
 {% else %}
 <tr>

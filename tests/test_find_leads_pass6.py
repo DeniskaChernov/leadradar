@@ -26,4 +26,4 @@ def test_find_leads_pass6_reset_sync_and_pages():
     assert "Найти лидов" in economics
     assert "РАСХОДЫ ·" in economics or "РАСХОДЫ НА ПОИСК" in economics
     assert "Новые источники" in base
-    assert "13.53.0-f1-portfolio" in base
+    assert "13.54.0-f5-hot-ops" in base

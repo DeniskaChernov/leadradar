@@ -590,8 +590,14 @@ def build_web_app(
 
     @app.post("/api/hot/{lead_id}/sent")
     async def hot_mark_sent(request: Request, lead_id: int):
+        payload = await _json_or_form(request)
+        message = payload.get("message")
         try:
-            detail = await hot_outreach_service.mark_sent(lead_id, manager_id(request))
+            detail = await hot_outreach_service.mark_sent(
+                lead_id,
+                manager_id(request),
+                message=str(message) if message is not None else None,
+            )
             vertical = str(detail.get("vertical") or "FURNITURE")
             next_id = detail.get("next_lead_id")
             next_url = (
@@ -604,6 +610,22 @@ def build_web_app(
                 "message": f"Отмечено · {label(LEAD_STATUS_LABELS, detail['status'])}",
                 "detail": detail,
                 "next_url": next_url,
+            }
+        except LeadWorkflowError as exc:
+            raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
+
+    @app.post("/api/hot/{lead_id}/draft")
+    async def hot_save_draft(request: Request, lead_id: int):
+        payload = await _json_or_form(request)
+        message = str(payload.get("message") or "")
+        try:
+            detail = await hot_outreach_service.save_draft(
+                lead_id, manager_id(request), message
+            )
+            return {
+                "ok": True,
+                "message": "Текст сохранён",
+                "detail": detail,
             }
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc

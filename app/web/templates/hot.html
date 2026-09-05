@@ -90,14 +90,14 @@
         <h3>Текст для Instagram</h3>
         <span class="tag {% if selected.draft %}success{% else %}muted-tag{% endif %}" data-hot-draft-badge>{% if selected.draft and selected.draft.sent_at %}Отправлено{% elif selected.draft %}Готов{% else %}Нет текста{% endif %}</span>
       </div>
-      <textarea class="hot-draft-text" rows="7" readonly data-hot-draft-text placeholder="Нажмите «Подготовить текст» — GPT соберёт предложение по комментарию и каталогу.">{% if selected.draft %}{{ selected.draft.message }}{% endif %}</textarea>
+      <textarea class="hot-draft-text" rows="7" data-hot-draft-text placeholder="Вставьте или отредактируйте текст. «Подготовить текст» — через GPT; можно писать вручную и сразу «Отправил».">{% if selected.draft %}{{ selected.draft.message }}{% endif %}</textarea>
       <div class="hot-draft-actions">
-        <button class="btn primary" type="button" data-hot-prepare data-lead-id="{{ selected.lead_id }}" {% if not openai_spend_allowed and not selected.draft %}disabled{% endif %}>Подготовить текст</button>
+        <button class="btn primary" type="button" data-hot-prepare data-lead-id="{{ selected.lead_id }}" {% if not openai_spend_allowed %}disabled title="GPT выключен в Настройках"{% endif %}>Подготовить текст</button>
         <button class="btn" type="button" data-hot-copy {% if not selected.draft %}disabled{% endif %}>Скопировать</button>
-        <a class="btn" target="_blank" rel="noopener" href="{{ selected.profile_url }}" data-hot-open-ig {% if not selected.draft %}aria-disabled="true"{% endif %}>Открыть профиль</a>
-        <button class="btn success" type="button" data-hot-sent data-lead-id="{{ selected.lead_id }}" {% if not selected.can_mark_sent %}disabled{% endif %}>Отправил</button>
+        <a class="btn" target="_blank" rel="noopener" href="{{ selected.profile_url }}" data-hot-open-ig>Открыть профиль</a>
+        <button class="btn success" type="button" data-hot-sent data-lead-id="{{ selected.lead_id }}" {% if not selected.draft or selected.draft.sent_at %}disabled{% endif %}>Отправил</button>
       </div>
-      <p class="muted hot-hint">«Отправил» сохраняет шаг воронки и открывает следующего.</p>
+      <p class="muted hot-hint">Правки в тексте сохраняются при «Отправил». Дальше — следующий HOT без повторных касаний.</p>
     </div>
     {% else %}
     <div class="empty-box large">

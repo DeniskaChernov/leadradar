@@ -598,6 +598,15 @@
     const prepareBtn = root.querySelector('[data-hot-prepare]');
     const copyBtn = root.querySelector('[data-hot-copy]');
     const sentBtn = root.querySelector('[data-hot-sent]');
+    const syncActionButtons = () => {
+      const text = draftEl instanceof HTMLTextAreaElement ? draftEl.value.trim() : '';
+      const hasText = Boolean(text);
+      if (copyBtn instanceof HTMLButtonElement) copyBtn.disabled = !hasText;
+      if (sentBtn instanceof HTMLButtonElement) {
+        const alreadySent = badge && badge.textContent === 'Отправлено';
+        sentBtn.disabled = !hasText || Boolean(alreadySent);
+      }
+    };
     const setDraft = (detail) => {
       const draft = detail && detail.draft;
       if (draftEl instanceof HTMLTextAreaElement) {
@@ -609,11 +618,12 @@
         else badge.textContent = 'Нет текста';
         badge.className = `tag ${draft && draft.message ? 'success' : 'muted-tag'}`;
       }
-      if (copyBtn instanceof HTMLButtonElement) copyBtn.disabled = !(draft && draft.message);
-      if (sentBtn instanceof HTMLButtonElement) {
-        sentBtn.disabled = !(detail && detail.can_mark_sent);
-      }
+      syncActionButtons();
     };
+    if (draftEl instanceof HTMLTextAreaElement) {
+      draftEl.addEventListener('input', syncActionButtons);
+      syncActionButtons();
+    }
     prepareBtn?.addEventListener('click', async () => {
       const leadId = prepareBtn.getAttribute('data-lead-id');
       if (!leadId) return;
@@ -646,6 +656,11 @@
     sentBtn?.addEventListener('click', async () => {
       const leadId = sentBtn.getAttribute('data-lead-id');
       if (!leadId) return;
+      const message = draftEl instanceof HTMLTextAreaElement ? draftEl.value.trim() : '';
+      if (!message) {
+        toast('Вставьте или подготовьте текст перед отметкой', true);
+        return;
+      }
       const ok = await confirmAction(
         'Отметить отправку?',
         'Лид перейдёт по воронке до «Предложение отправлено». Нажимайте только после реальной отправки в Instagram.'
@@ -655,7 +670,7 @@
       try {
         const data = await api(`/api/hot/${leadId}/sent`, {
           method: 'POST',
-          body: JSON.stringify({}),
+          body: JSON.stringify({ message }),
         });
         setDraft(data.detail);
         const nextUrl = data.next_url

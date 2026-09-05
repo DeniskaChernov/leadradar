@@ -120,7 +120,27 @@ async def test_hot_mark_sent_returns_next_lead(session_factory):
     assert sent["next_lead_id"] == second_id
 
 
-async def test_hot_already_contacted_flag(session_factory):
+async def test_hot_manual_draft_and_mark_sent(session_factory):
+    lead_id = await _make_hot_lead(session_factory)
+    service = HotOutreachService(
+        session_factory,
+        hot_threshold=70,
+        workflow=LeadWorkflowService(session_factory, hot_threshold=70),
+        crm=CRMService(session_factory),
+        catalog=ProductCatalogService(session_factory),
+        composer=None,
+    )
+    saved = await service.save_draft(lead_id, 1001, "Ручной текст для Instagram")
+    assert saved["draft"]["message"] == "Ручной текст для Instagram"
+    assert saved["can_mark_sent"] is True
+    sent = await service.mark_sent(
+        lead_id, 1001, message="Ручной текст · правка перед отправкой"
+    )
+    assert sent["status"] == LeadStatus.OFFER_SENT.value
+    assert sent["draft"]["message"] == "Ручной текст · правка перед отправкой"
+
+
+async def test_hot_queue_prefers_fresh_over_already_contacted(session_factory):
     first_id = await _make_hot_lead(session_factory)
     service = HotOutreachService(
         session_factory,
@@ -128,7 +148,7 @@ async def test_hot_already_contacted_flag(session_factory):
         workflow=LeadWorkflowService(session_factory, hot_threshold=70),
         crm=CRMService(session_factory),
         catalog=ProductCatalogService(session_factory),
-        composer=StaticOutreachComposer("Текст повтор"),
+        composer=StaticOutreachComposer("Текст"),
     )
     await service.prepare(first_id, 1001)
     await service.mark_sent(first_id, 1001)
@@ -143,12 +163,12 @@ async def test_hot_already_contacted_flag(session_factory):
 
     twin = await ContactService(session_factory).persist_signal(
         make_post(),
-        make_comment("hot-outreach-twin").model_copy(
+        make_comment("hot-outreach-queue-twin").model_copy(
             update={
-                "platform_comment_id": "hot-outreach-twin",
+                "platform_comment_id": "hot-outreach-queue-twin",
                 "platform_user_id": platform_user_id,
                 "username": username,
-                "text": "Ещё раз интересует цена комплекта",
+                "text": "Ещё раз цена?",
             }
         ),
     )
@@ -156,12 +176,36 @@ async def test_hot_already_contacted_flag(session_factory):
         session_factory, StaticAnalyzer(), hot_threshold=70
     ).process_signal(twin)
     assert twin_result is not None
+
+    fresh = await ContactService(session_factory).persist_signal(
+        make_post(),
+        make_comment("hot-outreach-fresh").model_copy(
+            update={
+                "platform_comment_id": "hot-outreach-fresh",
+                "platform_user_id": "fresh-hot-user",
+                "username": "fresh_hot_user",
+                "profile_url": "https://www.instagram.com/fresh_hot_user/",
+                "text": "Сколько стоит комплект срочно?",
+            }
+        ),
+    )
+    fresh_result = await LeadService(
+        session_factory, StaticAnalyzer(), hot_threshold=70
+    ).process_signal(fresh)
+    assert fresh_result is not None
+
+    queue = await service.queue(vertical="FURNITURE")
+    open_items = [item for item in queue if not item.get("sent")]
+    assert open_items[0]["lead_id"] == fresh_result.lead_id
+    assert open_items[0]["already_contacted"] is False
+    twin_item = next(item for item in open_items if item["lead_id"] == twin_result.lead_id)
+    assert twin_item["already_contacted"] is True
+    next_id = await service.next_queue_lead_id(vertical="FURNITURE")
+    assert next_id == fresh_result.lead_id
     detail = await service.detail(twin_result.lead_id)
     assert detail is not None
     assert detail["contact_history"]["already_contacted"] is True
-    queue = await service.queue(vertical="FURNITURE")
-    twin_item = next(item for item in queue if item["lead_id"] == twin_result.lead_id)
-    assert twin_item["already_contacted"] is True
+
 
 async def test_hot_page_and_apis(session_factory):
     lead_id = await _make_hot_lead(session_factory)
@@ -198,17 +242,23 @@ async def test_hot_page_and_apis(session_factory):
     ) as client:
         page = await client.get(f"/hot?lead_id={lead_id}")
         blocked = await client.post(f"/api/hot/{lead_id}/prepare", json={})
-        marked = await client.post(f"/api/hot/{lead_id}/sent", json={})
+        marked = await client.post(
+            f"/api/hot/{lead_id}/sent",
+            json={"message": "Текст с правкой менеджера"},
+        )
         leads_rattan = await client.get("/leads?vertical=ARTIFICIAL_RATTAN")
 
     assert page.status_code == 200
-    assert "HOT очередь" in page.text or "Написать сейчас" in page.text or "Кого писать" in page.text
+    assert "HOT очередь" in page.text or "Написать сейчас" in page.text or "Кого писать" in page.text or "готовы к контакту" in page.text
     assert "data-hot-workspace" in page.text
+    assert "data-hot-draft-text" in page.text
+    assert "readonly data-hot-draft-text" not in page.text
     assert "GPT сегодня" in page.text or "GPT выключен" in page.text or "OpenAI выключен" in page.text
     assert blocked.status_code == 409
     assert marked.status_code == 200
     body = marked.json()
     assert body["detail"]["status"] == LeadStatus.OFFER_SENT.value
+    assert body["detail"]["draft"]["message"] == "Текст с правкой менеджера"
     assert "next_url" in body
     assert leads_rattan.status_code == 200
     assert "Лиды ротанга" in leads_rattan.text or "Клиенты · ротанг" in leads_rattan.text
