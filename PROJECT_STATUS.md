@@ -6,7 +6,7 @@
 
 Контрольная точка 2026-09-05 (F1 sources): портфель A/B расширен verified IG
 (divanchi/focus/mogno); activate API/UI/script без live unlock;
-cache **13.53.0-f1-portfolio**.
+cache **13.53.0-f1-portfolio**. Railway **снят с активной очереди**.
 
 Контрольная точка 2026-09-05 (ship): PR #3 merged `0dbb920`; smoke asserts
 синхронизированы с page-task copy; активная очередь POST_120 **F1–F4**.

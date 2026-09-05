@@ -44,7 +44,7 @@
 ## E. Outside this plan (не фейкать)
 
 - Coming Soon источники поиска (Telegram/TikTok/Facebook/Maps/OLX/Glotr/тендеры/Web) — отдельные интеграции
-- Push/merge PR + production Railway — доставка ветки
+- ~~Push/merge PR + production Railway~~ — **не в активной очереди** (только по явному запросу)
 - Повторный live pilot — только после «разрешаю live»
 
 ## F. После page-task UI (активная очередь, 2026-09-05)
@@ -56,9 +56,12 @@ UI page-task / HOT nav закрыты: PR #3 merged (`0dbb920`), cache `13.52.0-
 - [x] F1. **Рост IG-источников** — портфель A/B: +divanchi/focus/mogno (paused seeds);
   `activate_portfolio` + UI «Включить портфель A+B» + script `activate_source_portfolio.py`;
   restore default A+B; cache `13.53.0-f1-portfolio` (2026-09-05)
-- [ ] F2. **Railway production cutover** — по `docs/RAILWAY.md` / `docs/DEPLOYMENT.md` (без live spend по умолчанию)
+- [ ] ~~F2. Railway production cutover~~ — **снято с очереди** (не делаем, пока явно не попросят)
 - [ ] F3. **Повторный controlled live pilot** — только после «разрешаю live»; backup → arm → scan → disarm
-- [ ] F4. **Новые каналы (E)** — Telegram/TikTok/Maps/… как отдельные интеграции, без stubs/Coming Soon фейков
+- [ ] F4. **Новые каналы** — Telegram/TikTok/Maps/… как отдельные интеграции, без stubs/Coming Soon фейков
+- [ ] F5. **Операционный рост лидов** — больше качественных IG A/B, HOT-цикл менеджера, без нового UI-полиша
+
+Активный фокус после F1: **F3 / F5 / F4** — не Railway.
 
 Page-task UI-полировку не продолжать без нового UX-запроса.
 
