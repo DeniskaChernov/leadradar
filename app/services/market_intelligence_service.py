@@ -103,6 +103,42 @@ class MarketIntelligenceService:
             "promoted_candidates": promoted_candidates,
         }
 
+    async def activate_portfolio(
+        self,
+        *,
+        tiers: tuple[str, ...] = ("A", "B"),
+        catalog_managed_only: bool = True,
+    ) -> dict[str, int | list[str]]:
+        """Включить мониторинг источников выбранных tier без live-вызовов.
+
+        Только БД: active=True. Credits не списываются, пока live/kill-switch
+        не разрешат внешние запросы. F1: по умолчанию A+B (качество > C-шум).
+        """
+        allowed = {tier.upper() for tier in tiers if str(tier).upper() in {"A", "B", "C"}}
+        if not allowed:
+            raise ValueError("Укажите tier A, B и/или C")
+        async with self.session_factory() as session:
+            query = select(Competitor).where(Competitor.tier.in_(sorted(allowed)))
+            if catalog_managed_only:
+                query = query.where(Competitor.catalog_managed.is_(True))
+            rows = list((await session.execute(query)).scalars().all())
+            activated: list[str] = []
+            already_active = 0
+            for competitor in rows:
+                if competitor.active:
+                    already_active += 1
+                    continue
+                competitor.active = True
+                activated.append(competitor.normalized_handle)
+            await session.commit()
+        return {
+            "tiers": sorted(allowed),
+            "scanned": len(rows),
+            "activated": len(activated),
+            "already_active": already_active,
+            "handles": activated,
+        }
+
     async def promote_candidate(
         self,
         candidate_id: int,

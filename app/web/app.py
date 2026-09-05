@@ -2395,10 +2395,52 @@ def build_web_app(
         result = await market_service.sync_catalog()
         return {
             "ok": True,
-            "created_competitors": result["created_competitors"],
-            "created_candidates": result["created_candidates"],
-            "promoted_candidates": result["promoted_candidates"],
-            "message": "Карта рынка синхронизирована. Новые конкуренты добавлены на паузе и не расходуют API.",
+            **result,
+            "message": (
+                f"Карта рынка: +{result['created_competitors']} источников, "
+                f"+{result['created_candidates']} кандидатов"
+            ),
+        }
+
+    @app.post("/api/competitors/portfolio/activate")
+    async def activate_source_portfolio(request: Request):
+        """F1: activate tier A/B monitoring in DB only; does not unlock live spend."""
+        payload = await _json_or_form(request)
+        raw_tiers = payload.get("tiers") or "A,B"
+        if isinstance(raw_tiers, str):
+            tiers = tuple(
+                part.strip().upper()
+                for part in raw_tiers.replace(" ", "").split(",")
+                if part.strip()
+            )
+        elif isinstance(raw_tiers, list):
+            tiers = tuple(str(part).strip().upper() for part in raw_tiers if str(part).strip())
+        else:
+            raise HTTPException(status_code=400, detail="tiers должен быть строкой или списком")
+        catalog_only = str(payload.get("catalog_managed_only", "true")).lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
+        try:
+            result = await market_service.activate_portfolio(
+                tiers=tiers or ("A", "B"),
+                catalog_managed_only=catalog_only,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "ok": True,
+            "tiers": result["tiers"],
+            "scanned": result["scanned"],
+            "activated": result["activated"],
+            "already_active": result["already_active"],
+            "handles": result["handles"],
+            "message": (
+                f"Портфель {','.join(result['tiers'])}: включено {result['activated']}, "
+                f"уже активны {result['already_active']}. Live credits не открываются этим действием."
+            ),
         }
 
     @app.post("/api/market-candidates/{candidate_id}/promote")

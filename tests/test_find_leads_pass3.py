@@ -48,7 +48,7 @@ def test_find_leads_pass3_markup():
     assert "enhanceFindLeadsResultFilters" in js
     assert "findLeadsResultsUrl" in js
     assert "kind=warm" in js or "warm" in js
-    assert "13.52.0-hot-nav" in base
+    assert "13.53.0-f1-portfolio" in base
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,11 @@
 
 ## Текущая версия
 
-**WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED · PR #3 MERGED**
+**WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED · F1 DONE**
+
+Контрольная точка 2026-09-05 (F1 sources): портфель A/B расширен verified IG
+(divanchi/focus/mogno); activate API/UI/script без live unlock;
+cache **13.53.0-f1-portfolio**.
 
 Контрольная точка 2026-09-05 (ship): PR #3 merged `0dbb920`; smoke asserts
 синхронизированы с page-task copy; активная очередь POST_120 **F1–F4**.

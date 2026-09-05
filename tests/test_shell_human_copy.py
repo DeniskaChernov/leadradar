@@ -30,8 +30,8 @@ def test_shell_human_find_leads_language():
     assert "Клиент #" in detail
     assert "Клиенты" in detail
     assert "Как читать результаты поиска" in help_radar
-    assert "13.52.0-hot-nav" in base
-    assert "13.52.0-hot-nav" in sw
+    assert "13.53.0-f1-portfolio" in base
+    assert "13.53.0-f1-portfolio" in sw
     radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
     assert "РЕЗУЛЬТАТЫ ПОИСКА" in radar
     assert "РАДАР СИГНАЛОВ" not in radar
