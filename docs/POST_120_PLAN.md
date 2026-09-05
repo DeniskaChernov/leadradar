@@ -53,7 +53,9 @@ UI page-task / HOT nav закрыты: PR #3 merged (`0dbb920`), cache `13.52.0-
 
 Рекомендуемый порядок (offline first → gated):
 
-- [ ] F1. **Рост IG-источников** — расширить портфель tier A/B конкурентов (качество > объём API); основной рычаг лидов по ROADMAP
+- [x] F1. **Рост IG-источников** — портфель A/B: +divanchi/focus/mogno (paused seeds);
+  `activate_portfolio` + UI «Включить портфель A+B» + script `activate_source_portfolio.py`;
+  restore default A+B; cache `13.53.0-f1-portfolio` (2026-09-05)
 - [ ] F2. **Railway production cutover** — по `docs/RAILWAY.md` / `docs/DEPLOYMENT.md` (без live spend по умолчанию)
 - [ ] F3. **Повторный controlled live pilot** — только после «разрешаю live»; backup → arm → scan → disarm
 - [ ] F4. **Новые каналы (E)** — Telegram/TikTok/Maps/… как отдельные интеграции, без stubs/Coming Soon фейков

@@ -243,8 +243,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.52.0-hot-nav" in base
-    assert "13.52.0-hot-nav" in auth
+    assert "13.53.0-f1-portfolio" in base
+    assert "13.53.0-f1-portfolio" in auth
     assert "data-motion-root" in auth
     assert "ВХОД · TELEGRAM" in auth
     assert "fonts.googleapis.com" in base
@@ -454,7 +454,7 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "manager-feedback-quality" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
     assert "В радар активно" in (PROJECT_ROOT / "app/web/templates/discovery.html").read_text(encoding="utf-8")
     assert "data-agent-context" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
-    assert "13.52.0-hot-nav" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "13.53.0-f1-portfolio" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
     assert "kanban-drag-handle" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
     assert "data-economics-budget-sim" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
     assert "ai-version-info" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")

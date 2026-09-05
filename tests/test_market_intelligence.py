@@ -152,3 +152,70 @@ async def test_market_pages_render_and_candidate_promotion_api(session_factory):
     assert "Стадия 3 из 7" in roadmap.text
     assert promoted.status_code == 200
     assert promoted.json()["ok"] is True
+
+
+async def test_f1_portfolio_activate_ab_without_invented_handles(session_factory):
+    """F1: новые verified seeds в каталоге; активация A+B только в БД."""
+    from app.data.competitor_catalog import MONITORED_COMPETITORS
+
+    handles = {seed.handle for seed in MONITORED_COMPETITORS}
+    assert "divanchi.uz" in handles
+    assert "focus.mebel" in handles
+    assert "mogno_mebel_uz" in handles
+    # Не активируем по умолчанию — иначе silent spend.
+    for seed in MONITORED_COMPETITORS:
+        if seed.handle in {"divanchi.uz", "focus.mebel", "mogno_mebel_uz"}:
+            assert seed.active_by_default is False
+            assert seed.tier in {"A", "B"}
+
+    service = MarketIntelligenceService(session_factory)
+    await service.sync_catalog()
+    result = await service.activate_portfolio(tiers=("A", "B"), catalog_managed_only=True)
+    assert result["activated"] >= 3
+    assert "divanchi.uz" in result["handles"] or result["already_active"] >= 1
+
+    async with session_factory() as session:
+        active = set(
+            await session.scalars(
+                select(Competitor.normalized_handle).where(Competitor.active.is_(True))
+            )
+        )
+        paused_c = list(
+            await session.scalars(
+                select(Competitor.normalized_handle).where(
+                    Competitor.tier == "C",
+                    Competitor.active.is_(False),
+                    Competitor.catalog_managed.is_(True),
+                )
+            )
+        )
+    assert "divanchi.uz" in active
+    assert "focus.mebel" in active
+    assert "mogno_mebel_uz" in active
+    # C остаются на паузе при F1 A+B.
+    assert paused_c
+
+
+async def test_portfolio_activate_api(session_factory):
+    service = MarketIntelligenceService(session_factory)
+    await service.sync_catalog()
+    settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay", web_manager_id=1001)
+    app = build_web_app(
+        settings,
+        WebQueryService(session_factory, hot_threshold=70),
+        LeadWorkflowService(session_factory, hot_threshold=70),
+        MonitorController(FakeMonitor()),  # type: ignore[arg-type]
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        page = await client.get("/competitors")
+        response = await client.post(
+            "/api/competitors/portfolio/activate",
+            json={"tiers": "A,B", "catalog_managed_only": True},
+        )
+    assert page.status_code == 200
+    assert "Включить портфель A+B" in page.text
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["activated"] + body["already_active"] >= 1
+    assert "Live credits не открываются" in body["message"]

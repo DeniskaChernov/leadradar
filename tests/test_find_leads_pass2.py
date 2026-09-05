@@ -45,8 +45,8 @@ def test_find_leads_pass2_markup_and_cache():
     assert "/api/leads/" in js and "explain" in js
     assert ".nav-badge" in css
     assert ".find-advanced" in css
-    assert "13.52.0-hot-nav" in base
-    assert "13.52.0-hot-nav" in sw
+    assert "13.53.0-f1-portfolio" in base
+    assert "13.53.0-f1-portfolio" in sw
     # safety strings preserved
     assert "Сколько разрешить на эту проверку?" in radar
     assert 'method="post" action="/api/ops/openai-live"' in radar

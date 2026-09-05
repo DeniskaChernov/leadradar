@@ -129,6 +129,22 @@ MONITORED_COMPETITORS: tuple[CompetitorSeed, ...] = (
         "https://lazunok.uz",
         True,
     ),
+    # F1: verified handles from market candidates (paused by default — no silent spend).
+    CompetitorSeed(
+        "divanchi.uz", "Divanchi", "DINING", "B",
+        "Столы, стулья, кухни и мягкая мебель; смежная аудитория обеденной зоны.",
+        "https://www.instagram.com/divanchi.uz/",
+    ),
+    CompetitorSeed(
+        "focus.mebel", "Focus Mebel", "MASS", "B",
+        "Крупный мебельный салон: кухни и широкий ассортимент; массовый спрос.",
+        "https://www.instagram.com/focus.mebel/",
+    ),
+    CompetitorSeed(
+        "mogno_mebel_uz", "Mogno Mebel", "PREMIUM", "B",
+        "Премиальная интерьерная мебель; сигналы высокого чека.",
+        "https://www.instagram.com/mogno_mebel_uz/",
+    ),
 )
 
 

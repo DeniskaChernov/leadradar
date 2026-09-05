@@ -85,7 +85,18 @@
 
 <div class="market-toolbar">
   <div class="explain-line"><span class="dot green"></span><b>Активный</b> проверяется по расписанию только когда live разрешён. <span class="dot grey"></span><b>На паузе</b> хранится в системе бесплатно.</div>
-  <button class="btn ghost" data-api-action="/api/market-catalog/sync" data-payload="{}" data-reload="1">Обновить встроенную карту рынка</button>
+  <div class="hero-actions" style="margin:0">
+    <button class="btn ghost" data-api-action="/api/market-catalog/sync" data-payload="{}" data-reload="1">Обновить карту рынка</button>
+    <button
+      class="btn primary"
+      type="button"
+      data-api-action="/api/competitors/portfolio/activate"
+      data-payload='{"tiers":"A,B","catalog_managed_only":true}'
+      data-reload="1"
+      data-confirm-title="Включить портфель A+B?"
+      data-confirm="Включит мониторинг каталожных источников приоритета A и B. Credits не списываются, пока Live-поиск выключен. При включённом live расход вырастет."
+    >Включить портфель A+B</button>
+  </div>
 </div>
 
 <section class="panel plain-help competitors-plain-help compact">

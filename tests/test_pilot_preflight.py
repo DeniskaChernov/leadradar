@@ -427,8 +427,11 @@ def test_arm_module_cli_defaults():
 
 
 def test_restore_and_flush_modules_still_expose_main():
-    from scripts import flush_openai_pending, restore_pilot_competitors
+    from scripts import activate_source_portfolio, flush_openai_pending, restore_pilot_competitors
 
     assert callable(restore_pilot_competitors.main)
     assert restore_pilot_competitors.RESTORE_TIERS == ("A", "B", "C")
+    assert restore_pilot_competitors.DEFAULT_RESTORE_TIERS == ("A", "B")
     assert callable(flush_openai_pending.main)
+    assert callable(activate_source_portfolio.main)
+    assert activate_source_portfolio.DEFAULT_TIERS == ("A", "B")
