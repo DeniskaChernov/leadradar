@@ -19,17 +19,17 @@ def test_work_pages_human_find_leads_language():
     assert "БАЗА ЛЮДЕЙ" in contacts
     assert "Найти лидов" in contacts
     assert "Перейти в радар" not in contacts
-    assert "РЕЗУЛЬТАТ ПРОДАЖ" in deals
+    assert "СДЕЛКИ" in deals
     assert "Найти лидов" in deals
     assert "К лидам" not in deals
     assert "Кому писать" in tasks
-    assert "Написать сейчас" in tasks
+    assert "ОЧЕРЕДЬ КОНТАКТОВ" in tasks
     assert "нужна мебель" in auth
     assert "База лидов доступна" not in auth
     assert "Статус поиска" in agent
     assert ">Радар<" not in agent
     assert "Горячие клиенты" in base
     assert "HOT лиды" not in base
-    assert "13.45.0-ops-live" in base
-    assert "13.45.0-ops-live" in auth
-    assert "13.45.0-ops-live" in sw
+    assert "13.52.0-hot-nav" in base
+    assert "13.52.0-hot-nav" in auth
+    assert "13.52.0-hot-nav" in sw

@@ -2696,7 +2696,7 @@ body::after { animation: ambient-drift-b 22s ease-in-out infinite alternate; }
     border-radius: 22px 22px 0 0;
   }
   .sidebar nav { display: grid; grid-template-columns: minmax(0,1fr) 58px; overflow: visible; }
-  .nav-primary { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 2px; min-width: 0; }
+  .nav-primary { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 2px; min-width: 0; }
   .nav-primary .nav, .nav-more {
     min-width: 0;
     height: 54px;
@@ -3944,4 +3944,284 @@ a:hover { color: #2445d9; }
   .find-result-filters{position:sticky;top:110px;z-index:18;background:rgba(248,250,252,.94);backdrop-filter:blur(8px);padding:8px;border-radius:12px;border:1px solid var(--line-soft)}
   .find-leads-hero h2{font-size:1.45rem}
   .competitors-hero .hero-actions{margin-top:12px;display:flex;flex-wrap:wrap;gap:8px}
+}
+
+/* ── Sidebar viewport fit: весь десктоп-навбар в высоту экрана ── */
+@media (min-width: 721px) {
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .sidebar .brand {
+    flex: 0 0 auto;
+    padding: 0 6px 8px;
+    gap: 8px;
+  }
+  .sidebar .brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 11px;
+  }
+  .sidebar .brand strong { font-size: 14px; }
+  .sidebar .brand span { font-size: 10px; margin-top: 1px; }
+  .sidebar nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    gap: 2px;
+    align-content: start;
+    scrollbar-width: thin;
+  }
+  .sidebar .nav {
+    padding: 6px 10px;
+    border-radius: 11px;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .sidebar .nav svg { width: 16px; height: 16px; }
+  .sidebar .nav-group {
+    gap: 2px;
+    margin-bottom: 4px;
+  }
+  .sidebar .nav-group-label {
+    padding: 2px 10px 0;
+    font-size: 9px;
+    letter-spacing: .07em;
+  }
+  .sidebar .side-info {
+    flex: 0 0 auto;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .sidebar .usage-card {
+    padding: 8px 10px;
+    gap: 5px;
+    border-radius: 12px;
+  }
+  .sidebar .usage-card-value { font-size: 12px; }
+  .sidebar .usage-card-track { height: 6px; }
+  .sidebar .safe-chip,
+  .sidebar .side-status {
+    padding: 7px 9px;
+    border-radius: 12px;
+    gap: 7px;
+  }
+  .sidebar .safe-chip b,
+  .sidebar .side-status b { font-size: 11px; }
+  .sidebar .safe-chip small,
+  .sidebar .side-status small { font-size: 9px; }
+  .sidebar .nav-badge {
+    min-width: 18px;
+    height: 18px;
+    font-size: 10px;
+    padding: 0 5px;
+  }
+}
+
+/* Низкие экраны: ещё плотнее, чтобы все пункты были видны сразу */
+@media (min-width: 721px) and (max-height: 860px) {
+  .sidebar { padding: 12px 10px 10px; }
+  .sidebar .brand span { display: none; }
+  .sidebar .brand { padding-bottom: 6px; }
+  .sidebar .nav { padding: 5px 9px; }
+  .sidebar .nav-group { margin-bottom: 2px; }
+  .sidebar .nav-group-label { padding-top: 0; }
+  .sidebar .usage-card-topup { display: none; }
+  .sidebar .usage-card { padding: 6px 8px; gap: 4px; }
+  .sidebar .safe-chip,
+  .sidebar .side-status { padding: 6px 8px; }
+}
+
+@media (min-width: 721px) and (max-height: 720px) {
+  .sidebar .nav { padding: 4px 8px; font-size: 12px; }
+  .sidebar .safe-chip small,
+  .sidebar .side-status small,
+  .sidebar .usage-card-label { display: none; }
+  .sidebar .side-info { gap: 4px; margin-top: 6px; }
+}
+
+/* ── Right column viewport fit: lead/contact side в высоту экрана ── */
+@media (min-width: 721px) {
+  .lead-side,
+  .contact-side {
+    position: sticky;
+    top: 112px;
+    max-height: calc(100vh - 128px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    align-content: start;
+    gap: 10px;
+    scrollbar-width: thin;
+    padding-right: 2px;
+  }
+  .lead-side > .panel,
+  .contact-side > .panel,
+  .lead-side > .side-card,
+  .contact-side > .side-card,
+  .lead-side > .action-form-card,
+  .contact-side > .action-form-card {
+    padding: 12px 14px;
+  }
+  .lead-side .panel-head h2,
+  .contact-side .panel-head h2,
+  .lead-side .action-form-card h3,
+  .contact-side .action-form-card h3,
+  .lead-side .side-card h3 {
+    font-size: 15px;
+    margin: 0 0 4px;
+  }
+  .lead-side .panel-head p,
+  .contact-side .panel-head p {
+    font-size: 12px;
+  }
+  .lead-side .side-card {
+    padding: 12px 14px;
+  }
+  .lead-side .side-card .large-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 18px;
+  }
+  .lead-side .side-card dl {
+    margin-top: 10px;
+  }
+  .lead-side .side-card dt {
+    margin-top: 6px;
+  }
+  .lead-side .agent-presets.inline {
+    gap: 6px;
+  }
+  .lead-side .agent-preset {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+}
+
+@media (min-width: 721px) and (max-height: 860px) {
+  .lead-side,
+  .contact-side {
+    top: 96px;
+    max-height: calc(100vh - 108px);
+    gap: 8px;
+  }
+  .lead-side > .panel,
+  .contact-side > .panel,
+  .lead-side > .side-card,
+  .lead-side > .action-form-card {
+    padding: 10px 12px;
+  }
+}
+
+/* ── Page-task structure: одна вкладка = одна задача ── */
+.contact-leads-list{display:grid;gap:8px;padding:0 16px 16px}
+.contact-lead-row{
+  display:grid;
+  gap:2px;
+  padding:12px 14px;
+  border-radius:12px;
+  border:1px solid var(--line-soft);
+  background:#fff;
+  text-decoration:none;
+  color:inherit;
+}
+.contact-lead-row:hover{border-color:rgba(22,163,74,.35)}
+.contact-lead-row strong{font-size:14px}
+.page-task-leads .panel-head{padding-bottom:8px}
+
+.page-task-actions{margin-bottom:16px}
+.page-task-secondary>summary{
+  cursor:pointer;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  list-style:none;
+  padding:4px 0;
+}
+details.learning-card.page-task-secondary{
+  display:block;
+  margin-top:18px;
+}
+details.learning-card.page-task-secondary>summary{
+  margin-bottom:8px;
+}
+details.learning-card.page-task-secondary[open]>summary{margin-bottom:12px}
+.system-toc{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.system-toc-group{
+  flex:0 0 100%;
+  margin-top:6px;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:#94a3b8;
+}
+.system-toc-group:first-child{margin-top:0}
+.hot-workspace{min-height:min(70vh,720px)}
+@media (min-width:721px){
+  /* Очередь и карточка должны скроллиться внутри viewport */
+  .hot-workspace{
+    max-height:calc(100vh - 200px);
+    min-height:0;
+    align-items:stretch;
+    overflow:hidden;
+  }
+  .hot-queue{
+    display:flex;
+    flex-direction:column;
+    min-height:0;
+    max-height:100%;
+    overflow:hidden;
+  }
+  .hot-queue .panel-head{flex:0 0 auto}
+  .hot-queue-list{
+    flex:1 1 auto;
+    min-height:0;
+    max-height:none;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+  }
+  .hot-detail{
+    min-height:0;
+    max-height:100%;
+    overflow:auto;
+    overscroll-behavior:contain;
+  }
+}
+
+/* Desktop «Ещё»: Система не в длинном скролле основного навбара */
+@media (min-width: 721px) {
+  .sidebar .nav-more {
+    display: flex;
+    margin-top: 4px;
+  }
+  .sidebar .nav-secondary {
+    display: none;
+    margin: 4px 0 0;
+    padding: 8px;
+    gap: 2px;
+    border: 1px solid var(--line-soft);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  }
+  .sidebar .nav-secondary.is-open,
+  .sidebar .nav-secondary:has(.nav.active) {
+    display: grid;
+  }
+  .sidebar .nav-more[aria-expanded="true"] {
+    background: rgba(22, 163, 74, 0.1);
+    border-color: rgba(22, 163, 74, 0.25);
+  }
+}
+
+@media print {
+  .lead-print-sheet details.page-task-secondary > *:not(summary),
+  .lead-print-sheet details.ai-intelligence > *:not(summary) {
+    display: block !important;
+  }
 }

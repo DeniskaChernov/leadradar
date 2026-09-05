@@ -111,9 +111,9 @@ async def test_lead_funnel_api_chain(session_factory):
 @pytest.mark.parametrize(
     "path,marker",
     [
-        ("/discovery", "ЦЕНТР РАЗВЕДКИ"),
-        ("/analytics?days=7", "РЫНОЧНАЯ АНАЛИТИКА"),
-        ("/catalog", "ИСТОЧНИК ИСТИНЫ"),
+        ("/discovery", "НОВЫЕ ИСТОЧНИКИ"),
+        ("/analytics?days=7", "АНАЛИТИКА"),
+        ("/catalog", "КАТАЛОГ"),
         ("/audiences", "ГРУППЫ СПРОСА"),
         ("/openings", "B2B ОТКРЫТИЯ"),
         ("/agent", "ТОЛЬКО ИЗ БАЗЫ"),

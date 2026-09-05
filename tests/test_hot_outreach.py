@@ -204,7 +204,7 @@ async def test_hot_page_and_apis(session_factory):
     assert page.status_code == 200
     assert "HOT очередь" in page.text or "Написать сейчас" in page.text or "Кого писать" in page.text
     assert "data-hot-workspace" in page.text
-    assert "GPT сегодня" in page.text or "OpenAI выключен" in page.text
+    assert "GPT сегодня" in page.text or "GPT выключен" in page.text or "OpenAI выключен" in page.text
     assert blocked.status_code == 409
     assert marked.status_code == 200
     body = marked.json()

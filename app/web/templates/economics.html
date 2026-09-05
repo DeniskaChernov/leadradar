@@ -8,26 +8,20 @@
 {% macro ratio(value) -%}{% if value is not none %}{{ '%.2f'|format(value) }}{% else %}—{% endif %}{%- endmacro %}
 {% set credit_accuracy = safe_attr(page.credits, 'confirmed_coverage_percent') %}
 
-<section class="hero-status economics-hero {% if page.provider and page.provider.budget_status == 'HEALTHY' and not page.provider.month_credits_low %}live{% elif page.provider %}warn{% else %}safe{% endif %}" data-motion-root>
+<section class="hero-status economics-hero page-task {% if page.provider and page.provider.budget_status == 'HEALTHY' and not page.provider.month_credits_low %}live{% elif page.provider %}warn{% else %}safe{% endif %}" data-motion-root data-page-task="economics">
   <div>
-    <span class="eyebrow">РАСХОДЫ НА ПОИСК · {{ page.days }} дн.</span>
+    <span class="eyebrow">РАСХОДЫ · {{ page.days }} дн.</span>
     <h2>{% if page.provider %}Потрачено {{ page.provider.used_this_month }} из {{ page.provider.monthly_hard_limit }} credits{% else %}Расходы без live-кошелька{% endif %}</h2>
     <p>
-      Горячих клиентов: {{ economics.hot_count }}
+      HOT: {{ economics.hot_count }}
       · credits/HOT: <b>{{ ratio(page.credits.credits_per_hot) }}</b>
-      · USD/HOT: <b>{{ usd(economics.cost_per_hot_usd) }}</b>
       · продаж: {{ economics.won_count }}
-      · AI: {{ page.openai.events }}
-      · OpenAI $/лид: <b>{{ usd(page.openai_usd_per_lead) }}</b>
       · ROI: <b>{% if economics.roi_ratio is not none %}{{ '%.2f'|format(economics.roi_ratio * 100) }}%{% else %}—{% endif %}</b>.
-      Цифры только из базы. Максимальный расход на поиск ≠ фактический.
+      Только факты из базы.
     </p>
   </div>
   <div class="hero-actions">
-    <a class="btn primary" href="/radar">Найти лидов</a>
-    <a class="btn" href="/radar#radar-budget-title">Лимит поиска →</a>
     <a class="btn ghost" href="/api/economics/export.csv?days={{ page.days }}">CSV</a>
-    <button class="btn ghost" type="button" data-agent-open>AI сводка</button>
   </div>
 </section>
 {% if page.provider and page.provider.month_credits_low %}

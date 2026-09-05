@@ -1,38 +1,44 @@
 {% extends "base.html" %}
-{% block title %}Система · Lead Radar{% endblock %}
-{% block heading %}Система{% endblock %}
-{% block subheading %}Контроль интеграций, расходов и качества мониторинга{% endblock %}
+{% block title %}Настройки · Lead Radar{% endblock %}
+{% block heading %}Настройки{% endblock %}
+{% block subheading %}Live, лимиты, интеграции и диагностика — не рабочий стол продаж{% endblock %}
 {% block content %}
 {% if not settings.web_auth_enabled %}
 <section class="panel"><div class="alert warn"><b>Локальный режим без Telegram auth</b><span>Изменяющие запросы выполняются от manager_id={{ request.state.manager_id }}. Не используйте на публичном хосте без WEB_AUTH_ENABLED.</span></div></section>
 {% endif %}
 
-<section class="hero-status system-hero safe" data-motion-root>
+<section class="hero-status system-hero safe page-task" data-motion-root data-page-task="system">
   <div>
-    <span class="eyebrow">КАБИНА СИСТЕМЫ</span>
-    <h2>Диагностика, оценка лидов и расходы</h2>
-    <p>Те же кнопки оценки, что на Главной и в «Найти лидов». Ниже — лимиты, тумблеры и диагностика.</p>
+    <span class="eyebrow">СИСТЕМА</span>
+    <h2>Управление поиском и интеграциями</h2>
+    <p>Тумблеры Live/OpenAI, лимиты, Telegram и качество. Поиск клиентов — на «Найти лидов», переписка — на HOT.</p>
   </div>
-  <div class="hero-actions">
+</section>
+
+<nav class="system-toc panel" aria-label="Разделы настроек">
+  <span class="system-toc-group">Запуск</span>
+  <a href="#ops-arm">Live / OpenAI</a>
+  <a href="#cost-guard">Лимиты</a>
+  <a href="#scan-plan">План проверки</a>
+  <span class="system-toc-group">Интеграции</span>
+  <a href="#notifications">Telegram</a>
+  <a href="#uncertain-notifications">Сверка</a>
+  <span class="system-toc-group">Качество</span>
+  <a href="#ai-safety">AI</a>
+  <a href="#quality-gates">Проверки</a>
+  <a href="#agent-workspace">Ассистент</a>
+</nav>
+
+<details class="panel page-task-secondary" open>
+  <summary><b>Оценка и переразбор</b><span>Кнопки для спорных сигналов — не замена «Найти лидов»</span></summary>
+  <div class="hero-actions" style="margin:0">
     {% include "partials/signal_review_actions.html" %}
     {% include "partials/lead_reanalyze_actions.html" %}
     <a class="btn ghost" href="/radar?kind=pending">Спорные лиды</a>
   </div>
-</section>
-<section class="panel plain-help compact"><div class="alert ok"><b>Качество лидов</b><span>«Переоценить лиды» прогоняет свежие NEW/AI_PENDING через новые правила и GPT. Часы и чужие категории отсекаются автоматически.</span></div></section>
-{% include "partials/signal_review_help.html" %}
-
-<nav class="system-toc panel" aria-label="Разделы системной страницы">
-  <a href="#ops-arm">Live тумблеры</a>
-  <a href="#cost-guard">Расходы</a>
-  <a href="#scan-plan">План проверки</a>
-  <a href="#notifications">Уведомления</a>
-  <a href="#uncertain-notifications">Сверка Telegram</a>
-  <a href="#ai-safety">AI-безопасность</a>
-  <a href="#quality-gates">Проверки качества</a>
-  <a href="#agent-workspace">Ассистент</a>
-  <a href="/roadmap">Roadmap</a>
-</nav>
+  <div class="plain-help compact" style="margin-top:12px"><div class="alert ok"><b>Качество лидов</b><span>«Переоценить» прогоняет NEW/AI_PENDING через правила и GPT.</span></div></div>
+  {% include "partials/signal_review_help.html" %}
+</details>
 
 <section class="panel" id="ops-arm">
   <div class="panel-head"><div><h2>Live-поиск и OpenAI</h2><p>Включение из интерфейса. Состояние хранится в БД</p></div>
@@ -87,7 +93,8 @@
   <small class="muted">Для отдельной компании режим можно изменить на странице «Конкуренты». Повтор события не создаёт второе сообщение; неоднозначный сетевой результат останавливается для сверки, а не отправляется повторно автоматически.</small>
 </section>
 
-<section class="panel notification-readiness">
+<details class="panel notification-readiness page-task-secondary">
+  <summary><b>Готовность Telegram</b><span>Preview без отправки · {% if notification_readiness.controlled_pilot_ready %}worker активен{% else %}pilot заблокирован{% endif %}</span></summary>
   <div class="panel-head"><div><span class="eyebrow">ПРОВЕРКА · БЕЗ ОТПРАВКИ</span><h2>Готовность Telegram-уведомлений</h2><p>Read-only preview применяет реальные политики и проверяет outbox, но ничего не записывает и не отправляет.</p></div><span class="tag {% if notification_readiness.controlled_pilot_ready %}status-contacted{% else %}neutral{% endif %}">{% if notification_readiness.controlled_pilot_ready %}worker активен{% else %}pilot заблокирован{% endif %}</span></div>
   <div class="mini-metrics">
     <span><b>{% if settings.external_kill_switch %}ВКЛ{% else %}ВЫКЛ{% endif %}</b> глобальный стоп</span>
@@ -109,7 +116,7 @@
       <tbody>
     {% for item in notification_readiness.previews %}<tr><td data-label="Лид"><a href="/leads/{{ item.lead_id }}">@{{ item.username }}</a><br><small>{{ item.score }}/100 · {{ item.intent }}</small></td><td data-label="Сигнал">{{ item.comment }}</td><td data-label="Политика"><code>{{ item.policy }}</code></td><td data-label="Решение"><span class="tag notification-{{ item.decision|lower }}">{{ item.decision }}</span></td><td data-label="Почему">{{ item.reason }}<br><small>{{ item.idempotency_pattern }}</small></td><td data-label="Получатели">{{ item.target_count }}</td></tr>{% else %}<tr><td colspan="6" class="empty">Сохранённых лидов для preview пока нет.</td></tr>{% endfor %}
   </tbody></table>  </div>
-</section>
+</details>
 
 <section class="panel" id="uncertain-notifications">
   <div class="panel-head"><div><span class="eyebrow">СВЕРКА ДОСТАВКИ</span><h2>Неоднозначные Telegram-отправки</h2><p>Сеть ответила неоднозначно: повторно не шлём автоматически. Отметьте факт доставки или верните в очередь.</p></div><span class="tag {% if uncertain_notifications %}warning{% else %}status-contacted{% endif %}">{% if uncertain_notifications %}{{ uncertain_notifications|length }} на сверке{% else %}очередь пуста{% endif %}</span></div>
@@ -145,7 +152,8 @@
   {% endif %}
 </section>
 
-<section class="panel" id="ai-safety">
+<details class="panel page-task-secondary" id="ai-safety"{% if ai_safety.stale_ai_leases or ai_safety.uncertain_reservations %} open{% endif %}>
+  <summary><b>AI lease и бюджет</b><span>{% if ai_safety.stale_ai_leases or ai_safety.uncertain_reservations %}нужна сверка{% else %}контур чист{% endif %}</span></summary>
   <div class="panel-head"><div><span class="eyebrow">ФАЗА B · БЕЗОПАСНОСТЬ AI</span><h2>AI-запросы и бюджетные lease</h2><p>Диагностика читает только локальную БД и не вызывает внешние сервисы.</p></div><span class="tag {% if ai_safety.stale_ai_leases or ai_safety.uncertain_reservations %}neutral{% else %}status-contacted{% endif %}">{% if ai_safety.stale_ai_leases or ai_safety.uncertain_reservations %}нужна сверка{% else %}контур чист{% endif %}</span></div>
   <div class="mini-metrics">
     <span><b>{{ ai_safety.statuses.get('CLAIMED', 0) }}</b> AI выполняются</span>
@@ -185,9 +193,7 @@
     {% endfor %}
   </tbody></table></div>
   {% endif %}
-</section>
-
-</section>
+</details>
 
 {% if rules_reanalyze and rules_reanalyze.needs_reanalyze %}
 <section class="panel compact rules-reanalyze-alert">
@@ -198,6 +204,9 @@
   </div>
 </section>
 {% endif %}
+
+<details class="panel page-task-secondary" id="ai-quality-secondary">
+  <summary><b>Feedback, версии и offline-проверки</b><span>Диагностика качества — не ежедневная работа менеджера</span></summary>
 
 <section class="panel manager-feedback-quality" aria-labelledby="manager-fp-title">
   <div class="panel-head"><div><span class="eyebrow">PRODUCTION FEEDBACK</span><h2 id="manager-fp-title">False-positive по решению менеджера</h2><p>Считается из AIFeedback: модель дала HOT, менеджер отметил «не лид». Offline challenge ниже — отдельно.</p></div>
@@ -314,6 +323,7 @@
   </div>
   {% endfor %}
 </section>
+</details>
 
 <details class="panel action-form-card">
   <summary><div><b>Тарифы внешних сервисов</b><span>Версионированные цены для честного расчёта расходов</span></div></summary>
@@ -349,7 +359,8 @@
 
 
 {% if replay_status %}
-<section class="panel replay-panel">
+<details class="panel replay-panel page-task-secondary">
+  <summary><b>Тестовый сценарий</b><span>Шаг {{ replay_status.step + 1 }} из {{ replay_status.total_steps }} · без внешних запросов</span></summary>
   <div class="panel-head"><div><h2>Безопасный тестовый сценарий</h2><p>Полный путь от комментария до сделки без единого внешнего запроса</p></div><span class="tag status-new">Шаг {{ replay_status.step + 1 }} из {{ replay_status.total_steps }}</span></div>
   <div class="replay-body">
     <div><span class="eyebrow">СЕЙЧАС</span><h3>{{ replay_status.title }}</h3><p>{{ replay_status.description }}</p><p class="muted">Сначала нажмите «Проверить сейчас», затем переключите сценарий на следующий шаг и снова запустите проверку. Так можно воспроизвести появление нового клиента.</p></div>
@@ -359,14 +370,15 @@
       <button class="btn success" data-scan>Проверить сейчас</button>
     </div>
   </div>
-</section>
+</details>
 {% endif %}
 
 {% if usage_breakdown %}
 <section class="panel usage-breakdown"><div class="panel-head"><div><h2>Куда ушли Instagram-запросы сегодня</h2><p>Fallback считается отдельно, поэтому расход не прячется за одной операцией</p></div></div><div class="mini-metrics">{% for provider, units in usage_breakdown.items() %}<span><b>{{ units }}</b> {{ provider }}</span>{% endfor %}</div></section>
 {% endif %}
 
-<section class="panel agent-workspace" id="agent-workspace" aria-labelledby="agent-workspace-title">
+<details class="panel agent-workspace page-task-secondary" id="agent-workspace" aria-labelledby="agent-workspace-title">
+  <summary><b>Read-only ассистент</b><span>Только база · без GPT write</span></summary>
   <div class="panel-head"><div><span class="eyebrow">АССИСТЕНТ · ТОЛЬКО БАЗА</span><h2 id="agent-workspace-title">Read-only ассистент</h2><p>Ответ только из MCP read tools и evidence_ids. GPT не вызывается; write tools остаются NOT_CONNECTED.</p></div><span class="tag status-contacted">DB-backed</span></div>
   <div class="agent-presets inline" role="group" aria-label="Примеры вопросов">
     <button class="agent-preset" type="button" data-agent-preset='{"query":"Покажи quality gates"}'>Quality gates</button>
@@ -381,9 +393,10 @@
     <div><button class="btn primary" type="submit">Спросить</button></div>
   </form>
   <pre class="agent-result" id="agent-query-result" hidden aria-live="polite"></pre>
-</section>
+</details>
 
-<section class="panel export-recipes-workspace" aria-labelledby="export-recipes-title">
+<details class="panel export-recipes-workspace page-task-secondary" aria-labelledby="export-recipes-title">
+  <summary><b>Meta export · dry-run</b><span>SHA-256 hashes · без Meta API</span></summary>
   <div class="panel-head"><div><span class="eyebrow">META ЭКСПОРТ · DRY-RUN</span><h2 id="export-recipes-title">Предпросмотр export recipes</h2><p>Privacy-safe preview: SHA-256 hashes, без мутаций и без Meta API. Сегмент должен быть synced в БД.</p></div><span class="tag neutral">NOT_CONNECTED export</span></div>
   <div class="export-recipe-grid">
     {% for recipe in export_recipes %}
@@ -396,14 +409,20 @@
     </article>
     {% endfor %}
   </div>
-</section>
+</details>
 
 <div class="integration-grid">{% for name, item in integrations.items() %}<div class="integration"><span class="pulse {% if item.enabled %}{% elif item.configured %}busy{% else %}bad{% endif %}"></span><div><b>{{ name }}</b><small>{% if item.enabled %}работает{% elif item.configured %}настроен, но расход выключен{% else %}не настроен{% endif %}</small><p>{{ item.detail }}</p></div></div>{% endfor %}</div>
 
-<div class="grid two system-actions">
+<details class="panel page-task-secondary">
+  <summary><b>Справка по тестированию</b><span>Накопившиеся сигналы и безопасный live-checklist</span></summary>
+  <div class="grid two system-actions">
 <section class="panel action-form-card"><h3>Накопившиеся сигналы</h3><p>После первого поиска у источника в базе лежит «история» — сигналы без оценки. Нажмите <strong>«Оценить накопившееся»</strong> вверху страницы: система создаст клиентов и при необходимости поставит спорные в GPT.</p><div class="form-row"><a class="btn ghost" href="/radar?kind=pending">Спорные в поиске</a></div></section>
 <section class="panel action-form-card"><h3>Как тестировать без потерь</h3><ol class="plain-steps"><li>Оставить <code>INSTAGRAM_LIVE_CALLS_ENABLED=false</code>.</li><li>Проверить интерфейс и логику на mock и сохранённой базе.</li><li>Перед контрольным тестом включить live-запросы, поставить маленький дневной лимит и только тогда задать <code>EXTERNAL_LIVE_UNLOCK=ALLOW_EXTERNAL_CALLS</code>.</li><li>После теста снова выключить live-режим.</li></ol></section>
-</div>
+  </div>
+</details>
 
-<section class="panel"><div class="panel-head"><div><h2>История проверок</h2><p>Что происходило в каждом цикле, без технических загадок</p></div></div><p class="table-scroll-hint">Широкая таблица — горизонтальная прокрутка на мобильных.</p><div class="table-wrap embedded system-table-wrap system-run-wrap"><table class="responsive-table system-run-history"><thead><tr><th>Время</th><th>Кто запустил</th><th>Источник</th><th>Результат</th><th>Reels</th><th>Страниц API</th><th>Комментариев увидели</th><th>Новых сохранили</th><th>Оценено за цикл</th><th>Ошибки</th></tr></thead><tbody>{% for run in runs %}<tr><td>{{ run.started_at | display_dt('%d.%m %H:%M:%S') }}</td><td>{{ trigger_label(run.trigger) }}</td><td>{{ run.provider or '—' }}</td><td><span class="tag run-{{ run.status.value|lower }}">{{ run_status_label(run.status) }}</span></td><td>{{ run.stats_json.get('reels_found',0) }}</td><td>{{ run.stats_json.get('comment_requests',0) }}</td><td>{{ run.stats_json.get('comments_seen',0) }}</td><td>{{ run.stats_json.get('comments_created',0) }}</td><td>{{ run.stats_json.get('fresh_backfilled', run.stats_json.get('historical_analyzed', 0)) }}</td><td>{% if run.error %}<span class="warn">{{ run.error }}</span>{% else %}{{ run.stats_json.get('errors',0) }}{% endif %}</td></tr>{% else %}<tr><td colspan="10" class="empty">Проверок пока не было.</td></tr>{% endfor %}</tbody></table></div></section>
+<details class="panel page-task-secondary">
+  <summary><b>История проверок</b><span>Циклы поиска · без загадок</span></summary>
+  <div class="panel-head"><div><h2>История проверок</h2><p>Что происходило в каждом цикле, без технических загадок</p></div></div><p class="table-scroll-hint">Широкая таблица — горизонтальная прокрутка на мобильных.</p><div class="table-wrap embedded system-table-wrap system-run-wrap"><table class="responsive-table system-run-history"><thead><tr><th>Время</th><th>Кто запустил</th><th>Источник</th><th>Результат</th><th>Reels</th><th>Страниц API</th><th>Комментариев увидели</th><th>Новых сохранили</th><th>Оценено за цикл</th><th>Ошибки</th></tr></thead><tbody>{% for run in runs %}<tr><td>{{ run.started_at | display_dt('%d.%m %H:%M:%S') }}</td><td>{{ trigger_label(run.trigger) }}</td><td>{{ run.provider or '—' }}</td><td><span class="tag run-{{ run.status.value|lower }}">{{ run_status_label(run.status) }}</span></td><td>{{ run.stats_json.get('reels_found',0) }}</td><td>{{ run.stats_json.get('comment_requests',0) }}</td><td>{{ run.stats_json.get('comments_seen',0) }}</td><td>{{ run.stats_json.get('comments_created',0) }}</td><td>{{ run.stats_json.get('fresh_backfilled', run.stats_json.get('historical_analyzed', 0)) }}</td><td>{% if run.error %}<span class="warn">{{ run.error }}</span>{% else %}{{ run.stats_json.get('errors',0) }}{% endif %}</td></tr>{% else %}<tr><td colspan="10" class="empty">Проверок пока не было.</td></tr>{% endfor %}</tbody></table></div>
+</details>
 {% endblock %}

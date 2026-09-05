@@ -16,15 +16,15 @@ def test_copy_sweep_rattan_openings_offline():
         encoding="utf-8"
     )
 
-    assert "Клиенты · ротанг" in rattan
+    assert "ПОРТФЕЛЬ РОТАНГА" in rattan
     assert "Лиды ротанга" not in rattan
     assert "Новые заведения" in openings
     assert "Радар открытий" not in openings
-    assert "Найти лидов" in openings
-    assert "13.45.0-ops-live" in offline
+    assert "B2B ОТКРЫТИЯ" in openings
+    assert "13.52.0-hot-nav" in offline
     assert "данные CRM и API" not in offline
     assert "нужен Live-поиск" in competitors
-    assert "13.45.0-ops-live" in base
+    assert "13.52.0-hot-nav" in base
     system = (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
     radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
     wizard = (

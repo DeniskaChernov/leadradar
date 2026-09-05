@@ -4,9 +4,32 @@
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED**
 
+Контрольная точка 2026-09-05 (hot-nav): нав/заголовок снова **HOT**;
+system readiness + AI lease в details; cache **13.52.0-hot-nav**.
+
+Контрольная точка 2026-09-05 (page-task-cont): idle status-pill скрыт на CRM/HOT;
+system secondary (gates/agent/export/history) в details; analytics/audience/
+competitor/agent page-task; cache **13.51.0-page-task-cont**.
+
+Контрольная точка 2026-09-05 (work-shell): scan CTA только на экранах поиска;
+contact_detail — лиды/Написать первыми; cache **13.50.0-work-shell**.
+
+Контрольная точка 2026-09-04 (lead-task): карточка клиента — действие первым,
+AI во вторичном; desktop «Ещё» для Система; cache **13.49.0-lead-task**.
+
+Контрольная точка 2026-09-04 (page-tasks): каждая вкладка под свою задачу;
+nav без дубля Мониторинг/Настройки; Задачи+Сделки в меню;
+cache **13.48.0-page-tasks**.
+
+Контрольная точка 2026-09-04 (side-col-fit): правая колонка lead/contact —
+sticky + max-height viewport + внутренний скролл; cache **13.47.0-side-col-fit**.
+
+Контрольная точка 2026-09-04 (sidebar-fit): десктоп-навбар уплотнён под высоту
+viewport + внутренний overflow; cache **13.46.0-sidebar-fit**.
+
 Контрольная точка 2026-09-04 (ops-live + ship): Live Radar → «Live-поиск»
 на system/radar/wizard; cache **13.45.0-ops-live**. Find-leads UI closed;
-push ветки в PR #2 для CI.
+PR #2 merged to main.
 
 Контрольная точка 2026-09-04 (copy-sweep): rattan/openings/offline leftovers;
 competitors Live-поиск; cache **13.44.0-copy-sweep**. Ops Live Radar labels

@@ -540,6 +540,12 @@ def build_web_app(
             selected = await hot_outreach_service.detail(
                 lead_id, vertical=selected_vertical
             )
+        elif queue:
+            # Без lead_id сразу открываем первого в очереди — иначе GPT некуда писать
+            first_id = int(queue[0]["lead_id"])
+            selected = await hot_outreach_service.detail(
+                first_id, vertical=selected_vertical
+            )
         usage = await queries.usage_today()
         openai_used = int(usage.get("openai", 0) or 0)
         openai_limit = int(settings.openai_daily_request_limit)

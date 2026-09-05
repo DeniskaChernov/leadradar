@@ -3,16 +3,11 @@
 {% block heading %}Новые заведения{% endblock %}
 {% block subheading %}Открывающиеся рестораны, кафе, отели и офисы — публичные сигналы для B2B{% endblock %}
 {% block content %}
-<section class="hero-status safe openings-hero" data-motion-root>
+<section class="hero-status safe openings-hero page-task" data-motion-root data-page-task="openings">
   <div>
     <span class="eyebrow">B2B ОТКРЫТИЯ</span>
     <h2>{{ queue|length }} сигналов в очереди</h2>
-    <p>Очередь потенциальных B2B-заказов на мебель и ротанг для новых мест.</p>
-  </div>
-  <div class="hero-actions">
-    <a class="btn primary" href="/radar">Найти лидов</a>
-    <a class="btn ghost" href="/leads">Воронка</a>
-    <a class="btn ghost" href="/system#agent-workspace">AI · google.openings</a>
+    <p>Проверьте заведение → подтвердите или отклоните перед воронкой.</p>
   </div>
 </section>
 
@@ -76,8 +71,7 @@
   <div class="empty-state">
     <span class="empty-icon" aria-hidden="true"><i data-lucide="store"></i></span>
     <h3>Очередь открытий пуста</h3>
-    <p>Новые сигналы об открытии ресторанов, кафе и отелей появятся здесь автоматически при их обнаружении в публичном мониторинге.</p>
-    <a class="btn ghost" href="/system#agent-workspace">Открыть AI workspace</a>
+    <p>Новые сигналы об открытии появятся здесь при обнаружении в публичном мониторинге.</p>
   </div>
   {% endif %}
 </section>

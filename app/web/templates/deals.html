@@ -8,16 +8,11 @@
   {% if deal.status.value == 'WON' %}{% set ns.won = ns.won + 1 %}{% elif deal.status.value not in ['LOST'] %}{% set ns.open = ns.open + 1 %}{% endif %}
 {% endfor %}
 
-<section class="hero-status live deals-hero" data-motion-root>
+<section class="hero-status live deals-hero page-task" data-motion-root data-page-task="deals">
   <div>
-    <span class="eyebrow">РЕЗУЛЬТАТ ПРОДАЖ</span>
+    <span class="eyebrow">СДЕЛКИ</span>
     <h2>{% if rows %}{{ rows|length }} сделок · {{ ns.won }} продаж{% else %}Сделок пока нет{% endif %}</h2>
-    <p>{% if rows %}{{ ns.open }} в работе. Результат сделки учит систему отличать интерес от реальной покупки.{% else %}Создайте первую сделку из карточки клиента — система запомнит, что реально покупают.{% endif %}</p>
-  </div>
-  <div class="hero-actions">
-    <a class="btn primary" href="/radar">Найти лидов</a>
-    <a class="btn" href="/deals?status=WON">Продажи</a>
-    <a class="btn ghost" href="/leads">Воронка</a>
+    <p>{% if rows %}{{ ns.open }} в работе. Фильтруйте и открывайте карточку клиента.{% else %}Сделку создают из карточки клиента, когда появилась сумма или товар.{% endif %}</p>
   </div>
 </section>
 

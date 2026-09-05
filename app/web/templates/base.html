@@ -15,9 +15,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=13.45.0-ops-live">
+  <link rel="stylesheet" href="/static/app.css?v=13.52.0-hot-nav">
   <script defer src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
-  <script defer src="/static/app.js?v=13.45.0-ops-live"></script>
+  <script defer src="/static/app.js?v=13.52.0-hot-nav"></script>
 </head>
 <body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}" data-page="{{ active_path }}" data-scan-vertical="{{ selected_vertical }}">
 <a class="skip-link" href="#main-content">Перейти к содержимому</a>
@@ -33,9 +33,8 @@
       <div class="nav-group nav-primary">
         <span class="nav-group-label">Основное</span>
         <a class="nav {% if active_path == home %}active{% endif %}" href="{{ home }}" {% if active_path == home %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="layout-dashboard"></i></span><b>Главная</b></a>
-        <a class="nav {% if active_path.startswith('/hot') %}active{% endif %}" href="/hot{{ vq }}" {% if active_path.startswith('/hot') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="flame"></i></span><b>Новые лиды</b><em class="nav-badge" data-nav-hot-badge hidden>0</em></a>
+        <a class="nav {% if active_path.startswith('/hot') %}active{% endif %}" href="/hot{{ vq }}" {% if active_path.startswith('/hot') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="flame"></i></span><b>HOT</b><em class="nav-badge" data-nav-hot-badge hidden>0</em></a>
         <a class="nav {% if active_path.startswith('/radar') %}active{% endif %}" href="/radar{{ vq }}" {% if active_path.startswith('/radar') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="search"></i></span><b>Найти лидов</b></a>
-        <a class="nav" href="/system{{ vq }}"><span aria-hidden="true"><i data-lucide="activity"></i></span><b>Мониторинг</b></a>
       </div>
       <div class="nav-group">
         <span class="nav-group-label">Разведка</span>
@@ -45,14 +44,16 @@
       </div>
       <div class="nav-group">
         <span class="nav-group-label">Работа</span>
-        <a class="nav {% if active_path.startswith('/leads') or active_path.startswith('/deals') or active_path.startswith('/tasks') %}active{% endif %}" href="/leads{{ vq }}" {% if active_path.startswith('/leads') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="briefcase"></i></span><b>Клиенты</b></a>
+        <a class="nav {% if active_path.startswith('/leads') %}active{% endif %}" href="/leads{{ vq }}" {% if active_path.startswith('/leads') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="briefcase"></i></span><b>Клиенты</b></a>
+        <a class="nav {% if active_path.startswith('/tasks') %}active{% endif %}" href="/tasks" {% if active_path.startswith('/tasks') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="circle-check-big"></i></span><b>Задачи</b></a>
+        <a class="nav {% if active_path.startswith('/deals') %}active{% endif %}" href="/deals" {% if active_path.startswith('/deals') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="handshake"></i></span><b>Сделки</b></a>
         <a class="nav {% if active_path.startswith('/analytics') %}active{% endif %}" href="/analytics" {% if active_path.startswith('/analytics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="bar-chart-3"></i></span><b>Аналитика</b></a>
       </div>
       <button class="nav nav-more" type="button" data-more-toggle aria-expanded="false" aria-controls="more-navigation"><span aria-hidden="true"><i data-lucide="grid-2x2"></i></span><b>Ещё</b></button>
       <div class="nav-group nav-secondary" id="more-navigation" aria-label="Система и доп.">
         <span class="nav-group-label">Система</span>
-        <a class="nav {% if active_path.startswith('/economics') %}active{% endif %}" href="/economics" {% if active_path.startswith('/economics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="wallet"></i></span><b>Расходы</b></a>
         <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system{{ vq }}" {% if active_path.startswith('/system') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="settings-2"></i></span><b>Настройки</b></a>
+        <a class="nav {% if active_path.startswith('/economics') %}active{% endif %}" href="/economics" {% if active_path.startswith('/economics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="wallet"></i></span><b>Расходы</b></a>
         <a class="nav {% if active_path.startswith('/catalog') %}active{% endif %}" href="/catalog{{ vq }}"><span aria-hidden="true"><i data-lucide="notebook-tabs"></i></span><b>Каталог</b></a>
         <a class="nav {% if active_path.startswith('/discovery') %}active{% endif %}" href="/discovery"><span aria-hidden="true"><i data-lucide="compass"></i></span><b>Новые источники</b></a>
       </div>
@@ -111,6 +112,9 @@
         <span class="status-pill safe">{{ web_role }}</span>
         <button class="btn ghost" type="button" data-logout>Выйти</button>
         {% endif %}
+        {% set work_desk = active_path.startswith('/hot') or active_path.startswith('/leads') or active_path.startswith('/contacts') or active_path.startswith('/deals') or active_path.startswith('/tasks') or active_path.startswith('/analytics') or active_path.startswith('/economics') or active_path.startswith('/catalog') or active_path.startswith('/openings') or active_path.startswith('/audiences') or active_path.startswith('/agent') %}
+        {% set show_ops_pill = (not work_desk) or search_paused or snapshot.cycle_running or snapshot.last_error or safe_mode %}
+        {% if show_ops_pill %}
         {% if search_paused %}
         <span class="status-pill paused">⏸ Поиск на паузе</span>
         {% elif safe_mode %}
@@ -122,7 +126,14 @@
         {% else %}
         <span class="status-pill ok" data-live-status-pill>Готов · проверка не запущена</span>
         {% endif %}
+        {% endif %}
+        {# Scan CTA только на экранах поиска/источников — не на HOT/CRM #}
+        {% set show_top_scan = active_path in ['/', '/rattan'] or active_path.startswith('/radar') or active_path.startswith('/system') or active_path.startswith('/competitors') or active_path.startswith('/discovery') %}
+        {% if show_top_scan %}
         <button class="btn primary" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %} data-scan-cap="{{ settings.instagram_max_units_per_scan }}">{% if search_paused %}Поиск приостановлен{% elif active_path.startswith('/radar') %}Найти лидов{% else %}Проверить сейчас{% endif %}</button>
+        {% elif snapshot.cycle_running %}
+        <a class="btn tiny ghost" href="/radar">К поиску</a>
+        {% endif %}
       </div>
     </header>
     <div class="scan-progress-banner" data-scan-progress-banner {% if not snapshot.cycle_running %}hidden{% endif %} aria-live="polite">
@@ -140,8 +151,8 @@
     </div>
 
     <section class="content" data-motion-root>
-      {% if snapshot.last_error %}
-      <div class="alert error"><b>Последняя проблема мониторинга</b><span>{{ snapshot.last_error }}</span><a href="/system">Открыть диагностику →</a></div>
+      {% if snapshot.last_error and (active_path.startswith('/system') or active_path.startswith('/radar')) %}
+      <div class="alert error"><b>Проблема поиска</b><span>{{ snapshot.last_error }}</span><a href="/system">Диагностика →</a></div>
       {% endif %}
       {% block content %}{% endblock %}
     </section>
