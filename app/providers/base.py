@@ -38,6 +38,10 @@ class ProviderUsageBlockedError(ProviderError):
     """
 
 
+class ProviderPrivacyError(ProviderUsageBlockedError):
+    """Restricted source: do not retain its payload or retry through fallback."""
+
+
 class ProviderCallUncertainError(ProviderError):
     """Вызов ушёл во внешний API, но списание не подтверждено.
 

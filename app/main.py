@@ -5,6 +5,7 @@ import contextlib
 import logging
 import signal
 import sys
+from dataclasses import asdict
 from datetime import datetime
 
 import uvicorn
@@ -17,7 +18,7 @@ from aiogram.types import BotCommand
 
 from app.bot.handlers import build_router
 from app.config import Settings, get_settings
-from app.db.models import DailyQualityReportLog, NotificationPolicy
+from app.db.models import NotificationPolicy
 from app.db.session import (
     backup_sqlite_database,
     create_engine,
@@ -84,10 +85,18 @@ async def _serve_web_until_shutdown(
 ) -> None:
     _install_shutdown_handlers(shutdown_event, web_server=web_server)
     serve_task = asyncio.create_task(web_server.serve(), name="lead-radar-web")
-    await shutdown_event.wait()
-    web_server.should_exit = True
-    with contextlib.suppress(asyncio.CancelledError):
+    stop_task = asyncio.create_task(shutdown_event.wait(), name="lead-radar-web-stop")
+    try:
+        await asyncio.wait({serve_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
+        web_server.should_exit = True
         await serve_task
+    finally:
+        web_server.should_exit = True
+        shutdown_event.set()
+        stop_task.cancel()
+        if not serve_task.done():
+            serve_task.cancel()
+        await asyncio.gather(serve_task, stop_task, return_exceptions=True)
 
 
 async def run(*, once: bool = False, web_only: bool = False) -> int:
@@ -505,15 +514,13 @@ async def _quality_report_loop(
     settings: Settings,
 ) -> None:
     """Ежедневный digest качества в admin Telegram (идемпотентно по дате+TZ)."""
-    from sqlalchemy import select
-
     service = QualityReportService(
         session_factory,
         hot_threshold=settings.hot_lead_threshold,
         rules_version=settings.lead_analysis_version,
         signal_max_age_days=settings.instagram_signal_max_age_days,
     )
-    last_sent_local_date = None
+    last_queued_local_date = None
     while True:
         try:
             from zoneinfo import ZoneInfo
@@ -522,50 +529,24 @@ async def _quality_report_loop(
             now_local = datetime.now(tz)
             if (
                 now_local.hour == settings.quality_report_hour
-                and now_local.date() != last_sent_local_date
+                and now_local.date() != last_queued_local_date
             ):
                 report_date = now_local.date()
-                async with session_factory() as session:
-                    exists = await session.scalar(
-                        select(DailyQualityReportLog.id).where(
-                            DailyQualityReportLog.report_date == report_date,
-                            DailyQualityReportLog.report_timezone == settings.web_display_timezone,
-                        )
-                    )
-                if exists is None:
-                    snapshot = await service.build_snapshot(
-                        report_date=report_date,
-                        timezone_name=settings.web_display_timezone,
-                    )
-                    message = QualityReportService.format_message(
-                        snapshot,
-                        rules_version=settings.lead_analysis_version,
-                    )
-                    sent = await notifier.send_admin_digest(message)
-                    if sent:
-                        async with session_factory() as session:
-                            session.add(
-                                DailyQualityReportLog(
-                                    report_date=report_date,
-                                    report_timezone=settings.web_display_timezone,
-                                    snapshot_json={
-                                        "new_leads": snapshot.new_leads,
-                                        "not_lead": snapshot.not_lead,
-                                        "hot_leads": snapshot.hot_leads,
-                                        "hot_false_positives": snapshot.hot_false_positives,
-                                        "reviewed_feedback": snapshot.reviewed_feedback,
-                                        "stale_rules_count": snapshot.stale_rules_count,
-                                        "openai_events": snapshot.openai_events,
-                                    },
-                                )
-                            )
-                            await session.commit()
-                        last_sent_local_date = report_date
-                        logger.info(
-                            "quality_report_sent date=%s chats=%s",
-                            report_date.isoformat(),
-                            sent,
-                        )
+                snapshot = await service.build_snapshot(
+                    report_date=report_date,
+                    timezone_name=settings.web_display_timezone,
+                )
+                message = QualityReportService.format_message(
+                    snapshot, rules_version=settings.lead_analysis_version,
+                )
+                snapshot_json = asdict(snapshot)
+                snapshot_json["report_date"] = report_date.isoformat()
+                sent = await notifier.send_admin_digest(
+                    message, report_date=report_date,
+                    timezone_name=settings.web_display_timezone, snapshot=snapshot_json,
+                )
+                last_queued_local_date = report_date
+                logger.info("quality_report_queued date=%s sent=%s", report_date.isoformat(), sent)
         except Exception as exc:
             logger.exception("quality_report_loop_failed error_type=%s", type(exc).__name__)
         await asyncio.sleep(settings.quality_report_poll_seconds)

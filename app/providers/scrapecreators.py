@@ -11,6 +11,7 @@ from app.providers.base import (
     ProviderResponseError,
     parse_datetime,
 )
+from app.providers.public_data import ensure_public_source, public_record
 from app.schemas.instagram import (
     CommentFetchResult,
     InstagramComment,
@@ -105,14 +106,14 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         user = payload.get("data", {}).get("user") if isinstance(payload, dict) else None
         if not isinstance(user, dict):
             raise ProviderResponseError("ScrapeCreators profile response has no data.user")
+        ensure_public_source(payload)
         username = _required_string(user, "username")
-        return InstagramProfile(
+        return public_record(InstagramProfile(
             platform_user_id=_optional_string(user.get("id")),
             username=username,
             display_name=_optional_string(user.get("full_name")),
             profile_url=f"https://www.instagram.com/{username}/",
-            raw_data=payload,
-        )
+        ))
 
     async def get_reels(self, handle: str) -> list[InstagramPost]:
         payload = await self._request_json(
@@ -121,6 +122,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             headers=self.headers,
             params={"handle": handle, "trim": "false"},
         )
+        ensure_public_source(payload)
         items = payload.get("items") if isinstance(payload, dict) else None
         if not isinstance(items, list):
             raise ProviderResponseError("ScrapeCreators posts response has no items list")
@@ -137,6 +139,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             headers=self.headers,
             params={"url": url},
         )
+        ensure_public_source(payload)
         item = payload.get("data") if isinstance(payload, dict) else None
         if isinstance(item, dict) and isinstance(item.get("xdt_shortcode_media"), dict):
             item = item["xdt_shortcode_media"]
@@ -155,6 +158,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         max_pages: int | None = None,
         cursor: str | None = None,
     ) -> CommentFetchResult:
+        ensure_public_source(post.raw_data)
         comments: list[InstagramComment] = []
         seen_ids: set[str] = set()
         known_comment_ids = known_comment_ids or set()
@@ -176,6 +180,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
                 headers=self.headers,
                 params=params,
             )
+            ensure_public_source(payload)
             items = payload.get("comments") if isinstance(payload, dict) else None
             if not isinstance(items, list):
                 raise ProviderResponseError("ScrapeCreators comments response has no comments list")
@@ -223,13 +228,14 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
 
     @staticmethod
     def normalize_post(item: dict[str, Any], competitor: str) -> InstagramPost:
+        ensure_public_source(item)
         post_id = _required_string(item, "id")
         shortcode = _optional_string(item.get("code")) or _optional_string(item.get("shortcode"))
         if not shortcode:
             raise ProviderResponseError("ScrapeCreators post has no code/shortcode")
         caption_value = item.get("caption")
         caption = caption_value.get("text", "") if isinstance(caption_value, dict) else ""
-        return InstagramPost(
+        return public_record(InstagramPost(
             platform_post_id=post_id,
             competitor=competitor,
             url=f"https://www.instagram.com/reel/{shortcode}/",
@@ -237,11 +243,11 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             post_type="REEL" if item.get("product_type") == "clips" else "POST",
             published_at=parse_datetime(item.get("created_at") or item.get("taken_at")),
             comments_count=int(item.get("comment_count") or 0),
-            raw_data=item,
-        )
+        ))
 
     @staticmethod
     def normalize_comment(item: dict[str, Any]) -> InstagramComment:
+        ensure_public_source(item, check_owner=False)
         user = item.get("user")
         if not isinstance(user, dict):
             raise ProviderResponseError("ScrapeCreators comment has no user")
@@ -253,7 +259,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         )
         if parent_id is None and isinstance(item.get("parent"), dict):
             parent_id = _optional_string(item["parent"].get("id") or item["parent"].get("pk"))
-        return InstagramComment(
+        return public_record(InstagramComment(
             platform_comment_id=_required_string(item, "id"),
             platform_user_id=_optional_string(user.get("id") or user.get("pk")),
             username=username,
@@ -262,8 +268,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             text=_required_string(item, "text", allow_empty=True),
             created_at=parse_datetime(item.get("created_at")),
             parent_platform_comment_id=parent_id,
-            raw_data=item,
-        )
+        ))
 
 
 def _required_string(item: dict[str, Any], key: str, *, allow_empty: bool = False) -> str:

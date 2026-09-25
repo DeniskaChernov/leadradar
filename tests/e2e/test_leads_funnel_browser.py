@@ -9,8 +9,8 @@ from tests.test_lead_workflow import create_lead
 
 
 @pytest.mark.asyncio
-async def test_leads_funnel_browser_take_contact_not_lead_reopen(session_factory, e2e_base_url):
-    lead_id = await create_lead(session_factory, comment_id="browser-e2e-1", user_id="browser_user")
+async def test_leads_funnel_browser_take_contact_not_lead_reopen(file_session_factory, e2e_base_url):
+    lead_id = await create_lead(file_session_factory, comment_id="browser-e2e-1", user_id="browser_user")
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)

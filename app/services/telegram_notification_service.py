@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from html import escape
 from typing import ClassVar
 from uuid import uuid4
@@ -37,6 +37,7 @@ from app.db.models import (
     SignificantChangeNotification,
 )
 from app.services.lead_workflow_service import LeadCard, LeadWorkflowService
+from app.services.quality_report_delivery_service import QualityReportDeliveryService
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,9 @@ class TelegramLeadNotifier:
         self.worker_id = worker_id or f"telegram-{uuid4().hex[:12]}"
         self.web_public_url = web_public_url
         self._delivery_lock = asyncio.Lock()
+        self.quality_reports = QualityReportDeliveryService(
+            bot, session_factory, lease_seconds=lease_seconds, max_attempts=max_attempts
+        )
 
 
     async def notify_new_signal(self, lead_id: int) -> int:
@@ -138,18 +142,18 @@ class TelegramLeadNotifier:
         async with self._delivery_lock:
             return await self._flush_pending()
 
-    async def send_admin_digest(self, text: str) -> int:
-        """Разовый digest admin-чатам (quality report и т.п.)."""
+    async def send_admin_digest(
+        self, text: str, *, report_date: date, timezone_name: str, snapshot: dict
+    ) -> int:
+        """Persist the report and recipients before any Telegram action."""
         if not self.delivery_enabled or not self.admin_chat_ids:
             return 0
-        sent = 0
-        for chat_id in self.admin_chat_ids:
-            try:
-                await self.bot.send_message(chat_id, text, disable_web_page_preview=True)
-                sent += 1
-            except Exception:
-                logger.exception("telegram_admin_digest_failed chat_id=%s", chat_id)
-        return sent
+        async with self._delivery_lock:
+            await self.quality_reports.enqueue(
+                text, report_date=report_date, timezone_name=timezone_name,
+                snapshot=snapshot, chat_ids=self.admin_chat_ids,
+            )
+            return await self.quality_reports.flush(self.admin_chat_ids)
 
     async def _effective_policy(self, lead_id: int) -> NotificationPolicy:
         async with self.session_factory() as session:
@@ -163,7 +167,11 @@ class TelegramLeadNotifier:
     async def _flush_pending(self) -> int:
         await self._recover_stale_claims()
         await self._reconcile_hot_leads()
-        return await self._deliver_pending() + await self._deliver_pending_changes()
+        return (
+            await self._deliver_pending()
+            + await self._deliver_pending_changes()
+            + await self.quality_reports.flush(self.admin_chat_ids)
+        )
 
     async def _target_chat_ids(self, lead_id: int) -> list[int]:
         async with self.session_factory() as session:

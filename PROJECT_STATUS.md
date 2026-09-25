@@ -1,5 +1,40 @@
 # Lead Radar — состояние проекта
 
+## Исправления по аудиту — завершено 2026-09-25
+
+Ветка `codex/audit-hardening-20260924`. Реализованы transactional outbox ежедневных
+Telegram-отчётов, allowlist сохранённых полей Instagram, защита Docker build context,
+завершение web-only сервера и стабилизация clock/browser тестов.
+Проверки: **575 passed, 2 skipped** (PostgreSQL-only и Unix SIGTERM на Windows),
+Ruff PASS; повторный browser E2E — **1 passed**. Новая миграция `e5a6b7c8d9f0`
+применена к рабочей базе; `alembic check`, integrity и foreign keys — PASS.
+
+Сервер перезапущен на <http://127.0.0.1:8000/hot> из
+`C:\Users\Denis\.codex\worktrees\leadradar-main-audit\lead radar` в режиме web-only.
+`/health`, `/ready` и 12 основных страниц — HTTP 200; migration drift отсутствует.
+Перед обновлением сохранена `.backups/pre-hardening-20260925-115357.db`.
+25 контактов, 28 комментариев, 28 лидов и все 56 `contact_events` сохранены;
+SHA-256 всей предшествующей истории совпадает с резервной копией.
+Платные live API и Telegram delivery выключены; external usage и reservations — 0.
+Проверочный сервер на 8001 остановлен. PostgreSQL runtime, Docker build и новый
+GitHub CI в этом этапе не проверялись.
+Описание поведения и ограничений: [отчёт этапа](docs/HARDENING_2026-09-24.md).
+
+## Локальный аудит и запуск — 2026-09-24
+
+Проверен и запущен `DeniskaChernov/leadradar`, `origin/main`
+`22f4bbc7f22865fb29484f30c7d532100bae64b7`, без изменений кода приложения.
+URL: <http://127.0.0.1:8000>; режим `python -m app.main --web-only`.
+Рабочая база — отдельная копия базы из исходной папки, обновлённая до Alembic
+`d2e3f4a5b6c7`. 25 контактов, 28 комментариев, 28 лидов; исходные 53 contact_events
+сохранены неизменными, добавлены 3 события локального startup-анализа.
+
+Проверки: **546 passed, 1 failed, 2 skipped**; Ruff PASS; миграции, integrity,
+`/health`, `/ready`, 12 основных страниц PASS. Сбой теста history boost обусловлен
+фиксированными датами августа и текущим decay. Live API и Telegram delivery
+выключены; external usage = 0. Полная зелёная/live-готовность не заявляется.
+Отчёт с дефектами, путями запуска и ограничениями: `docs/AUDIT_2026-09-24.md`.
+
 ## Текущая версия
 
 **WAVE18 · PLAN 120/120 · PHASE 9 OFFLINE READY · LIVE PILOT GATED · F5 HOT OPS**

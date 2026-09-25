@@ -144,7 +144,13 @@ def test_intelligence_v2_role_and_factors_breakdown():
     assert job_res.factors["role_score"] == 5
 
 
-def test_intelligence_v2_history_and_comparison_boost():
+def test_intelligence_v2_history_and_comparison_boost(monkeypatch):
+    class FixedClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 8, 24, 10, tzinfo=UTC).astimezone(tz)
+
+    monkeypatch.setattr("app.services.lead_scoring_v3.datetime", FixedClock)
     analyzer = RuleBasedLeadAnalyzer()
 
     # Context with prior inquiries across 2 different competitors

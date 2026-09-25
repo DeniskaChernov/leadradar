@@ -1175,8 +1175,32 @@ class DailyQualityReportLog(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     report_date: Mapped[date] = mapped_column(Date, index=True)
     report_timezone: Mapped[str] = mapped_column(String(64))
-    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    message_text: Mapped[str | None] = mapped_column(Text)
     snapshot_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class DailyQualityReportDelivery(Base):
+    __tablename__ = "daily_quality_report_deliveries"
+    __table_args__ = (
+        UniqueConstraint("report_id", "chat_id", name="uq_quality_report_delivery_target"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("daily_quality_report_logs.id"), index=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    status: Mapped[NotificationStatus] = mapped_column(
+        Enum(NotificationStatus, native_enum=False), default=NotificationStatus.PENDING, index=True
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[str | None] = mapped_column(String(64))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivery_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    message_id: Mapped[int | None] = mapped_column(BigInteger)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class NotificationLog(Base):

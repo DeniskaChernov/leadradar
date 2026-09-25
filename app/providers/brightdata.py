@@ -11,6 +11,7 @@ from app.providers.base import (
     ProviderResponseError,
     parse_datetime,
 )
+from app.providers.public_data import ensure_public_source, public_record
 from app.schemas.instagram import (
     CommentFetchResult,
     InstagramComment,
@@ -77,14 +78,14 @@ class BrightDataProvider(HTTPInstagramProvider):
         if not rows:
             raise ProviderResponseError("Bright Data profile response is empty")
         row = rows[0]
+        ensure_public_source(row)
         username = _first_string(row, "account", "user_name", "username")
-        return InstagramProfile(
+        return public_record(InstagramProfile(
             platform_user_id=_optional_string(row.get("id")),
             username=username,
             display_name=_optional_string(row.get("full_name")),
             profile_url=url,
-            raw_data=row,
-        )
+        ))
 
     async def get_reels(self, handle: str) -> list[InstagramPost]:
         normalized = handle.strip().lower().lstrip("@")
@@ -115,6 +116,7 @@ class BrightDataProvider(HTTPInstagramProvider):
         max_pages: int | None = None,
         cursor: str | None = None,
     ) -> CommentFetchResult:
+        ensure_public_source(post.raw_data)
         rows = await self._scrape(self.comments_dataset_id, [{"url": post.url}])
         comments = [self.normalize_comment(row) for row in rows]
         coverage = "FULL" if post.comments_count <= len(comments) else "LATEST_ONLY"
@@ -128,12 +130,13 @@ class BrightDataProvider(HTTPInstagramProvider):
 
     @staticmethod
     def normalize_post(row: dict[str, Any], competitor: str) -> InstagramPost:
+        ensure_public_source(row)
         url = _first_string(row, "url")
         shortcode = _optional_string(row.get("shortcode")) or _shortcode_from_url(url)
         post_id = _optional_string(row.get("post_id") or row.get("id")) or shortcode
         if not post_id:
             raise ProviderResponseError("Bright Data post has no id, post_id, or shortcode")
-        return InstagramPost(
+        return public_record(InstagramPost(
             platform_post_id=post_id,
             competitor=competitor,
             url=url,
@@ -141,11 +144,11 @@ class BrightDataProvider(HTTPInstagramProvider):
             post_type="REEL" if "/reel/" in url else "POST",
             published_at=parse_datetime(row.get("date_posted") or row.get("datetime")),
             comments_count=int(row.get("num_comments") or row.get("comments") or 0),
-            raw_data=row,
-        )
+        ))
 
     @staticmethod
     def normalize_comment(row: dict[str, Any]) -> InstagramComment:
+        ensure_public_source(row, check_owner=False)
         username = _first_string(row, "comment_user")
         profile_url = _optional_string(row.get("comment_user_url")) or (
             f"https://www.instagram.com/{username}/"
@@ -155,7 +158,7 @@ class BrightDataProvider(HTTPInstagramProvider):
             or row.get("reply_to_comment_id")
             or row.get("parent_id")
         )
-        return InstagramComment(
+        return public_record(InstagramComment(
             platform_comment_id=_first_string(row, "comment_id"),
             platform_user_id=_optional_string(row.get("comment_user_id")),
             username=username,
@@ -164,8 +167,7 @@ class BrightDataProvider(HTTPInstagramProvider):
             text=_first_string(row, "comment", allow_empty=True),
             created_at=parse_datetime(row.get("comment_date")),
             parent_platform_comment_id=parent_id,
-            raw_data=row,
-        )
+        ))
 
 
 def _first_string(row: dict[str, Any], *keys: str, allow_empty: bool = False) -> str:

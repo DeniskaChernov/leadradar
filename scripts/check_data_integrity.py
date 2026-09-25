@@ -17,6 +17,8 @@ from app.db.models import (
     ContactEvent,
     ContactIntelligence,
     ContactInterestProfile,
+    DailyQualityReportDelivery,
+    DailyQualityReportLog,
     Deal,
     Evidence,
     ExternalBudgetReservation,
@@ -65,6 +67,8 @@ async def inspect_integrity() -> IntegrityResult:
                 Deal,
                 ContactEvent,
                 NotificationLog,
+                DailyQualityReportLog,
+                DailyQualityReportDelivery,
                 OpeningSignal,
                 SignificantChange,
                 SignificantChangeNotification,
@@ -81,6 +85,18 @@ async def inspect_integrity() -> IntegrityResult:
                 for model in models
             }
             checks = {
+                "quality report days": select(
+                    DailyQualityReportLog.report_date,
+                    DailyQualityReportLog.report_timezone, func.count(),
+                ).group_by(
+                    DailyQualityReportLog.report_date, DailyQualityReportLog.report_timezone,
+                ).having(func.count() > 1),
+                "quality report recipients": select(
+                    DailyQualityReportDelivery.report_id,
+                    DailyQualityReportDelivery.chat_id, func.count(),
+                ).group_by(
+                    DailyQualityReportDelivery.report_id, DailyQualityReportDelivery.chat_id,
+                ).having(func.count() > 1),
                 "comment IDs": select(Comment.platform, Comment.platform_comment_id, func.count())
                 .group_by(Comment.platform, Comment.platform_comment_id)
                 .having(func.count() > 1),

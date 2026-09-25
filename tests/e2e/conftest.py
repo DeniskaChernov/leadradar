@@ -12,8 +12,9 @@ from tests.e2e.helpers import build_e2e_app
 
 
 @pytest.fixture
-async def e2e_base_url(session_factory):
-    app = build_e2e_app(session_factory)
+async def e2e_base_url(file_session_factory):
+    # Browser polling and writes need independent DB connections, as in the real server.
+    app = build_e2e_app(file_session_factory)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         host, port = sock.getsockname()
