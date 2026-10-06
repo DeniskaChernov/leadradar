@@ -663,6 +663,11 @@ td.empty { border: 0; background: transparent; padding: 36px 20px; }
 .auth-shell { width: min(460px, 100%); text-align: center; background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 28px; box-shadow: var(--shadow); }
 .auth-shell h1 { margin: 14px 0 4px; }
 .auth-shell p { color: var(--muted); }
+.password-login { display: grid; gap: 12px; margin-top: 24px; text-align: left; }
+.password-login input { width: 100%; box-sizing: border-box; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; font: inherit; color: var(--text); background: var(--panel); }
+.password-login input:focus-visible { outline: 2px solid #16a34a; outline-offset: 2px; }
+.password-login [role="alert"] { margin: 0; color: #b91c1c; }
+.password-login [role="alert"]:empty { display: none; }
 .auth-status { margin: 16px 0; padding: 10px; border-radius: 9px; background: #0c1924; color: #9edcff; }
 .auth-status.bad { color: #ff9aaa; background: rgba(255,100,124,.08); }
 

@@ -243,10 +243,11 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "13.54.0-f5-hot-ops" in base
-    assert "13.54.0-f5-hot-ops" in auth
+    assert "13.56.0-cloudflare" in base
+    assert "13.56.0-cloudflare" in auth
     assert "data-motion-root" in auth
-    assert "ВХОД · TELEGRAM" in auth
+    assert "ВАШ РАБОЧИЙ КАБИНЕТ" in auth
+    assert 'data-password-login' in auth
     assert "fonts.googleapis.com" in base
     assert 'href="/catalog' in base
     assert 'href="/discovery"' in base
@@ -454,7 +455,7 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "manager-feedback-quality" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")
     assert "В радар активно" in (PROJECT_ROOT / "app/web/templates/discovery.html").read_text(encoding="utf-8")
     assert "data-agent-context" in (PROJECT_ROOT / "app/web/templates/lead_detail.html").read_text(encoding="utf-8")
-    assert "13.54.0-f5-hot-ops" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
+    assert "13.56.0-cloudflare" in (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
     assert "kanban-drag-handle" in (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
     assert "data-economics-budget-sim" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
     assert "ai-version-info" in (PROJECT_ROOT / "app/web/templates/system.html").read_text(encoding="utf-8")

@@ -297,7 +297,14 @@ class BudgetedInstagramProvider(InstagramProvider):
                     )
                 break
 
-            reservation_id = await self._reserve("get_comment_batch", 1)
+            try:
+                reservation_id = await self._reserve("get_comment_batch", 1)
+            except ProviderUsageBlockedError:
+                if pages_fetched == 0:
+                    raise
+                # A monthly cap or a live toggle may change between pages. Return
+                # paid-for comments so ingestion can commit them before stopping.
+                break
             await self.usage.mark_call_started(reservation_id)
             details = {
                 "provider": self.inner.name,
@@ -357,16 +364,14 @@ class BudgetedInstagramProvider(InstagramProvider):
                 seen_ids.add(comment.platform_comment_id)
                 all_comments.append(comment)
 
-            if units > remaining_before:
-                raise ScanBudgetExceededError(
-                    f"Провайдер списал {units} credits при остатке scan {remaining_before}. "
-                    "Проверка остановлена для защиты квоты."
-                )
-
             if stopped_on_known or cursor_exhausted or not result.next_cursor:
                 page_cursor = None
                 break
             page_cursor = result.next_cursor
+            if units > remaining_before:
+                # The charge is already recorded and scan.remaining is zero.
+                # Keep this response; the next call is blocked before network I/O.
+                break
 
         if pages_fetched == 0:
             raise ScanBudgetExceededError("На эту проверку больше нет разрешённых внешних операций")

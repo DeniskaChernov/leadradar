@@ -15,7 +15,7 @@ from tests.test_web_security import FakeMonitor
 
 
 @pytest.mark.asyncio
-async def test_offline_readiness_passes_for_test_database(session_factory):
+async def test_offline_readiness_passes_for_test_database(migrated_database):
     settings = Settings(_env_file=None)
     state = await inspect_offline_readiness(settings)
     assert state.database_healthy is True
@@ -26,7 +26,7 @@ async def test_offline_readiness_passes_for_test_database(session_factory):
 
 
 @pytest.mark.asyncio
-async def test_ready_endpoint_returns_200_when_database_is_healthy(session_factory):
+async def test_ready_endpoint_returns_200_when_database_is_healthy(session_factory, migrated_database):
     settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay")
     workflow = LeadWorkflowService(session_factory, hot_threshold=70)
     app = build_web_app(

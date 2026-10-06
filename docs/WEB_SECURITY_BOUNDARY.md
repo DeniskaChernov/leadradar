@@ -29,8 +29,14 @@
 
 ## Сессия и запросы
 
+Дополнительный браузерный вход включается через `WEB_PASSWORD_HASH` и требует
+настроенный admin ID. `python -m scripts.configure_web_access` создаёт случайный
+пароль локально в `.runtime/web-access.txt`, сохраняя только PBKDF2-SHA256 hash в `.env`.
+Пользователь входит с ролью первого администратора. Лимит — 8 попыток в минуту
+на экземпляр; cross-origin вход отклоняется. Поле пароля не отправляется в URL.
+
 - Telegram `initData` проверяется HMAC-SHA256 и принимается не старше 300 секунд по умолчанию.
-- Сессионная cookie подписана ключом, производным от bot token, имеет `HttpOnly`,
+- Сессионная cookie подписана ключом, производным от bot token и password hash, имеет `HttpOnly`,
   `SameSite=Strict` и `Secure` на HTTPS.
 - POST/PUT/PATCH/DELETE требуют связанный с сессией `X-CSRF-Token`.
 - Публичная auth-конфигурация ограничивает допустимый Host.
@@ -38,3 +44,4 @@
   headers; HTTPS получает HSTS.
 
 Telegram bot permissions остаются отдельным контуром и не расширяются web-ролью.
+Смена password hash отзывает ранее подписанные сессии.

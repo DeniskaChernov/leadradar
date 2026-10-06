@@ -10,10 +10,10 @@ from app.web.app import build_web_app
 from app.web.queries import WebQueryService
 
 
-def build_e2e_app(session_factory):
+def build_e2e_app(session_factory, settings=None):
     """Dev web без Telegram auth: WEB_MANAGER_ID задан, внешние live-гейты закрыты правилами Settings."""
     return build_web_app(
-        Settings(
+        settings or Settings(
             _env_file=None,
             web_enabled=True,
             web_auth_enabled=False,

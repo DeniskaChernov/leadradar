@@ -76,6 +76,23 @@ async def session_factory():
 
 
 @pytest_asyncio.fixture
+async def migrated_database(tmp_path, monkeypatch):
+    """Readiness and CLI checks must never depend on the developer's live database."""
+    import asyncio
+
+    from app.config import get_settings
+    from app.db.session import _upgrade_database_sync
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{(tmp_path / 'migrated.db').as_posix()}")
+    get_settings.cache_clear()
+    try:
+        await asyncio.to_thread(_upgrade_database_sync)
+        yield
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest_asyncio.fixture
 async def file_session_factory(tmp_path):
     """SQLite fixture with independent connections for real worker-race tests."""
 

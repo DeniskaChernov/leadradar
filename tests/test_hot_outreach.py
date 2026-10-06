@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from app.config import Settings
-from app.db.models import Contact, ContactEvent, ContactEventType, Lead, LeadStatus
+from app.db.models import Comment, Contact, ContactEvent, ContactEventType, Lead, LeadStatus
 from app.services.contact_service import ContactService
 from app.services.crm_service import CRMService
-from app.services.hot_outreach_service import HotOutreachService, StaticOutreachComposer
+from app.services.hot_outreach_service import (
+    HotOutreachService,
+    OpenAIOutreachComposer,
+    StaticOutreachComposer,
+)
 from app.services.lead_service import LeadService
-from app.services.lead_workflow_service import LeadWorkflowService
+from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowService
 from app.services.monitor_controller import MonitorController
 from app.services.product_catalog_service import ProductCatalogService
 from app.services.usage_service import ExternalUsageService
@@ -37,6 +46,62 @@ async def _make_hot_lead(session_factory) -> int:
     ).process_signal(signal)
     assert result is not None
     return result.lead_id
+
+
+@pytest.mark.parametrize("platform_date", [True, False])
+async def test_hot_queue_respects_signal_freshness_without_removing_history(session_factory, platform_date):
+    lead_id = await _make_hot_lead(session_factory)
+    service = HotOutreachService(
+        session_factory, hot_threshold=70,
+        workflow=LeadWorkflowService(session_factory, 70), crm=CRMService(session_factory),
+        catalog=ProductCatalogService(session_factory), signal_max_age_days=30,
+    )
+    assert [item["lead_id"] for item in await service.queue()] == [lead_id]
+    async with session_factory() as session:
+        lead = await session.get(Lead, lead_id)
+        comment = await session.get(Comment, lead.comment_id)
+        old = datetime.now(UTC) - timedelta(days=31)
+        comment.created_at_platform = old if platform_date else None
+        comment.discovered_at = old
+        await session.commit()
+    assert await service.queue() == []
+    assert (await service.detail(lead_id))["lead_id"] == lead_id
+    service.signal_max_age_days = 0
+    assert [item["lead_id"] for item in await service.queue()] == [lead_id]
+
+
+async def test_openai_composer_rejects_incomplete_drafts():
+    responses = SimpleNamespace(create=AsyncMock(return_value=SimpleNamespace(
+        status="incomplete", output_text="Оборванное предложение",
+    )))
+    composer = OpenAIOutreachComposer("test", "gpt-5-mini", client=SimpleNamespace(responses=responses))
+    with pytest.raises(LeadWorkflowError, match="не завершил"):
+        await composer.compose({"comment_text": "Цена?"})
+
+
+@pytest.mark.parametrize("failure", ["empty", "transport"])
+async def test_unsuccessful_draft_keeps_budget_consumed_or_reserved(session_factory, failure):
+    lead_id = await _make_hot_lead(session_factory)
+    usage = ExternalUsageService(session_factory)
+    composer = SimpleNamespace(compose=AsyncMock(
+        return_value="", side_effect=TimeoutError("private error content") if failure == "transport" else None,
+    ))
+    service = HotOutreachService(
+        session_factory, hot_threshold=70,
+        workflow=LeadWorkflowService(session_factory, 70), crm=CRMService(session_factory),
+        catalog=ProductCatalogService(session_factory), composer=composer, usage=usage,
+        openai_daily_limit=1,
+    )
+    with pytest.raises(LeadWorkflowError):
+        await service.prepare(lead_id, 1001)
+    assert (await service.detail(lead_id))["draft"] is None
+    consumed = await usage.used_today("openai")
+    reserved = await usage.active_reservations_today("openai")
+    assert consumed + reserved == 1
+    assert consumed == (1 if failure == "empty" else 0)
+    with pytest.raises(LeadWorkflowError, match="лимит"):
+        await service.prepare(lead_id, 1001)
+    assert composer.compose.await_count == 1
 
 
 async def test_hot_prepare_and_mark_sent_advances_funnel(session_factory):

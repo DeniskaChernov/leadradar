@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.providers.base import InstagramProvider, ProviderResponseError
 from app.schemas.instagram import (
@@ -15,6 +15,8 @@ class MockInstagramProvider(InstagramProvider):
     name = "mock"
 
     def __init__(self) -> None:
+        # Demo data should exercise the workflow regardless of the calendar date.
+        now = datetime.now(UTC)
         self._post = InstagramPost(
             platform_post_id="mock-reel-001",
             competitor="aiko.uz",
@@ -24,7 +26,7 @@ class MockInstagramProvider(InstagramProvider):
                 "Для получения цены напишите + в комментариях."
             ),
             post_type="REEL",
-            published_at=datetime(2026, 8, 26, 8, 0, tzinfo=UTC),
+            published_at=now - timedelta(hours=2),
             comments_count=1,
             raw_data={"source": "mock"},
         )
@@ -36,7 +38,7 @@ class MockInstagramProvider(InstagramProvider):
                 display_name="Aziz",
                 profile_url="https://www.instagram.com/aziz_test/",
                 text="+",
-                created_at=datetime(2026, 8, 26, 8, 1, tzinfo=UTC),
+                created_at=now - timedelta(hours=1),
                 raw_data={"source": "mock"},
             )
         ]

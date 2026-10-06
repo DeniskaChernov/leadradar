@@ -248,8 +248,13 @@ async def test_comment_page_credit_overshoot_stops_before_second_page(session_fa
         comments_count=40,
     )
 
-    with pytest.raises(ScanBudgetExceededError, match="15 credits"):
-        await provider.get_comment_batch(post, max_pages=2)
+    result = await provider.get_comment_batch(post, max_pages=2)
+    assert [comment.platform_comment_id for comment in result.comments] == ["c-1"]
+    assert result.pages_fetched == 1
+    assert result.coverage_status == "PARTIAL"
+    assert result.next_cursor == "page-2"
+    with pytest.raises(ScanBudgetExceededError):
+        await provider.get_comment_batch(post, cursor=result.next_cursor)
 
     assert inner.calls == 1
     assert scan.used == 15

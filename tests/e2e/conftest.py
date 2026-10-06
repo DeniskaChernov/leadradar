@@ -8,16 +8,27 @@ import socket
 import pytest
 import uvicorn
 
+from app.config import Settings
+from app.web.auth import TelegramWebAuth
 from tests.e2e.helpers import build_e2e_app
 
 
 @pytest.fixture
-async def e2e_base_url(file_session_factory):
+async def e2e_base_url(file_session_factory, request):
     # Browser polling and writes need independent DB connections, as in the real server.
-    app = build_e2e_app(file_session_factory)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         host, port = sock.getsockname()
+
+    settings = None
+    if getattr(request, "param", False):
+        settings = Settings(
+            _env_file=None, web_auth_enabled=True, web_port=port,
+            telegram_bot_token="test-token", telegram_admin_chat_ids=[1001],
+            web_password_hash=TelegramWebAuth.hash_password("browser-test-password"),
+            instagram_provider="replay", external_kill_switch=True,
+        )
+    app = build_e2e_app(file_session_factory, settings=settings)
 
     config = uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False)
     server = uvicorn.Server(config)

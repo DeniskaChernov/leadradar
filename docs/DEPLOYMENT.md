@@ -1,5 +1,11 @@
 # Lead Radar — Deployment Runbook (Stage 9)
 
+## Windows + Cloudflare Quick Tunnel
+
+Текущий рабочий сценарий — `start_cloudflare_windows.bat` с защищённым входом
+по паролю. Подробная проверенная инструкция и ограничения временного адреса:
+[LIVE_SETUP_2026-10-06.md](LIVE_SETUP_2026-10-06.md).
+
 ## Режимы запуска
 
 | Режим | Команда | Когда использовать |

@@ -16,11 +16,7 @@ if not exist ".env" (
   exit /b 1
 )
 
-echo Starting Lead Radar Mini App in safe web-only mode...
-echo Open: http://127.0.0.1:8000
-echo Telegram is not required in this mode.
-echo.
-".venv\Scripts\python.exe" -m app.main --web-only
+powershell.exe -NoProfile -File "%~dp0scripts\start_web_windows.ps1" -OpenBrowser
 
 if errorlevel 1 (
   echo.

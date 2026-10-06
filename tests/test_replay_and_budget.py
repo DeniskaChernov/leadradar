@@ -46,10 +46,12 @@ async def test_replay_scenario_creates_new_lead_without_external_calls(session_f
         session_factory=session_factory,
         provider=provider,
         contact_service=ContactService(session_factory),
-        lead_service=LeadService(session_factory, analyzer, 70),
+        lead_service=LeadService(session_factory, analyzer, 70, signal_max_age_days=0),
         notifier=NullNotifier(),
         competitors=["aiko.uz"],
         process_existing_comments=False,
+        # Replay fixtures deliberately preserve their historical timestamps.
+        max_signal_age_days=0,
     )
 
     baseline = await monitor.run_cycle()

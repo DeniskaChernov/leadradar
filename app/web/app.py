@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import logging
@@ -22,7 +23,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import Settings
 from app.db.models import Lead, LeadStatus, NotificationPolicy
-from app.services.agent_rate_limit_service import agent_rate_limiter
+from app.services.agent_rate_limit_service import AgentRateLimitService, agent_rate_limiter
 from app.services.ai_service import (
     BudgetedCachedOpenAIAnalyzer,
     HybridLeadAnalyzer,
@@ -151,6 +152,7 @@ def build_web_app(
         )
 
     auth = TelegramWebAuth(settings)
+    password_login_limiter = AgentRateLimitService(max_requests=8, window_seconds=60)
     usage_service = usage_service or ExternalUsageService(workflow.session_factory)
     provider_budget_service = ProviderCreditBudgetService(workflow.session_factory)
     crm = crm or CRMService(workflow.session_factory)
@@ -175,6 +177,7 @@ def build_web_app(
         usage=usage_service,
         composer=hot_outreach_composer,
         openai_daily_limit=settings.openai_daily_request_limit,
+        signal_max_age_days=settings.instagram_signal_max_age_days,
     )
     local_audience_engine = AudienceEngine(workflow.session_factory, settings.hot_lead_threshold)
     change_detector = SignificantChangeDetector(
@@ -299,7 +302,7 @@ def build_web_app(
 
     @app.middleware("http")
     async def protect_mini_app(request: Request, call_next):
-        public_paths = {"/auth", "/api/auth/telegram", "/health", "/ready", "/sw.js"}
+        public_paths = {"/auth", "/api/auth/telegram", "/api/auth/password", "/health", "/ready", "/sw.js"}
         if not settings.web_auth_enabled:
             request.state.manager_id = local_manager_id()
             request.state.web_role = WebRole.ADMIN
@@ -326,7 +329,7 @@ def build_web_app(
         if manager is None:
             if request.url.path.startswith("/api/"):
                 return JSONResponse(
-                    {"ok": False, "detail": "Нужно открыть Lead Radar через Telegram."},
+                    {"ok": False, "detail": "Войдите в Lead Radar, чтобы продолжить."},
                     status_code=401,
                 )
             return templates.TemplateResponse(
@@ -450,6 +453,49 @@ def build_web_app(
             context={"request": request, "settings": settings},
         )
 
+    def login_response(user_id: int) -> JSONResponse:
+        response = JSONResponse({"ok": True, "user_id": user_id})
+        response.set_cookie(
+            auth.COOKIE_NAME,
+            auth.create_session(user_id),
+            httponly=True,
+            secure=bool(settings.web_public_url.startswith("https://")),
+            samesite="strict",
+            max_age=7 * 86400,
+        )
+        return response
+
+    @app.post("/api/auth/password")
+    async def password_auth(request: Request):
+        if not settings.web_auth_enabled or not settings.web_password_hash:
+            raise HTTPException(status_code=404, detail="Вход по паролю не настроен.")
+        allowed_origins = {
+            settings.web_public_url.rstrip("/"),
+            f"http://{settings.web_host}:{settings.web_port}",
+        }
+        origin = request.headers.get("origin")
+        if origin and origin not in allowed_origins:
+            raise HTTPException(status_code=403, detail="Недопустимый источник запроса.")
+        if request.headers.get("content-type", "").split(";")[0] != "application/json":
+            raise HTTPException(status_code=415, detail="Ожидается JSON.")
+        limit = password_login_limiter.check(0)
+        if not limit.allowed:
+            raise HTTPException(
+                status_code=429,
+                detail="Слишком много попыток. Подождите минуту.",
+                headers={"Retry-After": str(limit.retry_after_seconds)},
+            )
+        try:
+            payload = await request.json()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Некорректный запрос.") from exc
+        password = payload.get("password") if isinstance(payload, dict) else None
+        if not isinstance(password, str) or not await asyncio.to_thread(
+            auth.validate_password, password
+        ):
+            raise HTTPException(status_code=401, detail="Неверный пароль.")
+        return login_response(settings.telegram_admin_chat_ids[0])
+
     @app.post("/api/auth/telegram")
     async def telegram_auth(request: Request):
         payload = await request.json()
@@ -457,16 +503,7 @@ def build_web_app(
             user = auth.validate_init_data(str(payload.get("initData") or ""))
         except TelegramAuthError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
-        response = JSONResponse({"ok": True, "user_id": user.id})
-        response.set_cookie(
-            auth.COOKIE_NAME,
-            auth.create_session(user.id),
-            httponly=True,
-            secure=bool(settings.web_public_url.startswith("https://")),
-            samesite="strict",
-            max_age=7 * 86400,
-        )
-        return response
+        return login_response(user.id)
 
     @app.post("/logout")
     async def logout():
@@ -2641,6 +2678,7 @@ def build_web_app(
         safe_limit = max(1, min(limit, 20))
         selected_vertical = resolve_business_vertical(request, explicit=vertical)
         payload = await queries.radar_feed(limit=safe_limit, vertical=selected_vertical)
+        payload["hot_queue_count"] = len(await hot_outreach_service.queue(vertical=selected_vertical, limit=100))
         snapshot = controller.snapshot()
         payload["cycle_running"] = snapshot.cycle_running
         payload["last_error"] = snapshot.last_error

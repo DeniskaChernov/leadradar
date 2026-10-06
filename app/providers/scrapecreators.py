@@ -171,7 +171,9 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             page_limit = max(1, min(page_limit, int(max_pages)))
 
         while pages < page_limit:
-            params = {"url": post.url, "include_replies": "true"}
+            # Reply expansion costs 15 credits and is not consumed by this adapter.
+            # Fetch parent comments at the regular page price; preserve reply IDs when present.
+            params = {"url": post.url, "include_replies": "false"}
             if page_cursor:
                 params["cursor"] = page_cursor
             payload = await self._request_json(

@@ -82,7 +82,7 @@ async def test_competitor_compare_page(session_factory):
     assert "competitor-compare-table" in response.text
 
 
-async def test_ready_endpoint_includes_extended_fields(session_factory):
+async def test_ready_endpoint_includes_extended_fields(session_factory, migrated_database):
     settings = Settings(_env_file=None, web_enabled=True, instagram_provider="replay")
     workflow = LeadWorkflowService(session_factory, hot_threshold=70)
     app = build_web_app(

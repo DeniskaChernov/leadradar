@@ -1,4 +1,3 @@
-import asyncio
 
 from httpx import ASGITransport, AsyncClient
 
@@ -87,6 +86,6 @@ async def test_radar_baseline_archive_filter(session_factory):
     assert "kind=baseline" in response.text or "baseline" in response.text.lower()
 
 
-def test_integrity_reports_orphan_leads_check():
-    result = asyncio.run(inspect_integrity())
+async def test_integrity_reports_orphan_leads_check(migrated_database):
+    result = await inspect_integrity()
     assert "leads without comments" in result.duplicates

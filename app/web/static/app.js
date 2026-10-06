@@ -253,7 +253,7 @@
     if (!response.ok) {
       if (response.status === 429) {
         const retryAfter = Number(response.headers.get('Retry-After') || data.retry_after || 30);
-        throw new Error(`Слишком много запросов к AI. Подождите ${retryAfter} сек.`);
+        throw new Error(data.detail || `Слишком много запросов. Подождите ${retryAfter} сек.`);
       }
       throw new Error(data.detail || data.message || 'Не удалось выполнить действие');
     }
@@ -1126,6 +1126,11 @@
     if (!status) return;
     const initData = tg?.initData || '';
     if (!initData) {
+      if (document.querySelector('[data-password-login]')) {
+        status.textContent = 'Также можно войти через Telegram-бота.';
+        document.querySelector('[data-auth-retry]')?.remove();
+        return;
+      }
       status.textContent = 'Откройте Lead Radar кнопкой внутри Telegram-бота. В обычном браузере Telegram не передаёт данные для входа.';
       status.classList.add('bad');
       return;
@@ -1145,6 +1150,23 @@
   if (document.body.dataset.authPage === '1') authenticateTelegram();
 
   document.addEventListener('submit', async (event) => {
+    const passwordForm = event.target.closest('[data-password-login]');
+    if (passwordForm) {
+      event.preventDefault();
+      const button = passwordForm.querySelector('[type="submit"]');
+      const errorLabel = passwordForm.querySelector('[data-login-error]');
+      button.disabled = true;
+      errorLabel.textContent = '';
+      try {
+        await api('/api/auth/password', { method: 'POST', body: JSON.stringify(formPayload(passwordForm)) });
+        location.href = '/radar';
+      } catch (error) {
+        errorLabel.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+      return;
+    }
     const agentForm = event.target.closest('[data-agent-query]');
     if (agentForm) {
       event.preventDefault();
@@ -2254,7 +2276,7 @@
     if (!(badge instanceof HTMLElement)) return;
     try {
       const feed = await api(withScanVertical('/api/radar/feed?limit=1'), { method: 'GET' });
-      const hot = Number((feed.overview && feed.overview.hot) || (feed.hot_leads || []).length || 0);
+      const hot = Number(feed.hot_queue_count ?? 0);
       if (hot > 0) {
         badge.hidden = false;
         badge.textContent = hot > 99 ? '99+' : String(hot);

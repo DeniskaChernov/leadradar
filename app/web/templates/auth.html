@@ -14,15 +14,23 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=13.54.0-f5-hot-ops">
-  <script defer src="/static/app.js?v=13.54.0-f5-hot-ops"></script>
+  <link rel="stylesheet" href="/static/app.css?v=13.56.0-cloudflare">
+  <script defer src="/static/app.js?v=13.56.0-cloudflare"></script>
 </head>
 <body class="auth-page" data-auth-page="1">
   <main class="auth-shell" data-motion-root>
-    <span class="eyebrow">ВХОД · TELEGRAM MINI APP</span>
+    <span class="eyebrow">ВАШ РАБОЧИЙ КАБИНЕТ</span>
     <div class="brand-mark large" aria-hidden="true"><i data-lucide="radar">LR</i></div>
     <h1>Lead Radar</h1>
-    <p>Находите людей, которым нужна мебель — и ведите их до сделки. Доступ только для сотрудников через Telegram-бота.</p>
+    <p>Находите людей, которым нужна мебель — и ведите их до сделки. Войдите, чтобы запустить поиск и открыть CRM.</p>
+    {% if settings.web_password_hash %}
+    <form class="password-login" data-password-login>
+      <label for="radar-password">Пароль доступа</label>
+      <input id="radar-password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+      <button class="btn primary" type="submit">Войти в Lead Radar</button>
+      <p data-login-error role="alert"></p>
+    </form>
+    {% endif %}
     <div id="auth-status" class="auth-status">Проверяем Telegram…</div>
     <button class="btn primary" type="button" data-auth-retry>Повторить вход</button>
   </main>

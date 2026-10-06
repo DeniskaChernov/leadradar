@@ -30,7 +30,7 @@ async def test_local_history_analysis_never_calls_openai_and_keeps_ambiguous_pen
         display_name="Maybe Customer",
         profile_url="https://www.instagram.com/maybe_customer/",
         text="А это как вообще работает?",
-        created_at=datetime(2026, 8, 26, 12, 0, tzinfo=UTC),
+        created_at=datetime.now(UTC),
         raw_data={"source": "test"},
     )
     await ContactService(session_factory).persist_signal(

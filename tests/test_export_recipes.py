@@ -213,7 +213,7 @@ async def test_export_recipe_confirmed_export_returns_503_via_api(session_factor
     await AudienceEngine(session_factory, hot_threshold=70).sync_segments()
 
     app = build_web_app(
-        settings=Settings(web_auth_enabled=False, web_manager_id=42),
+        settings=Settings(_env_file=None, web_auth_enabled=False, web_manager_id=42),
         queries=WebQueryService(session_factory, hot_threshold=70),
         workflow=LeadWorkflowService(session_factory, hot_threshold=70),
         controller=MonitorController(None),  # type: ignore[arg-type]
@@ -249,7 +249,7 @@ async def test_export_recipes_api_endpoints(session_factory):
 
     await AudienceEngine(session_factory, hot_threshold=70).sync_segments()
 
-    settings = Settings(web_auth_enabled=False, web_manager_id=1)
+    settings = Settings(_env_file=None, web_auth_enabled=False, web_manager_id=1)
     queries = WebQueryService(session_factory, hot_threshold=70)
     crm = CRMService(session_factory)
     workflow = LeadWorkflowService(session_factory, hot_threshold=70)

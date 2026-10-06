@@ -25,7 +25,8 @@ from app.db.repositories.events import ContactEventRepository
 from app.services.crm_service import CRMService
 from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowService
 from app.services.product_catalog_service import ProductCatalogService
-from app.services.usage_service import ExternalUsageService
+from app.services.signal_recency import fresh_signal_clause
+from app.services.usage_service import ExternalBudgetExceeded, ExternalUsageService
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ class OpenAIOutreachComposer:
         else:
             from openai import AsyncOpenAI
 
-            self.client = AsyncOpenAI(api_key=api_key)
+            self.client = AsyncOpenAI(api_key=api_key, max_retries=0, timeout=60.0)
 
     async def compose(self, context: dict[str, Any]) -> str:
         instructions = (
@@ -84,14 +85,22 @@ class OpenAIOutreachComposer:
             "которых нет во входных данных. Если товара нет — мягко уточни потребность. "
             "Не проси телефон/email. Не упоминай, что ты ИИ."
         )
+        options = {}
+        if self.model.startswith("gpt-5"):
+            options["reasoning"] = {"effort": "low"}
         response = await self.client.responses.create(
             model=self.model,
             instructions=instructions,
             input=json.dumps(context, ensure_ascii=False, default=str),
-            max_output_tokens=500,
+            # This cap includes reasoning tokens, which could consume the old 500
+            # token budget before the model produced any customer-facing text.
+            max_output_tokens=2000,
             store=False,
             prompt_cache_key="lead-radar-hot-outreach-v1",
+            **options,
         )
+        if getattr(response, "status", None) == "incomplete":
+            raise LeadWorkflowError("OpenAI не завершил текст предложения. Повторите подготовку текста.")
         text = (getattr(response, "output_text", None) or "").strip()
         if not text:
             raise LeadWorkflowError("OpenAI вернул пустой текст предложения")
@@ -121,6 +130,7 @@ class HotOutreachService:
         usage: ExternalUsageService | None = None,
         composer: OutreachComposer | None = None,
         openai_daily_limit: int = 200,
+        signal_max_age_days: int = 30,
     ) -> None:
         self.session_factory = session_factory
         self.hot_threshold = hot_threshold
@@ -130,6 +140,7 @@ class HotOutreachService:
         self.usage = usage
         self.composer = composer
         self.openai_daily_limit = openai_daily_limit
+        self.signal_max_age_days = max(0, signal_max_age_days)
 
     async def queue(
         self,
@@ -148,6 +159,7 @@ class HotOutreachService:
                 .where(
                     Lead.lead_score >= self.hot_threshold,
                     Lead.status.in_(OPEN_HOT_STATUSES),
+                    fresh_signal_clause(max_age_days=self.signal_max_age_days),
                 )
                 .order_by(desc(Lead.lead_score), desc(Lead.created_at))
                 .limit(limit)
@@ -295,16 +307,19 @@ class HotOutreachService:
 
         reservation_id = None
         if self.usage is not None:
-            reservation_id = await self.usage.reserve_budget(
-                "openai",
-                "hot_outreach_compose",
-                self.openai_daily_limit,
-                units=1,
-                estimated_cost=0.0,
-                request_fingerprint=f"hot-outreach:{lead_id}:{force}",
-                worker_id="hot-outreach",
-                provider="openai",
-            )
+            try:
+                reservation_id = await self.usage.reserve_budget(
+                    "openai",
+                    "hot_outreach_compose",
+                    self.openai_daily_limit,
+                    units=1,
+                    estimated_cost=0.0,
+                    request_fingerprint=f"hot-outreach:{lead_id}:{force}",
+                    worker_id="hot-outreach",
+                    provider="openai",
+                )
+            except ExternalBudgetExceeded as exc:
+                raise LeadWorkflowError(str(exc)) from exc
             await self.usage.mark_call_started(reservation_id)
 
         try:
@@ -324,21 +339,20 @@ class HotOutreachService:
             if reservation_id is not None and self.usage is not None:
                 await self.usage.finalize_reservation(
                     reservation_id,
-                    units=0,
+                    units=1,
                     success=False,
                     details={"operation": "hot_outreach_compose_failed"},
                     lead_id=lead_id,
+                    unit_source="ESTIMATED",
                 )
             raise
         except Exception as exc:
-            logger.exception("hot_outreach_compose_failed lead_id=%s", lead_id)
+            logger.warning("hot_outreach_compose_failed lead_id=%s error_type=%s", lead_id, type(exc).__name__)
             if reservation_id is not None and self.usage is not None:
-                await self.usage.finalize_reservation(
+                await self.usage.mark_reservation_uncertain(
                     reservation_id,
-                    units=0,
-                    success=False,
-                    details={"operation": "hot_outreach_compose_failed"},
-                    lead_id=lead_id,
+                    reason="hot_outreach_failed_after_call_started",
+                    details={"operation": "hot_outreach_compose_failed", "error_type": type(exc).__name__},
                 )
             raise LeadWorkflowError("Не удалось подготовить текст через OpenAI") from exc
 

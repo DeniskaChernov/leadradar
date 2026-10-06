@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import secrets
 import time
 from dataclasses import dataclass
 from enum import IntEnum
@@ -40,6 +41,21 @@ class TelegramWebAuth:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+
+    @staticmethod
+    def hash_password(password: str) -> str:
+        if not 12 <= len(password) <= 256:
+            raise ValueError("Password must contain 12 to 256 characters")
+        salt = secrets.token_hex(16)
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 600_000)
+        return f"pbkdf2_sha256$600000${salt}${digest.hex()}"
+
+    def validate_password(self, password: str) -> bool:
+        if not self.settings.web_password_hash or not 12 <= len(password) <= 256:
+            return False
+        _, _, salt, expected = self.settings.web_password_hash.split("$")
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 600_000)
+        return hmac.compare_digest(digest.hex(), expected)
 
     def principal_for(self, user_id: int) -> WebPrincipal | None:
         if user_id in self.settings.telegram_admin_chat_ids:
@@ -138,7 +154,7 @@ class TelegramWebAuth:
         if not self.settings.telegram_bot_token:
             raise TelegramAuthError("Telegram bot token is required for signed web sessions")
         return hashlib.sha256(
-            f"lead-radar:{self.settings.telegram_bot_token}".encode()
+            f"lead-radar:{self.settings.telegram_bot_token}:{self.settings.web_password_hash}".encode()
         ).digest()
 
 

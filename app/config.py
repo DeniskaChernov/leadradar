@@ -86,6 +86,7 @@ class Settings(BaseSettings):
     web_public_url: str = ""
     web_manager_id: int = 0
     web_auth_enabled: bool = False
+    web_password_hash: str = Field(default="", repr=False)
     telegram_init_data_max_age_seconds: int = Field(default=300, ge=60, le=3600)
     log_level: str = "INFO"
     sentry_dsn: str = ""
@@ -204,6 +205,13 @@ class Settings(BaseSettings):
             )
             if not access_ids:
                 raise ValueError("WEB_AUTH_ENABLED=true requires at least one allowed Telegram ID")
+            if self.web_password_hash:
+                import re
+
+                if not re.fullmatch(r"pbkdf2_sha256\$600000\$[0-9a-f]{32}\$[0-9a-f]{64}", self.web_password_hash):
+                    raise ValueError("WEB_PASSWORD_HASH must be a valid PBKDF2 password hash")
+                if not self.telegram_admin_chat_ids:
+                    raise ValueError("Password login requires an admin ID")
             role_sets = (
                 set(self.telegram_admin_chat_ids),
                 set(self.telegram_manager_chat_ids),
