@@ -6,18 +6,11 @@ import asyncio
 import contextlib
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import or_, select
-
-from app.db.models import Lead, LeadStatus
 from app.services.lead_service import LeadService
 from app.services.notification_service import LeadNotifier
 
 logger = logging.getLogger(__name__)
-
-_STALE_ANALYZING_SECONDS = 900
-
 
 @dataclass(frozen=True, slots=True)
 class AnalysisJob:
@@ -35,11 +28,15 @@ class LeadAnalysisPipeline:
         *,
         max_concurrency: int = 3,
         sync_mode: bool = False,
+        retry_pending_enabled: bool = False,
+        retry_pending_cooldown_seconds: int = 3600,
     ) -> None:
         self.lead_service = lead_service
         self.notifier = notifier
         self.max_concurrency = max(1, max_concurrency)
         self.sync_mode = sync_mode
+        self.retry_pending_enabled = retry_pending_enabled
+        self.retry_pending_cooldown_seconds = max(1, retry_pending_cooldown_seconds)
         self._queue: asyncio.Queue[AnalysisJob | None] | None = None
         self._workers: list[asyncio.Task[None]] = []
         self._queued_ids: set[int] = set()
@@ -115,6 +112,7 @@ class LeadAnalysisPipeline:
         lead_ids = await self.lead_service.list_pending_lead_ids(
             limit,
             cooldown_seconds=cooldown_seconds,
+            exclude_lead_ids=self._queued_ids,
         )
         added = 0
         for lead_id in lead_ids:
@@ -125,28 +123,15 @@ class LeadAnalysisPipeline:
         return added
 
     async def enqueue_pending_batch(self, limit: int = 10) -> int:
-        """Добрать AI_PENDING / зависший ANALYZING в очередь без повторного analyze."""
+        """Recover new/stale jobs; retry failed jobs only under the configured policy."""
         if limit <= 0:
             return 0
-        stale = datetime.now(UTC) - timedelta(seconds=_STALE_ANALYZING_SECONDS)
-        async with self.lead_service.session_factory() as session:
-            lead_ids = (
-                await session.scalars(
-                    select(Lead.id)
-                    .where(
-                        or_(
-                            Lead.status == LeadStatus.AI_PENDING,
-                            (Lead.status == LeadStatus.ANALYZING)
-                            & (
-                                Lead.ai_last_attempt_at.is_(None)
-                                | (Lead.ai_last_attempt_at <= stale)
-                            ),
-                        )
-                    )
-                    .order_by(Lead.created_at)
-                    .limit(limit)
-                )
-            ).all()
+        lead_ids = await self.lead_service.list_pending_lead_ids(
+            limit,
+            cooldown_seconds=self.retry_pending_cooldown_seconds,
+            retry_failed=self.retry_pending_enabled,
+            exclude_lead_ids=self._queued_ids,
+        )
         added = 0
         for lead_id in lead_ids:
             if lead_id in self._queued_ids:

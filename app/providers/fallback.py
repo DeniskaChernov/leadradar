@@ -27,6 +27,10 @@ class FallbackInstagramProvider(InstagramProvider):
         self.fallback = fallback
         self.name = f"{primary.name}+{fallback.name}"
 
+    @property
+    def comment_cursor_provider(self) -> str:
+        return self.primary.comment_cursor_provider
+
     def begin_cycle(self) -> None:
         # Both wrappers normally share one ScanBudget. Resetting twice is harmless and keeps this
         # adapter correct even when providers are configured independently.
@@ -100,6 +104,11 @@ class FallbackInstagramProvider(InstagramProvider):
         max_pages: int | None = None,
         cursor: str | None = None,
     ) -> CommentFetchResult:
+        if cursor is not None:
+            # Cursors are opaque and provider-specific; never pass one to fallback.
+            return await self.primary.get_comment_batch(
+                post, known_comment_ids=known_comment_ids, max_pages=max_pages, cursor=cursor,
+            )
         return await self._call(
             "get_comment_batch",
             lambda: self.primary.get_comment_batch(

@@ -159,6 +159,7 @@ class TelegramWebAuth:
 
 
 _ADMIN_PATH_PREFIXES = (
+    "/api/budget/",
     "/api/pricing",
     "/api/replay/",
     "/api/scan",

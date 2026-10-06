@@ -66,6 +66,7 @@ from app.services.telegram_notification_service import (
 )
 from app.services.usage_service import ExternalUsageService
 from app.web.auth import TelegramAuthError, TelegramWebAuth, WebRole, required_role
+from app.web.csv_export import safe_csv_row
 from app.web.datetime_display import format_display_dt, parse_display_dt
 from app.web.labels import (
     AI_SOURCE_LABELS,
@@ -746,7 +747,7 @@ def build_web_app(
         )
         for lead, contact, comment, competitor, _post, deal in rows:
             writer.writerow(
-                [
+                safe_csv_row([
                     lead.id,
                     contact.username,
                     contact.display_name or "",
@@ -758,7 +759,7 @@ def build_web_app(
                     (comment.text or "").replace("\n", " ").strip()[:500],
                     lead.created_at.isoformat() if lead.created_at else "",
                     deal.status.value if deal is not None else "",
-                ]
+                ])
             )
         payload = buffer.getvalue()
         return StreamingResponse(
@@ -902,7 +903,7 @@ def build_web_app(
             ("credits_per_hot", page.credits.credits_per_hot, "credits"),
         ]
         for metric, value, unit in rows:
-            writer.writerow([metric, "" if value is None else value, unit, days])
+            writer.writerow(safe_csv_row([metric, "" if value is None else value, unit, days]))
         payload = buffer.getvalue()
         return StreamingResponse(
             iter([payload]),

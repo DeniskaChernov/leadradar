@@ -52,6 +52,11 @@ class ProviderCallUncertainError(ProviderError):
 class InstagramProvider(ABC):
     name: str
 
+    @property
+    def comment_cursor_provider(self) -> str:
+        """Identity of the provider whose pagination cursors this adapter accepts."""
+        return self.name
+
     def begin_cycle(self) -> None:
         """Reset optional per-cycle state before one monitoring pass.
 

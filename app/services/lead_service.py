@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import (
     AIFeedback,
+    AIRequest,
+    AIRequestStatus,
     Comment,
     Competitor,
     Contact,
@@ -372,12 +374,21 @@ class LeadService:
         limit: int = 50,
         *,
         cooldown_seconds: int = 0,
+        retry_failed: bool = True,
+        exclude_lead_ids: set[int] | None = None,
     ) -> list[int]:
         if limit <= 0:
             return []
         cutoff = datetime.now(UTC) - timedelta(seconds=cooldown_seconds)
         stale_analyzing = datetime.now(UTC) - timedelta(
             seconds=max(cooldown_seconds, _STALE_ANALYZING_SECONDS)
+        )
+        latest_request_status = (
+            select(AIRequest.status)
+            .where(AIRequest.lead_id == Lead.id)
+            .order_by(AIRequest.id.desc())
+            .limit(1)
+            .scalar_subquery()
         )
         async with self.session_factory() as session:
             return list(
@@ -386,9 +397,15 @@ class LeadService:
                     .join(Comment, Comment.id == Lead.comment_id)
                     .where(
                         fresh_signal_clause(max_age_days=self.signal_max_age_days),
+                        Lead.id.not_in(exclude_lead_ids or set()),
+                        or_(
+                            latest_request_status.is_(None),
+                            latest_request_status != AIRequestStatus.PERMANENT_FAILURE,
+                        ),
                         or_(
                             (
                                 (Lead.status == LeadStatus.AI_PENDING)
+                                & (True if retry_failed else Lead.ai_attempt_count == 0)
                                 & (
                                     Lead.ai_last_attempt_at.is_(None)
                                     | (Lead.ai_last_attempt_at <= cutoff)
@@ -403,7 +420,7 @@ class LeadService:
                             ),
                         ),
                     )
-                    .order_by(Lead.created_at)
+                    .order_by(Lead.ai_last_attempt_at.asc(), Lead.created_at, Lead.id)
                     .limit(limit)
                 )
             )

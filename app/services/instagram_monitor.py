@@ -59,6 +59,8 @@ class PostCheck:
     is_new_post: bool
     comment_delta: int
     post_age_hours: float
+    comment_cursor: str | None = None
+    is_backfill: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -368,7 +370,8 @@ class InstagramMonitor:
     ) -> None:
         batch = await self.provider.get_comment_batch(
             reel,
-            known_comment_ids=check.known_comment_ids,
+            known_comment_ids=set() if check.is_backfill else check.known_comment_ids,
+            cursor=check.comment_cursor,
             max_pages=(
                 self.baseline_max_comment_pages
                 if check.is_baseline
@@ -451,6 +454,10 @@ class InstagramMonitor:
             provider=batch.provider,
             previous_coverage=check.previous_coverage,
             stopped_on_known_comment=batch.stopped_on_known_comment,
+            next_cursor=batch.next_cursor,
+            cursor_exhausted=batch.cursor_exhausted,
+            is_backfill=check.is_backfill,
+            is_baseline=check.is_baseline,
         )
 
     async def _notify_new_signal(self, lead_id: int) -> int:
@@ -496,9 +503,14 @@ class InstagramMonitor:
             comments_checked_at = post.comments_checked_at
             if comments_checked_at is not None and comments_checked_at.tzinfo is None:
                 comments_checked_at = comments_checked_at.replace(tzinfo=UTC)
+            cursor_provider = self.provider.comment_cursor_provider
+            if post.comment_backfill_provider != cursor_provider or provider_changed:
+                post.comment_backfill_cursor = None
+                post.comment_backfill_completed_at = None
             refresh_due = bool(
                 self.auto_repair_partial_coverage
                 and post.coverage_status != CoverageStatus.FULL
+                and post.comment_backfill_completed_at is None
                 and refresh_before is not None
                 and comments_checked_at is not None
                 and comments_checked_at <= refresh_before
@@ -513,6 +525,9 @@ class InstagramMonitor:
                 post.coverage_status = CoverageStatus.FULL
                 post.last_comment_provider = "metadata"
                 post.comments_checked_at = now
+                post.comment_backfill_cursor = None
+                post.comment_backfill_provider = cursor_provider
+                post.comment_backfill_completed_at = now
                 await session.commit()
                 return PostCheck(
                     post_id=post.id,
@@ -531,6 +546,11 @@ class InstagramMonitor:
                 or comments_checked_at is None
                 or post.last_synced_remote_count != reel.comments_count
                 or refresh_due
+                or post.comment_backfill_cursor is not None
+            )
+            is_backfill = bool(
+                post.comment_backfill_cursor is not None
+                or (refresh_due and post.last_synced_remote_count == reel.comments_count)
             )
 
             known_ids = set(
@@ -547,7 +567,10 @@ class InstagramMonitor:
             return PostCheck(
                 post_id=post.id,
                 should_fetch_comments=should_fetch,
-                is_baseline=is_first_baseline,
+                is_baseline=(
+                    is_first_baseline
+                    or (is_backfill and bool(post.comment_backfill_is_baseline))
+                ),
                 known_comment_ids=known_ids,
                 previous_coverage=post.coverage_status,
                 skip_reason=None if should_fetch else "UNCHANGED",
@@ -557,6 +580,8 @@ class InstagramMonitor:
                     reel.comments_count - int(previous_comments_count or 0),
                 ),
                 post_age_hours=self._post_age_hours(reel.published_at, now),
+                comment_cursor=post.comment_backfill_cursor if is_backfill else None,
+                is_backfill=is_backfill,
             )
 
     @staticmethod
@@ -592,6 +617,10 @@ class InstagramMonitor:
         provider: str,
         previous_coverage: CoverageStatus,
         stopped_on_known_comment: bool,
+        next_cursor: str | None = None,
+        cursor_exhausted: bool = False,
+        is_backfill: bool = False,
+        is_baseline: bool = False,
     ) -> None:
         async with self.session_factory() as session:
             post = await session.get(Post, post_id)
@@ -607,7 +636,10 @@ class InstagramMonitor:
             # merely how many happened to be present on the last API page. That makes coverage
             # truthful during cheap incremental refreshes.
             post.comments_fetched_count = stored_count
-            post.last_synced_remote_count = remote_comments_count
+            # Completing historical pages must not acknowledge newer comments that
+            # arrived at the head while backfill was running.
+            if not is_backfill:
+                post.last_synced_remote_count = remote_comments_count
             post.comment_pages_fetched = pages_fetched
             try:
                 resolved_coverage = CoverageStatus(coverage_status)
@@ -628,6 +660,13 @@ class InstagramMonitor:
             post.coverage_status = resolved_coverage
             post.last_comment_provider = provider
             post.comments_checked_at = datetime.now(UTC)
+            if not stopped_on_known_comment:
+                post.comment_backfill_cursor = next_cursor
+                post.comment_backfill_provider = provider
+                post.comment_backfill_is_baseline = is_baseline
+                post.comment_backfill_completed_at = (
+                    datetime.now(UTC) if cursor_exhausted else None
+                )
             await session.commit()
 
     async def _complete_baseline(self, handle: str) -> None:

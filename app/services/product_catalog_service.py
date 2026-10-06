@@ -25,6 +25,7 @@ ALLOWED_PRODUCT_CATEGORIES = {
     "TABLE",
     "SET",
     "RAW_RATTAN",
+    "LAMP",
 }
 
 CATEGORY_ALIASES = {
@@ -33,6 +34,7 @@ CATEGORY_ALIASES = {
     "RATTAN_ARMCHAIR": "ARMCHAIR",
     "RATTAN_SOFA": "SOFA",
     "TABLE": "TABLE",
+    "TABLES": "TABLE",
     "RATTAN_TABLE": "TABLE",
     "DINING_SET": "SET",
     "RATTAN_SET": "SET",
@@ -55,9 +57,10 @@ CANONICAL_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,254}$")
 
 
 def normalize_product_category(category: str | None) -> str | None:
-    if not category or category == "UNCONFIRMED":
+    normalized = (category or "").strip().upper()
+    if not normalized or normalized == "UNCONFIRMED":
         return None
-    return CATEGORY_ALIASES.get(category, category)
+    return CATEGORY_ALIASES.get(normalized, normalized)
 
 
 class ProductCatalogService:
@@ -319,6 +322,8 @@ class ProductCatalogService:
         content: bytes,
         manager_id: int,
         apply: bool,
+        source_references: dict[str, str] | None = None,
+        import_source: str = "CSV",
     ) -> dict[str, object]:
         rows = self._parse_import_csv(filename, content)
         counts = {"created": 0, "updated": 0, "unchanged": 0}
@@ -344,16 +349,19 @@ class ProductCatalogService:
                     )
                     if not apply:
                         continue
-                    product = Product(**row, import_source="CSV", catalog_version=1)
+                    product = Product(
+                        **row, import_source=import_source, catalog_version=1,
+                        source_reference=(source_references or {}).get(key),
+                    )
                     self._confirm_imported_facts(product, manager_id, now)
                     session.add(product)
                     await session.flush()
                     session.add(
                         ProductChange(
                             product_id=product.id,
-                            change_type="CSV_CREATE",
+                            change_type=f"{import_source}_CREATE",
                             manager_telegram_id=manager_id,
-                            source="CSV",
+                            source=import_source,
                             before_json={},
                             after_json=self._import_snapshot(product),
                             catalog_version=1,
@@ -406,14 +414,14 @@ class ProductCatalogService:
                         f"{field}_confirmed_by",
                         manager_id if confirmed else None,
                     )
-                product.import_source = "CSV"
+                product.import_source = import_source
                 product.catalog_version += 1
                 session.add(
                     ProductChange(
                         product_id=product.id,
-                        change_type="CSV_UPDATE",
+                        change_type=f"{import_source}_UPDATE",
                         manager_telegram_id=manager_id,
-                        source="CSV",
+                        source=import_source,
                         before_json=before,
                         after_json=self._import_snapshot(product),
                         catalog_version=product.catalog_version,

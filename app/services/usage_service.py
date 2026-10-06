@@ -168,14 +168,15 @@ class ExternalUsageService:
                         ProviderBudgetPolicy.active.is_(True),
                     )
                 )
-                # Paid ScrapeCreators Instagram: отсутствие policy = fail-closed (не unlimited).
+                # Every supported paid Instagram provider needs its own monthly policy,
+                # including fallback: a per-scan cap does not limit cumulative spend.
                 if (
-                    normalized_provider == "scrapecreators"
+                    normalized_provider in {"scrapecreators", "brightdata"}
                     and service == "instagram"
                     and monthly_policy is None
                 ):
                     raise ExternalBudgetExceeded(
-                        "Active ProviderBudgetPolicy missing for scrapecreators/instagram; "
+                        f"Active ProviderBudgetPolicy missing for {normalized_provider}/instagram; "
                         "paid Instagram calls are blocked until monthly hard limit is configured"
                     )
                 if monthly_policy is not None:

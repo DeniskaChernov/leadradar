@@ -99,7 +99,8 @@ async def test_unsuccessful_draft_keeps_budget_consumed_or_reserved(session_fact
     reserved = await usage.active_reservations_today("openai")
     assert consumed + reserved == 1
     assert consumed == (1 if failure == "empty" else 0)
-    with pytest.raises(LeadWorkflowError, match="лимит"):
+    reason = "сверить списание" if failure == "transport" else "лимит"
+    with pytest.raises(LeadWorkflowError, match=reason):
         await service.prepare(lead_id, 1001)
     assert composer.compose.await_count == 1
 

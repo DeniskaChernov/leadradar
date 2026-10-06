@@ -211,6 +211,8 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
                 lead_service,
                 NullLeadNotifier(),
                 max_concurrency=analysis_concurrency,
+                retry_pending_enabled=settings.ai_pending_retry_enabled,
+                retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
             ),
         )
         analysis_pipeline = monitor.analysis_pipeline
@@ -264,6 +266,8 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
                 lead_service,
                 NullLeadNotifier(),
                 max_concurrency=analysis_concurrency,
+                retry_pending_enabled=settings.ai_pending_retry_enabled,
+                retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
             ),
         )
         analysis_pipeline = monitor.analysis_pipeline
@@ -365,6 +369,8 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
             lead_service,
             notifier,
             max_concurrency=analysis_concurrency,
+            retry_pending_enabled=settings.ai_pending_retry_enabled,
+            retry_pending_cooldown_seconds=settings.ai_pending_retry_cooldown_seconds,
         ),
     )
     analysis_pipeline = monitor.analysis_pipeline

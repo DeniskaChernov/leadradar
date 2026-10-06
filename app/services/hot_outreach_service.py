@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
+from uuid import uuid4
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import (
@@ -16,9 +17,11 @@ from app.db.models import (
     Competitor,
     Contact,
     ContactEventType,
+    ExternalBudgetReservation,
     Lead,
     LeadStatus,
     Post,
+    ReservationStatus,
     Vertical,
 )
 from app.db.repositories.events import ContactEventRepository
@@ -276,6 +279,41 @@ class HotOutreachService:
         *,
         force: bool = False,
     ) -> dict[str, Any]:
+        token = uuid4().hex
+        now = datetime.now(UTC)
+        async with self.session_factory() as session:
+            result = await session.execute(
+                update(Lead)
+                .where(
+                    Lead.id == lead_id,
+                    or_(
+                        Lead.outreach_claim_token.is_(None),
+                        Lead.outreach_claim_expires_at <= now,
+                    ),
+                )
+                .values(
+                    outreach_claim_token=token,
+                    outreach_claim_expires_at=now + timedelta(seconds=180),
+                    updated_at=Lead.updated_at,
+                )
+            )
+            await session.commit()
+            if result.rowcount != 1:
+                raise LeadWorkflowError("Черновик уже готовится или лид недоступен. Обновите карточку.")
+        try:
+            return await self._prepare_claimed(lead_id, manager_id, force=force, claim_token=token)
+        finally:
+            async with self.session_factory() as session:
+                await session.execute(
+                    update(Lead)
+                    .where(Lead.id == lead_id, Lead.outreach_claim_token == token)
+                    .values(outreach_claim_token=None, outreach_claim_expires_at=None, updated_at=Lead.updated_at)
+                )
+                await session.commit()
+
+    async def _prepare_claimed(
+        self, lead_id: int, manager_id: int, *, force: bool, claim_token: str,
+    ) -> dict[str, Any]:
         if self.composer is None:
             raise LeadWorkflowError(
                 "Подготовка текста недоступна: OpenAI выключен. "
@@ -307,6 +345,25 @@ class HotOutreachService:
 
         reservation_id = None
         if self.usage is not None:
+            async with self.session_factory() as session:
+                unresolved = await session.scalar(
+                    select(ExternalBudgetReservation.id).where(
+                        ExternalBudgetReservation.request_fingerprint.in_(
+                            [f"hot-outreach:{lead_id}:False", f"hot-outreach:{lead_id}:True"]
+                        ),
+                        ExternalBudgetReservation.status.in_(
+                            [ReservationStatus.RESERVED, ReservationStatus.EXPIRED, ReservationStatus.UNCERTAIN]
+                        ),
+                        or_(
+                            ExternalBudgetReservation.call_started_at.is_not(None),
+                            ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
+                        ),
+                    ).limit(1)
+                )
+            if unresolved is not None:
+                raise LeadWorkflowError(
+                    "Исход предыдущего AI-запроса неизвестен. Администратор должен сверить списание в системе."
+                )
             try:
                 reservation_id = await self.usage.reserve_budget(
                     "openai",
@@ -315,6 +372,7 @@ class HotOutreachService:
                     units=1,
                     estimated_cost=0.0,
                     request_fingerprint=f"hot-outreach:{lead_id}:{force}",
+                    reservation_key=f"hot-outreach:{lead_id}:{claim_token}",
                     worker_id="hot-outreach",
                     provider="openai",
                 )
@@ -371,8 +429,13 @@ class HotOutreachService:
                 "product_sku": detail["recommendation"]["product_sku"],
                 "sent_at": None,
             }
-            lead.analysis_details = details
-            lead.updated_at = datetime.now(UTC)
+            result = await session.execute(
+                update(Lead)
+                .where(Lead.id == lead_id, Lead.outreach_claim_token == claim_token)
+                .values(analysis_details=details, updated_at=datetime.now(UTC))
+            )
+            if result.rowcount != 1:
+                raise LeadWorkflowError("Подготовка устарела: карточку обрабатывает другой запрос.")
             await ContactEventRepository(session).add(
                 lead.contact_id,
                 ContactEventType.NOTE_ADDED,
