@@ -5,11 +5,14 @@
 {% block content %}
 {% set rv = selected_vertical or 'FURNITURE' %}
 {% set hot_base = '/hot?vertical=' ~ rv %}
+{% set queue_total = queue_total|default(queue|length) %}
+{% set queue_page = queue_page|default(1) %}
+{% set queue_pages = queue_pages|default(1) %}
 
 <section class="hero-status hot-hero page-task {% if openai_spend_allowed %}live{% else %}safe{% endif %}" data-motion-root data-page-task="hot">
   <div>
     <span class="eyebrow">НАПИСАТЬ СЕЙЧАС · {% if rv == 'ARTIFICIAL_RATTAN' %}РОТАНГ{% else %}МЕБЕЛЬ{% endif %}</span>
-    <h2>{% if queue %}{{ queue|length }} готовы к контакту{% else %}Пока некого писать{% endif %}</h2>
+    <h2>{% if queue %}{{ queue_total }} лидов в очереди HOT{% else %}Пока некого писать{% endif %}</h2>
     <p>{% if queue %}Выберите слева → текст → Instagram → «Отправил».{% elif openai_spend_allowed %}Сначала <a href="/radar{% if rv == 'ARTIFICIAL_RATTAN' %}?vertical=ARTIFICIAL_RATTAN{% endif %}">найдите лидов</a> — горячие появятся здесь.{% else %}GPT выключен в <a href="/system">Настройках</a>. Можно копировать готовый текст вручную.{% endif %}</p>
   </div>
   {% if not queue %}
@@ -30,7 +33,7 @@
     <div class="panel-head"><div><h2>Кого писать</h2><p>Сильный интерес · ещё без предложения</p></div></div>
     <div class="hot-queue-list" data-hot-queue>
       {% for item in queue %}
-      <a class="hot-queue-item {% if selected and selected.lead_id == item.lead_id %}is-active{% endif %} {% if item.already_contacted %}is-prior{% endif %}" href="{{ hot_base }}&lead_id={{ item.lead_id }}" data-hot-lead-id="{{ item.lead_id }}">
+      <a class="hot-queue-item {% if selected and selected.lead_id == item.lead_id %}is-active{% endif %} {% if item.already_contacted %}is-prior{% endif %}" href="{{ hot_base }}&page={{ queue_page }}&lead_id={{ item.lead_id }}" data-hot-lead-id="{{ item.lead_id }}">
         <div class="hot-queue-top">
           <b>@{{ item.username }}</b>
           <strong class="hot-score">{{ item.score }}</strong>
@@ -47,6 +50,13 @@
       </div>
       {% endfor %}
     </div>
+    {% if queue_pages > 1 %}
+    <nav class="hot-pagination" aria-label="Страницы очереди HOT">
+      {% if queue_page > 1 %}<a class="btn tiny" href="{{ hot_base }}&page={{ queue_page - 1 }}">← Назад</a>{% endif %}
+      <span>{{ queue_page }} / {{ queue_pages }}</span>
+      {% if queue_page < queue_pages %}<a class="btn tiny" href="{{ hot_base }}&page={{ queue_page + 1 }}">Далее →</a>{% endif %}
+    </nav>
+    {% endif %}
   </aside>
 
   <section class="panel hot-detail" aria-label="Работа с лидом" data-hot-detail>

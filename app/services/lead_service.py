@@ -35,6 +35,7 @@ from app.services.ai_service import (
     ValidatedPreviousSignal,
 )
 from app.services.contact_service import PersistedSignal
+from app.services.place_opening_service import PlaceOpeningService
 from app.services.signal_recency import (
     fresh_signal_clause,
     is_signal_within_window,
@@ -145,6 +146,9 @@ class LeadService:
                 )
                 if public_signal is not None:
                     public_signal.pipeline_stage = "LEAD_COMMITTED"
+                await PlaceOpeningService.capture_lead(
+                    session, lead, comment, max_age_days=self.signal_max_age_days
+                )
                 await session.commit()
             except IntegrityError:
                 await session.rollback()

@@ -570,9 +570,16 @@ def build_web_app(
         request: Request,
         vertical: str = "",
         lead_id: int | None = None,
+        page: int = 1,
     ):
         selected_vertical = resolve_business_vertical(request, explicit=vertical)
-        queue = await hot_outreach_service.queue(vertical=selected_vertical)
+        queue_total = await hot_outreach_service.queue_count(vertical=selected_vertical)
+        page_size = 40
+        page_count = max(1, (queue_total + page_size - 1) // page_size)
+        page = max(1, min(page, page_count))
+        queue = await hot_outreach_service.queue(
+            vertical=selected_vertical, limit=page_size, offset=(page - 1) * page_size
+        )
         selected = None
         if lead_id is not None:
             selected = await hot_outreach_service.detail(
@@ -593,6 +600,9 @@ def build_web_app(
             context=base_context(
                 request,
                 queue=queue,
+                queue_total=queue_total,
+                queue_page=page,
+                queue_pages=page_count,
                 selected=selected,
                 openai_usage={
                     "used": openai_used,
@@ -2111,6 +2121,7 @@ def build_web_app(
                     "confidence": item.confidence,
                     "review_status": item.review_status,
                     "contact_id": item.contact_id,
+                    "lead_id": item.lead_id,
                 }
                 for item in queue
             ],
@@ -2679,7 +2690,7 @@ def build_web_app(
         safe_limit = max(1, min(limit, 20))
         selected_vertical = resolve_business_vertical(request, explicit=vertical)
         payload = await queries.radar_feed(limit=safe_limit, vertical=selected_vertical)
-        payload["hot_queue_count"] = len(await hot_outreach_service.queue(vertical=selected_vertical, limit=100))
+        payload["hot_queue_count"] = await hot_outreach_service.queue_count(vertical=selected_vertical)
         snapshot = controller.snapshot()
         payload["cycle_running"] = snapshot.cycle_running
         payload["last_error"] = snapshot.last_error

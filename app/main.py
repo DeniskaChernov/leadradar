@@ -46,6 +46,7 @@ from app.services.monitor_controller import MonitorController
 from app.services.monitor_run_service import MonitorRunService
 from app.services.notification_service import NullLeadNotifier
 from app.services.operational_control_service import OperationalControlService
+from app.services.place_opening_service import PlaceOpeningService
 from app.services.product_catalog_service import ProductCatalogService
 from app.services.quality_report_service import QualityReportService
 from app.services.rattan_vertical_service import RattanVerticalService
@@ -109,6 +110,10 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
     init_error_monitoring(settings)
     engine = create_engine(settings)
     session_factory = create_session_factory(engine)
+    opening_result = await PlaceOpeningService(session_factory).backfill_saved_leads(
+        max_age_days=settings.instagram_signal_max_age_days
+    )
+    logger.info("opening_signals_recovered stats=%s", opening_result)
     market_service = MarketIntelligenceService(session_factory)
     catalog_result = await market_service.sync_catalog()
     logger.info("market_catalog_synced result=%s", catalog_result)

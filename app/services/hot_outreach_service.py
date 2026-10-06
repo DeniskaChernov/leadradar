@@ -9,8 +9,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import uuid4
 
-from sqlalchemy import desc, or_, select, update
+from sqlalchemy import case, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import aliased
 
 from app.db.models import (
     Comment,
@@ -145,57 +146,71 @@ class HotOutreachService:
         self.openai_daily_limit = openai_daily_limit
         self.signal_max_age_days = max(0, signal_max_age_days)
 
+    @staticmethod
+    def _sent_clause(model):
+        return func.coalesce(model.analysis_details[HOT_OUTREACH_KEY]["sent_at"].as_string(), "") != ""
+
+    def _queue_query(self, vertical: str | None):
+        prior = aliased(Lead)
+        already_contacted = (
+            select(prior.id)
+            .where(
+                prior.contact_id == Lead.contact_id,
+                prior.id != Lead.id,
+                or_(prior.status.in_(PRIOR_OUTREACH_STATUSES), self._sent_clause(prior)),
+            )
+            .correlate(Lead)
+            .exists()
+        )
+        sent = self._sent_clause(Lead)
+        stmt = (
+            select(Lead, Contact, Comment, Competitor, Post, already_contacted.label("already_contacted"))
+            .join(Contact, Contact.id == Lead.contact_id)
+            .join(Comment, Comment.id == Lead.comment_id)
+            .join(Competitor, Competitor.id == Lead.competitor_id)
+            .join(Post, Post.id == Comment.post_id)
+            .where(
+                Lead.lead_score >= self.hot_threshold,
+                Lead.status.in_(OPEN_HOT_STATUSES),
+                fresh_signal_clause(max_age_days=self.signal_max_age_days),
+            )
+        )
+        vertical_enum = self._parse_vertical(vertical)
+        if vertical_enum is not None:
+            stmt = stmt.where(Lead.vertical == vertical_enum)
+        return stmt, already_contacted, sent
+
+    async def queue_count(self, *, vertical: str | None = None) -> int:
+        stmt, _, _ = self._queue_query(vertical)
+        async with self.session_factory() as session:
+            return int(await session.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
+
     async def queue(
         self,
         *,
         vertical: str | None = None,
         limit: int = 80,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
-        vertical_enum = self._parse_vertical(vertical)
+        stmt, already_contacted, sent = self._queue_query(vertical)
+        stmt = stmt.order_by(
+            case((already_contacted, 1), else_=0),
+            case((sent, 1), else_=0),
+            desc(Lead.lead_score), desc(Lead.created_at), desc(Lead.id),
+        ).limit(max(1, min(limit, 200))).offset(max(0, offset))
         async with self.session_factory() as session:
-            stmt = (
-                select(Lead, Contact, Comment, Competitor, Post)
-                .join(Contact, Contact.id == Lead.contact_id)
-                .join(Comment, Comment.id == Lead.comment_id)
-                .join(Competitor, Competitor.id == Lead.competitor_id)
-                .join(Post, Post.id == Comment.post_id)
-                .where(
-                    Lead.lead_score >= self.hot_threshold,
-                    Lead.status.in_(OPEN_HOT_STATUSES),
-                    fresh_signal_clause(max_age_days=self.signal_max_age_days),
-                )
-                .order_by(desc(Lead.lead_score), desc(Lead.created_at))
-                .limit(limit)
-            )
-            if vertical_enum is not None:
-                stmt = stmt.where(Lead.vertical == vertical_enum)
             rows = (await session.execute(stmt)).all()
-            priors = await self._prior_outreach_leads_by_contact(
-                session,
-                {contact.id for _lead, contact, *_rest in rows},
-            )
-        items = [
+        return [
             self._queue_item(
                 lead,
                 contact,
                 comment,
                 competitor,
                 post,
-                already_contacted=bool(
-                    priors.get(contact.id, set()) - {lead.id}
-                ),
+                already_contacted=bool(prior_contact),
             )
-            for lead, contact, comment, competitor, post in rows
+            for lead, contact, comment, competitor, post, prior_contact in rows
         ]
-        # F5: сначала свежие контакты, «уже писали» — в конце; внутри — по score.
-        items.sort(
-            key=lambda item: (
-                1 if item.get("already_contacted") else 0,
-                1 if item.get("sent") else 0,
-                -int(item.get("score") or 0),
-            )
-        )
-        return items
 
     async def next_queue_lead_id(
         self,
@@ -204,15 +219,13 @@ class HotOutreachService:
         exclude_lead_id: int | None = None,
     ) -> int | None:
         """Следующий HOT после текущего — для непрерывного дневного цикла."""
-        for item in await self.queue(vertical=vertical, limit=80):
-            if exclude_lead_id is not None and item["lead_id"] == exclude_lead_id:
-                continue
-            if item.get("sent"):
-                continue
-            if item.get("already_contacted"):
-                continue
-            return int(item["lead_id"])
-        return None
+        stmt, already_contacted, sent = self._queue_query(vertical)
+        stmt = stmt.with_only_columns(Lead.id).where(~already_contacted, ~sent)
+        if exclude_lead_id is not None:
+            stmt = stmt.where(Lead.id != exclude_lead_id)
+        stmt = stmt.order_by(desc(Lead.lead_score), desc(Lead.created_at), desc(Lead.id)).limit(1)
+        async with self.session_factory() as session:
+            return await session.scalar(stmt)
 
     async def detail(
         self,
@@ -628,29 +641,6 @@ class HotOutreachService:
             product_sku=payload.get("product_sku"),
             sent_at=payload.get("sent_at"),
         )
-
-    async def _prior_outreach_leads_by_contact(
-        self,
-        session: AsyncSession,
-        contact_ids: set[int],
-    ) -> dict[int, set[int]]:
-        """contact_id → lead_id, по которым уже был outreach / стадия после контакта."""
-        if not contact_ids:
-            return {}
-        rows = (
-            await session.execute(
-                select(Lead.contact_id, Lead.id, Lead.status, Lead.analysis_details).where(
-                    Lead.contact_id.in_(contact_ids)
-                )
-            )
-        ).all()
-        result: dict[int, set[int]] = {contact_id: set() for contact_id in contact_ids}
-        for contact_id, lead_id, status, details in rows:
-            draft_payload = (details or {}).get(HOT_OUTREACH_KEY)
-            sent = isinstance(draft_payload, dict) and bool(draft_payload.get("sent_at"))
-            if status in PRIOR_OUTREACH_STATUSES or sent:
-                result.setdefault(contact_id, set()).add(lead_id)
-        return result
 
     async def _contact_outreach_summary(
         self,

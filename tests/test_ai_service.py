@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from app.schemas.leads import FunnelStage, Intent, LeadAnalysis, PurchaseHorizon, Urgency
@@ -235,7 +236,7 @@ async def test_local_rules_raise_priority_for_cross_competitor_history():
                 commercial_quality="MEDIUM_COMMERCIAL",
                 priority_score=74,
                 confidence=88,
-                observed_at="2026-08-25T10:00:00+00:00",
+                observed_at=(datetime.now(UTC) - timedelta(days=1)).isoformat(),
                 vertical="FURNITURE",
             )
         ],

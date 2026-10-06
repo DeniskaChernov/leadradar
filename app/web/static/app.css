@@ -3722,6 +3722,7 @@ a:hover { color: #2445d9; }
 .hot-queue{padding:0;overflow:hidden}
 .hot-queue .panel-head{padding:16px 18px 8px}
 .hot-queue-list{max-height:min(70vh,820px);overflow:auto;padding:0 10px 12px}
+.hot-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 18px;border-top:1px solid rgba(15,23,42,.08)}
 .hot-queue-item{
   display:block;
   padding:12px 12px;

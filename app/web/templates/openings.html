@@ -7,7 +7,7 @@
   <div>
     <span class="eyebrow">B2B ОТКРЫТИЯ</span>
     <h2>{{ queue|length }} сигналов в очереди</h2>
-    <p>Проверьте заведение → подтвердите или отклоните перед воронкой.</p>
+    <p>Сигналы из комментариев клиентов. Откройте исходный лид и проверьте сведения об открытии.</p>
   </div>
 </section>
 
@@ -15,7 +15,7 @@
   <div class="panel-head">
     <div>
       <h2>Сигналы новых открытий</h2>
-      <p>Рестораны, кафе, отели и офисы — верификация перед конвертацией в лид</p>
+      <p>Подтверждение сохраняет результат проверки; статус исходного лида не меняется.</p>
     </div>
     <span class="tag status-contacted">В очереди: {{ queue|length }}</span>
   </div>
@@ -37,10 +37,10 @@
       <tbody>
         {% for item in queue %}
         <tr>
-          <td data-label="Заведение"><strong>{{ item.place_name }}</strong></td>
+          <td data-label="Заведение"><strong>{{ item.place_name }}</strong>{% if item.lead_id %}<br><a href="/leads/{{ item.lead_id }}">Исходный комментарий · лид #{{ item.lead_id }}</a>{% endif %}</td>
           <td data-label="Категория"><span class="tag neutral">{{ item.place_type }}</span></td>
-          <td data-label="Город">{{ item.city or '—' }}</td>
-          <td data-label="Сроки открытия">{{ item.opening_timeline or 'В ближайшее время' }}</td>
+          <td data-label="Город">{{ item.city or 'Не указан' }}</td>
+          <td data-label="Сроки открытия">{{ item.opening_timeline or 'Не указаны' }}</td>
           <td data-label="Уверенность">
             <div class="confidence-meter" style="--pct: {{ item.confidence }}%">
               <i><b style="width: {{ item.confidence }}%"></b></i>
@@ -71,7 +71,7 @@
   <div class="empty-state">
     <span class="empty-icon" aria-hidden="true"><i data-lucide="store"></i></span>
     <h3>Очередь открытий пуста</h3>
-    <p>Новые сигналы об открытии появятся здесь при обнаружении в публичном мониторинге.</p>
+    <p>Сюда попадут свежие комментарии клиентов об открытии заведений, найденные радаром. Отдельный поиск заведений через Google пока не подключён.</p>
   </div>
   {% endif %}
 </section>
