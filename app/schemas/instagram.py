@@ -55,6 +55,9 @@ class CommentFetchResult(BaseModel):
     stopped_on_known_comment: bool = False
     # Курсор следующей страницы (ScrapeCreators); None = продолжать нечего.
     next_cursor: str | None = None
+    # A sanitized error type lets ingestion commit earlier pages after a later
+    # page fails, while still reporting an incomplete scan.
+    fetch_error: str | None = None
 
 
 class ProviderCreditObservation(BaseModel):

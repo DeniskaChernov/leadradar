@@ -302,11 +302,13 @@ class InstagramMonitor:
                     handle=candidate.competitor.handle,
                 )
             try:
-                await self._process_prepared_reel(
+                fetched_successfully = await self._process_prepared_reel(
                     candidate.reel,
                     candidate.check,
                     stats,
                 )
+                if not fetched_successfully:
+                    discovery_failed.add(candidate.competitor.handle)
                 processed_by_handle[candidate.competitor.handle] = (
                     processed_by_handle.get(candidate.competitor.handle, 0) + 1
                 )
@@ -367,7 +369,7 @@ class InstagramMonitor:
         reel: InstagramPost,
         check: PostCheck,
         stats: CycleStats,
-    ) -> None:
+    ) -> bool:
         batch = await self.provider.get_comment_batch(
             reel,
             known_comment_ids=set() if check.is_backfill else check.known_comment_ids,
@@ -381,6 +383,12 @@ class InstagramMonitor:
         comments = batch.comments
         stats.comment_requests += batch.pages_fetched
         stats.comments_seen += len(comments)
+        if batch.fetch_error:
+            stats.errors += 1
+            logger.warning(
+                "comment_refresh_partial_failure competitor=%s post_id=%s error_type=%s",
+                reel.competitor, reel.platform_post_id, batch.fetch_error,
+            )
         if batch.stopped_on_known_comment:
             stats.pagination_stopped_on_known += 1
             configured_pages = (
@@ -399,9 +407,8 @@ class InstagramMonitor:
             signal = await self.contact_service.persist_signal(
                 reel, comment, is_baseline=check.is_baseline
             )
-            if not signal.created:
-                continue
-            stats.comments_created += 1
+            if signal.created:
+                stats.comments_created += 1
             if signal.is_baseline:
                 continue
             lead = await self.lead_service.ensure_analyzing(signal)
@@ -459,6 +466,7 @@ class InstagramMonitor:
             is_backfill=check.is_backfill,
             is_baseline=check.is_baseline,
         )
+        return batch.fetch_error is None
 
     async def _notify_new_signal(self, lead_id: int) -> int:
         notify = getattr(self.notifier, "notify_new_signal", None)
@@ -504,16 +512,19 @@ class InstagramMonitor:
             if comments_checked_at is not None and comments_checked_at.tzinfo is None:
                 comments_checked_at = comments_checked_at.replace(tzinfo=UTC)
             cursor_provider = self.provider.comment_cursor_provider
-            if post.comment_backfill_provider != cursor_provider or provider_changed:
+            if post.comment_backfill_provider != cursor_provider:
                 post.comment_backfill_cursor = None
                 post.comment_backfill_completed_at = None
-            refresh_due = bool(
+            head_refresh_due = bool(
+                refresh_before is not None
+                and comments_checked_at is not None
+                and comments_checked_at <= refresh_before
+            )
+            repair_due = bool(
                 self.auto_repair_partial_coverage
                 and post.coverage_status != CoverageStatus.FULL
                 and post.comment_backfill_completed_at is None
-                and refresh_before is not None
-                and comments_checked_at is not None
-                and comments_checked_at <= refresh_before
+                and head_refresh_due
             )
 
             # Zero comments are authoritative from the Reel metadata and do not justify a second
@@ -545,12 +556,12 @@ class InstagramMonitor:
                 provider_changed
                 or comments_checked_at is None
                 or post.last_synced_remote_count != reel.comments_count
-                or refresh_due
+                or head_refresh_due
                 or post.comment_backfill_cursor is not None
             )
             is_backfill = bool(
                 post.comment_backfill_cursor is not None
-                or (refresh_due and post.last_synced_remote_count == reel.comments_count)
+                or (repair_due and post.last_synced_remote_count == reel.comments_count)
             )
 
             known_ids = set(
@@ -645,7 +656,11 @@ class InstagramMonitor:
                 resolved_coverage = CoverageStatus(coverage_status)
             except ValueError:
                 resolved_coverage = CoverageStatus.UNKNOWN
-            if stored_count >= remote_comments_count:
+            if next_cursor is not None:
+                # Historic stored IDs can include deleted comments. Their
+                # count cannot prove coverage while a provider page remains.
+                resolved_coverage = CoverageStatus.PARTIAL
+            elif stored_count >= remote_comments_count:
                 resolved_coverage = CoverageStatus.FULL
             elif stopped_on_known_comment:
                 # Incremental sync completed as soon as a known comment was encountered. Preserve

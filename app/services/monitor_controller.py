@@ -108,13 +108,13 @@ class MonitorController:
         self.last_cycle_started_at = datetime.now(UTC)
         self.last_error = None
         run_id = None
-        if self.run_service is not None:
-            run_id = await self.run_service.start(
-                self._cycle_trigger or "unknown",
-                requested_credit_budget=self._requested_credit_budget,
-                effective_credit_budget=self._effective_credit_budget,
-            )
         try:
+            if self.run_service is not None:
+                run_id = await self.run_service.start(
+                    self._cycle_trigger or "unknown",
+                    requested_credit_budget=self._requested_credit_budget,
+                    effective_credit_budget=self._effective_credit_budget,
+                )
             force = (self._cycle_trigger or "") in {"web", "manual", "bot", "once"}
             parameters = inspect.signature(self.monitor.run_cycle).parameters
             kwargs: dict[str, Any] = {}
@@ -127,6 +127,11 @@ class MonitorController:
             stats = await self.monitor.run_cycle(**kwargs)
             self.last_stats = stats
             self.cycles_completed += 1
+            if stats.errors:
+                self.last_error = (
+                    f"Проверка завершена с ошибками ({stats.errors}). "
+                    "Полученные комментарии сохранены; проверьте журнал источников."
+                )
             self._progress.set_done()
             self._progress.update_stats(
                 competitors_checked=stats.competitors_checked,
@@ -142,10 +147,17 @@ class MonitorController:
                 stats,
             )
             return stats
+        except asyncio.CancelledError:
+            self.last_error = "Проверка прервана остановкой сервера. Сохранённые сигналы доступны."
+            if run_id is not None and self.run_service is not None:
+                await asyncio.shield(self.run_service.finish_failure(
+                    run_id, RuntimeError(self.last_error)
+                ))
+            raise
         except Exception as exc:
+            self.last_error = f"{type(exc).__name__}: {str(exc)[:200]}"
             if run_id is not None and self.run_service is not None:
                 await self.run_service.finish_failure(run_id, exc)
-            self.last_error = f"{type(exc).__name__}: {str(exc)[:200]}"
             logger.exception(
                 "controlled_poll_cycle_failed trigger=%s error_type=%s",
                 self._cycle_trigger,

@@ -287,6 +287,7 @@ class BudgetedInstagramProvider(InstagramProvider):
         coverage = "UNKNOWN"
         page_cursor = cursor
         provider_name = self.inner.name
+        fetch_error: str | None = None
 
         while page_cap is None or pages_fetched < page_cap:
             remaining_before = self.scan_budget.remaining if self.scan_budget is not None else 1
@@ -326,6 +327,13 @@ class BudgetedInstagramProvider(InstagramProvider):
                     details=details,
                     uncertain_reason="comment_batch_failed_without_provider_credit_observation",
                 )
+                if pages_fetched > 0:
+                    # Keep already paid-for pages and the failed request's
+                    # cursor. A later scan retries exactly this failed page.
+                    fetch_error = ProviderCallUncertainError.__name__
+                    coverage = "PARTIAL"
+                    cursor_exhausted = False
+                    break
                 raise ProviderCallUncertainError(
                     "Comment batch failed after delivery started without provider credit proof"
                 ) from exc
@@ -358,6 +366,7 @@ class BudgetedInstagramProvider(InstagramProvider):
             coverage = result.coverage_status or coverage
             cursor_exhausted = bool(result.cursor_exhausted)
             stopped_on_known = stopped_on_known or bool(result.stopped_on_known_comment)
+            fetch_error = result.fetch_error or fetch_error
             for comment in result.comments:
                 if comment.platform_comment_id in seen_ids:
                     continue
@@ -384,6 +393,7 @@ class BudgetedInstagramProvider(InstagramProvider):
             cursor_exhausted=cursor_exhausted,
             stopped_on_known_comment=stopped_on_known,
             next_cursor=page_cursor,
+            fetch_error=fetch_error,
         )
 
     async def _settle_failed_call(

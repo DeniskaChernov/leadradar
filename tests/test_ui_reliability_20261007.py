@@ -1,0 +1,300 @@
+"""Execute production JavaScript in Chromium with every HTTP request mocked."""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from urllib.parse import urlsplit
+
+import pytest
+import pytest_asyncio
+from playwright.async_api import async_playwright
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
+# Expose closures only in the test copy; deployed JavaScript has no test API.
+SCRIPT = SCRIPT.rsplit("})();", 1)[0] + """
+  window.uiTest = { api, enhanceMotion, applyScanProgress, runScan, reloadSoon, restoreViewState,
+    pollRadarFeed, notePollingFailure, notePollingSuccess, syncScanButtonsFromPreview };
+})();
+"""
+HTML = """<!doctype html><html><head><meta charset="utf-8"></head><body data-page="/radar" data-scan-vertical="FURNITURE">
+<section data-motion-root><article id="content">Комментарии и лиды</article></section>
+<button id="scan-main" data-scan>Найти лидов</button>
+<button id="scan-other" data-scan>Проверить сейчас</button>
+<button id="scan-paused" data-scan disabled>Поиск приостановлен</button>
+<div data-live-status-pill></div>
+<div data-poll-connection-status hidden><span data-poll-connection-text></span>
+<a data-poll-login href="/auth" hidden>Войти снова</a></div>
+<div id="toast"><span data-toast-message></span></div>
+</body></html>"""
+
+
+@pytest_asyncio.fixture
+async def ui_page():
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(headless=True)
+        page = await browser.new_page()
+        state = {"feed_status": 200, "scan_posts": 0, "preview_gets": 0}
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+
+        async def route_request(route):
+            path = urlsplit(route.request.url).path
+            if path == "/ui-reliability":
+                await route.fulfill(body=HTML, content_type="text/html")
+                return
+            if path == "/api/scan/preview":
+                state["preview_gets"] += 1
+                payload = {
+                    "search_enabled": True, "is_live": False,
+                    "can_start": True, "requested_credits": 5,
+                }
+            elif path == "/api/scan":
+                state["scan_posts"] += 1
+                payload = {"ok": True, "message": "Проверка запущена"}
+            else:
+                payload = {"cycle_running": False, "changes": [], "hot_leads": []}
+            status = state["feed_status"] if path == "/api/radar/feed" else 200
+            await route.fulfill(
+                status=status, body=json.dumps(payload), content_type="application/json",
+            )
+
+        await page.route("**/*", route_request)
+        await page.goto("http://127.0.0.1/ui-reliability")
+        # Deterministic explicit polls; no periodic/background network in the tests.
+        await page.evaluate("window.setInterval = () => 0")
+        yield page, state, errors
+        await browser.close()
+
+
+@pytest.mark.parametrize("observer", ["missing", "constructor_error", "observe_error"])
+async def test_motion_failure_keeps_content_visible_and_handlers_work(ui_page, observer):
+    page, _state, errors = ui_page
+    replacements = {
+        "missing": "window.IntersectionObserver = undefined",
+        "constructor_error": "window.IntersectionObserver = class { constructor() { throw new Error('IO'); } }",
+        "observe_error": "window.IntersectionObserver = class { observe() { throw new Error('observe'); } disconnect() {} }",
+    }
+    await page.evaluate("() => { " + replacements[observer] + "; }")
+    await page.add_style_tag(path=str(PROJECT_ROOT / "app/web/static/app.css"))
+    await page.add_script_tag(content=SCRIPT)
+    await page.wait_for_function("Boolean(window.uiTest)")
+    assert await page.locator("#content").evaluate("el => getComputedStyle(el).opacity") == "1"
+    assert not await page.locator("html").evaluate("el => el.classList.contains('motion-ready')")
+    assert not errors
+
+
+async def test_denied_storage_does_not_break_initialization(ui_page):
+    page, _state, errors = ui_page
+    await page.evaluate("""Object.defineProperty(window, 'sessionStorage', {
+      get() { throw new DOMException('Blocked', 'SecurityError'); }
+    })""")
+    await page.add_script_tag(content=SCRIPT)
+    await page.wait_for_function("Boolean(window.uiTest)")
+    assert not errors
+
+
+async def test_reduced_motion_does_not_hide_content(ui_page):
+    page, _state, errors = ui_page
+    await page.emulate_media(reduced_motion="reduce")
+    await page.add_style_tag(path=str(PROJECT_ROOT / "app/web/static/app.css"))
+    await page.add_script_tag(content=SCRIPT)
+    assert await page.locator("#content").evaluate("el => getComputedStyle(el).opacity") == "1"
+    assert not await page.locator("html").evaluate("el => el.classList.contains('motion-ready')")
+    assert not errors
+
+
+@pytest.mark.parametrize("reduced_motion", ["reduce", "no-preference"])
+async def test_scroll_position_is_saved_and_restored_without_animation(ui_page, reduced_motion):
+    page, _state, errors = ui_page
+    await page.emulate_media(reduced_motion=reduced_motion)
+    await page.add_script_tag(content=SCRIPT)
+    saved = await page.evaluate("""() => {
+      document.body.style.minHeight = '3000px';
+      window.scrollTo(0, 650);
+      uiTest.reloadSoon(60000);
+      const saved = sessionStorage.getItem('lr:scroll-y');
+      window.scrollTo(0, 0);
+      uiTest.restoreViewState();
+      return saved;
+    }""")
+    assert saved == "650"
+    await page.wait_for_function("window.scrollY === 650")
+    assert await page.evaluate("sessionStorage.getItem('lr:scroll-y')") is None
+    assert not errors
+
+
+async def test_api_timeout_aborts_one_mutation_and_returns_clear_message(ui_page):
+    page, _state, _errors = ui_page
+    await page.add_script_tag(content=SCRIPT)
+    result = await page.evaluate("""async () => {
+      let calls = 0;
+      let aborted = false;
+      window.fetch = (_url, options) => {
+        calls += 1;
+        return new Promise((_resolve, reject) => {
+          options.signal.addEventListener('abort', () => {
+            aborted = true;
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        });
+      };
+      let message = '';
+      try { await uiTest.api('/api/scan', {method: 'POST', body: '{}', timeoutMs: 10}); }
+      catch (error) { message = error.message; }
+      return {calls, aborted, message};
+    }""")
+    assert result["calls"] == 1
+    assert result["aborted"] is True
+    assert "действие могло выполниться" in result["message"]
+
+
+async def test_cloudflare_html_error_is_not_dumped_into_user_message(ui_page):
+    page, _state, _errors = ui_page
+    await page.add_script_tag(content=SCRIPT)
+    message = await page.evaluate("""async () => {
+      window.fetch = async () => new Response('<html><script>error page</script></html>',
+        {status: 502, headers: {'Content-Type': 'text/html'}});
+      try { await uiTest.api('/api/scan/progress'); }
+      catch (error) { return error.message; }
+    }""")
+    assert "502" in message
+    assert "<html>" not in message
+
+
+async def test_poll_disconnect_and_recovery_are_visible(ui_page):
+    page, state, _errors = ui_page
+    await page.add_script_tag(content=SCRIPT)
+    await page.evaluate("uiTest.pollRadarFeed()")
+    state["feed_status"] = 502
+    await page.evaluate("uiTest.pollRadarFeed()")
+    await page.evaluate("uiTest.pollRadarFeed()")
+    assert await page.locator("[data-poll-connection-status]").is_visible()
+    assert "последние полученные данные" in await page.locator("[data-poll-connection-text]").inner_text()
+    assert await page.locator("[data-poll-login]").is_hidden()
+    state["feed_status"] = 200
+    await page.evaluate("uiTest.pollRadarFeed()")
+    assert await page.locator("[data-poll-connection-status]").is_hidden()
+
+
+async def test_expired_session_has_login_action(ui_page):
+    page, state, _errors = ui_page
+    await page.add_script_tag(content=SCRIPT)
+    await page.evaluate("uiTest.pollRadarFeed()")
+    state["feed_status"] = 401
+    await page.evaluate("uiTest.pollRadarFeed()")
+    assert "Сессия истекла" in await page.locator("[data-poll-connection-text]").inner_text()
+    assert await page.locator("[data-poll-login]").is_visible()
+
+
+async def test_scan_start_is_locked_and_progress_survives_post_response(ui_page):
+    page, _state, _errors = ui_page
+    await page.add_script_tag(content=SCRIPT)
+    result = await page.evaluate("""async () => {
+      const originalFetch = window.fetch;
+      let releaseScan;
+      let scanCalls = 0;
+      window.fetch = (url, options) => {
+        if (url !== '/api/scan') return originalFetch(url, options);
+        scanCalls += 1;
+        return new Promise(resolve => { releaseScan = resolve; });
+      };
+      const main = document.querySelector('#scan-main');
+      const other = document.querySelector('#scan-other');
+      const first = uiTest.runScan(main, 5);
+      while (!releaseScan) await new Promise(resolve => setTimeout(resolve, 1));
+      const otherLocked = other.disabled;
+      uiTest.syncScanButtonsFromPreview({search_enabled: true, is_live: false});
+      const previewKeptLock = other.disabled;
+      await uiTest.runScan(other, 5);
+      uiTest.applyScanProgress({cycle_running: true, progress: {percent: 42}});
+      releaseScan(new Response(JSON.stringify({ok: false, message: 'Проверка уже выполняется'}),
+        {headers: {'Content-Type': 'application/json'}}));
+      await first;
+      const progressKept = main.disabled && main.textContent === 'Проверка 42%';
+      uiTest.applyScanProgress({cycle_running: false});
+      return {scanCalls, otherLocked, previewKeptLock, progressKept,
+        normalEnabled: !main.disabled, pausedDisabled: document.querySelector('#scan-paused').disabled,
+        restoredLabel: main.textContent};
+    }""")
+    assert result == {
+        "scanCalls": 1, "otherLocked": True, "previewKeptLock": True,
+        "progressKept": True, "normalEnabled": True, "pausedDisabled": True,
+        "restoredLabel": "Найти лидов",
+    }
+
+
+async def test_idle_progress_does_not_poll_budget_repeatedly(ui_page):
+    page, state, _errors = ui_page
+    await page.add_script_tag(content=SCRIPT)
+    before = state["preview_gets"]
+    await page.evaluate("""() => {
+      for (let i = 0; i < 20; i += 1) uiTest.applyScanProgress({cycle_running: false});
+    }""")
+    assert state["preview_gets"] == before
+
+
+async def test_scan_timeout_refreshes_state_without_reposting(ui_page):
+    page, _state, _errors = ui_page
+    await page.add_script_tag(content=SCRIPT)
+    await page.evaluate("uiTest.pollRadarFeed()")
+    result = await page.evaluate("""async () => {
+      const originalTimer = window.setTimeout;
+      window.setTimeout = (callback, delay) => originalTimer(callback, delay === 90000 ? 10 : delay);
+      let posts = 0;
+      let refreshed = 0;
+      window.fetch = (url, options) => {
+        if (url === '/api/scan') {
+          posts += 1;
+          return new Promise((_resolve, reject) => {
+            options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+          });
+        }
+        let payload = {search_enabled: true, is_live: false};
+        if (String(url).includes('/api/radar/feed')) {
+          refreshed += 1;
+          payload = {cycle_running: true, progress: {percent: 37}, hot_leads: [], changes: []};
+        }
+        return Promise.resolve(new Response(JSON.stringify(payload),
+          {headers: {'Content-Type': 'application/json'}}));
+      };
+      const button = document.querySelector('#scan-main');
+      await uiTest.runScan(button, 5);
+      return {posts, refreshed, disabled: button.disabled, label: button.textContent};
+    }""")
+    assert result == {"posts": 1, "refreshed": 1, "disabled": True, "label": "Проверка 37%"}
+
+
+async def test_fast_accepted_scan_still_shows_completion(ui_page):
+    page, _state, _errors = ui_page
+    await page.add_script_tag(content=SCRIPT)
+    await page.evaluate("uiTest.pollRadarFeed()")
+    await page.evaluate("""async () => {
+      await uiTest.runScan(document.querySelector('#scan-main'), 5);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      await uiTest.pollRadarFeed();
+    }""")
+    assert "Поиск завершён" in await page.locator("[data-toast-message]").inner_text()
+
+
+async def test_keyboard_focus_is_visible_on_hidden_choice_input(ui_page):
+    page, _state, _errors = ui_page
+    await page.add_style_tag(path=str(PROJECT_ROOT / "app/web/static/app.css"))
+    await page.locator("#content").evaluate("""el => {
+      el.innerHTML = '<label class="find-chip"><input type="checkbox">Мебель</label>';
+    }""")
+    await page.locator(".find-chip input").focus()
+    assert await page.locator(".find-chip").evaluate("el => getComputedStyle(el).outlineWidth") == "3px"
+
+
+def test_asset_cache_versions_match_every_shell():
+    sw = (PROJECT_ROOT / "app/web/static/sw.js").read_text(encoding="utf-8")
+    version = re.search(r'const CACHE_VERSION = "([^"]+)"', sw).group(1)
+    for name in ["base.html", "auth.html"]:
+        template = (PROJECT_ROOT / "app/web/templates" / name).read_text(encoding="utf-8")
+        assert f"app.js?v={version}" in template
+        assert f"app.css?v={version}" in template
+    offline = (PROJECT_ROOT / "app/web/static/offline.html").read_text(encoding="utf-8")
+    assert f"app.css?v={version}" in offline

@@ -109,7 +109,7 @@ async def test_baseline_and_incremental_use_small_page_limits(session_factory):
 
 
 @pytest.mark.asyncio
-async def test_scrapecreators_stops_pagination_on_known_comment():
+async def test_scrapecreators_preserves_pagination_past_known_comments():
     requested_cursors: list[str | None] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -151,10 +151,10 @@ async def test_scrapecreators_stops_pagination_on_known_comment():
     finally:
         await client.aclose()
 
-    assert result.pages_fetched == 1
-    assert result.stopped_on_known_comment is True
-    assert requested_cursors == [None]
-    assert {item.platform_comment_id for item in result.comments} == {"new-2", "known-1"}
+    assert result.pages_fetched == 2
+    assert result.stopped_on_known_comment is False
+    assert requested_cursors == [None, "page-2"]
+    assert {item.platform_comment_id for item in result.comments} == {"new-2", "known-1", "old-0"}
 
 
 class ProfileProvider(InstagramProvider):

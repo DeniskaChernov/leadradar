@@ -35,6 +35,7 @@ from app.services.ai_service import (
 )
 from app.services.audience_service import AudienceEngine
 from app.services.contact_service import ContactService
+from app.services.database_runtime_lock import DatabaseRuntimeLock
 from app.services.external_safety_recovery_service import ExternalSafetyRecoveryService
 from app.services.instagram_monitor import InstagramMonitor
 from app.services.lead_analysis_pipeline import LeadAnalysisPipeline
@@ -102,6 +103,16 @@ async def _serve_web_until_shutdown(
 
 async def run(*, once: bool = False, web_only: bool = False) -> int:
     settings = get_settings()
+    with DatabaseRuntimeLock(settings.database_url) as ownership:
+        return await _run_owned(
+            settings, once=once, web_only=web_only, exclusive_runtime=ownership.exclusive,
+        )
+
+
+async def _run_owned(
+    settings: Settings, *, once: bool = False, web_only: bool = False,
+    exclusive_runtime: bool = False,
+) -> int:
     backup = backup_sqlite_database(settings)
     if backup is not None:
         print(f"Database backup: {backup}")
@@ -110,6 +121,13 @@ async def run(*, once: bool = False, web_only: bool = False) -> int:
     init_error_monitoring(settings)
     engine = create_engine(settings)
     session_factory = create_session_factory(engine)
+    if exclusive_runtime:
+        interrupted_runs = await MonitorRunService(
+            session_factory, settings.instagram_provider
+        ).recover_interrupted_runs()
+        logger.info("interrupted_monitor_runs_recovered count=%s", interrupted_runs)
+    else:
+        logger.info("monitor_run_recovery_skipped reason=exclusive_ownership_unavailable")
     opening_result = await PlaceOpeningService(session_factory).backfill_saved_leads(
         max_age_days=settings.instagram_signal_max_age_days
     )

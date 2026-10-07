@@ -1,4 +1,15 @@
 (() => {
+  // Storage is optional in embedded/private browsers; it must not stop the UI.
+  const sessionGet = (key) => {
+    try { return sessionStorage.getItem(key); } catch (_) { return null; }
+  };
+  const sessionSet = (key, value) => {
+    try { sessionStorage.setItem(key, value); } catch (_) {}
+  };
+  const sessionRemove = (key) => {
+    try { sessionStorage.removeItem(key); } catch (_) {}
+  };
+
   if (window.lucide) {
     try {
       window.lucide.createIcons({ attrs: { 'aria-hidden': 'true', 'stroke-width': 1.9 } });
@@ -235,12 +246,25 @@
 
   const api = async (url, options = {}) => {
     const method = (options.method || 'GET').toUpperCase();
+    const controller = new AbortController();
+    const timeoutMs = options.timeoutMs ?? (method === 'GET' || method === 'HEAD' ? 30000 : 90000);
+    let timedOut = false;
+    const timer = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    const externalSignal = options.signal;
+    const abort = () => controller.abort();
+    if (externalSignal?.aborted) abort();
+    else externalSignal?.addEventListener('abort', abort, { once: true });
     const headers = { ...(options.headers || {}) };
     const fetchOptions = {
       credentials: 'same-origin',
       method,
       ...options,
+      signal: controller.signal,
     };
+    delete fetchOptions.timeoutMs;
     if (method === 'GET' || method === 'HEAD') {
       delete fetchOptions.body;
     } else if (!(options.body instanceof FormData)) {
@@ -248,16 +272,35 @@
     }
     if (csrfToken && !headers['X-CSRF-Token']) headers['X-CSRF-Token'] = csrfToken;
     fetchOptions.headers = headers;
-    const response = await fetch(url, fetchOptions);
-    const data = await readResponse(response);
-    if (!response.ok) {
-      if (response.status === 429) {
-        const retryAfter = Number(response.headers.get('Retry-After') || data.retry_after || 30);
-        throw new Error(data.detail || `Слишком много запросов. Подождите ${retryAfter} сек.`);
+    try {
+      const response = await fetch(url, fetchOptions);
+      const data = await readResponse(response);
+      if (!response.ok) {
+        const json = (response.headers.get('content-type') || '').includes('application/json');
+        let message = json && typeof data.detail === 'string' ? data.detail : '';
+        if (response.status === 429) {
+          const retryAfter = Number(response.headers.get('Retry-After') || data.retry_after || 30);
+          message ||= `Слишком много запросов. Подождите ${retryAfter} сек.`;
+        }
+        message ||= data.message || `Сервер вернул ошибку ${response.status}. Обновите состояние и повторите позже.`;
+        const error = new Error(message);
+        error.status = response.status;
+        throw error;
       }
-      throw new Error(data.detail || data.message || 'Не удалось выполнить действие');
+      return data;
+    } catch (error) {
+      if (timedOut) {
+        throw new Error(method === 'GET' || method === 'HEAD'
+          ? 'Сервер не ответил вовремя. Проверьте соединение.'
+          : 'Время ожидания истекло. Обновите состояние: действие могло выполниться.');
+      }
+      if (error instanceof TypeError) throw new Error('Нет связи с сервером. Проверьте соединение.');
+      if (error instanceof SyntaxError) throw new Error('Не удалось прочитать ответ сервера. Обновите состояние.');
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      externalSignal?.removeEventListener('abort', abort);
     }
-    return data;
   };
 
   const confirmAction = (title, text, options = {}) => new Promise((resolve) => {
@@ -348,24 +391,33 @@
 
   const enhanceMotion = () => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (typeof window.IntersectionObserver !== 'function') return;
     // Канбан не участвует: translateY/scale ломает выравнивание колонок и даёт наложение.
     const elements = document.querySelectorAll(
       '[data-motion-root]:not([data-kanban-board]) > *, .cards > *, .task-list-page > *, .catalog-grid > *, .lead-layout > .panel, .stage-actions > .stage-btn, .funnel-track-step, .quick-actions > *, .metrics > *, .deal-grid > *'
     );
     if (!elements.length) return;
-    document.documentElement.classList.add('motion-ready');
-    elements.forEach((element, index) => {
-      element.dataset.reveal = '';
-      element.style.setProperty('--reveal-delay', `${Math.min(index % 8, 7) * 45}ms`);
-    });
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        entry.target.classList.add('is-visible');
-        observer.unobserve(entry.target);
+    let observer;
+    try {
+      observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        });
+      }, { threshold: 0.01, rootMargin: '0px 0px -8px' });
+      elements.forEach((element, index) => {
+        element.dataset.reveal = '';
+        element.style.setProperty('--reveal-delay', `${Math.min(index % 8, 7) * 45}ms`);
+        observer.observe(element);
       });
-    }, { threshold: 0.01, rootMargin: '0px 0px -8px' });
-    elements.forEach((element) => observer.observe(element));
+      document.documentElement.classList.add('motion-ready');
+    } catch (_) {
+      try { observer?.disconnect(); } catch (_) {}
+      document.documentElement.classList.remove('motion-ready');
+      elements.forEach((element) => element.classList.add('is-visible'));
+      return;
+    }
     // Сразу показать уже видимые блоки — иначе opacity:0 до первого callback IO.
     requestAnimationFrame(() => {
       const vh = window.innerHeight || document.documentElement.clientHeight;
@@ -381,12 +433,12 @@
   };
 
   const restoreViewState = () => {
-    const key = sessionStorage.getItem('lr:focus');
-    const y = Number(sessionStorage.getItem('lr:scroll-y') || 0);
-    const kanbanX = Number(sessionStorage.getItem('lr:kanban-x') || 0);
-    sessionStorage.removeItem('lr:focus');
-    sessionStorage.removeItem('lr:scroll-y');
-    sessionStorage.removeItem('lr:kanban-x');
+    const key = sessionGet('lr:focus');
+    const y = Number(sessionGet('lr:scroll-y') || 0);
+    const kanbanX = Number(sessionGet('lr:kanban-x') || 0);
+    sessionRemove('lr:focus');
+    sessionRemove('lr:scroll-y');
+    sessionRemove('lr:kanban-x');
     const apply = () => {
       if (y) window.scrollTo({ top: y, behavior: 'instant' });
       const kanban = document.querySelector('[data-kanban-board]');
@@ -739,8 +791,8 @@
   const initKanbanLoadingState = () => {
     const board = document.querySelector('[data-kanban-board]');
     if (!(board instanceof HTMLElement)) return;
-    if (sessionStorage.getItem('lr:kanban-loading') === '1') {
-      sessionStorage.removeItem('lr:kanban-loading');
+    if (sessionGet('lr:kanban-loading') === '1') {
+      sessionRemove('lr:kanban-loading');
       board.classList.add('is-loading');
       window.setTimeout(() => board.classList.remove('is-loading'), 420);
     }
@@ -874,11 +926,11 @@
   let lastActionEl = null;
 
   const reloadSoon = (delay = 450, focusSelector = '') => {
-    sessionStorage.setItem('lr:scroll-y', String(window.scrollY));
+    sessionSet('lr:scroll-y', String(window.scrollY));
     const kanban = document.querySelector('[data-kanban-board]');
     if (kanban instanceof HTMLElement) {
-      sessionStorage.setItem('lr:kanban-x', String(kanban.scrollLeft));
-      sessionStorage.setItem('lr:kanban-loading', '1');
+      sessionSet('lr:kanban-x', String(kanban.scrollLeft));
+      sessionSet('lr:kanban-loading', '1');
     }
     let focus = focusSelector;
     if (!focus) {
@@ -886,7 +938,7 @@
       focus = focusKeyForElement(active instanceof HTMLElement ? active : null)
         || focusKeyForElement(lastActionEl);
     }
-    if (focus) sessionStorage.setItem('lr:focus', focus);
+    if (focus) sessionSet('lr:focus', focus);
     setTimeout(() => location.reload(), delay);
   };
 
@@ -940,7 +992,7 @@
       && (!preview.is_live || (preview.live_enabled && preview.can_start));
     document.querySelectorAll('[data-scan], [data-scan-quick-go]').forEach((btn) => {
       if (!(btn instanceof HTMLButtonElement)) return;
-      if (btn.dataset.scanBusy === '1') return;
+      if (btn.dataset.scanBusy === '1' || btn.dataset.scanStartBusy === '1') return;
       btn.disabled = !scanAllowed;
     });
   };
@@ -1037,8 +1089,20 @@
     requestAnimationFrame(() => cancel.focus());
   });
 
+  let scanStartPending = false;
   const runScan = async (triggerButton, requestedCredits = null) => {
+    if (scanStartPending) return;
+    scanStartPending = true;
+    let submitted = false;
     const old = triggerButton?.textContent || 'Проверить сейчас';
+    const buttons = [...document.querySelectorAll('[data-scan], [data-scan-quick-go]')];
+    buttons.forEach((button) => {
+      button.dataset.scanStartBusy = '1';
+      button.dataset.scanStartDisabled = button.disabled ? '1' : '0';
+      button.dataset.scanStartLabel = button.textContent || '';
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+    });
     if (triggerButton) {
       triggerButton.disabled = true;
       triggerButton.textContent = 'Проверяю лимиты…';
@@ -1082,6 +1146,7 @@
         credits = Number(preview.requested_credits);
       }
       if (triggerButton) triggerButton.textContent = 'Запускаю…';
+      submitted = true;
       const data = await api('/api/scan', {
         method: 'POST',
         body: JSON.stringify({
@@ -1092,6 +1157,9 @@
       });
       toast(data.message || 'Поиск запущен');
       if (data.ok) {
+        // Remember the accepted cycle even if it finishes before the first poll.
+        cycleWasRunning = true;
+        scanSummaryShownForCycle = false;
         try {
           sessionStorage.setItem('lr:find-leads-pending-results', '1');
         } catch (_error) {
@@ -1106,9 +1174,22 @@
       }
     } catch (error) {
       toast(error.message, true);
+      if (submitted) {
+        // A timed-out POST may have been accepted. Refresh state without retrying it.
+        if ((document.body.dataset.page || '').startsWith('/radar')) await pollRadarFeed();
+        else await pollScanProgress();
+      }
     } finally {
-      if (triggerButton) {
-        triggerButton.disabled = false;
+      scanStartPending = false;
+      buttons.forEach((button) => {
+        const wasDisabled = button.dataset.scanStartDisabled === '1';
+        delete button.dataset.scanStartBusy;
+        delete button.dataset.scanStartDisabled;
+        delete button.dataset.scanStartLabel;
+        button.disabled = button.dataset.scanBusy === '1' || wasDisabled;
+        button.setAttribute('aria-busy', String(button.dataset.scanBusy === '1'));
+      });
+      if (triggerButton && triggerButton.dataset.scanBusy !== '1') {
         triggerButton.textContent = old;
       }
     }
@@ -1747,7 +1828,8 @@
     const analysisBusy = Number(payload.analysis_queue || 0) > 0
       || Number(payload.analysis_in_flight || 0) > 0;
     const busy = cycleRunning || analysisBusy;
-    const percent = Number(progress.percent || 0);
+    const rawPercent = Number(progress.percent || 0);
+    const percent = Number.isFinite(rawPercent) ? Math.min(100, Math.max(0, rawPercent)) : 0;
     const phase = String(progress.phase || 'idle');
     const phaseLabel = progress.phase_label || '';
     const detail = progress.detail || '';
@@ -1880,25 +1962,31 @@
       }
     }
 
+    let scanFinished = false;
     document.querySelectorAll('[data-scan]').forEach((btn) => {
       if (!(btn instanceof HTMLButtonElement)) return;
       if (cycleRunning) {
         if (!btn.dataset.scanBusy) {
           btn.dataset.scanBusy = '1';
-          btn.dataset.wasDisabled = btn.disabled ? '1' : '0';
-          btn.dataset.scanLabel = btn.textContent || '';
+          btn.dataset.wasDisabled = btn.dataset.scanStartBusy === '1'
+            ? btn.dataset.scanStartDisabled : (btn.disabled ? '1' : '0');
+          btn.dataset.scanLabel = btn.dataset.scanStartLabel || btn.textContent || '';
         }
         btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
         btn.textContent = `Проверка ${percent}%`;
       } else if (btn.dataset.scanBusy) {
+        scanFinished = true;
+        const wasDisabled = btn.dataset.wasDisabled === '1';
         btn.textContent = btn.dataset.scanLabel || btn.textContent;
         delete btn.dataset.scanBusy;
         delete btn.dataset.scanLabel;
         delete btn.dataset.wasDisabled;
-        btn.disabled = false;
+        btn.disabled = btn.dataset.scanStartBusy === '1' || wasDisabled;
+        btn.setAttribute('aria-busy', String(btn.dataset.scanStartBusy === '1'));
       }
     });
-    if (!cycleRunning) {
+    if (scanFinished) {
       const budgetRoot = document.querySelector('.radar-budget-card, #scan-quick');
       if (budgetRoot) refreshScanBudgetPreview(budgetRoot);
     }
@@ -1920,6 +2008,27 @@
   // busy→idle на каждом poll давал бесконечный location.reload().
   let radarWasBusy = false;
   let radarQuietReloadScheduled = false;
+  let pollingFailures = 0;
+
+  const notePollingSuccess = () => {
+    pollingFailures = 0;
+    const status = document.querySelector('[data-poll-connection-status]');
+    if (status) status.hidden = true;
+  };
+
+  const notePollingFailure = (error) => {
+    pollingFailures += 1;
+    if (pollingFailures < 2 && error.status !== 401) return;
+    const status = document.querySelector('[data-poll-connection-status]');
+    if (!status) return;
+    status.hidden = false;
+    const text = status.querySelector('[data-poll-connection-text]');
+    const login = status.querySelector('[data-poll-login]');
+    if (login) login.hidden = error.status !== 401;
+    if (text) text.textContent = error.status === 401
+      ? 'Сессия истекла. Войдите снова, чтобы видеть актуальный статус поиска.'
+      : 'Статус поиска временно недоступен. Показаны последние полученные данные; соединение восстанавливается.';
+  };
 
   const showScanSummary = (payload) => {
     if (scanSummaryShownForCycle) return;
@@ -1935,7 +2044,7 @@
 
     toast(
       payload.last_error
-        ? `Поиск остановился · ${String(payload.last_error).slice(0, 80)}`
+        ? `Проверка завершена с ошибкой · ${String(payload.last_error).slice(0, 80)}`
         : `Поиск завершён · ${leads} лидов · ${comments} сигналов · ${competitors} источников`,
       Boolean(payload.last_error)
     );
@@ -2009,6 +2118,7 @@
     radarPollBusy = true;
     try {
       const feed = await api(withScanVertical('/api/radar/feed?limit=8'), { method: 'GET' });
+      notePollingSuccess();
       notifyNewRadarChanges(feed);
       renderRadarFeed(feed);
       updateRadarLiveBanner(feed);
@@ -2026,8 +2136,8 @@
       }
       if (stillBusy) radarQuietReloadScheduled = false;
       radarWasBusy = stillBusy;
-    } catch (_error) {
-      /* тихий poll */
+    } catch (error) {
+      notePollingFailure(error);
     } finally {
       radarPollBusy = false;
     }
@@ -2039,13 +2149,14 @@
     scanProgressBusy = true;
     try {
       const payload = await api('/api/scan/progress', { method: 'GET' });
+      notePollingSuccess();
       applyScanProgress(payload);
       noteCycleTransition(payload);
       radarWasBusy = Boolean(payload.cycle_running)
         || Number(payload.analysis_queue || 0) > 0
         || Number(payload.analysis_in_flight || 0) > 0;
-    } catch (_error) {
-      /* тихий poll */
+    } catch (error) {
+      notePollingFailure(error);
     } finally {
       scanProgressBusy = false;
     }

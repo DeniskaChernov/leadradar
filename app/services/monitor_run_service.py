@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import CostEvent, MonitorRun, MonitorRunStatus
@@ -13,7 +13,9 @@ from app.services.provider_credit_budget_service import ProviderCreditBudgetServ
 
 
 class MonitorRunService:
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession], provider_name: str) -> None:
+    def __init__(
+        self, session_factory: async_sessionmaker[AsyncSession], provider_name: str
+    ) -> None:
         self.session_factory = session_factory
         self.provider_name = provider_name
         self.primary_provider = provider_name.split("+", maxsplit=1)[0]
@@ -35,12 +37,8 @@ class MonitorRunService:
                 stats_json={},
                 requested_credit_budget=requested_credit_budget,
                 effective_credit_budget=effective_credit_budget,
-                provider_balance_before=(
-                    budget.credits_remaining if budget is not None else None
-                ),
-                monthly_used_before=(
-                    budget.used_this_month if budget is not None else None
-                ),
+                provider_balance_before=(budget.credits_remaining if budget is not None else None),
+                monthly_used_before=(budget.used_this_month if budget is not None else None),
                 adaptive_policy_version=AdaptiveMonitoringPolicy.VERSION,
                 started_at=datetime.now(UTC),
             )
@@ -49,55 +47,106 @@ class MonitorRunService:
             return run.id
 
     async def finish_success(self, run_id: int, stats: CycleStats) -> None:
-        actual, operations = await self._run_usage(run_id)
+        ended_at = datetime.now(UTC)
+        actual, operations = await self._run_usage(run_id, ended_at=ended_at)
         budget = await self.budget_service.snapshot(self.primary_provider)
         async with self.session_factory() as session:
-            run = await session.get(MonitorRun, run_id)
-            if run is None:
-                return
-            run.status = MonitorRunStatus.SUCCESS
-            run.stats_json = asdict(stats)
-            run.actual_credits_spent = actual
-            run.operations_json = operations
-            run.provider_balance_after = (
-                budget.credits_remaining if budget is not None else None
+            await session.execute(
+                update(MonitorRun)
+                .where(
+                    MonitorRun.id == run_id,
+                    MonitorRun.status == MonitorRunStatus.RUNNING,
+                )
+                .values(
+                    status=MonitorRunStatus.FAILED if stats.errors else MonitorRunStatus.SUCCESS,
+                    error=(
+                        f"Ошибки источников: {stats.errors}. Полученные сигналы сохранены."
+                        if stats.errors
+                        else None
+                    ),
+                    stats_json=asdict(stats),
+                    actual_credits_spent=actual,
+                    operations_json=operations,
+                    provider_balance_after=budget.credits_remaining if budget is not None else None,
+                    monthly_used_after=budget.used_this_month if budget is not None else None,
+                    budget_stop_reason=(
+                        "SELECTED_SCAN_LIMIT_REACHED" if stats.budget_stops else None
+                    ),
+                    completed_at=ended_at,
+                )
             )
-            run.monthly_used_after = budget.used_this_month if budget is not None else None
-            run.budget_stop_reason = (
-                "SELECTED_SCAN_LIMIT_REACHED" if stats.budget_stops else None
-            )
-            run.completed_at = datetime.now(UTC)
             await session.commit()
 
-    async def finish_failure(self, run_id: int, exc: Exception) -> None:
-        actual, operations = await self._run_usage(run_id)
+    async def finish_failure(
+        self, run_id: int, exc: Exception, *, ended_at: datetime | None = None
+    ) -> None:
+        ended_at = ended_at or datetime.now(UTC)
+        actual, operations = await self._run_usage(run_id, ended_at=ended_at)
         budget = await self.budget_service.snapshot(self.primary_provider)
         async with self.session_factory() as session:
-            run = await session.get(MonitorRun, run_id)
-            if run is None:
-                return
-            run.status = MonitorRunStatus.FAILED
-            run.error = f"{type(exc).__name__}: {str(exc)[:500]}"
-            run.actual_credits_spent = actual
-            run.operations_json = operations
-            run.provider_balance_after = (
-                budget.credits_remaining if budget is not None else None
+            await session.execute(
+                update(MonitorRun)
+                .where(
+                    MonitorRun.id == run_id,
+                    MonitorRun.status == MonitorRunStatus.RUNNING,
+                )
+                .values(
+                    status=MonitorRunStatus.FAILED,
+                    error=f"{type(exc).__name__}: {str(exc)[:500]}",
+                    actual_credits_spent=actual,
+                    operations_json=operations,
+                    provider_balance_after=budget.credits_remaining if budget is not None else None,
+                    monthly_used_after=budget.used_this_month if budget is not None else None,
+                    completed_at=ended_at,
+                )
             )
-            run.monthly_used_after = budget.used_this_month if budget is not None else None
-            run.completed_at = datetime.now(UTC)
             await session.commit()
 
-    async def _run_usage(self, run_id: int) -> tuple[int, dict[str, int]]:
+    async def recover_interrupted_runs(self) -> int:
+        """Startup-only recovery; never resume paid operations automatically."""
+        now = datetime.now(UTC)
+        async with self.session_factory() as session:
+            runs = list(
+                await session.scalars(
+                    select(MonitorRun)
+                    .where(
+                        MonitorRun.status == MonitorRunStatus.RUNNING,
+                        MonitorRun.started_at <= now,
+                    )
+                    .order_by(MonitorRun.started_at, MonitorRun.id)
+                )
+            )
+        for run in runs:
+            await self.finish_failure(
+                run.id,
+                RuntimeError("Проверка прервана до завершения предыдущего процесса сервера."),
+                ended_at=now,
+            )
+        return len(runs)
+
+    async def _run_usage(self, run_id: int, *, ended_at: datetime) -> tuple[int, dict[str, int]]:
         async with self.session_factory() as session:
             run = await session.get(MonitorRun, run_id)
             if run is None:
                 return 0, {}
+            # A crashed historical run must not inherit credits from later scans.
+            next_start = await session.scalar(
+                select(func.min(MonitorRun.started_at)).where(
+                    MonitorRun.started_at > run.started_at,
+                )
+            )
+            if next_start is not None:
+                next_start = (
+                    next_start.replace(tzinfo=UTC) if next_start.tzinfo is None else next_start
+                )
+                ended_at = min(ended_at, next_start)
             rows = (
                 await session.execute(
                     select(CostEvent.operation, func.sum(CostEvent.units))
                     .where(
                         CostEvent.service == "instagram",
                         CostEvent.created_at >= run.started_at,
+                        CostEvent.created_at < ended_at,
                     )
                     .group_by(CostEvent.operation)
                 )

@@ -8,7 +8,9 @@ import httpx
 from app.providers.base import (
     HTTPInstagramProvider,
     ProviderAuthError,
+    ProviderError,
     ProviderResponseError,
+    ProviderUsageBlockedError,
     parse_datetime,
 )
 from app.providers.public_data import ensure_public_source, public_record
@@ -126,11 +128,13 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         items = payload.get("items") if isinstance(payload, dict) else None
         if not isinstance(items, list):
             raise ProviderResponseError("ScrapeCreators posts response has no items list")
-        reels = []
+        posts = []
         for item in items:
-            if isinstance(item, dict) and item.get("product_type") == "clips":
-                reels.append(self.normalize_post(item, handle))
-        return reels
+            if isinstance(item, dict):
+                posts.append(self.normalize_post(item, handle))
+        # This same public response includes photos and carousels. Retain the
+        # adapter method name for compatibility without discarding these posts.
+        return posts
 
     async def get_post(self, url: str, competitor: str) -> InstagramPost:
         payload = await self._request_json(
@@ -161,11 +165,10 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         ensure_public_source(post.raw_data)
         comments: list[InstagramComment] = []
         seen_ids: set[str] = set()
-        known_comment_ids = known_comment_ids or set()
         page_cursor: str | None = cursor
         pages = 0
         cursor_exhausted = False
-        stopped_on_known = False
+        fetch_error: str | None = None
         page_limit = self.max_comment_pages
         if max_pages is not None:
             page_limit = max(1, min(page_limit, int(max_pages)))
@@ -176,36 +179,37 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             params = {"url": post.url, "include_replies": "false"}
             if page_cursor:
                 params["cursor"] = page_cursor
-            payload = await self._request_json(
-                "GET",
-                f"{self.base_url}/v2/instagram/post/comments",
-                headers=self.headers,
-                params=params,
-            )
+            try:
+                payload = await self._request_json(
+                    "GET",
+                    f"{self.base_url}/v2/instagram/post/comments",
+                    headers=self.headers,
+                    params=params,
+                )
+            except ProviderUsageBlockedError:
+                raise
+            except ProviderError as exc:
+                if pages == 0:
+                    raise
+                fetch_error = type(exc).__name__
+                break
             ensure_public_source(payload)
             items = payload.get("comments") if isinstance(payload, dict) else None
             if not isinstance(items, list):
                 raise ProviderResponseError("ScrapeCreators comments response has no comments list")
             pages += 1
-            page_has_known = False
             for item in items:
                 if not isinstance(item, dict):
                     continue
                 normalized = self.normalize_comment(item)
-                if normalized.platform_comment_id in known_comment_ids:
-                    page_has_known = True
                 if normalized.platform_comment_id in seen_ids:
                     continue
                 seen_ids.add(normalized.platform_comment_id)
                 comments.append(normalized)
 
-            # Instagram comment pages are returned newest-first. Once we hit a comment already
-            # stored in our DB, all new comments needed for the incremental sync are on the pages
-            # we already fetched. Stopping here usually turns a 10-page refresh into one request.
-            if page_has_known:
-                stopped_on_known = True
-                page_cursor = None
-                break
+            # The public API does not guarantee chronological comment pages.
+            # A known ID cannot prove that later pages have no new comments.
+            # Respect the page limit and preserve the resumable cursor instead.
 
             next_cursor = payload.get("cursor") if isinstance(payload, dict) else None
             if not next_cursor:
@@ -217,15 +221,16 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
                 break
             page_cursor = str(next_cursor)
 
-        coverage = "FULL" if cursor_exhausted else "UNKNOWN" if stopped_on_known else "PARTIAL"
+        coverage = "FULL" if cursor_exhausted else "PARTIAL"
         return CommentFetchResult(
             comments=comments,
             provider=self.name,
             pages_fetched=pages,
             coverage_status=coverage,
             cursor_exhausted=cursor_exhausted,
-            stopped_on_known_comment=stopped_on_known,
-            next_cursor=None if cursor_exhausted or stopped_on_known else page_cursor,
+            stopped_on_known_comment=False,
+            next_cursor=None if cursor_exhausted else page_cursor,
+            fetch_error=fetch_error,
         )
 
     @staticmethod
@@ -237,12 +242,13 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             raise ProviderResponseError("ScrapeCreators post has no code/shortcode")
         caption_value = item.get("caption")
         caption = caption_value.get("text", "") if isinstance(caption_value, dict) else ""
+        is_reel = item.get("product_type") == "clips"
         return public_record(InstagramPost(
             platform_post_id=post_id,
             competitor=competitor,
-            url=f"https://www.instagram.com/reel/{shortcode}/",
+            url=f"https://www.instagram.com/{'reel' if is_reel else 'p'}/{shortcode}/",
             caption=str(caption),
-            post_type="REEL" if item.get("product_type") == "clips" else "POST",
+            post_type="REEL" if is_reel else "POST",
             published_at=parse_datetime(item.get("created_at") or item.get("taken_at")),
             comments_count=int(item.get("comment_count") or 0),
         ))

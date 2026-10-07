@@ -270,7 +270,8 @@ def test_premium_glass_shell_motion_and_mobile_navigation_are_accessible():
 
     assert "new IntersectionObserver" in javascript
     assert "event.key === 'Tab'" in javascript
-    assert "sessionStorage.setItem('lr:scroll-y'" in javascript
+    assert "sessionSet('lr:scroll-y'" in javascript
+    assert "sessionGet('lr:scroll-y'" in javascript
     assert "setLoading" in javascript
     assert "prefers-reduced-motion: reduce" in javascript
     assert "let radarWasBusy" in javascript
