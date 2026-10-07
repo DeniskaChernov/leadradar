@@ -16,6 +16,7 @@ from app.db.models import (
     Comment,
     Competitor,
     Contact,
+    ContactEvent,
     ContactEventType,
     ContactInterestProfile,
     Evidence,
@@ -191,6 +192,9 @@ class LeadService:
             analysis, analysis_source = await self._analyze(context)
         except Exception as exc:
             async with self.session_factory() as session:
+                await session.execute(
+                    update(Lead).where(Lead.id == lead_id).values(updated_at=Lead.updated_at)
+                )
                 lead = await session.get(Lead, lead_id)
                 if lead is None:
                     raise RuntimeError(f"Lead {lead_id} was not found") from exc
@@ -247,6 +251,29 @@ class LeadService:
                 else {}
             )
             taxonomy_products = list(taxonomy.get("products") or [])
+            feedback = await session.scalar(select(AIFeedback).where(AIFeedback.lead_id == lead.id))
+            manually_rejected = False
+            if lead.status == LeadStatus.NOT_LEAD:
+                # A decision can be committed before the first AI feedback exists.
+                last_decision = await session.scalar(
+                    select(ContactEvent.event_type)
+                    .where(
+                        ContactEvent.lead_id == lead.id,
+                        ContactEvent.event_type.in_(
+                            [ContactEventType.MANAGER_MARKED_NOT_LEAD, ContactEventType.LEAD_REOPENED]
+                        ),
+                    )
+                    .order_by(ContactEvent.id.desc())
+                    .limit(1)
+                )
+                manually_rejected = (
+                    last_decision == ContactEventType.MANAGER_MARKED_NOT_LEAD
+                    or (
+                        feedback is not None
+                        and feedback.manager_is_lead is False
+                        and feedback.actual_outcome == LeadStatus.NOT_LEAD.value
+                    )
+                )
             product_category = analysis.product_category
             if taxonomy.get("layer") == "RAW_MATERIAL" and taxonomy_products:
                 product_category = str(taxonomy_products[0])
@@ -265,10 +292,12 @@ class LeadService:
                 lead.analysis_details["rattan_taxonomy"] = taxonomy
             lead.language = analysis.language
             lead.ai_source = analysis_source
-            if lead.status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING, LeadStatus.NOT_LEAD}:
+            if not manually_rejected and (
+                lead.status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING, LeadStatus.NOT_LEAD}
+                or (lead.status == LeadStatus.NEW and lead.assigned_manager_telegram_id is None)
+            ):
                 lead.status = LeadStatus.NEW if analysis.is_lead else LeadStatus.NOT_LEAD
             contact.current_lead_score = max(contact.current_lead_score, analysis.lead_score)
-            feedback = await session.scalar(select(AIFeedback).where(AIFeedback.lead_id == lead.id))
             if feedback is None:
                 session.add(
                     AIFeedback(
@@ -279,6 +308,8 @@ class LeadService:
                         predicted_intent=analysis.intent.value,
                         predicted_product=product_category,
                         predicted_score=analysis.lead_score,
+                        manager_is_lead=False if manually_rejected else None,
+                        actual_outcome=LeadStatus.NOT_LEAD.value if manually_rejected else None,
                     )
                 )
             await ContactEventRepository(session).add(

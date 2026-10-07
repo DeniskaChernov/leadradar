@@ -30,7 +30,7 @@
   </div>
   <div class="lead-hero-actions">
     {% if lead.lead_score >= settings.hot_lead_threshold and lead.status.value not in ['WON','LOST','NOT_LEAD','OFFER_SENT'] %}
-    <a class="btn primary" href="/hot?lead_id={{ lead.id }}">Написать</a>
+    <a class="btn primary" href="/hot?vertical={{ lead.vertical.value }}&lead_id={{ lead.id }}">Написать</a>
     {% endif %}
     <a class="btn" target="_blank" rel="noopener" href="{{ contact.profile_url }}">Профиль ↗</a>
     <a class="btn ghost" target="_blank" rel="noopener" href="{{ post.url }}">Reel ↗</a>
@@ -220,13 +220,20 @@
 
     <details class="panel action-form-card deal-box page-task-secondary {% if deal %}has-deal{% endif %}" id="deal-box" {% if deal %}open{% endif %}>
       <summary><b>{% if deal %}Сделка #{{ deal.id }}{% else %}Сделка{% endif %}</b><span>{% if deal %}{{ deal_status_label(deal.status) }}{% else %}Когда есть сумма или товар{% endif %}</span></summary>
+      {% set deal_actions_allowed = lead.status.value not in ['NOT_LEAD','WON','LOST'] %}
       {% if not deal %}
+      {% if deal_actions_allowed %}
       <form data-api-form action="/api/leads/{{ lead.id }}/deal" data-reload="1"><label>Товар<input name="product_name" placeholder="Комплект Milano 6"></label><div class="form-row"><label>Количество<input name="quantity" type="number" min="1" value="1"></label><label>Сумма, сум<input name="amount" inputmode="decimal" placeholder="8900000"></label></div><button class="btn primary" type="submit">Создать</button></form>
       {% else %}
+      <p class="muted">Лид закрыт: {{ lead_status_label(lead.status) }}. Создание сделки недоступно.</p>
+      {% endif %}
+      {% else %}
       <div class="deal-summary"><span>{{ deal_status_label(deal.status) }}</span><b>{{ deal.product_name or product_label(deal.product_category) }}</b><strong>{{ money(deal.final_amount or deal.amount) }} сум</strong></div>
-      {% if deal.status.value not in ['WON','LOST'] %}
+      {% if deal.status.value not in ['WON','LOST'] and deal_actions_allowed %}
       <details class="action-details"><summary>Зафиксировать продажу</summary><form data-api-form action="/api/deals/{{ deal.id }}/win" data-reload="1">{% if catalog_matches %}<label>Подтверждённый товар<select name="product_id"><option value="">Другой товар</option>{% for match in catalog_matches %}<option value="{{ match.product.id }}" {% if catalog_recommendation.recommended_product_id == match.product.id %}selected{% endif %}>{{ match.product.name }} · {{ match.product.price or 'цена неизвестна' }} {{ match.product.currency }}</option>{% endfor %}</select></label>{% endif %}<label>{% if catalog_matches %}Название, если нет в списке{% else %}Товар{% endif %}<input name="product_name" value="{{ deal.product_name or '' }}" {% if not catalog_matches %}required{% endif %}></label><div class="form-row"><label>Количество<input name="quantity" type="number" min="1" value="{{ deal.quantity or 1 }}"></label><label>Сумма<input name="amount" value="{{ deal.final_amount or deal.amount or '' }}" required></label><label>Валюта<input name="currency" value="UZS" maxlength="8" required></label></div><button class="btn success" type="submit">✓ Продажа</button></form></details>
       <details class="action-details danger-details"><summary>Не состоялась</summary><form data-api-form action="/api/deals/{{ deal.id }}/lose" data-reload="1"><label>Причина<select name="reason" required><option value="">Выберите причину</option><option>Дорого</option><option>Купил у конкурента</option><option>Нет подходящей модели</option><option>Нет нужного цвета</option><option>Нет в наличии</option><option>Долго ждать</option><option>Не отвечает</option><option>Отложил покупку</option><option>Передумал</option><option>Другое</option></select></label><button class="btn danger" type="submit">Закрыть</button></form></details>
+      {% elif not deal_actions_allowed %}
+      <p class="muted">Лид закрыт: {{ lead_status_label(lead.status) }}. Сделка доступна для просмотра.</p>
       {% endif %}
       {% endif %}
     </details>

@@ -61,6 +61,7 @@ class PostCheck:
     post_age_hours: float
     comment_cursor: str | None = None
     is_backfill: bool = False
+    preserve_backfill_cursor: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -464,7 +465,9 @@ class InstagramMonitor:
             next_cursor=batch.next_cursor,
             cursor_exhausted=batch.cursor_exhausted,
             is_backfill=check.is_backfill,
+            is_head_probe=check.comment_cursor is None,
             is_baseline=check.is_baseline,
+            preserve_backfill_cursor=check.preserve_backfill_cursor,
             fetch_failed=bool(batch.fetch_error),
         )
         return batch.fetch_error is None
@@ -560,9 +563,27 @@ class InstagramMonitor:
                 or head_refresh_due
                 or post.comment_backfill_cursor is not None
             )
-            is_backfill = bool(
+            # A saved historical cursor must not hide comments that arrived
+            # since the last successful head probe. Refresh within the same
+            # page/credit cap, then resume the saved history on a later scan.
+            # An unacknowledged failed first probe still retries its durable
+            # failed-page cursor before returning to the head.
+            preserve_backfill_cursor = bool(
                 post.comment_backfill_cursor is not None
-                or (repair_due and post.last_synced_remote_count == reel.comments_count)
+                and (
+                    head_refresh_due
+                    or (
+                        post.last_synced_remote_count is not None
+                        and post.last_synced_remote_count != reel.comments_count
+                    )
+                )
+            )
+            is_backfill = bool(
+                not preserve_backfill_cursor
+                and (
+                    post.comment_backfill_cursor is not None
+                    or (repair_due and post.last_synced_remote_count == reel.comments_count)
+                )
             )
 
             known_ids = set(
@@ -594,6 +615,7 @@ class InstagramMonitor:
                 post_age_hours=self._post_age_hours(reel.published_at, now),
                 comment_cursor=post.comment_backfill_cursor if is_backfill else None,
                 is_backfill=is_backfill,
+                preserve_backfill_cursor=preserve_backfill_cursor,
             )
 
     @staticmethod
@@ -632,7 +654,9 @@ class InstagramMonitor:
         next_cursor: str | None = None,
         cursor_exhausted: bool = False,
         is_backfill: bool = False,
+        is_head_probe: bool = True,
         is_baseline: bool = False,
+        preserve_backfill_cursor: bool = False,
         fetch_failed: bool = False,
     ) -> None:
         async with self.session_factory() as session:
@@ -660,7 +684,9 @@ class InstagramMonitor:
                 resolved_coverage = CoverageStatus.UNKNOWN
             if fetch_failed:
                 resolved_coverage = CoverageStatus.PARTIAL
-            elif next_cursor is not None:
+            elif next_cursor is not None or (
+                preserve_backfill_cursor and post.comment_backfill_cursor is not None
+            ):
                 # Historic stored IDs can include deleted comments. Their
                 # count cannot prove coverage while a provider page remains.
                 resolved_coverage = CoverageStatus.PARTIAL
@@ -678,9 +704,9 @@ class InstagramMonitor:
                 resolved_coverage = CoverageStatus.PARTIAL
             post.coverage_status = resolved_coverage
             post.last_comment_provider = provider
-            if not fetch_failed:
+            if is_head_probe and not fetch_failed:
                 post.comments_checked_at = datetime.now(UTC)
-            if not stopped_on_known_comment:
+            if not stopped_on_known_comment and not preserve_backfill_cursor:
                 post.comment_backfill_cursor = next_cursor
                 post.comment_backfill_provider = provider
                 post.comment_backfill_is_baseline = is_baseline

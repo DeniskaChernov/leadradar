@@ -271,6 +271,7 @@ class HotOutreachService:
         lead_id: int,
         *,
         vertical: str | None = None,
+        include_saved_history: bool = False,
     ) -> dict[str, Any] | None:
         vertical_enum = self._parse_vertical(vertical)
         async with self.session_factory() as session:
@@ -289,14 +290,18 @@ class HotOutreachService:
             lead, contact, comment, competitor, post = row
             if vertical_enum is not None and lead.vertical != vertical_enum:
                 return None
-            if lead.lead_score < self.hot_threshold:
+            draft = self._read_draft(lead)
+            if lead.lead_score < self.hot_threshold and not (include_saved_history and draft):
                 return None
             contact_history = await self._contact_outreach_summary(
                 session, contact.id, exclude_lead_id=lead.id
             )
         recommendation = await self.catalog.recommend_for_lead(lead)
-        draft = self._read_draft(lead)
-        writable = lead.status in OPEN_HOT_STATUSES and not (draft and draft.sent_at)
+        writable = (
+            lead.lead_score >= self.hot_threshold
+            and lead.status in OPEN_HOT_STATUSES
+            and not (draft and draft.sent_at)
+        )
         return {
             "lead_id": lead.id,
             "status": lead.status.value,
@@ -543,7 +548,7 @@ class HotOutreachService:
                 },
             )
             await session.commit()
-        refreshed = await self.detail(lead_id)
+        refreshed = await self.detail(lead_id, include_saved_history=True)
         if refreshed is None:
             raise LeadWorkflowError("Лид исчез после подготовки")
         return refreshed
@@ -621,7 +626,7 @@ class HotOutreachService:
                 },
             )
             await session.commit()
-        refreshed = await self.detail(lead_id)
+        refreshed = await self.detail(lead_id, include_saved_history=True)
         if refreshed is None:
             raise LeadWorkflowError("Лид исчез после сохранения текста")
         return refreshed
@@ -641,7 +646,7 @@ class HotOutreachService:
     async def _mark_sent_claimed(
         self, lead_id: int, manager_id: int, *, message: str | None, claim_token: str
     ) -> dict[str, Any]:
-        detail = await self.detail(lead_id)
+        detail = await self.detail(lead_id, include_saved_history=True)
         if detail is None:
             raise LeadWorkflowError("HOT-лид не найден")
         lead = await self._get_lead(lead_id)
@@ -724,7 +729,7 @@ class HotOutreachService:
                 },
             )
             await session.commit()
-        refreshed = await self.detail(lead_id)
+        refreshed = await self.detail(lead_id, include_saved_history=True)
         if refreshed is None:
             raise LeadWorkflowError("Лид исчез после отправки")
         next_id = await self.next_queue_lead_id(

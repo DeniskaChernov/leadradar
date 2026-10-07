@@ -101,7 +101,7 @@ async def test_comment_backfill_resumes_after_restart_and_preserves_baseline(ses
         await client.aclose()
 
 
-async def test_backfill_does_not_acknowledge_unfetched_new_head_comments(session_factory):
+async def test_new_head_count_is_probed_before_backfill_without_discarding_history(session_factory):
     provider, client, _ = paged_provider()
     try:
         post = paged_post()
@@ -111,12 +111,14 @@ async def test_backfill_does_not_acknowledge_unfetched_new_head_comments(session
         await monitor._complete_baseline(post.competitor)
         newer_post = post.model_copy(update={"comments_count": 3})
         second = await monitor._prepare_post(newer_post)
-        assert second.is_backfill
+        assert not second.is_backfill
+        assert second.comment_cursor is None
+        assert second.preserve_backfill_cursor
         await monitor._process_prepared_reel(newer_post, second, CycleStats())
-        head = await monitor._prepare_post(newer_post)
-        assert head.should_fetch_comments
-        assert head.comment_cursor is None
-        assert not head.is_backfill
+        history = await monitor._prepare_post(newer_post)
+        assert history.should_fetch_comments
+        assert history.comment_cursor == "page-2"
+        assert history.is_backfill
     finally:
         await client.aclose()
 

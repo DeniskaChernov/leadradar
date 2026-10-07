@@ -14,6 +14,7 @@ from app.db.models import (
     Comment,
     Competitor,
     Contact,
+    ContactEvent,
     ContactEventType,
     Deal,
     DealSaleSnapshot,
@@ -168,11 +169,12 @@ class LeadWorkflowService:
 
     async def mark_not_lead(self, lead_id: int, manager_id: int) -> Lead:
         async with self.session_factory() as session:
+            await session.execute(
+                update(Lead).where(Lead.id == lead_id).values(updated_at=Lead.updated_at)
+            )
             lead = await session.get(Lead, lead_id)
             if lead is None:
                 raise LeadWorkflowError("Lead not found")
-            if lead.status == LeadStatus.NOT_LEAD:
-                return lead
             if (
                 lead.assigned_manager_telegram_id is not None
                 and lead.assigned_manager_telegram_id != manager_id
@@ -180,6 +182,20 @@ class LeadWorkflowService:
                 raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
             if lead.status in {LeadStatus.WON, LeadStatus.LOST}:
                 raise LeadWorkflowError(f"Closed lead cannot become NOT_LEAD: {lead.status.value}")
+            if lead.status == LeadStatus.NOT_LEAD:
+                last_decision = await session.scalar(
+                    select(ContactEvent.event_type)
+                    .where(
+                        ContactEvent.lead_id == lead_id,
+                        ContactEvent.event_type.in_(
+                            [ContactEventType.MANAGER_MARKED_NOT_LEAD, ContactEventType.LEAD_REOPENED]
+                        ),
+                    )
+                    .order_by(ContactEvent.id.desc())
+                    .limit(1)
+                )
+                if last_decision == ContactEventType.MANAGER_MARKED_NOT_LEAD:
+                    return lead
             lead.status = LeadStatus.NOT_LEAD
             feedback = await session.scalar(
                 select(AIFeedback).where(AIFeedback.lead_id == lead_id)
@@ -551,6 +567,12 @@ class LeadWorkflowService:
         *,
         allow_closed: bool = False,
     ) -> tuple[Deal, Lead]:
+        # Serialize closing a deal with stage changes and repeated close requests.
+        await session.execute(
+            update(Lead)
+            .where(Lead.id == select(Deal.lead_id).where(Deal.id == deal_id).scalar_subquery())
+            .values(updated_at=Lead.updated_at)
+        )
         deal = await session.get(Deal, deal_id)
         if deal is None or deal.lead_id is None:
             raise LeadWorkflowError("Deal not found")
@@ -559,6 +581,13 @@ class LeadWorkflowService:
         lead = await session.get(Lead, deal.lead_id)
         if lead is None:
             raise LeadWorkflowError("Lead for deal not found")
+        if lead.assigned_manager_telegram_id not in (None, manager_id):
+            raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
+        if lead.status == LeadStatus.NOT_LEAD or (
+            lead.status in {LeadStatus.WON, LeadStatus.LOST}
+            and deal.status not in {DealStatus.WON, DealStatus.LOST}
+        ):
+            raise LeadWorkflowError("Closed lead cannot change an open deal; reopen it first")
         if not allow_closed and deal.status in {DealStatus.WON, DealStatus.LOST}:
             raise LeadWorkflowError("Deal is already closed")
         return deal, lead

@@ -271,6 +271,7 @@
 
   const api = async (url, options = {}) => {
     const method = (options.method || 'GET').toUpperCase();
+    const expectJson = options.expectJson !== false;
     const controller = new AbortController();
     const timeoutMs = options.timeoutMs ?? (method === 'GET' || method === 'HEAD' ? 30000 : 90000);
     let timedOut = false;
@@ -290,6 +291,8 @@
       signal: controller.signal,
     };
     delete fetchOptions.timeoutMs;
+    delete fetchOptions.expectJson;
+    delete fetchOptions.allowOkFalse;
     if (method === 'GET' || method === 'HEAD') {
       delete fetchOptions.body;
     } else if (!(options.body instanceof FormData)) {
@@ -300,17 +303,24 @@
     try {
       const response = await fetch(url, fetchOptions);
       const data = await readResponse(response);
+      const json = (response.headers.get('content-type') || '').includes('application/json');
       if (!response.ok) {
-        const json = (response.headers.get('content-type') || '').includes('application/json');
-        let message = json && typeof data.detail === 'string' ? data.detail : '';
+        let message = json && typeof data?.detail === 'string' ? data.detail : '';
         if (response.status === 429) {
-          const retryAfter = Number(response.headers.get('Retry-After') || data.retry_after || 30);
+          const retryAfter = Number(response.headers.get('Retry-After') || data?.retry_after || 30);
           message ||= `Слишком много запросов. Подождите ${retryAfter} сек.`;
         }
-        message ||= data.message || `Сервер вернул ошибку ${response.status}. Обновите состояние и повторите позже.`;
+        message ||= data?.message || `Сервер вернул ошибку ${response.status}. Обновите состояние и повторите позже.`;
         const error = new Error(message);
         error.status = response.status;
         throw error;
+      }
+      if (expectJson && (!json || !data || typeof data !== 'object' || Array.isArray(data))) {
+        throw new Error('Сервер вернул некорректный ответ. Обновите состояние: действие не подтверждено.');
+      }
+      if (json && data?.ok === false && !options.allowOkFalse) {
+        throw new Error(typeof data.detail === 'string' ? data.detail
+          : (typeof data.message === 'string' ? data.message : 'Действие не выполнено. Обновите состояние.'));
       }
       return data;
     } catch (error) {
@@ -1271,6 +1281,8 @@
       applyScanProgress({ cycle_running: true, progress: { percent: 0 } });
       const data = await api('/api/scan', {
         method: 'POST',
+        // This endpoint uses ok:false to acknowledge an already-running cycle.
+        allowOkFalse: true,
         body: JSON.stringify({
           confirm_live: confirmLive,
           max_credits: credits ? Number(credits) : 0,
@@ -1367,6 +1379,8 @@
   });
   if (document.body.dataset.authPage === '1') authenticateTelegram();
 
+  const pendingApiForms = new WeakSet();
+
   document.addEventListener('submit', async (event) => {
     const passwordForm = event.target.closest('[data-password-login]');
     if (passwordForm) {
@@ -1400,21 +1414,27 @@
     const form = event.target.closest('[data-api-form]');
     if (!form) return;
     event.preventDefault();
-    if (event.submitter?.dataset.confirm) {
-      const proceed = await confirmAction(
-        event.submitter.dataset.confirmTitle || 'Подтвердите действие',
-        event.submitter.dataset.confirm,
-        { danger: event.submitter.dataset.confirmDanger === '1' }
-      );
-      if (!proceed) return;
-    }
-    const submit = event.submitter || form.querySelector('[type="submit"]');
+    if (pendingApiForms.has(form)) return;
+    pendingApiForms.add(form);
+    const submitter = event.submitter;
+    const submit = submitter || form.querySelector('[type="submit"]');
+    const controls = [...form.querySelectorAll('input,textarea,select,button')]
+      .map((control) => ({ control, disabled: control.disabled }));
+    let reloadPending = false;
+    // Capture values before disabling controls: disabled fields are omitted by FormData.
+    const multipart = form.enctype === 'multipart/form-data';
+    const body = multipart ? new FormData(form) : formPayload(form, submitter);
+    if (multipart && submitter?.name) body.set(submitter.name, submitter.value);
+    controls.forEach(({ control }) => { control.disabled = true; });
     setLoading(submit, true);
     try {
-      const multipart = form.enctype === 'multipart/form-data';
-      const body = multipart ? new FormData(form) : formPayload(form, event.submitter);
-      if (multipart && event.submitter?.name) {
-        body.set(event.submitter.name, event.submitter.value);
+      if (submitter?.dataset.confirm) {
+        const proceed = await confirmAction(
+          submitter.dataset.confirmTitle || 'Подтвердите действие',
+          submitter.dataset.confirm,
+          { danger: submitter.dataset.confirmDanger === '1' }
+        );
+        if (!proceed) return;
       }
       const rawMethod = (form.getAttribute('method') || 'post').trim().toLowerCase();
       const method = rawMethod === 'get' ? 'POST' : rawMethod.toUpperCase();
@@ -1442,13 +1462,18 @@
       }
       if (form.dataset.reset === '1') form.reset();
       if (form.dataset.reload === '1') {
-        lastActionEl = event.submitter || form;
+        reloadPending = true;
+        lastActionEl = submitter || form;
         reloadSoon(450, focusKeyForElement(lastActionEl));
       }
     } catch (error) {
       toast(error.message, true);
     } finally {
-      setLoading(submit, false);
+      if (!reloadPending) {
+        setLoading(submit, false);
+        controls.forEach(({ control, disabled }) => { control.disabled = disabled; });
+        pendingApiForms.delete(form);
+      }
     }
   });
 
@@ -1469,7 +1494,7 @@
     const logout = event.target.closest('[data-logout]');
     if (logout) {
       try {
-        await api('/logout', { method: 'POST', body: '{}' });
+        await api('/logout', { method: 'POST', body: '{}', expectJson: false });
       } finally {
         location.href = '/auth';
       }
@@ -2542,24 +2567,42 @@
     }
   };
 
+  let leadExplainGeneration = 0;
+  let leadExplainCloseTimer = 0;
+  let leadExplainAbort = null;
+
   const closeLeadExplain = () => {
     const root = document.getElementById('lead-explain');
     if (!(root instanceof HTMLElement)) return;
+    leadExplainGeneration += 1;
+    leadExplainAbort?.abort();
+    leadExplainAbort = null;
+    clearTimeout(leadExplainCloseTimer);
     root.classList.remove('is-open');
-    setTimeout(() => { root.hidden = true; }, 180);
+    leadExplainCloseTimer = setTimeout(() => { root.hidden = true; }, 180);
   };
 
   const showLeadExplain = async (leadId) => {
     const root = document.getElementById('lead-explain');
     if (!(root instanceof HTMLElement)) return;
+    const generation = ++leadExplainGeneration;
+    clearTimeout(leadExplainCloseTimer);
+    leadExplainAbort?.abort();
+    const controller = new AbortController();
+    leadExplainAbort = controller;
     const body = root.querySelector('[data-lead-explain-body]');
     const subtitle = root.querySelector('[data-lead-explain-subtitle]');
     const openLink = root.querySelector('[data-lead-explain-open]');
+    if (subtitle) subtitle.textContent = 'Загружаю данные выбранного клиента…';
+    if (openLink instanceof HTMLAnchorElement) openLink.href = `/leads/${leadId}#ai-evidence`;
     if (body) body.innerHTML = '<p class="muted">Загружаю grounded explain…</p>';
     root.hidden = false;
-    requestAnimationFrame(() => root.classList.add('is-open'));
+    requestAnimationFrame(() => {
+      if (generation === leadExplainGeneration) root.classList.add('is-open');
+    });
     try {
-      const data = await api(`/api/leads/${leadId}/explain`, { method: 'GET' });
+      const data = await api(`/api/leads/${leadId}/explain`, { method: 'GET', signal: controller.signal });
+      if (generation !== leadExplainGeneration) return;
       if (subtitle) {
         subtitle.textContent = `@${data.username || '—'} · score ${data.score}/100 · только данные из БД`;
       }
@@ -2587,7 +2630,10 @@
         `;
       }
     } catch (error) {
+      if (generation !== leadExplainGeneration) return;
       if (body) body.innerHTML = `<p class="alert error">${escapeHtml(error.message || 'Не удалось загрузить')}</p>`;
+    } finally {
+      if (leadExplainAbort === controller) leadExplainAbort = null;
     }
   };
 

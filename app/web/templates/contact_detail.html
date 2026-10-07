@@ -27,14 +27,15 @@
   </div>
   {% if leads %}
   <div class="hero-actions">
-    {% set hot_ns = namespace(id=none) %}
+    {% set hot_ns = namespace(id=none, vertical=none) %}
     {% for item in leads %}
       {% if hot_ns.id is none and item.lead_score >= settings.hot_lead_threshold and item.status.value not in ['WON','LOST','NOT_LEAD','OFFER_SENT'] %}
         {% set hot_ns.id = item.id %}
+        {% set hot_ns.vertical = item.vertical.value %}
       {% endif %}
     {% endfor %}
     {% if hot_ns.id %}
-    <a class="btn primary" href="/hot?lead_id={{ hot_ns.id }}">Написать</a>
+    <a class="btn primary" href="/hot?vertical={{ hot_ns.vertical }}&lead_id={{ hot_ns.id }}">Написать</a>
     {% endif %}
     <a class="btn ghost" href="/leads/{{ leads[0].id }}">Карточка лида</a>
   </div>

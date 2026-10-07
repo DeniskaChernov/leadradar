@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import normalize_instagram_handle
@@ -12,6 +12,7 @@ from app.db.models import (
     BusinessEntity,
     Competitor,
     Contact,
+    ContactEvent,
     ContactEventType,
     ContactTask,
     Deal,
@@ -83,12 +84,15 @@ class CRMService:
         self, session: AsyncSession, lead_id: int, manager_id: int, target: LeadStatus
     ) -> Lead:
         """Apply the same CRM transition inside a caller-owned atomic workflow."""
+        await self._lock_lead_write(session, lead_id)
         lead = await session.get(Lead, lead_id)
         if lead is None:
             raise LeadWorkflowError("Лид не найден")
         if lead.assigned_manager_telegram_id not in (None, manager_id):
             raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
         if target == lead.status:
+            if target == LeadStatus.NOT_LEAD:
+                await self._record_manual_rejection(session, lead, manager_id, lead.status)
             return lead
         # WON/LOST только через win_deal/lose_deal — нужны Deal + SaleSnapshot.
         if target in {LeadStatus.WON, LeadStatus.LOST}:
@@ -129,6 +133,9 @@ class CRMService:
                 "via": "stage",
                 "assigned_now": assigned_now,
             }
+        elif target == LeadStatus.NOT_LEAD:
+            await self._record_manual_rejection(session, lead, manager_id, previous)
+            return lead
         else:
             event_type = {
                 LeadStatus.CONTACTED: ContactEventType.CONTACTED,
@@ -145,6 +152,37 @@ class CRMService:
         )
         return lead
 
+    @staticmethod
+    async def _record_manual_rejection(
+        session: AsyncSession, lead: Lead, manager_id: int, previous: LeadStatus
+    ) -> None:
+        if previous == LeadStatus.NOT_LEAD:
+            last_decision = await session.scalar(
+                select(ContactEvent.event_type)
+                .where(
+                    ContactEvent.lead_id == lead.id,
+                    ContactEvent.event_type.in_(
+                        [ContactEventType.MANAGER_MARKED_NOT_LEAD, ContactEventType.LEAD_REOPENED]
+                    ),
+                )
+                .order_by(ContactEvent.id.desc())
+                .limit(1)
+            )
+            if last_decision == ContactEventType.MANAGER_MARKED_NOT_LEAD:
+                return
+        feedback = await session.scalar(select(AIFeedback).where(AIFeedback.lead_id == lead.id))
+        if feedback is not None:
+            feedback.manager_is_lead = False
+            feedback.actual_outcome = LeadStatus.NOT_LEAD.value
+        # Even without feedback, the immutable event distinguishes manual and AI rejection.
+        await ContactEventRepository(session).add(
+            lead.contact_id,
+            ContactEventType.MANAGER_MARKED_NOT_LEAD,
+            lead_id=lead.id,
+            manager_telegram_id=manager_id,
+            payload={"from": previous.value, "to": LeadStatus.NOT_LEAD.value, "via": "stage"},
+        )
+
     async def move_lead_toward(
         self, lead_id: int, manager_id: int, target: LeadStatus
     ) -> Lead:
@@ -155,24 +193,34 @@ class CRMService:
                 "(сумма, товар или причина) — не перетаскиванием на доске"
             )
         async with self.session_factory() as session:
+            await self._lock_lead_write(session, lead_id)
             lead = await session.get(Lead, lead_id)
             if lead is None:
                 raise LeadWorkflowError("Лид не найден")
+            if lead.assigned_manager_telegram_id not in (None, manager_id):
+                raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
             current = lead.status
             if current == target:
-                session.expunge(lead)
+                lead = await self.move_lead_in_session(session, lead_id, manager_id, target)
+                await session.commit()
                 return lead
-        path = stage_path(current, target)
-        if path is None:
-            raise LeadWorkflowError(
-                f"Нельзя перейти со стадии {current.value} на {target.value}"
-            )
-        result: Lead | None = None
-        for step in path:
-            result = await self.move_lead(lead_id, manager_id, step)
-        if result is None:
-            raise LeadWorkflowError("Не удалось обновить стадию лида")
-        return result
+            path = stage_path(current, target)
+            if path is None:
+                raise LeadWorkflowError(
+                    f"Нельзя перейти со стадии {current.value} на {target.value}"
+                )
+            for step in path:
+                lead = await self.move_lead_in_session(session, lead_id, manager_id, step)
+            # A board drop is one operation: stages, ownership and history commit together.
+            await session.commit()
+            return lead
+
+    @staticmethod
+    async def _lock_lead_write(session: AsyncSession, lead_id: int) -> None:
+        # SQLite takes the write lock; PostgreSQL locks the row before workflow reads.
+        await session.execute(
+            update(Lead).where(Lead.id == lead_id).values(updated_at=Lead.updated_at)
+        )
 
     async def record_customer_reply(
         self,
@@ -357,6 +405,7 @@ class CRMService:
 
     async def complete_task(self, task_id: int, manager_id: int) -> ContactTask:
         async with self.session_factory() as session:
+            await self._lock_task_write(session, task_id)
             task = await session.get(ContactTask, task_id)
             if task is None:
                 raise LeadWorkflowError("Задача не найдена")
@@ -364,6 +413,8 @@ class CRMService:
                 raise LeadAlreadyAssignedError(task.manager_telegram_id)
             if task.status == TaskStatus.DONE:
                 return task
+            if task.status == TaskStatus.CANCELLED:
+                raise LeadWorkflowError("Отменённую задачу нельзя выполнить")
             task.status = TaskStatus.DONE
             task.completed_at = datetime.now(UTC)
             if task.lead_id:
@@ -383,6 +434,7 @@ class CRMService:
 
     async def cancel_task(self, task_id: int, manager_id: int) -> ContactTask:
         async with self.session_factory() as session:
+            await self._lock_task_write(session, task_id)
             task = await session.get(ContactTask, task_id)
             if task is None:
                 raise LeadWorkflowError("Задача не найдена")
@@ -408,11 +460,24 @@ class CRMService:
             await session.commit()
             return task
 
+    @staticmethod
+    async def _lock_task_write(session: AsyncSession, task_id: int) -> None:
+        await session.execute(
+            update(ContactTask)
+            .where(ContactTask.id == task_id)
+            .values(updated_at=ContactTask.updated_at)
+        )
+
     async def reopen_not_lead(self, lead_id: int, manager_id: int) -> Lead:
         async with self.session_factory() as session:
+            await self._lock_lead_write(session, lead_id)
             lead = await session.get(Lead, lead_id)
             if lead is None:
                 raise LeadWorkflowError("Лид не найден")
+            if lead.assigned_manager_telegram_id not in (None, manager_id):
+                raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
+            if lead.status == LeadStatus.TAKEN and lead.assigned_manager_telegram_id == manager_id:
+                return lead
             if lead.status != LeadStatus.NOT_LEAD:
                 raise LeadWorkflowError("Вернуть в работу можно только лид, отмеченный как «не лид»")
             lead.status = LeadStatus.TAKEN
@@ -423,6 +488,8 @@ class CRMService:
             feedback = await session.scalar(select(AIFeedback).where(AIFeedback.lead_id == lead.id))
             if feedback is not None:
                 feedback.manager_is_lead = True
+                if feedback.actual_outcome == LeadStatus.NOT_LEAD.value:
+                    feedback.actual_outcome = None
             await ContactEventRepository(session).add(
                 lead.contact_id,
                 ContactEventType.LEAD_REOPENED,
@@ -446,11 +513,14 @@ class CRMService:
         if amount is not None and amount < 0:
             raise LeadWorkflowError("Сумма сделки не может быть отрицательной")
         async with self.session_factory() as session:
+            await self._lock_lead_write(session, lead_id)
             lead = await session.get(Lead, lead_id)
             if lead is None:
                 raise LeadWorkflowError("Лид не найден")
             if lead.assigned_manager_telegram_id not in (None, manager_id):
                 raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
+            if lead.status in {LeadStatus.NOT_LEAD, LeadStatus.WON, LeadStatus.LOST}:
+                raise LeadWorkflowError("Для закрытого лида нельзя создать или изменить сделку")
             deal = await session.scalar(select(Deal).where(Deal.lead_id == lead.id))
             created = deal is None
             if deal is None:

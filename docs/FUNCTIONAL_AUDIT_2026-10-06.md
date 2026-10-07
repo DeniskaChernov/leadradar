@@ -4,6 +4,8 @@
 и импорт каталога описаны отдельно: [HARDENING_2026-10-06](HARDENING_2026-10-06.md).
 Продолжение по F12 и части F11 (HOT):
 [OPENINGS_AND_HOT_2026-10-06](OPENINGS_AND_HOT_2026-10-06.md).
+Проверка начала списка при доборе истории (F01) и дальнейшие исправления CRM/UI:
+[WORKFLOW_RECHECK_2026-10-07](WORKFLOW_RECHECK_2026-10-07.md).
 
 Проверен работающий checkout `leadradar-main-audit`, ветка
 `codex/audit-hardening-20260924`, исходный commit `9be5f84`, репозиторий

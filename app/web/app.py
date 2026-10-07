@@ -2390,7 +2390,9 @@ def build_web_app(
                 amount=amount,
             )
             return {"ok": True, "deal_id": deal.id, "message": "Сделка сохранена"}
-        except (LeadWorkflowError, InvalidOperation, ValueError) as exc:
+        except LeadWorkflowError as exc:
+            raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
+        except (InvalidOperation, ValueError) as exc:
             raise HTTPException(status_code=400, detail=_human_workflow_error(exc)) from exc
 
     @app.post("/api/deals/{deal_id}/win")
