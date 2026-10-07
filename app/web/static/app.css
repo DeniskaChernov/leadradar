@@ -3719,6 +3719,8 @@ a:hover { color: #2445d9; }
   gap:16px;
   align-items:start;
 }
+.hot-workspace > *{min-width:0}
+.hot-workspace :is(h2,p,blockquote,b,small){overflow-wrap:anywhere}
 .hot-queue{padding:0;overflow:hidden}
 .hot-queue .panel-head{padding:16px 18px 8px}
 .hot-queue-list{max-height:min(70vh,820px);overflow:auto;padding:0 10px 12px}
@@ -3735,6 +3737,11 @@ a:hover { color: #2445d9; }
   transition:border-color .15s ease, background .15s ease;
 }
 .hot-queue-item:hover{border-color:rgba(15,118,110,.28);background:#fff}
+.hot-queue-item.is-active{
+  border-color:var(--primary);
+  background:#e8f7f2;
+  box-shadow:inset 3px 0 0 var(--primary);
+}
 .hot-queue-item.is-prior{border-color:rgba(217,119,6,.35)}
 .hot-queue-item.is-prior small{color:#b45309}
 .kanban.kanban-wide.kanban-operator { grid-auto-columns: 280px; }
@@ -3755,6 +3762,8 @@ a:hover { color: #2445d9; }
 .hot-queue-item p{margin:6px 0;color:#334155;font-size:14px;line-height:1.35}
 .hot-queue-item small{color:var(--muted)}
 .hot-detail{min-height:420px}
+.hot-detail .panel-head{flex-wrap:wrap}
+.hot-detail .panel-head > div{min-width:0}
 .hot-detail-links{display:flex;flex-wrap:wrap;gap:8px}
 .hot-comment{
   margin:0 0 12px;
@@ -3788,8 +3797,9 @@ a:hover { color: #2445d9; }
 }
 .hot-draft-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 .hot-hint{margin-top:10px}
+.hot-selection-notice{margin-bottom:16px}
 @media (max-width:900px){
-  .hot-workspace{grid-template-columns:1fr}
+  .hot-workspace{grid-template-columns:minmax(0,1fr)}
   .hot-queue-list{max-height:280px}
 }
 
@@ -4170,38 +4180,8 @@ details.learning-card.page-task-secondary[open]>summary{margin-bottom:12px}
   color:#94a3b8;
 }
 .system-toc-group:first-child{margin-top:0}
-.hot-workspace{min-height:min(70vh,720px)}
-@media (min-width:721px){
-  /* Очередь и карточка должны скроллиться внутри viewport */
-  .hot-workspace{
-    max-height:calc(100vh - 200px);
-    min-height:0;
-    align-items:stretch;
-    overflow:hidden;
-  }
-  .hot-queue{
-    display:flex;
-    flex-direction:column;
-    min-height:0;
-    max-height:100%;
-    overflow:hidden;
-  }
-  .hot-queue .panel-head{flex:0 0 auto}
-  .hot-queue-list{
-    flex:1 1 auto;
-    min-height:0;
-    max-height:none;
-    overflow-y:auto;
-    overscroll-behavior:contain;
-    -webkit-overflow-scrolling:touch;
-  }
-  .hot-detail{
-    min-height:0;
-    max-height:100%;
-    overflow:auto;
-    overscroll-behavior:contain;
-  }
-}
+/* Keep the queue bounded; the detail and page grow so every action is reachable. */
+.hot-queue-list{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 
 /* Desktop «Ещё»: Система не в длинном скролле основного навбара */
 @media (min-width: 721px) {

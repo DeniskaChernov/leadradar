@@ -374,10 +374,10 @@ def build_web_app(
             "default-src 'self'; "
             "script-src 'self' https://telegram.org https://unpkg.com; "
             "worker-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data: https:; "
             "connect-src 'self'; "
-            "font-src 'self'; "
+            "font-src 'self' https://fonts.gstatic.com; "
             "object-src 'none'; "
             "base-uri 'self'; "
             "form-action 'self'; "
@@ -577,6 +577,21 @@ def build_web_app(
         page_size = 40
         page_count = max(1, (queue_total + page_size - 1) // page_size)
         page = max(1, min(page, page_count))
+        selection_notice = None
+        if lead_id is not None:
+            position = await hot_outreach_service.queue_position(
+                lead_id, vertical=selected_vertical
+            )
+            if position is None:
+                selection_notice = (
+                    "Этот лид уже вне текущей очереди HOT. "
+                    "Открыт следующий доступный клиент."
+                    if queue_total
+                    else "Этот лид уже вне текущей очереди HOT. Сейчас очередь пуста."
+                )
+                lead_id = None
+            else:
+                page = position // page_size + 1
         queue = await hot_outreach_service.queue(
             vertical=selected_vertical, limit=page_size, offset=(page - 1) * page_size
         )
@@ -604,6 +619,7 @@ def build_web_app(
                 queue_page=page,
                 queue_pages=page_count,
                 selected=selected,
+                selection_notice=selection_notice,
                 openai_usage={
                     "used": openai_used,
                     "limit": openai_limit,
@@ -614,19 +630,12 @@ def build_web_app(
 
     @app.post("/api/hot/{lead_id}/prepare")
     async def hot_prepare(request: Request, lead_id: int):
-        if not openai_spend_allowed():
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "OpenAI выключен. Включите тумблер OpenAI в Системе, "
-                    "чтобы готовить текст предложения."
-                ),
-            )
         payload = await _json_or_form(request)
         force = str(payload.get("force") or "").lower() in {"1", "true", "yes"}
         try:
             detail = await hot_outreach_service.prepare(
-                lead_id, manager_id(request), force=force
+                lead_id, manager_id(request), force=force,
+                allow_generation=openai_spend_allowed(),
             )
             return {
                 "ok": True,

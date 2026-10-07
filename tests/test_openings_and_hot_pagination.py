@@ -222,3 +222,84 @@ async def test_hot_web_pagination_and_badge_over_100(session_factory):
         feed = await client.get("/api/radar/feed?vertical=FURNITURE")
         assert feed.status_code == 200
         assert feed.json()["hot_queue_count"] == 125
+
+
+async def test_hot_selected_lead_opens_its_actual_queue_page(session_factory):
+    ids = await _many_hot(session_factory)
+    app = _hot_web_app(session_factory)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # A direct link (including the next-client redirect) must select a visible queue item.
+        page = await client.get(f"/hot?vertical=FURNITURE&lead_id={ids[0]}")
+        assert page.status_code == 200
+        assert f'data-hot-lead-id="{ids[0]}"' in page.text
+        assert f'&page=4&lead_id={ids[0]}' in page.text
+        assert 'data-hot-lead-id="' in page.text
+        assert page.text.count('data-hot-lead-id=') == 5
+        # A stale page parameter must not leave selection outside the visible queue.
+        page = await client.get(f"/hot?page=4&lead_id={ids[-1]}")
+        assert page.text.count('data-hot-lead-id=') == 40
+        assert f'&page=1&lead_id={ids[-1]}' in page.text
+
+
+@pytest.mark.parametrize("unavailable", ["missing", "terminal", "stale", "other_vertical"])
+async def test_hot_unavailable_selection_falls_back_with_notice(session_factory, unavailable):
+    ids = await _many_hot(session_factory, count=3)
+    selected_id = ids[-1]
+    async with session_factory() as session:
+        lead = await session.get(Lead, selected_id)
+        if unavailable == "missing":
+            selected_id = 999999999
+        elif unavailable == "terminal":
+            lead.status = LeadStatus.WON
+        elif unavailable == "stale":
+            (await session.get(Comment, lead.comment_id)).created_at_platform = (
+                datetime.now(UTC) - timedelta(days=31)
+            )
+        else:
+            lead.vertical = Vertical.ARTIFICIAL_RATTAN
+        await session.commit()
+    app = _hot_web_app(session_factory)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        page = await client.get(f"/hot?vertical=FURNITURE&lead_id={selected_id}")
+        assert page.status_code == 200
+        assert "Этот лид уже вне текущей очереди HOT" in page.text
+        assert f'ЛИД #{ids[-2] if unavailable != "missing" else ids[-1]}' in page.text
+        assert f'ЛИД #{selected_id}' not in page.text
+
+
+async def test_hot_unavailable_selection_with_empty_queue_is_clear(session_factory):
+    app = _hot_web_app(session_factory)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        page = await client.get("/hot?lead_id=999999999")
+        assert page.status_code == 200
+        assert "Сейчас очередь пуста" in page.text
+        assert "Пока некому писать" in page.text
+        assert 'data-hot-prepare' not in page.text
+
+
+async def test_hot_prepare_reuses_saved_text_when_gpt_is_off(session_factory):
+    ids = await _many_hot(session_factory, count=1)
+    saved = await _hot(session_factory).save_draft(ids[0], 1001, "Ручное предложение")
+    async with session_factory() as session:
+        event_count = await session.scalar(select(func.count(ContactEvent.id)))
+    app = _hot_web_app(session_factory)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(f"/api/hot/{ids[0]}/prepare", json={})
+        assert response.status_code == 200
+        assert response.json()["detail"]["draft"] == saved["draft"]
+        forced = await client.post(f"/api/hot/{ids[0]}/prepare", json={"force": True})
+        assert forced.status_code == 409
+        assert "выключен" in forced.json()["detail"]
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count(ContactEvent.id))) == event_count
+    assert await ExternalUsageService(session_factory).used_today("openai") == 0
+
+
+def _hot_web_app(factory):
+    return build_web_app(
+        Settings(_env_file=None, web_auth_enabled=False, web_manager_id=1001,
+                 instagram_provider="mock", openai_api_key="", openai_live_enabled=False),
+        WebQueryService(factory, hot_threshold=70),
+        LeadWorkflowService(factory, hot_threshold=70),
+        MonitorController(FakeMonitor()), ExternalUsageService(factory),
+    )

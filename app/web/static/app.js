@@ -10,23 +10,47 @@
     try { sessionStorage.removeItem(key); } catch (_) {}
   };
 
-  if (window.lucide) {
+  // Optional CDN requests must not postpone the local offline shell setup.
+  if ('serviceWorker' in navigator) {
+    try {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+    } catch (_) {}
+  }
+
+  const initializeIcons = () => {
+    if (!window.lucide) return;
     try {
       window.lucide.createIcons({ attrs: { 'aria-hidden': 'true', 'stroke-width': 1.9 } });
       document.documentElement.classList.add('icons-ready');
     } catch (_) {}
-  }
+  };
+  document.getElementById('lucide-sdk')?.addEventListener('load', initializeIcons);
+  initializeIcons();
 
-  const tg = window.Telegram?.WebApp;
-  if (tg) {
+  const optionalFonts = document.getElementById('optional-fonts');
+  const applyOptionalFonts = () => {
+    if (optionalFonts instanceof HTMLLinkElement) optionalFonts.media = 'all';
+  };
+  optionalFonts?.addEventListener('load', applyOptionalFonts, { once: true });
+  if (optionalFonts instanceof HTMLLinkElement && optionalFonts.sheet) applyOptionalFonts();
+
+  let tg = null;
+  let initializedTelegram = null;
+  const initializeTelegram = () => {
+    tg = window.Telegram?.WebApp || null;
+    // The optional SDK also loads in a normal browser, without Telegram context.
+    if (!tg?.initData || initializedTelegram === tg) return;
+    initializedTelegram = tg;
+    const supportsVersion = (version) =>
+      typeof tg.isVersionAtLeast !== 'function' || tg.isVersionAtLeast(version);
     try {
       tg.ready();
       tg.expand();
       document.documentElement.classList.add('inside-telegram');
       if (tg.colorScheme) document.documentElement.dataset.telegramTheme = tg.colorScheme;
-      if (typeof tg.disableVerticalSwipes === 'function') tg.disableVerticalSwipes();
-      if (typeof tg.setHeaderColor === 'function') tg.setHeaderColor('#f4f7ff');
-      if (typeof tg.setBackgroundColor === 'function') tg.setBackgroundColor('#f4f7ff');
+      if (supportsVersion('7.7') && typeof tg.disableVerticalSwipes === 'function') tg.disableVerticalSwipes();
+      if (supportsVersion('6.9') && typeof tg.setHeaderColor === 'function') tg.setHeaderColor('#f4f7ff');
+      if (supportsVersion('6.1') && typeof tg.setBackgroundColor === 'function') tg.setBackgroundColor('#f4f7ff');
       const activePage = document.body.dataset.page || '/';
       if (tg.BackButton && activePage !== '/') {
         tg.BackButton.show();
@@ -36,7 +60,8 @@
         });
       }
     } catch (_) {}
-  }
+  };
+  initializeTelegram();
 
   const formatExportPreview = (data) => [
     `Recipe: ${data.recipe_slug || '—'}`,
@@ -648,54 +673,110 @@
     const draftEl = root.querySelector('[data-hot-draft-text]');
     const badge = root.querySelector('[data-hot-draft-badge]');
     const prepareBtn = root.querySelector('[data-hot-prepare]');
+    const saveBtn = root.querySelector('[data-hot-save]');
     const copyBtn = root.querySelector('[data-hot-copy]');
     const sentBtn = root.querySelector('[data-hot-sent]');
+    const message = () => draftEl instanceof HTMLTextAreaElement ? draftEl.value.trim() : '';
+    let savedMessage = message();
+    const leadId = prepareBtn?.getAttribute('data-lead-id') || sentBtn?.getAttribute('data-lead-id');
+    const generationAllowed = prepareBtn instanceof HTMLButtonElement && !prepareBtn.disabled;
+    let alreadySent = root.dataset.hotAlreadySent === '1' || badge?.textContent.trim() === 'Отправлено';
+    let canEdit = root.dataset.hotEditable !== '0' && !alreadySent;
+    let canPrepare = generationAllowed && canEdit;
+    let pendingAction = '';
+    let navigationPending = false;
+    let allowNavigation = false;
+    const isDirty = () => canEdit && message() !== savedMessage;
     const syncActionButtons = () => {
-      const text = draftEl instanceof HTMLTextAreaElement ? draftEl.value.trim() : '';
-      const hasText = Boolean(text);
-      if (copyBtn instanceof HTMLButtonElement) copyBtn.disabled = !hasText;
-      if (sentBtn instanceof HTMLButtonElement) {
-        const alreadySent = badge && badge.textContent === 'Отправлено';
-        sentBtn.disabled = !hasText || Boolean(alreadySent);
+      const hasText = Boolean(message());
+      const busy = Boolean(pendingAction);
+      if (draftEl instanceof HTMLTextAreaElement) draftEl.readOnly = busy || !canEdit;
+      if (prepareBtn instanceof HTMLButtonElement) {
+        prepareBtn.disabled = busy || !canPrepare || isDirty();
       }
+      if (saveBtn instanceof HTMLButtonElement) saveBtn.disabled = busy || !canEdit || !hasText || !isDirty();
+      if (copyBtn instanceof HTMLButtonElement) copyBtn.disabled = busy || !hasText;
+      if (sentBtn instanceof HTMLButtonElement) sentBtn.disabled = busy || !canEdit || !hasText || alreadySent;
+      root.setAttribute('aria-busy', String(busy));
+      if (badge) {
+        badge.textContent = alreadySent ? 'Отправлено'
+          : isDirty() ? 'Не сохранено'
+            : savedMessage ? 'Готов' : 'Нет текста';
+        badge.className = `tag ${alreadySent || savedMessage && !isDirty() ? 'success' : 'muted-tag'}`;
+      }
+    };
+    const beginAction = (name, button) => {
+      if (pendingAction || navigationPending) return false;
+      pendingAction = name;
+      setLoading(button, true);
+      syncActionButtons();
+      return true;
+    };
+    const finishAction = (button) => {
+      setLoading(button, false);
+      pendingAction = '';
+      syncActionButtons();
     };
     const setDraft = (detail) => {
-      const draft = detail && detail.draft;
-      if (draftEl instanceof HTMLTextAreaElement) {
-        draftEl.value = draft && draft.message ? draft.message : '';
+      if (!detail || typeof detail !== 'object' || String(detail.lead_id) !== leadId
+        || !Object.hasOwn(detail, 'draft') || !detail.draft || typeof detail.draft.message !== 'string') {
+        throw new Error('Сервер не вернул карточку. Обновите состояние; текст сохранён в поле.');
       }
-      if (badge) {
-        if (draft && draft.sent_at) badge.textContent = 'Отправлено';
-        else if (draft && draft.message) badge.textContent = 'Готов';
-        else badge.textContent = 'Нет текста';
-        badge.className = `tag ${draft && draft.message ? 'success' : 'muted-tag'}`;
-      }
+      const draft = detail.draft;
+      if (draftEl instanceof HTMLTextAreaElement) draftEl.value = draft?.message || '';
+      savedMessage = message();
+      alreadySent = Boolean(detail.already_sent || draft?.sent_at);
+      canEdit = (detail.can_save_draft ?? canEdit) && !alreadySent;
+      canPrepare = generationAllowed && (detail.can_prepare ?? canPrepare) && canEdit;
       syncActionButtons();
     };
-    if (draftEl instanceof HTMLTextAreaElement) {
-      draftEl.addEventListener('input', syncActionButtons);
-      syncActionButtons();
+    draftEl?.addEventListener('input', syncActionButtons);
+    syncActionButtons();
+    const queue = root.querySelector('[data-hot-queue]');
+    const activeItem = queue?.querySelector('.is-active');
+    if (queue instanceof HTMLElement && activeItem instanceof HTMLElement) {
+      requestAnimationFrame(() => {
+        const itemBounds = activeItem.getBoundingClientRect();
+        const queueBounds = queue.getBoundingClientRect();
+        if (itemBounds.bottom > queueBounds.bottom || itemBounds.top < queueBounds.top) {
+          queue.scrollTop += itemBounds.top - queueBounds.top - 8;
+        }
+      });
     }
     prepareBtn?.addEventListener('click', async () => {
       const leadId = prepareBtn.getAttribute('data-lead-id');
-      if (!leadId) return;
-      setLoading(prepareBtn, true);
+      if (!leadId || !canPrepare || isDirty() || !beginAction('prepare', prepareBtn)) return;
       try {
         const data = await api(`/api/hot/${leadId}/prepare`, {
-          method: 'POST',
-          body: JSON.stringify({}),
+          method: 'POST', body: JSON.stringify({}),
         });
         setDraft(data.detail);
         toast(data.message || 'Текст готов');
       } catch (error) {
         toast(error.message, true);
       } finally {
-        setLoading(prepareBtn, false);
+        finishAction(prepareBtn);
+      }
+    });
+    saveBtn?.addEventListener('click', async () => {
+      const leadId = saveBtn.getAttribute('data-lead-id');
+      const text = message();
+      if (!leadId || !canEdit || !text || !isDirty() || !beginAction('save', saveBtn)) return;
+      try {
+        const data = await api(`/api/hot/${leadId}/draft`, {
+          method: 'POST', body: JSON.stringify({ message: text }),
+        });
+        setDraft(data.detail);
+        toast(data.message || 'Текст сохранён');
+      } catch (error) {
+        toast(error.message, true);
+      } finally {
+        finishAction(saveBtn);
       }
     });
     copyBtn?.addEventListener('click', async () => {
-      const text = draftEl instanceof HTMLTextAreaElement ? draftEl.value.trim() : '';
-      if (!text) return;
+      const text = message();
+      if (!text || pendingAction) return;
       try {
         await navigator.clipboard.writeText(text);
         toast('Текст скопирован');
@@ -707,36 +788,65 @@
     });
     sentBtn?.addEventListener('click', async () => {
       const leadId = sentBtn.getAttribute('data-lead-id');
-      if (!leadId) return;
-      const message = draftEl instanceof HTMLTextAreaElement ? draftEl.value.trim() : '';
-      if (!message) {
-        toast('Вставьте или подготовьте текст перед отметкой', true);
-        return;
-      }
-      const ok = await confirmAction(
-        'Отметить отправку?',
-        'Лид перейдёт по воронке до «Предложение отправлено». Нажимайте только после реальной отправки в Instagram.'
-      );
-      if (!ok) return;
-      setLoading(sentBtn, true);
+      const text = message();
+      if (!leadId || !canEdit || alreadySent || !text || !beginAction('sent', sentBtn)) return;
       try {
+        const ok = await confirmAction(
+          'Отметить отправку?',
+          'Лид перейдёт по воронке до «Предложение отправлено». Нажимайте только после реальной отправки в Instagram.'
+        );
+        if (!ok) return;
         const data = await api(`/api/hot/${leadId}/sent`, {
-          method: 'POST',
-          body: JSON.stringify({ message }),
+          method: 'POST', body: JSON.stringify({ message: text }),
         });
         setDraft(data.detail);
         const nextUrl = data.next_url
-          || (data.detail && data.detail.next_lead_id
+          || (data.detail.next_lead_id
             ? `/hot?vertical=${encodeURIComponent(root.getAttribute('data-hot-vertical') || 'FURNITURE')}&lead_id=${data.detail.next_lead_id}`
             : `/hot?vertical=${encodeURIComponent(root.getAttribute('data-hot-vertical') || 'FURNITURE')}`);
-        toast(data.detail && data.detail.next_lead_id
+        toast(data.detail.next_lead_id
           ? `${data.message || 'Отмечено'} · следующий HOT`
           : `${data.message || 'Отмечено'} · очередь пуста`);
+        allowNavigation = true;
         window.location.assign(nextUrl);
       } catch (error) {
         toast(error.message, true);
-        setLoading(sentBtn, false);
+      } finally {
+        finishAction(sentBtn);
       }
+    });
+    // Save explicitly; navigating must never silently discard a manager's text.
+    document.addEventListener('click', async (event) => {
+      const link = event.target.closest('a[href]');
+      if (!(link instanceof HTMLAnchorElement) || link.target === '_blank' || link.hasAttribute('download')
+        || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      const target = new URL(link.href, window.location.href);
+      if (target.origin !== window.location.origin || target.protocol !== window.location.protocol) return;
+      if (target.pathname === location.pathname && target.search === location.search && target.hash) return;
+      if (!pendingAction && !isDirty()) return;
+      event.preventDefault();
+      if (pendingAction) {
+        toast('Дождитесь окончания действия перед переходом.', true);
+        return;
+      }
+      if (navigationPending) return;
+      navigationPending = true;
+      try {
+        const leave = await confirmAction('Есть несохранённый текст',
+          'Чтобы сохранить правки, останьтесь и нажмите «Сохранить текст». Уйти без сохранения?',
+          { danger: true, okLabel: 'Уйти без сохранения' });
+        if (leave) {
+          allowNavigation = true;
+          window.location.assign(target.href);
+        }
+      } finally {
+        navigationPending = false;
+      }
+    }, true);
+    window.addEventListener('beforeunload', (event) => {
+      if (allowNavigation || !pendingAction && !isDirty()) return;
+      event.preventDefault();
+      event.returnValue = '';
     });
   };
 
@@ -1219,6 +1329,7 @@
     return result;
   };
 
+  let telegramAuthPending = false;
   const authenticateTelegram = async () => {
     const status = document.getElementById('auth-status');
     if (!status) return;
@@ -1226,13 +1337,16 @@
     if (!initData) {
       if (document.querySelector('[data-password-login]')) {
         status.textContent = 'Также можно войти через Telegram-бота.';
-        document.querySelector('[data-auth-retry]')?.remove();
+        document.querySelector('[data-auth-retry]')?.setAttribute('hidden', '');
         return;
       }
       status.textContent = 'Откройте Lead Radar кнопкой внутри Telegram-бота. В обычном браузере Telegram не передаёт данные для входа.';
       status.classList.add('bad');
       return;
     }
+    if (telegramAuthPending) return;
+    telegramAuthPending = true;
+    document.querySelector('[data-auth-retry]')?.removeAttribute('hidden');
     status.textContent = 'Проверяем доступ…';
     status.classList.remove('bad');
     try {
@@ -1242,9 +1356,15 @@
     } catch (error) {
       status.textContent = error.message;
       status.classList.add('bad');
+    } finally {
+      telegramAuthPending = false;
     }
   };
 
+  document.getElementById('telegram-sdk')?.addEventListener('load', () => {
+    initializeTelegram();
+    if (document.body.dataset.authPage === '1' && tg?.initData) authenticateTelegram();
+  });
   if (document.body.dataset.authPage === '1') authenticateTelegram();
 
   document.addEventListener('submit', async (event) => {

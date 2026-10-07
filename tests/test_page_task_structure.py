@@ -1,6 +1,11 @@
 """Каждая вкладка структурирована под свою задачу."""
 from pathlib import Path
 
+from httpx import ASGITransport, AsyncClient
+
+from tests.e2e.helpers import build_e2e_app
+from tests.test_lead_workflow import create_lead
+
 ROOT = Path(__file__).resolve().parents[1]
 T = ROOT / "app/web/templates"
 BASE = (T / "base.html").read_text(encoding="utf-8")
@@ -129,13 +134,16 @@ def test_desktop_nav_more_css() -> None:
     assert "nav-secondary:has(.nav.active)" in CSS
 
 
-def test_hot_queue_scroll_and_auto_select() -> None:
-    assert "hot-queue-list" in CSS
-    assert "overflow-y:auto" in CSS
-    assert "align-items:stretch" in CSS
-    app_py = (ROOT / "app/web/app.py").read_text(encoding="utf-8")
-    assert "сразу открываем первого в очереди" in app_py
-    assert 'queue[0]["lead_id"]' in app_py
+async def test_hot_queue_scroll_and_auto_select(session_factory) -> None:
+    # Scrolling geometry is covered in Chromium; verify actual default selection here.
+    lead_id = await create_lead(session_factory, "hot-auto-select", "hot_auto_select")
+    app = build_e2e_app(session_factory)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/hot")
+    assert response.status_code == 200
+    assert f'data-hot-lead-id="{lead_id}" aria-current="true"' in response.text
+    assert f'ЛИД #{lead_id}' in response.text
+    assert 'data-hot-draft-text' in response.text
 
 
 def test_work_shell_hides_scan_on_crm_pages() -> None:

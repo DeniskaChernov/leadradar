@@ -60,7 +60,11 @@ async def test_base_template_links_pwa_manifest(session_factory):
     assert 'rel="manifest"' in response.text
     assert "/static/icons/icon.svg" in response.text
     assert "13.56.0-cloudflare" in response.text
-    assert 'navigator.serviceWorker.register("/sw.js"' in response.text or "navigator.serviceWorker.register('/sw.js'" in response.text
+    # Registration belongs to the allowed local script; inline script is blocked by CSP.
+    assert '<script>' not in response.text
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        script = await client.get("/static/app.js")
+    assert "navigator.serviceWorker.register('/sw.js'" in script.text
 
 
 async def test_pwa_service_worker_served_with_root_scope(session_factory):

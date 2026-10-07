@@ -12,6 +12,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 POWERSHELL = shutil.which("powershell.exe")
+POWERSHELL_CORE = shutil.which("pwsh.exe")
 pytestmark = pytest.mark.skipif(
     sys.platform != "win32" or not POWERSHELL, reason="Windows PowerShell lifecycle checks"
 )
@@ -21,7 +22,9 @@ def _ps_quote(value: str | Path) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def _run(tmp_path: Path, code: str, *, timeout: float = 30) -> dict:
+def _run(
+    tmp_path: Path, code: str, *, timeout: float = 30, powershell: str | None = None
+) -> dict:
     script = tmp_path / "probe.ps1"
     script.write_text(
         "$ErrorActionPreference = 'Stop'\n"
@@ -32,7 +35,7 @@ def _run(tmp_path: Path, code: str, *, timeout: float = 30) -> dict:
         encoding="utf-8-sig",
     )
     result = subprocess.run(
-        [str(POWERSHELL), "-NoProfile", "-NonInteractive", "-File", str(script)],
+        [str(powershell or POWERSHELL), "-NoProfile", "-NonInteractive", "-File", str(script)],
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -82,6 +85,59 @@ function Get-CimInstance {{
 $process = Get-LeadRadarSavedProcess {_ps_quote(pid_file)} 'python.exe' '(?:^|\s)-m\s+app\.main\s+--web-only(?:\s|$)'
 @{{ owned=($null -ne $process) }} | ConvertTo-Json -Compress
 """,
+    )
+    assert result["owned"] is owned
+
+
+@pytest.mark.parametrize(
+    "powershell",
+    [
+        pytest.param(POWERSHELL, id="powershell5"),
+        pytest.param(
+            POWERSHELL_CORE,
+            id="powershell7",
+            marks=pytest.mark.skipif(not POWERSHELL_CORE, reason="PowerShell 7 not installed"),
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    ("created_at", "metadata_pid", "owned"),
+    [
+        ("2026-10-07T00:00:00.1234567Z", 42, True),
+        ("2026-10-07T05:00:00.1234567+05:00", 42, True),
+        ("2026-10-07T00:00:00.1234568Z", 42, False),
+        ("2026-10-07T00:00:00.1234567Z", 99, False),
+        ("2026-10-07T00:00:00.1234567", 42, False),
+        ("invalid-date", 42, False),
+        (None, 42, False),
+        (1234567, 42, False),
+        (False, 42, False),
+    ],
+)
+def test_saved_process_creation_instant_across_powershell_versions(
+    tmp_path, powershell, created_at, metadata_pid, owned
+):
+    pid_file = tmp_path / "server.pid"
+    pid_file.write_text("42", encoding="utf-8")
+    Path(str(pid_file) + ".json").write_text(
+        json.dumps(
+            {"process_id": metadata_pid, "executable": "python.exe", "created_at": created_at}
+        ),
+        encoding="utf-8",
+    )
+    result = _run(
+        tmp_path,
+        rf"""
+function Get-CimInstance {{
+    [pscustomobject]@{{ ProcessId=42; ExecutablePath='python.exe';
+        CommandLine='python -m app.main --web-only';
+        CreationDate=[datetime]::ParseExact('2026-10-07T00:00:00.1234567Z', 'o',
+            [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind) }}
+}}
+$process = Get-LeadRadarSavedProcess {_ps_quote(pid_file)} 'python.exe' '(?:^|\s)-m\s+app\.main\s+--web-only(?:\s|$)'
+@{{ owned=($null -ne $process) }} | ConvertTo-Json -Compress
+""",
+        powershell=powershell,
     )
     assert result["owned"] is owned
 

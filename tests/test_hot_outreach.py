@@ -307,7 +307,7 @@ async def test_hot_page_and_apis(session_factory):
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
         page = await client.get(f"/hot?lead_id={lead_id}")
-        blocked = await client.post(f"/api/hot/{lead_id}/prepare", json={})
+        cached = await client.post(f"/api/hot/{lead_id}/prepare", json={})
         marked = await client.post(
             f"/api/hot/{lead_id}/sent",
             json={"message": "Текст с правкой менеджера"},
@@ -315,12 +315,13 @@ async def test_hot_page_and_apis(session_factory):
         leads_rattan = await client.get("/leads?vertical=ARTIFICIAL_RATTAN")
 
     assert page.status_code == 200
-    assert "HOT очередь" in page.text or "Написать сейчас" in page.text or "Кого писать" in page.text or "готовы к контакту" in page.text
+    assert "Кому писать" in page.text
     assert "data-hot-workspace" in page.text
     assert "data-hot-draft-text" in page.text
     assert "readonly data-hot-draft-text" not in page.text
     assert "GPT сегодня" in page.text or "GPT выключен" in page.text or "OpenAI выключен" in page.text
-    assert blocked.status_code == 409
+    assert cached.status_code == 200
+    assert cached.json()["detail"]["draft"]["message"] == "Готовый текст"
     assert marked.status_code == 200
     body = marked.json()
     assert body["detail"]["status"] == LeadStatus.OFFER_SENT.value

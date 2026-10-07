@@ -75,70 +75,75 @@ class CRMService:
 
     async def move_lead(self, lead_id: int, manager_id: int, target: LeadStatus) -> Lead:
         async with self.session_factory() as session:
-            lead = await session.get(Lead, lead_id)
-            if lead is None:
-                raise LeadWorkflowError("Лид не найден")
-            if lead.assigned_manager_telegram_id not in (None, manager_id):
-                raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
-            if target == lead.status:
-                return lead
-            # WON/LOST только через win_deal/lose_deal — нужны Deal + SaleSnapshot.
-            if target in {LeadStatus.WON, LeadStatus.LOST}:
-                raise LeadWorkflowError(
-                    "Продажу и отказ закрывайте через карточку сделки "
-                    "(сумма, товар или причина) — не перетаскиванием на доске"
-                )
-            allowed = ALLOWED_STAGE_TRANSITIONS.get(lead.status, set())
-            if target not in allowed:
-                raise LeadWorkflowError(
-                    f"Нельзя перейти со стадии {lead.status.value} на {target.value}"
-                )
-            previous = lead.status
-            lead.status = target
-            contact = await session.get(Contact, lead.contact_id)
-            assigned_now = False
-            if lead.assigned_manager_telegram_id is None and target not in {LeadStatus.NOT_LEAD}:
-                lead.assigned_manager_telegram_id = manager_id
-                if contact is not None:
-                    contact.assigned_manager_telegram_id = manager_id
-                assigned_now = True
-            if target == LeadStatus.CONTACTED and contact is not None:
-                contact.last_contacted_at = datetime.now(UTC)
-            # NEW/AI_* → TAKEN через stage = то же, что «взять в работу».
-            if target == LeadStatus.TAKEN and previous in {
-                LeadStatus.NEW,
-                LeadStatus.AI_PENDING,
-                LeadStatus.ANALYZING,
-            }:
-                feedback = await session.scalar(
-                    select(AIFeedback).where(AIFeedback.lead_id == lead.id)
-                )
-                if feedback is not None:
-                    feedback.manager_is_lead = True
-                event_type = ContactEventType.MANAGER_ASSIGNED
-                payload = {
-                    "from": previous.value,
-                    "to": target.value,
-                    "manager_telegram_id": manager_id,
-                    "via": "stage",
-                    "assigned_now": assigned_now,
-                }
-            else:
-                event_type = {
-                    LeadStatus.CONTACTED: ContactEventType.CONTACTED,
-                    LeadStatus.OFFER_SENT: ContactEventType.OFFER_SENT,
-                    LeadStatus.NEGOTIATION: ContactEventType.NEGOTIATION_STARTED,
-                }.get(target, ContactEventType.LEAD_STATUS_CHANGED)
-                payload = {"from": previous.value, "to": target.value}
-            await ContactEventRepository(session).add(
-                lead.contact_id,
-                event_type,
-                lead_id=lead.id,
-                manager_telegram_id=manager_id,
-                payload=payload,
-            )
+            lead = await self.move_lead_in_session(session, lead_id, manager_id, target)
             await session.commit()
             return lead
+
+    async def move_lead_in_session(
+        self, session: AsyncSession, lead_id: int, manager_id: int, target: LeadStatus
+    ) -> Lead:
+        """Apply the same CRM transition inside a caller-owned atomic workflow."""
+        lead = await session.get(Lead, lead_id)
+        if lead is None:
+            raise LeadWorkflowError("Лид не найден")
+        if lead.assigned_manager_telegram_id not in (None, manager_id):
+            raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
+        if target == lead.status:
+            return lead
+        # WON/LOST только через win_deal/lose_deal — нужны Deal + SaleSnapshot.
+        if target in {LeadStatus.WON, LeadStatus.LOST}:
+            raise LeadWorkflowError(
+                "Продажу и отказ закрывайте через карточку сделки "
+                "(сумма, товар или причина) — не перетаскиванием на доске"
+            )
+        allowed = ALLOWED_STAGE_TRANSITIONS.get(lead.status, set())
+        if target not in allowed:
+            raise LeadWorkflowError(
+                f"Нельзя перейти со стадии {lead.status.value} на {target.value}"
+            )
+        previous = lead.status
+        lead.status = target
+        contact = await session.get(Contact, lead.contact_id)
+        assigned_now = False
+        if lead.assigned_manager_telegram_id is None and target not in {LeadStatus.NOT_LEAD}:
+            lead.assigned_manager_telegram_id = manager_id
+            if contact is not None:
+                contact.assigned_manager_telegram_id = manager_id
+            assigned_now = True
+        if target == LeadStatus.CONTACTED and contact is not None:
+            contact.last_contacted_at = datetime.now(UTC)
+        # NEW/AI_* → TAKEN через stage = то же, что «взять в работу».
+        if target == LeadStatus.TAKEN and previous in {
+            LeadStatus.NEW,
+            LeadStatus.AI_PENDING,
+            LeadStatus.ANALYZING,
+        }:
+            feedback = await session.scalar(select(AIFeedback).where(AIFeedback.lead_id == lead.id))
+            if feedback is not None:
+                feedback.manager_is_lead = True
+            event_type = ContactEventType.MANAGER_ASSIGNED
+            payload = {
+                "from": previous.value,
+                "to": target.value,
+                "manager_telegram_id": manager_id,
+                "via": "stage",
+                "assigned_now": assigned_now,
+            }
+        else:
+            event_type = {
+                LeadStatus.CONTACTED: ContactEventType.CONTACTED,
+                LeadStatus.OFFER_SENT: ContactEventType.OFFER_SENT,
+                LeadStatus.NEGOTIATION: ContactEventType.NEGOTIATION_STARTED,
+            }.get(target, ContactEventType.LEAD_STATUS_CHANGED)
+            payload = {"from": previous.value, "to": target.value}
+        await ContactEventRepository(session).add(
+            lead.contact_id,
+            event_type,
+            lead_id=lead.id,
+            manager_telegram_id=manager_id,
+            payload=payload,
+        )
+        return lead
 
     async def move_lead_toward(
         self, lead_id: int, manager_id: int, target: LeadStatus

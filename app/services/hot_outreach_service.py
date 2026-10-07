@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -61,7 +62,9 @@ class OutreachComposer(Protocol):
 class StaticOutreachComposer:
     """Только для тестов: фиксированный текст без сети."""
 
-    def __init__(self, text: str = "Здравствуйте! Могу предложить подходящий вариант из каталога.") -> None:
+    def __init__(
+        self, text: str = "Здравствуйте! Могу предложить подходящий вариант из каталога."
+    ) -> None:
         self.text = text
 
     async def compose(self, context: dict[str, Any]) -> str:
@@ -104,7 +107,9 @@ class OpenAIOutreachComposer:
             **options,
         )
         if getattr(response, "status", None) == "incomplete":
-            raise LeadWorkflowError("OpenAI не завершил текст предложения. Повторите подготовку текста.")
+            raise LeadWorkflowError(
+                "OpenAI не завершил текст предложения. Повторите подготовку текста."
+            )
         text = (getattr(response, "output_text", None) or "").strip()
         if not text:
             raise LeadWorkflowError("OpenAI вернул пустой текст предложения")
@@ -148,7 +153,9 @@ class HotOutreachService:
 
     @staticmethod
     def _sent_clause(model):
-        return func.coalesce(model.analysis_details[HOT_OUTREACH_KEY]["sent_at"].as_string(), "") != ""
+        return (
+            func.coalesce(model.analysis_details[HOT_OUTREACH_KEY]["sent_at"].as_string(), "") != ""
+        )
 
     def _queue_query(self, vertical: str | None):
         prior = aliased(Lead)
@@ -164,7 +171,14 @@ class HotOutreachService:
         )
         sent = self._sent_clause(Lead)
         stmt = (
-            select(Lead, Contact, Comment, Competitor, Post, already_contacted.label("already_contacted"))
+            select(
+                Lead,
+                Contact,
+                Comment,
+                Competitor,
+                Post,
+                already_contacted.label("already_contacted"),
+            )
             .join(Contact, Contact.id == Lead.contact_id)
             .join(Comment, Comment.id == Lead.comment_id)
             .join(Competitor, Competitor.id == Lead.competitor_id)
@@ -193,11 +207,11 @@ class HotOutreachService:
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         stmt, already_contacted, sent = self._queue_query(vertical)
-        stmt = stmt.order_by(
-            case((already_contacted, 1), else_=0),
-            case((sent, 1), else_=0),
-            desc(Lead.lead_score), desc(Lead.created_at), desc(Lead.id),
-        ).limit(max(1, min(limit, 200))).offset(max(0, offset))
+        stmt = (
+            stmt.order_by(*self._queue_ordering(already_contacted, sent))
+            .limit(max(1, min(limit, 200)))
+            .offset(max(0, offset))
+        )
         async with self.session_factory() as session:
             rows = (await session.execute(stmt)).all()
         return [
@@ -211,6 +225,31 @@ class HotOutreachService:
             )
             for lead, contact, comment, competitor, post, prior_contact in rows
         ]
+
+    @staticmethod
+    def _queue_ordering(already_contacted, sent):
+        return (
+            case((already_contacted, 1), else_=0),
+            case((sent, 1), else_=0),
+            desc(Lead.lead_score),
+            desc(Lead.created_at),
+            desc(Lead.id),
+        )
+
+    async def queue_position(self, lead_id: int, *, vertical: str | None = None) -> int | None:
+        """Locate a selected lead using the complete queue's filters and ordering."""
+        stmt, already_contacted, sent = self._queue_query(vertical)
+        ranked = stmt.with_only_columns(
+            Lead.id.label("lead_id"),
+            (
+                func.row_number().over(order_by=self._queue_ordering(already_contacted, sent)) - 1
+            ).label("position"),
+        ).subquery()
+        async with self.session_factory() as session:
+            position = await session.scalar(
+                select(ranked.c.position).where(ranked.c.lead_id == lead_id)
+            )
+        return int(position) if position is not None else None
 
     async def next_queue_lead_id(
         self,
@@ -257,6 +296,7 @@ class HotOutreachService:
             )
         recommendation = await self.catalog.recommend_for_lead(lead)
         draft = self._read_draft(lead)
+        writable = lead.status in OPEN_HOT_STATUSES and not (draft and draft.sent_at)
         return {
             "lead_id": lead.id,
             "status": lead.status.value,
@@ -280,7 +320,9 @@ class HotOutreachService:
                 "product_sku": recommendation.recommended_sku,
             },
             "draft": asdict(draft) if draft is not None else None,
-            "can_mark_sent": draft is not None and draft.sent_at is None,
+            "can_mark_sent": bool(writable and draft),
+            "can_save_draft": bool(writable),
+            "can_prepare": bool(writable and (self.composer is not None or draft)),
             "already_sent": draft is not None and draft.sent_at is not None,
             "contact_history": contact_history,
         }
@@ -291,7 +333,20 @@ class HotOutreachService:
         manager_id: int,
         *,
         force: bool = False,
+        allow_generation: bool = True,
     ) -> dict[str, Any]:
+        async with self._claim(lead_id) as token:
+            return await self._prepare_claimed(
+                lead_id,
+                manager_id,
+                force=force,
+                claim_token=token,
+                allow_generation=allow_generation,
+            )
+
+    @asynccontextmanager
+    async def _claim(self, lead_id: int):
+        """Serialize all HOT writes, including manual edits during a slow AI call."""
         token = uuid4().hex
         now = datetime.now(UTC)
         async with self.session_factory() as session:
@@ -312,34 +367,50 @@ class HotOutreachService:
             )
             await session.commit()
             if result.rowcount != 1:
-                raise LeadWorkflowError("Черновик уже готовится или лид недоступен. Обновите карточку.")
+                raise LeadWorkflowError(
+                    "Карточка уже обрабатывается: черновик уже готовится либо сохраняется правка. "
+                    "Обновите карточку."
+                )
         try:
-            return await self._prepare_claimed(lead_id, manager_id, force=force, claim_token=token)
+            yield token
         finally:
             async with self.session_factory() as session:
                 await session.execute(
                     update(Lead)
                     .where(Lead.id == lead_id, Lead.outreach_claim_token == token)
-                    .values(outreach_claim_token=None, outreach_claim_expires_at=None, updated_at=Lead.updated_at)
+                    .values(
+                        outreach_claim_token=None,
+                        outreach_claim_expires_at=None,
+                        updated_at=Lead.updated_at,
+                    )
                 )
                 await session.commit()
 
     async def _prepare_claimed(
-        self, lead_id: int, manager_id: int, *, force: bool, claim_token: str,
+        self,
+        lead_id: int,
+        manager_id: int,
+        *,
+        force: bool,
+        claim_token: str,
+        allow_generation: bool,
     ) -> dict[str, Any]:
-        if self.composer is None:
+        lead = await self._get_lead(lead_id)
+        self._assert_editable(lead, manager_id)
+        cached = self._read_draft(lead)
+        if cached and not force:
+            detail = await self.detail(lead_id)
+            if detail is None:
+                raise LeadWorkflowError("HOT-лид не найден")
+            return detail
+        if not allow_generation or self.composer is None:
             raise LeadWorkflowError(
-                "Подготовка текста недоступна: OpenAI выключен. "
-                "Включите тумблер OpenAI в системе."
+                "Подготовка текста недоступна: OpenAI выключен. Включите тумблер OpenAI в системе."
             )
         await self._ensure_taken(lead_id, manager_id)
         detail = await self.detail(lead_id)
         if detail is None:
             raise LeadWorkflowError("HOT-лид не найден")
-        existing = detail.get("draft")
-        if existing and existing.get("message") and not force and not existing.get("sent_at"):
-            return detail
-
         context = {
             "username": detail["username"],
             "comment_text": detail["comment_text"],
@@ -360,18 +431,24 @@ class HotOutreachService:
         if self.usage is not None:
             async with self.session_factory() as session:
                 unresolved = await session.scalar(
-                    select(ExternalBudgetReservation.id).where(
+                    select(ExternalBudgetReservation.id)
+                    .where(
                         ExternalBudgetReservation.request_fingerprint.in_(
                             [f"hot-outreach:{lead_id}:False", f"hot-outreach:{lead_id}:True"]
                         ),
                         ExternalBudgetReservation.status.in_(
-                            [ReservationStatus.RESERVED, ReservationStatus.EXPIRED, ReservationStatus.UNCERTAIN]
+                            [
+                                ReservationStatus.RESERVED,
+                                ReservationStatus.EXPIRED,
+                                ReservationStatus.UNCERTAIN,
+                            ]
                         ),
                         or_(
                             ExternalBudgetReservation.call_started_at.is_not(None),
                             ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
                         ),
-                    ).limit(1)
+                    )
+                    .limit(1)
                 )
             if unresolved is not None:
                 raise LeadWorkflowError(
@@ -418,17 +495,23 @@ class HotOutreachService:
                 )
             raise
         except Exception as exc:
-            logger.warning("hot_outreach_compose_failed lead_id=%s error_type=%s", lead_id, type(exc).__name__)
+            logger.warning(
+                "hot_outreach_compose_failed lead_id=%s error_type=%s", lead_id, type(exc).__name__
+            )
             if reservation_id is not None and self.usage is not None:
                 await self.usage.mark_reservation_uncertain(
                     reservation_id,
                     reason="hot_outreach_failed_after_call_started",
-                    details={"operation": "hot_outreach_compose_failed", "error_type": type(exc).__name__},
+                    details={
+                        "operation": "hot_outreach_compose_failed",
+                        "error_type": type(exc).__name__,
+                    },
                 )
             raise LeadWorkflowError("Не удалось подготовить текст через OpenAI") from exc
 
         prepared_at = datetime.now(UTC).isoformat()
         async with self.session_factory() as session:
+            await self._lock_lead_write(session, lead_id)
             lead = await session.get(Lead, lead_id)
             if lead is None:
                 raise LeadWorkflowError("Лид не найден")
@@ -444,7 +527,7 @@ class HotOutreachService:
             }
             result = await session.execute(
                 update(Lead)
-                .where(Lead.id == lead_id, Lead.outreach_claim_token == claim_token)
+                .where(*self._editable_write_conditions(lead_id, manager_id, claim_token))
                 .values(analysis_details=details, updated_at=datetime.now(UTC))
             )
             if result.rowcount != 1:
@@ -474,22 +557,31 @@ class HotOutreachService:
         source: str = "manual",
     ) -> dict[str, Any]:
         """Сохранить/обновить текст предложения без GPT (правка менеджера)."""
+        async with self._claim(lead_id) as token:
+            return await self._save_draft_claimed(
+                lead_id, manager_id, message, source=source, claim_token=token
+            )
+
+    async def _save_draft_claimed(
+        self, lead_id: int, manager_id: int, message: str, *, source: str, claim_token: str
+    ) -> dict[str, Any]:
         cleaned = (message or "").strip()
         if not cleaned:
             raise LeadWorkflowError("Текст предложения пустой")
         if len(cleaned) > 4000:
             raise LeadWorkflowError("Текст слишком длинный (макс. 4000 символов)")
+        await self._ensure_taken(lead_id, manager_id)
         detail = await self.detail(lead_id)
         if detail is None:
             raise LeadWorkflowError("HOT-лид не найден")
-        if detail.get("already_sent") or (
-            detail.get("draft") and detail["draft"].get("sent_at")
-        ):
+        if detail.get("already_sent") or (detail.get("draft") and detail["draft"].get("sent_at")):
             raise LeadWorkflowError("Предложение уже отмечено как отправленное")
-        await self._ensure_taken(lead_id, manager_id)
+        if detail.get("draft") and detail["draft"].get("message") == cleaned:
+            return detail
         recommendation = detail.get("recommendation") or {}
         prepared_at = datetime.now(UTC).isoformat()
         async with self.session_factory() as session:
+            await self._lock_lead_write(session, lead_id)
             lead = await session.get(Lead, lead_id)
             if lead is None:
                 raise LeadWorkflowError("Лид не найден")
@@ -508,8 +600,15 @@ class HotOutreachService:
                 }
             )
             details[HOT_OUTREACH_KEY] = existing
-            lead.analysis_details = details
-            lead.updated_at = datetime.now(UTC)
+            result = await session.execute(
+                update(Lead)
+                .where(*self._editable_write_conditions(lead_id, manager_id, claim_token))
+                .values(analysis_details=details, updated_at=datetime.now(UTC))
+            )
+            if result.rowcount != 1:
+                raise LeadWorkflowError(
+                    "Карточка изменилась. Обновите её перед сохранением текста."
+                )
             await ContactEventRepository(session).add(
                 lead.contact_id,
                 ContactEventType.NOTE_ADDED,
@@ -534,9 +633,39 @@ class HotOutreachService:
         *,
         message: str | None = None,
     ) -> dict[str, Any]:
+        async with self._claim(lead_id) as token:
+            return await self._mark_sent_claimed(
+                lead_id, manager_id, message=message, claim_token=token
+            )
+
+    async def _mark_sent_claimed(
+        self, lead_id: int, manager_id: int, *, message: str | None, claim_token: str
+    ) -> dict[str, Any]:
+        detail = await self.detail(lead_id)
+        if detail is None:
+            raise LeadWorkflowError("HOT-лид не найден")
+        lead = await self._get_lead(lead_id)
+        if lead.assigned_manager_telegram_id not in (None, manager_id):
+            raise LeadWorkflowError("Лид уже назначен другому менеджеру")
+        draft = detail.get("draft")
+        if draft and draft.get("sent_at"):
+            if (
+                message is not None
+                and str(message).strip()
+                and str(message).strip() != draft["message"]
+            ):
+                raise LeadWorkflowError("Отправленный текст нельзя менять повторной отметкой")
+            detail["next_lead_id"] = await self.next_queue_lead_id(
+                vertical=detail.get("vertical"), exclude_lead_id=lead_id
+            )
+            return detail
         if message is not None and str(message).strip():
-            await self.save_draft(
-                lead_id, manager_id, str(message), source="manual_before_sent"
+            await self._save_draft_claimed(
+                lead_id,
+                manager_id,
+                str(message),
+                source="manual_before_sent",
+                claim_token=claim_token,
             )
         detail = await self.detail(lead_id)
         if detail is None:
@@ -548,33 +677,41 @@ class HotOutreachService:
             return detail
 
         await self._ensure_taken(lead_id, manager_id)
-        lead = await self._get_lead(lead_id)
-        # TAKEN → CONTACTED → OFFER_SENT одной командой «Отправил».
-        if lead.status == LeadStatus.TAKEN:
-            lead = await self.crm.move_lead(lead_id, manager_id, LeadStatus.CONTACTED)
-        if lead.status in {LeadStatus.CONTACTED, LeadStatus.QUALIFIED}:
-            lead = await self.crm.move_lead(lead_id, manager_id, LeadStatus.OFFER_SENT)
-        elif lead.status == LeadStatus.OFFER_SENT:
-            pass
-        elif lead.status == LeadStatus.NEGOTIATION:
-            pass
-        else:
-            raise LeadWorkflowError(
-                f"Нельзя отметить отправку со стадии {lead.status.value}"
-            )
-
         sent_at = datetime.now(UTC).isoformat()
         async with self.session_factory() as session:
+            await self._lock_lead_write(session, lead_id)
             stored = await session.get(Lead, lead_id)
             if stored is None:
                 raise LeadWorkflowError("Лид не найден")
+            self._assert_editable(stored, manager_id)
+            # Stages, sent_at and immutable events either all commit or all roll back.
+            if stored.status == LeadStatus.TAKEN:
+                stored = await self.crm.move_lead_in_session(
+                    session, lead_id, manager_id, LeadStatus.CONTACTED
+                )
+            if stored.status in {LeadStatus.CONTACTED, LeadStatus.QUALIFIED}:
+                stored = await self.crm.move_lead_in_session(
+                    session, lead_id, manager_id, LeadStatus.OFFER_SENT
+                )
+            else:
+                raise LeadWorkflowError(f"Нельзя отметить отправку со стадии {stored.status.value}")
             details = dict(stored.analysis_details or {})
             outreach = dict(details.get(HOT_OUTREACH_KEY) or {})
             outreach["sent_at"] = sent_at
             outreach["message"] = draft["message"]
             details[HOT_OUTREACH_KEY] = outreach
-            stored.analysis_details = details
-            stored.updated_at = datetime.now(UTC)
+            result = await session.execute(
+                update(Lead)
+                .where(
+                    Lead.id == lead_id,
+                    Lead.outreach_claim_token == claim_token,
+                    Lead.status.in_([LeadStatus.OFFER_SENT, LeadStatus.NEGOTIATION]),
+                    ~self._sent_clause(Lead),
+                )
+                .values(analysis_details=details, updated_at=datetime.now(UTC))
+            )
+            if result.rowcount != 1:
+                raise LeadWorkflowError("Карточка изменилась. Обновите её перед отметкой отправки.")
             await ContactEventRepository(session).add(
                 stored.contact_id,
                 ContactEventType.NOTE_ADDED,
@@ -590,7 +727,6 @@ class HotOutreachService:
         refreshed = await self.detail(lead_id)
         if refreshed is None:
             raise LeadWorkflowError("Лид исчез после отправки")
-        refreshed["status"] = lead.status.value
         next_id = await self.next_queue_lead_id(
             vertical=refreshed.get("vertical"),
             exclude_lead_id=lead_id,
@@ -600,11 +736,44 @@ class HotOutreachService:
 
     async def _ensure_taken(self, lead_id: int, manager_id: int) -> Lead:
         lead = await self._get_lead(lead_id)
+        self._assert_editable(lead, manager_id)
         if lead.status in {LeadStatus.NEW, LeadStatus.AI_PENDING, LeadStatus.ANALYZING}:
             return await self.workflow.assign_manager(lead_id, manager_id)
-        if lead.assigned_manager_telegram_id in (None, manager_id):
-            return lead
-        raise LeadWorkflowError("Лид уже назначен другому менеджеру")
+        return lead
+
+    def _assert_editable(self, lead: Lead, manager_id: int) -> None:
+        if lead.lead_score < self.hot_threshold:
+            raise LeadWorkflowError("HOT-лид не найден")
+        draft = self._read_draft(lead)
+        if draft and draft.sent_at:
+            raise LeadWorkflowError("Предложение уже отмечено как отправленное")
+        if lead.status not in OPEN_HOT_STATUSES:
+            raise LeadWorkflowError(
+                "На этой стадии подготовка и изменение HOT-предложения недоступны"
+            )
+        if lead.assigned_manager_telegram_id not in (None, manager_id):
+            raise LeadWorkflowError("Лид уже назначен другому менеджеру")
+
+    def _editable_write_conditions(self, lead_id: int, manager_id: int, claim_token: str):
+        return (
+            Lead.id == lead_id,
+            Lead.outreach_claim_token == claim_token,
+            Lead.lead_score >= self.hot_threshold,
+            Lead.status.in_(OPEN_HOT_STATUSES),
+            or_(
+                Lead.assigned_manager_telegram_id.is_(None),
+                Lead.assigned_manager_telegram_id == manager_id,
+            ),
+            ~self._sent_clause(Lead),
+        )
+
+    @staticmethod
+    async def _lock_lead_write(session: AsyncSession, lead_id: int) -> None:
+        # SQLite serializes writes; PostgreSQL locks this row. Read JSON afterwards
+        # so a simultaneous enrichment cannot be overwritten by a stale merge.
+        await session.execute(
+            update(Lead).where(Lead.id == lead_id).values(updated_at=Lead.updated_at)
+        )
 
     async def _get_lead(self, lead_id: int) -> Lead:
         async with self.session_factory() as session:
@@ -657,14 +826,14 @@ class HotOutreachService:
                         Lead.id != exclude_lead_id,
                     )
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         prior: list[dict[str, Any]] = []
         for other in rows:
             draft = self._read_draft(other)
-            if other.status not in PRIOR_OUTREACH_STATUSES and not (
-                draft and draft.sent_at
-            ):
+            if other.status not in PRIOR_OUTREACH_STATUSES and not (draft and draft.sent_at):
                 continue
             prior.append(
                 {

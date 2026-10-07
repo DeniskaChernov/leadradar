@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -218,6 +218,11 @@ class LeadService:
                 return self._to_result(lead, created=False)
 
         async with self.session_factory() as session:
+            # Lock the short final write before reading shared workflow metadata.
+            # No provider or analyzer call runs while this transaction holds the lock.
+            await session.execute(
+                update(Lead).where(Lead.id == lead_id).values(updated_at=Lead.updated_at)
+            )
             lead = await session.get(Lead, lead_id)
             if lead is None:
                 raise RuntimeError(f"Lead {lead_id} was not found")
@@ -250,7 +255,10 @@ class LeadService:
             lead.product_category = product_category
             lead.lead_score = analysis.lead_score
             lead.ai_reason = analysis.reason
+            outreach = (lead.analysis_details or {}).get("hot_outreach")
             lead.analysis_details = analysis.model_dump(mode="json")
+            if outreach is not None:
+                lead.analysis_details["hot_outreach"] = outreach
             lead.analysis_details["vertical"] = lead.vertical.value
             lead.analysis_details["rules_version"] = self.rules_version
             if taxonomy:

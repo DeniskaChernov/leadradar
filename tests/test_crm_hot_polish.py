@@ -14,8 +14,8 @@ def test_crm_hot_human_copy_and_empty_states():
     )
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
 
-    assert "Кого писать" in hot
-    assert "Пока некого писать" in hot
+    assert "Кому писать" in hot
+    assert "Пока некому писать" in hot
     assert "Найти лидов" in hot
     assert "Выберите клиента слева" in hot
     assert "ВОРОНКА ·" in leads

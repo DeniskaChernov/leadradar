@@ -93,7 +93,20 @@ function Get-LeadRadarSavedProcess {
     $metadataFile = $PidFile + '.json'
     if (Test-Path -LiteralPath $metadataFile) {
         try { $identity = Get-Content -LiteralPath $metadataFile -Raw | ConvertFrom-Json } catch { return $null }
-        if ($identity.process_id -ne $process.ProcessId -or $identity.executable -ne $Executable -or $identity.created_at -ne $process.CreationDate.ToUniversalTime().ToString('o')) { return $null }
+        if ($identity.process_id -ne $process.ProcessId -or $identity.executable -ne $Executable) { return $null }
+        # Windows PowerShell keeps JSON dates as strings; PowerShell 7 can deserialize
+        # them as DateTime. Compare the exact UTC instant in either representation.
+        try {
+            $createdAt = $identity.created_at
+            if ($createdAt -is [string]) {
+                $parsedCreatedAt = [datetime]::MinValue
+                if (-not [datetime]::TryParseExact($createdAt, 'o', [Globalization.CultureInfo]::InvariantCulture,
+                        [Globalization.DateTimeStyles]::RoundtripKind, [ref]$parsedCreatedAt)) { return $null }
+                $createdAt = $parsedCreatedAt
+            }
+            if ($createdAt -isnot [datetime] -or $createdAt.Kind -eq [DateTimeKind]::Unspecified) { return $null }
+            if ($createdAt.ToUniversalTime().Ticks -ne $process.CreationDate.ToUniversalTime().Ticks) { return $null }
+        } catch { return $null }
     }
     return $process
 }
