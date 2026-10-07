@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from pathlib import Path
@@ -16,7 +17,8 @@ SCRIPT = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 # Expose closures only in the test copy; deployed JavaScript has no test API.
 SCRIPT = SCRIPT.rsplit("})();", 1)[0] + """
   window.uiTest = { api, enhanceMotion, applyScanProgress, runScan, reloadSoon, restoreViewState,
-    pollRadarFeed, notePollingFailure, notePollingSuccess, syncScanButtonsFromPreview };
+    pollRadarFeed, pollScanProgress, notePollingFailure, notePollingSuccess,
+    syncScanButtonsFromPreview, refreshScanBudgetPreview };
 })();
 """
 HTML = """<!doctype html><html><head><meta charset="utf-8"></head><body data-page="/radar" data-scan-vertical="FURNITURE">
@@ -277,6 +279,173 @@ async def test_fast_accepted_scan_still_shows_completion(ui_page):
       await uiTest.pollRadarFeed();
     }""")
     assert "Поиск завершён" in await page.locator("[data-toast-message]").inner_text()
+
+
+@pytest.mark.parametrize("active_page", ["/radar", "/hot"])
+async def test_scan_ignores_delayed_status_from_before_accepted_post(ui_page, active_page):
+    page, state, errors = ui_page
+    await page.locator("body").evaluate("(el, value) => el.dataset.page = value", active_page)
+    await page.evaluate("""() => {
+      window.scanMessages = [];
+      new MutationObserver(() => {
+        scanMessages.push(document.querySelector('[data-toast-message]').textContent);
+      }).observe(document.querySelector('[data-toast-message]'), {childList: true});
+    }""")
+    first_started = asyncio.Event()
+    release_stale = asyncio.Event()
+    status_gets = 0
+
+    async def delayed_status(route):
+        nonlocal status_gets
+        status_gets += 1
+        if status_gets == 1:
+            first_started.set()
+            await release_stale.wait()
+            payload = {
+                "cycle_running": False, "cycles_completed": 1,
+                "last_stats": {"comments_created": 111, "leads_created": 88},
+                "changes": [], "hot_leads": [],
+            }
+        else:
+            payload = {
+                "cycle_running": True, "cycles_completed": 1,
+                "progress": {"percent": 42}, "scan_progress": {"percent": 42},
+                "changes": [], "hot_leads": [],
+            }
+        await route.fulfill(body=json.dumps(payload), content_type="application/json")
+
+    pattern = "**/api/radar/feed?*" if active_page == "/radar" else "**/api/scan/progress"
+    await page.route(pattern, delayed_status)
+    await page.add_script_tag(content=SCRIPT)
+    await first_started.wait()
+    await page.evaluate("uiTest.runScan(document.querySelector('#scan-main'), 5)")
+    assert await page.locator("#scan-main").is_disabled()
+    assert state["scan_posts"] == 1
+    release_stale.set()
+    await page.wait_for_function("document.querySelector('#scan-main').textContent === 'Проверка 42%'")
+    assert await page.locator("#scan-main").is_disabled()
+    messages = await page.evaluate("window.scanMessages")
+    assert not any("Поиск завершён" in message for message in messages)
+    assert not any("111" in message or "88 лидов" in message for message in messages)
+    assert status_gets == 2
+    assert not errors
+
+
+async def test_budget_preview_only_applies_latest_selection(ui_page):
+    page, _state, errors = ui_page
+    await page.add_script_tag(content=SCRIPT)
+    await page.locator("#content").evaluate("""el => {
+      el.innerHTML = '<input type="radio" name="scan_budget" value="5" checked>'
+        + '<span data-budget-max></span>';
+    }""")
+    result = await page.evaluate("""async () => {
+      let releaseOld;
+      window.fetch = url => {
+        if (String(url).includes('max_credits=5')) return new Promise(resolve => { releaseOld = resolve; });
+        return Promise.resolve(new Response(JSON.stringify({
+          effective_max_credits: 10, search_enabled: false, is_live: false
+        }), {headers: {'Content-Type': 'application/json'}}));
+      };
+      const root = document.querySelector('#content');
+      const old = uiTest.refreshScanBudgetPreview(root);
+      while (!releaseOld) await new Promise(resolve => setTimeout(resolve, 1));
+      root.querySelector('input').value = '10';
+      await uiTest.refreshScanBudgetPreview(root);
+      releaseOld(new Response(JSON.stringify({effective_max_credits: 5, search_enabled: true, is_live: false}),
+        {headers: {'Content-Type': 'application/json'}}));
+      await old;
+      return {maximum: root.querySelector('[data-budget-max]').textContent,
+        disabled: document.querySelector('#scan-main').disabled};
+    }""")
+    assert result == {"maximum": "10 credits", "disabled": True}
+    assert not errors
+
+
+async def test_scan_ignores_status_started_while_post_was_pending(ui_page):
+    page, _state, errors = ui_page
+    await page.add_script_tag(content=SCRIPT)
+    await page.evaluate("uiTest.pollRadarFeed()")
+    result = await page.evaluate("""async () => {
+      const originalFetch = window.fetch;
+      let releasePost;
+      let releaseStaleStatus;
+      let statusGets = 0;
+      window.fetch = (url, options) => {
+        if (url === '/api/scan') return new Promise(resolve => { releasePost = resolve; });
+        if (String(url).includes('/api/radar/feed')) {
+          statusGets += 1;
+          if (statusGets === 1) return new Promise(resolve => { releaseStaleStatus = resolve; });
+          return Promise.resolve(new Response(JSON.stringify({
+            cycle_running: true, scan_progress: {percent: 42}, hot_leads: [], changes: []
+          }), {headers: {'Content-Type': 'application/json'}}));
+        }
+        return originalFetch(url, options);
+      };
+      const button = document.querySelector('#scan-main');
+      const scan = uiTest.runScan(button, 5);
+      while (!releasePost) await new Promise(resolve => setTimeout(resolve, 1));
+      const status = uiTest.pollRadarFeed();
+      while (!releaseStaleStatus) await new Promise(resolve => setTimeout(resolve, 1));
+      releasePost(new Response(JSON.stringify({ok: true, message: 'Проверка запущена'}),
+        {headers: {'Content-Type': 'application/json'}}));
+      await scan;
+      const acceptedLocked = button.disabled;
+      releaseStaleStatus(new Response(JSON.stringify({
+        cycle_running: false, last_stats: {comments_created: 111, leads_created: 88}, hot_leads: [], changes: []
+      }), {headers: {'Content-Type': 'application/json'}}));
+      await status;
+      while (button.textContent !== 'Проверка 42%') await new Promise(resolve => setTimeout(resolve, 1));
+      return {acceptedLocked, statusGets, label: button.textContent, disabled: button.disabled,
+        toast: document.querySelector('[data-toast-message]').textContent};
+    }""")
+    assert result == {
+        "acceptedLocked": True, "statusGets": 2, "label": "Проверка 42%",
+        "disabled": True, "toast": "Проверка запущена",
+    }
+    assert not errors
+
+
+async def test_idle_status_during_pending_post_does_not_change_task_state(ui_page):
+    page, _state, errors = ui_page
+    await page.add_script_tag(content=SCRIPT)
+    await page.evaluate("uiTest.pollRadarFeed()")
+    result = await page.evaluate("""async () => {
+      const originalFetch = window.fetch;
+      let releasePost;
+      let statusGets = 0;
+      window.fetch = (url, options) => {
+        if (url === '/api/scan') return new Promise(resolve => { releasePost = resolve; });
+        if (String(url).includes('/api/radar/feed')) {
+          statusGets += 1;
+          return Promise.resolve(new Response(JSON.stringify(statusGets === 1 ? {
+            cycle_running: false, last_stats: {comments_created: 111, leads_created: 88}, hot_leads: [], changes: []
+          } : {
+            cycle_running: true, scan_progress: {percent: 42}, hot_leads: [], changes: []
+          }), {headers: {'Content-Type': 'application/json'}}));
+        }
+        return originalFetch(url, options);
+      };
+      const button = document.querySelector('#scan-main');
+      const scan = uiTest.runScan(button, 5);
+      while (!releasePost) await new Promise(resolve => setTimeout(resolve, 1));
+      await uiTest.pollRadarFeed();
+      const pendingLabel = button.textContent;
+      const pendingLocked = button.disabled && button.dataset.scanBusy === '1';
+      const callsDuringPost = statusGets;
+      releasePost(new Response(JSON.stringify({ok: true, message: 'Проверка запущена'}),
+        {headers: {'Content-Type': 'application/json'}}));
+      await scan;
+      while (button.textContent !== 'Проверка 42%') await new Promise(resolve => setTimeout(resolve, 1));
+      return {pendingLabel, pendingLocked, callsDuringPost, statusGets,
+        label: button.textContent, disabled: button.disabled,
+        toast: document.querySelector('[data-toast-message]').textContent};
+    }""")
+    assert result == {
+        "pendingLabel": "Проверка 0%", "pendingLocked": True, "callsDuringPost": 1,
+        "statusGets": 2, "label": "Проверка 42%", "disabled": True,
+        "toast": "Проверка запущена",
+    }
+    assert not errors
 
 
 async def test_keyboard_focus_is_visible_on_hidden_choice_input(ui_page):

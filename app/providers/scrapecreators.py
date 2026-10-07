@@ -186,6 +186,12 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
                     headers=self.headers,
                     params=params,
                 )
+                ensure_public_source(payload)
+                items = payload.get("comments") if isinstance(payload, dict) else None
+                if not isinstance(items, list):
+                    raise ProviderResponseError(
+                        "ScrapeCreators comments response has no comments list"
+                    )
             except ProviderUsageBlockedError:
                 raise
             except ProviderError as exc:
@@ -193,19 +199,35 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
                     raise
                 fetch_error = type(exc).__name__
                 break
-            ensure_public_source(payload)
-            items = payload.get("comments") if isinstance(payload, dict) else None
-            if not isinstance(items, list):
-                raise ProviderResponseError("ScrapeCreators comments response has no comments list")
             pages += 1
+            record_error: ProviderError | None = None
             for item in items:
-                if not isinstance(item, dict):
+                try:
+                    if not isinstance(item, dict):
+                        raise ProviderResponseError("ScrapeCreators comment is not an object")
+                    normalized = self.normalize_comment(item)
+                except ProviderUsageBlockedError:
+                    # Restricted data must remain a hard stop, never a partial
+                    # public result or an excuse to try another provider.
+                    raise
+                except (ProviderError, ValueError, TypeError, OverflowError) as exc:
+                    record_error = (
+                        exc if isinstance(exc, ProviderError)
+                        else ProviderResponseError("ScrapeCreators comment is invalid")
+                    )
                     continue
-                normalized = self.normalize_comment(item)
                 if normalized.platform_comment_id in seen_ids:
                     continue
                 seen_ids.add(normalized.platform_comment_id)
                 comments.append(normalized)
+            if record_error is not None:
+                if not comments:
+                    raise record_error
+                # Keep valid records on either side of the malformed item.
+                # Leave the request cursor unchanged so a later manual scan
+                # can retry this page without claiming complete coverage.
+                fetch_error = type(record_error).__name__
+                break
 
             # The public API does not guarantee chronological comment pages.
             # A known ID cannot prove that later pages have no new comments.

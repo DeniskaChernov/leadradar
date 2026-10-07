@@ -13,6 +13,48 @@ from app.services.monitor_run_service import MonitorRunService
 from tests.test_monitor_controller import BlockingMonitor
 
 
+async def test_new_cycle_resets_previous_result_before_background_task_starts():
+    monitor = SimpleNamespace(run_cycle=AsyncMock(return_value=CycleStats(comments_created=17)))
+    controller = MonitorController(monitor)
+    assert controller.start_cycle("web")
+    await controller.wait_current()
+    previous = controller.snapshot()
+    assert previous.last_stats.comments_created == 17
+    assert previous.last_cycle_completed_at is not None
+    blocking = BlockingMonitor()
+    controller.monitor = blocking
+    assert controller.start_cycle("web")
+    current = controller.snapshot()
+    assert current.cycle_running
+    assert current.last_stats is None
+    assert current.last_error is None
+    assert current.last_cycle_completed_at is None
+    assert current.last_cycle_started_at >= previous.last_cycle_completed_at
+    await blocking.started.wait()
+    assert not controller.start_cycle("web")
+    blocking.release.set()
+    await controller.wait_current()
+    assert controller.snapshot().last_stats.comments_created == 0
+
+
+@pytest.mark.parametrize("failure", ["database", "provider"])
+async def test_failed_new_cycle_does_not_reuse_previous_success_statistics(failure):
+    monitor = SimpleNamespace(run_cycle=AsyncMock(return_value=CycleStats(comments_created=17)))
+    controller = MonitorController(monitor)
+    assert controller.start_cycle("web")
+    await controller.wait_current()
+    if failure == "database":
+        controller.run_service = SimpleNamespace(start=AsyncMock(side_effect=RuntimeError("database unavailable")))
+    else:
+        monitor.run_cycle = AsyncMock(side_effect=RuntimeError("provider unavailable"))
+    assert controller.start_cycle("web")
+    with pytest.raises(RuntimeError, match="unavailable"):
+        await controller.wait_current()
+    assert controller.snapshot().last_stats is None
+    assert controller.snapshot().last_error is not None
+    assert not controller.snapshot().cycle_running
+
+
 async def test_cancelled_scan_is_closed_and_retains_recorded_spend(session_factory):
     monitor = BlockingMonitor()
     run_service = MonitorRunService(session_factory, "scrapecreators")

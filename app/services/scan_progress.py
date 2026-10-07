@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 PHASE_LABELS: dict[str, str] = {
     "idle": "Ожидание",
     "prepare": "Подготовка",
-    "discover": "Поиск Reels у конкурентов",
+    "discover": "Поиск публикаций у конкурентов",
     "comments": "Сбор комментариев",
     "finalize": "Завершение",
     "done": "Готово",
@@ -83,7 +83,7 @@ class ScanProgressTracker:
         percent = _PREPARE_END + int(ratio * span)
         self._update(
             phase="discover",
-            detail=f"Reels · {safe_done} из {safe_total}" if safe_total else "Reels · нет источников",
+            detail=f"Публикации · {safe_done} из {safe_total}" if safe_total else "Публикации · нет источников",
             current_handle=handle,
             done=safe_done,
             total=safe_total,

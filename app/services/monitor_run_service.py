@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import CostEvent, MonitorRun, MonitorRunStatus
@@ -132,22 +132,29 @@ class MonitorRunService:
             # A crashed historical run must not inherit credits from later scans.
             next_start = await session.scalar(
                 select(func.min(MonitorRun.started_at)).where(
-                    MonitorRun.started_at > run.started_at,
+                    or_(
+                        MonitorRun.started_at > run.started_at,
+                        (MonitorRun.started_at == run.started_at) & (MonitorRun.id > run.id),
+                    ),
                 )
             )
+            bounds = [
+                CostEvent.service == "instagram",
+                CostEvent.created_at >= run.started_at,
+                # Windows clock resolution can make a committed cost event
+                # share the exact completion timestamp. It still belongs here.
+                CostEvent.created_at <= ended_at,
+            ]
             if next_start is not None:
                 next_start = (
                     next_start.replace(tzinfo=UTC) if next_start.tzinfo is None else next_start
                 )
-                ended_at = min(ended_at, next_start)
+                # A later scan's first event must remain outside this scan.
+                bounds.append(CostEvent.created_at < next_start)
             rows = (
                 await session.execute(
                     select(CostEvent.operation, func.sum(CostEvent.units))
-                    .where(
-                        CostEvent.service == "instagram",
-                        CostEvent.created_at >= run.started_at,
-                        CostEvent.created_at < ended_at,
-                    )
+                    .where(*bounds)
                     .group_by(CostEvent.operation)
                 )
             ).all()

@@ -223,6 +223,8 @@ class BudgetedInstagramProvider(InstagramProvider):
                 details=details,
                 uncertain_reason="external_call_failed_without_provider_credit_observation",
             )
+            if isinstance(exc, ProviderUsageBlockedError):
+                raise
             raise ProviderCallUncertainError(
                 "External call failed after delivery started without provider credit proof"
             ) from exc
@@ -327,6 +329,8 @@ class BudgetedInstagramProvider(InstagramProvider):
                     details=details,
                     uncertain_reason="comment_batch_failed_without_provider_credit_observation",
                 )
+                if isinstance(exc, ProviderUsageBlockedError):
+                    raise
                 if pages_fetched > 0:
                     # Keep already paid-for pages and the failed request's
                     # cursor. A later scan retries exactly this failed page.
@@ -349,12 +353,13 @@ class BudgetedInstagramProvider(InstagramProvider):
             await self.usage.finalize_reservation(
                 reservation_id,
                 units=units,
-                success=True,
+                success=result.fetch_error is None,
                 details={
                     **details,
                     "credits": units,
                     "pages_fetched": int(result.pages_fetched or 1),
                     "over_budget_adapter": units > remaining_before,
+                    "fetch_error": result.fetch_error,
                 },
                 unit_source=(
                     "PROVIDER_CONFIRMED" if confirmed_units is not None else "ESTIMATED"
@@ -373,6 +378,14 @@ class BudgetedInstagramProvider(InstagramProvider):
                 seen_ids.add(comment.platform_comment_id)
                 all_comments.append(comment)
 
+            if result.fetch_error:
+                # A partially decoded page is already charged. Return its
+                # valid comments now; retry the same page only on a later
+                # user-triggered scan, within the normal budget cap.
+                page_cursor = result.next_cursor
+                coverage = "PARTIAL"
+                cursor_exhausted = False
+                break
             if stopped_on_known or cursor_exhausted or not result.next_cursor:
                 page_cursor = None
                 break

@@ -6,7 +6,7 @@ import contextlib
 import os
 from pathlib import Path
 from typing import BinaryIO
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from sqlalchemy.engine import make_url
 
@@ -23,13 +23,21 @@ def sqlite_database_path(database_url: str) -> Path | None:
         raise DatabaseRuntimeOwnershipError("Некорректная настройка базы данных.") from None
     if url.get_backend_name() != "sqlite":
         return None
-    database = url.database
-    if not database or database == ":memory:" or url.query.get("mode") == "memory":
+    try:
+        # Match SQLAlchemy's connect arguments. Query options such as mode are
+        # ignored without uri=true, so mode=memory alone still opens a disk file.
+        args, options = url.get_dialect()().create_connect_args(url)
+        database = str(args[0])
+    except Exception:
+        raise DatabaseRuntimeOwnershipError("Некорректная настройка базы данных.") from None
+    if database == ":memory:":
         return None
-    if url.query.get("uri", "").lower() == "true" and database.startswith("file:"):
+    if options.get("uri") and database.startswith("file:"):
         file_url = urlparse(database)
         if file_url.netloc not in {"", "localhost"}:
             raise DatabaseRuntimeOwnershipError("Неподдерживаемый адрес локальной базы SQLite.")
+        if parse_qs(file_url.query).get("mode") == ["memory"]:
+            return None
         database = unquote(file_url.path)
         if os.name == "nt" and len(database) > 2 and database[0] == "/" and database[2] == ":":
             database = database[1:]

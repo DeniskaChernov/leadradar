@@ -465,6 +465,7 @@ class InstagramMonitor:
             cursor_exhausted=batch.cursor_exhausted,
             is_backfill=check.is_backfill,
             is_baseline=check.is_baseline,
+            fetch_failed=bool(batch.fetch_error),
         )
         return batch.fetch_error is None
 
@@ -632,6 +633,7 @@ class InstagramMonitor:
         cursor_exhausted: bool = False,
         is_backfill: bool = False,
         is_baseline: bool = False,
+        fetch_failed: bool = False,
     ) -> None:
         async with self.session_factory() as session:
             post = await session.get(Post, post_id)
@@ -649,14 +651,16 @@ class InstagramMonitor:
             post.comments_fetched_count = stored_count
             # Completing historical pages must not acknowledge newer comments that
             # arrived at the head while backfill was running.
-            if not is_backfill:
+            if not is_backfill and not fetch_failed:
                 post.last_synced_remote_count = remote_comments_count
             post.comment_pages_fetched = pages_fetched
             try:
                 resolved_coverage = CoverageStatus(coverage_status)
             except ValueError:
                 resolved_coverage = CoverageStatus.UNKNOWN
-            if next_cursor is not None:
+            if fetch_failed:
+                resolved_coverage = CoverageStatus.PARTIAL
+            elif next_cursor is not None:
                 # Historic stored IDs can include deleted comments. Their
                 # count cannot prove coverage while a provider page remains.
                 resolved_coverage = CoverageStatus.PARTIAL
@@ -674,13 +678,14 @@ class InstagramMonitor:
                 resolved_coverage = CoverageStatus.PARTIAL
             post.coverage_status = resolved_coverage
             post.last_comment_provider = provider
-            post.comments_checked_at = datetime.now(UTC)
+            if not fetch_failed:
+                post.comments_checked_at = datetime.now(UTC)
             if not stopped_on_known_comment:
                 post.comment_backfill_cursor = next_cursor
                 post.comment_backfill_provider = provider
                 post.comment_backfill_is_baseline = is_baseline
                 post.comment_backfill_completed_at = (
-                    datetime.now(UTC) if cursor_exhausted else None
+                    datetime.now(UTC) if cursor_exhausted and not fetch_failed else None
                 )
             await session.commit()
 

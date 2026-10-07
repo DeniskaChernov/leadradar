@@ -69,6 +69,12 @@ class MonitorController:
             else:
                 # Scheduler path: never inherit a prior manual Deep-scan cap.
                 provider.restore_default_scan_budget()
+        # The accepted cycle owns the live result immediately, before its
+        # background task reaches the database or provider.
+        self.last_stats = None
+        self.last_error = None
+        self.last_cycle_started_at = datetime.now(UTC)
+        self.last_cycle_completed_at = None
         self._progress.reset()
         self._task = asyncio.create_task(self._execute_cycle(), name=f"monitor:{trigger}")
         self._task.add_done_callback(_consume_task_exception)

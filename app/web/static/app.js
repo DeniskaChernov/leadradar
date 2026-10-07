@@ -997,14 +997,21 @@
     });
   };
 
+  // A scan invalidates status/budget reads which started before its POST.
+  let scanPollGeneration = 0;
+  const budgetPreviewRequests = new WeakMap();
   const refreshScanBudgetPreview = async (root = document) => {
     const credits = readScanBudgetSelection(root);
     if (!credits) return null;
+    const generation = scanPollGeneration;
+    const requestId = (budgetPreviewRequests.get(root) || 0) + 1;
+    budgetPreviewRequests.set(root, requestId);
     try {
       const preview = await api(
         withScanVertical(`/api/scan/preview?max_credits=${encodeURIComponent(credits)}`),
         { method: 'GET' },
       );
+      if (generation !== scanPollGeneration || budgetPreviewRequests.get(root) !== requestId) return null;
       const maxEl = root.querySelector('[data-budget-max]');
       const monthlyEl = root.querySelector('[data-budget-monthly]');
       const dailyEl = root.querySelector('[data-budget-daily]');
@@ -1090,6 +1097,7 @@
   });
 
   let scanStartPending = false;
+  let scanPostPending = false;
   const runScan = async (triggerButton, requestedCredits = null) => {
     if (scanStartPending) return;
     scanStartPending = true;
@@ -1147,6 +1155,10 @@
       }
       if (triggerButton) triggerButton.textContent = 'Запускаю…';
       submitted = true;
+      scanPostPending = true;
+      scanPollGeneration += 1;
+      // Keep the task locked through an uncertain POST until fresh status arrives.
+      applyScanProgress({ cycle_running: true, progress: { percent: 0 } });
       const data = await api('/api/scan', {
         method: 'POST',
         body: JSON.stringify({
@@ -1155,6 +1167,9 @@
           vertical: scanVertical(),
         }),
       });
+      scanPostPending = false;
+      // Reads begun while the POST was pending can still contain the previous cycle.
+      scanPollGeneration += 1;
       toast(data.message || 'Поиск запущен');
       if (data.ok) {
         // Remember the accepted cycle even if it finishes before the first poll.
@@ -1176,6 +1191,8 @@
       toast(error.message, true);
       if (submitted) {
         // A timed-out POST may have been accepted. Refresh state without retrying it.
+        scanPostPending = false;
+        scanPollGeneration += 1;
         if ((document.body.dataset.page || '').startsWith('/radar')) await pollRadarFeed();
         else await pollScanProgress();
       }
@@ -1838,7 +1855,7 @@
       || (phase === 'comments'
         ? 'Сбор комментариев…'
         : phase === 'discover'
-          ? 'Поиск Reels…'
+          ? 'Поиск публикаций…'
           : phase === 'prepare'
             ? 'Подготовка…'
             : phase === 'finalize'
@@ -2116,8 +2133,10 @@
   const pollRadarFeed = async () => {
     if (radarPollBusy) return;
     radarPollBusy = true;
+    const generation = scanPollGeneration;
     try {
       const feed = await api(withScanVertical('/api/radar/feed?limit=8'), { method: 'GET' });
+      if (generation !== scanPollGeneration || scanPostPending) return;
       notePollingSuccess();
       notifyNewRadarChanges(feed);
       renderRadarFeed(feed);
@@ -2137,9 +2156,10 @@
       if (stillBusy) radarQuietReloadScheduled = false;
       radarWasBusy = stillBusy;
     } catch (error) {
-      notePollingFailure(error);
+      if (generation === scanPollGeneration && !scanPostPending) notePollingFailure(error);
     } finally {
       radarPollBusy = false;
+      if (generation !== scanPollGeneration && !scanPostPending) pollRadarFeed();
     }
   };
 
@@ -2147,8 +2167,10 @@
     if (scanProgressBusy) return;
     if ((document.body.dataset.page || '').startsWith('/radar')) return;
     scanProgressBusy = true;
+    const generation = scanPollGeneration;
     try {
       const payload = await api('/api/scan/progress', { method: 'GET' });
+      if (generation !== scanPollGeneration || scanPostPending) return;
       notePollingSuccess();
       applyScanProgress(payload);
       noteCycleTransition(payload);
@@ -2156,9 +2178,10 @@
         || Number(payload.analysis_queue || 0) > 0
         || Number(payload.analysis_in_flight || 0) > 0;
     } catch (error) {
-      notePollingFailure(error);
+      if (generation === scanPollGeneration && !scanPostPending) notePollingFailure(error);
     } finally {
       scanProgressBusy = false;
+      if (generation !== scanPollGeneration && !scanPostPending) pollScanProgress();
     }
   };
 

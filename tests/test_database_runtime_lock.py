@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from sqlalchemy import create_engine
 
 from app import main as main_module
 from app.services.database_runtime_lock import (
@@ -45,11 +46,15 @@ def test_exception_releases_database_ownership(tmp_path):
         assert owner.exclusive
 
 
-@pytest.mark.parametrize("url", [
-    "sqlite+aiosqlite://", "sqlite+aiosqlite:///:memory:",
-    "sqlite+aiosqlite:///file:memorydb?mode=memory&cache=shared&uri=true",
-    "postgresql+asyncpg://user:secret-in-dsn@localhost/database",
-])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "sqlite+aiosqlite://",
+        "sqlite+aiosqlite:///:memory:",
+        "sqlite+aiosqlite:///file:memorydb?mode=memory&cache=shared&uri=true",
+        "postgresql+asyncpg://user:secret-in-dsn@localhost/database",
+    ],
+)
 def test_non_file_databases_do_not_claim_exclusive_ownership(url):
     with DatabaseRuntimeLock(url) as owner:
         assert owner.database_path is None
@@ -65,6 +70,47 @@ def test_file_uri_and_normal_sqlite_path_share_ownership(tmp_path, monkeypatch):
         with pytest.raises(DatabaseRuntimeOwnershipError):
             with DatabaseRuntimeLock(uri):
                 pytest.fail("URI alias bypassed ownership")
+
+
+@pytest.mark.parametrize("uri", [None, "", "false", "FALSE", "0", "no"])
+def test_mode_memory_without_enabled_uri_still_locks_real_disk_database(tmp_path, uri):
+    path = tmp_path / "mode-is-ignored.db"
+    regular = _url(path.as_posix())
+    query = "?mode=memory" + (f"&uri={uri}" if uri is not None else "")
+    engine = create_engine(f"sqlite:///{path.as_posix()}{query}")
+    try:
+        with DatabaseRuntimeLock(regular + query) as owner:
+            assert owner.database_path == path.resolve()
+            assert owner.exclusive
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE probe(value INTEGER)")
+            assert path.is_file()
+            with pytest.raises(DatabaseRuntimeOwnershipError):
+                with DatabaseRuntimeLock(regular):
+                    pytest.fail("Ignored mode=memory bypassed disk ownership")
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("uri", ["true", "TRUE", "1", "yes", "on", "t"])
+def test_supported_true_uri_values_preserve_file_alias_ownership(tmp_path, uri):
+    path = tmp_path / "uri-flag.db"
+    regular = _url(path.as_posix())
+    url = _url(path.as_uri() + f"?mode=rwc&uri={uri}")
+    with DatabaseRuntimeLock(regular):
+        with pytest.raises(DatabaseRuntimeOwnershipError):
+            with DatabaseRuntimeLock(url):
+                pytest.fail("A supported URI boolean bypassed file ownership")
+    memory = _url(f"file:in-memory?mode=memory&uri={uri}")
+    with DatabaseRuntimeLock(memory) as owner:
+        assert owner.database_path is None
+        assert not owner.exclusive
+
+
+def test_invalid_uri_value_fails_closed_without_exposing_configuration():
+    with pytest.raises(DatabaseRuntimeOwnershipError) as failure:
+        DatabaseRuntimeLock("sqlite:///secret-database-name.db?uri=2")
+    assert "secret-database-name" not in str(failure.value)
 
 
 def test_second_process_fails_closed_and_crashed_owner_releases_lock(tmp_path):
@@ -87,22 +133,35 @@ except DatabaseRuntimeOwnershipError:
     sys.exit(23)
 """
     owner = subprocess.Popen(
-        [sys.executable, "-c", owner_code, url], stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=project_dir, env=env,
+        [sys.executable, "-c", owner_code, url],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=project_dir,
+        env=env,
     )
     try:
         assert owner.stdout.readline().strip() == "LOCKED"
         contender = subprocess.run(
-            [sys.executable, "-c", contender_code, url], capture_output=True,
-            text=True, cwd=project_dir, env=env, timeout=15,
+            [sys.executable, "-c", contender_code, url],
+            capture_output=True,
+            text=True,
+            cwd=project_dir,
+            env=env,
+            timeout=15,
         )
         assert contender.returncode == 23
         assert contender.stdout.strip() == "BLOCKED"
         owner.kill()
         owner.wait(timeout=10)
         replacement = subprocess.run(
-            [sys.executable, "-c", contender_code, url], capture_output=True,
-            text=True, cwd=project_dir, env=env, timeout=15,
+            [sys.executable, "-c", contender_code, url],
+            capture_output=True,
+            text=True,
+            cwd=project_dir,
+            env=env,
+            timeout=15,
         )
         assert replacement.returncode == 0
         assert replacement.stdout.strip() == "ACQUIRED"
@@ -129,7 +188,9 @@ async def test_main_rejects_second_instance_before_any_startup_work(tmp_path, mo
     upgrade.assert_not_called()
 
 
-async def test_main_holds_lock_until_owned_runtime_finishes_and_then_releases(tmp_path, monkeypatch):
+async def test_main_holds_lock_until_owned_runtime_finishes_and_then_releases(
+    tmp_path, monkeypatch
+):
     url = _url((tmp_path / "lead.db").as_posix())
     monkeypatch.setattr(main_module, "get_settings", lambda: SimpleNamespace(database_url=url))
     started = asyncio.Event()
