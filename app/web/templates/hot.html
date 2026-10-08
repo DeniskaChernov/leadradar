@@ -13,7 +13,7 @@
   <div>
     <span class="eyebrow">НАПИСАТЬ СЕЙЧАС · {% if rv == 'ARTIFICIAL_RATTAN' %}РОТАНГ{% else %}МЕБЕЛЬ{% endif %}</span>
     <h2>{% if queue %}{{ queue_total }} лидов в очереди HOT{% else %}Пока некому писать{% endif %}</h2>
-    <p>{% if queue %}Выберите слева → текст → Instagram → «Отправил».{% elif openai_spend_allowed %}Сначала <a href="/radar{% if rv == 'ARTIFICIAL_RATTAN' %}?vertical=ARTIFICIAL_RATTAN{% endif %}">найдите лидов</a> — горячие появятся здесь.{% else %}GPT выключен в <a href="/system">Настройках</a>. Можно копировать готовый текст вручную.{% endif %}</p>
+    <p>{% if queue %}Выберите клиента в очереди, проверьте его комментарий и подготовьте ответ. Сообщение вы отправляете сами.{% else %}Сначала <a href="/radar?vertical={{ rv }}">найдите лидов</a> — горячие появятся здесь.{% endif %}</p>
   </div>
   {% if not queue %}
   <div class="hero-actions">
@@ -36,6 +36,13 @@
 <div class="hot-workspace" data-hot-workspace data-hot-vertical="{{ rv }}" data-hot-editable="{{ '1' if hot_editable else '0' }}" data-hot-already-sent="{{ '1' if draft_sent else '0' }}">
   <aside class="panel hot-queue" aria-label="Очередь HOT">
     <div class="panel-head"><div><h2>Кому писать</h2><p>Сильный интерес · ещё без предложения</p></div></div>
+    {% if queue %}
+    <div class="hot-queue-search">
+      <label for="hot-queue-search">Найти в очереди на этой странице</label>
+      <div><input id="hot-queue-search" type="search" data-hot-queue-search placeholder="Имя, комментарий, источник" autocomplete="off"><button class="btn tiny ghost" type="button" data-hot-search-clear hidden aria-label="Очистить поиск в очереди">Сбросить</button></div>
+      <small data-hot-search-status role="status" aria-live="polite"></small>
+    </div>
+    {% endif %}
     <div class="hot-queue-list" data-hot-queue>
       {% for item in queue %}
       <a class="hot-queue-item {% if selected and selected.lead_id == item.lead_id %}is-active{% endif %} {% if item.already_contacted %}is-prior{% endif %}" href="{{ hot_base }}&page={{ queue_page }}&lead_id={{ item.lead_id }}" data-hot-lead-id="{{ item.lead_id }}" {% if selected and selected.lead_id == item.lead_id %}aria-current="true"{% endif %}>
@@ -54,6 +61,7 @@
         <a class="btn primary tiny" href="{% if rv == 'ARTIFICIAL_RATTAN' %}/radar?vertical=ARTIFICIAL_RATTAN{% else %}/radar{% endif %}">Найти лидов</a>
       </div>
       {% endfor %}
+      <div class="empty-box" data-hot-search-empty hidden><b>На этой странице совпадений нет</b><span>Измените запрос или сбросьте поиск. Выбранный клиент остаётся открытым.</span></div>
     </div>
     {% if queue_pages > 1 %}
     <nav class="hot-pagination" aria-label="Страницы очереди HOT">

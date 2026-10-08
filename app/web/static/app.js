@@ -416,6 +416,7 @@
       if (opening) requestAnimationFrame(() => menu?.querySelector('a')?.focus());
     });
     document.querySelector('[data-more-close]')?.addEventListener('click', close);
+    window.matchMedia('(max-width: 720px)').addEventListener?.('change', close);
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && document.body.classList.contains('more-navigation-open')) {
         close();
@@ -562,7 +563,7 @@
         const index = Number(pill.dataset.kanbanCol || 0);
         const col = cols[index];
         if (!col) return;
-        col.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+        col.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', inline: 'start', block: 'nearest' });
         pills.forEach((item, pillIndex) => {
           item.classList.toggle('is-active', pillIndex === index);
         });
@@ -1132,13 +1133,13 @@
         { method: 'GET' },
       );
       if (generation !== scanPollGeneration || budgetPreviewRequests.get(root) !== requestId) return null;
-      const maxEl = root.querySelector('[data-budget-max]');
+      const maxEls = root.querySelectorAll('[data-budget-max]');
       const monthlyEl = root.querySelector('[data-budget-monthly]');
       const dailyEl = root.querySelector('[data-budget-daily]');
       const planEl = root.querySelector('[data-budget-plan]');
       const clampEl = root.querySelector('[data-budget-clamp]');
       const clampValue = root.querySelector('[data-budget-clamp-value]');
-      if (maxEl) maxEl.textContent = `${preview.effective_max_credits} credits`;
+      maxEls.forEach(element => { element.textContent = `${preview.effective_max_credits} credits`; });
       if (monthlyEl && preview.monthly_remaining != null) {
         monthlyEl.textContent = String(preview.monthly_remaining);
       }
@@ -2649,159 +2650,12 @@
     }
   };
 
-  const readFindLeadsPrefs = () => {
-    try {
-      return JSON.parse(sessionStorage.getItem('lr:find-leads') || '{}') || {};
-    } catch (_error) {
-      return {};
-    }
-  };
-
-  const findLeadsResultsUrl = () => {
-    const prefs = readFindLeadsPrefs();
-    const heat = prefs.heat || 'hot';
-    const kind = heat === 'hot' ? 'hot' : (heat === 'warm' ? 'warm' : '');
-    const base = withScanVertical('/radar');
-    if (!kind) return `${base}#find-results`;
-    const join = base.includes('?') ? '&' : '?';
-    return `${base}${join}kind=${encodeURIComponent(kind)}#find-results`;
-  };
-
-  const FIND_CATEGORY_PRODUCTS = {
-    chairs: ['CHAIR', 'ARMCHAIR', 'STOOL', 'RATTAN_ARMCHAIR', 'RATTAN_BAR_STOOL'],
-    tables: ['TABLE', 'DINING'],
-    sets: ['SET', 'DINING_SET', 'GARDEN_SET', 'KOMPLEKT'],
-    outdoor: ['OUTDOOR', 'GARDEN', 'TERRACE', 'RATTAN_GARDEN'],
-    horeca: ['HORECA', 'CAFE', 'RESTAURANT', 'BAR'],
-    office: ['OFFICE'],
-    custom: ['CUSTOM', 'ORDER', 'НА ЗАКАЗ'],
-    rattan: ['RATTAN', 'РОТАНГ', 'ПЛЕТЕН'],
-    all: [],
-  };
-
-  const FIND_AUDIENCE_INTENTS = {
-    buyers_now: ['BUY', 'QUANTITY', 'PRICE', 'AVAILABILITY', 'DELIVERY', 'CONTACT'],
-    interested: ['CATALOG', 'COLOR', 'SIZE', 'LOCATION', 'PRICE', 'OTHER'],
-    companies_soon: ['BUY', 'QUANTITY', 'DELIVERY', 'CONTACT', 'LOCATION'],
-    makers: ['QUANTITY', 'CATALOG', 'BUY', 'PRICE'],
-  };
-
-  const FIND_AUDIENCE_ROLES = {
-    buyers_now: [],
-    interested: [],
-    companies_soon: ['B2B_HORECA', 'DESIGNER_CONTRACTOR'],
-    makers: ['WHOLESALER', 'MANUFACTURER', 'DEALER', 'RAW_MATERIAL_BUYER'],
-  };
-
-  const cardMatchesFindPrefs = (card, prefs, kind) => {
-    const heat = card.getAttribute('data-lead-heat') || 'cool';
-    if (kind === 'hot' && heat !== 'hot') return false;
-    if (kind === 'warm' && heat !== 'hot' && heat !== 'warm') return false;
-
-    const intent = String(card.getAttribute('data-lead-intent') || '').toUpperCase();
-    const role = String(card.getAttribute('data-lead-role') || 'UNKNOWN').toUpperCase();
-    const product = String(card.getAttribute('data-lead-product') || '').toUpperCase();
-    const audience = prefs.audience || '';
-
-    if (audience && audience !== 'interested') {
-      const intents = FIND_AUDIENCE_INTENTS[audience] || [];
-      const roles = FIND_AUDIENCE_ROLES[audience] || [];
-      const intentOk = !intents.length || intents.includes(intent);
-      const roleOk = !roles.length || roles.includes(role) || role === 'UNKNOWN';
-      // Для makers/companies роль усиливает, но UNKNOWN не отсекаем жёстко.
-      if (audience === 'makers') {
-        const makerish = roles.includes(role)
-          || product.includes('RATTAN')
-          || intents.includes(intent);
-        if (!makerish && role !== 'UNKNOWN') return false;
-      } else if (audience === 'buyers_now' && intents.length && !intentOk) {
-        return false;
-      } else if (audience === 'companies_soon') {
-        if (!(roleOk || product.includes('HORECA') || intents.includes(intent))) {
-          return false;
-        }
-      }
-    }
-
-    const categories = Array.isArray(prefs.categories) ? prefs.categories : [];
-    const activeCats = categories.filter((value) => value && value !== 'all');
-    if (activeCats.length) {
-      const matched = activeCats.some((cat) => {
-        const needles = FIND_CATEGORY_PRODUCTS[cat] || [String(cat).toUpperCase()];
-        if (!needles.length) return true;
-        return needles.some((needle) => product.includes(String(needle).toUpperCase()));
-      });
-      // Пустой product не отсекаем — scoring мог ещё не проставить категорию.
-      if (product && !matched) return false;
-    }
-    return true;
-  };
-
-  const applyFindLeadsCardFilter = (kind) => {
-    const root = document.querySelector('[data-find-results]');
-    const prefs = readFindLeadsPrefs();
-    const note = root instanceof HTMLElement ? root.querySelector('[data-find-filter-note]') : null;
-    const empty = root instanceof HTMLElement ? root.querySelector('[data-find-filter-empty]') : null;
-    const cards = root instanceof HTMLElement ? [...root.querySelectorAll('.find-lead-card')] : [];
-    let visibleCards = 0;
-    cards.forEach((card) => {
-      if (!(card instanceof HTMLElement)) return;
-      const show = cardMatchesFindPrefs(card, prefs, kind);
-      card.hidden = !show;
-      if (show) visibleCards += 1;
-    });
-
-    const rows = [...document.querySelectorAll('[data-find-row]')];
-    let visibleRows = 0;
-    rows.forEach((row) => {
-      if (!(row instanceof HTMLElement)) return;
-      const heat = row.getAttribute('data-lead-heat') || 'none';
-      // Строки без лида скрываем при любом heat-фильтре; при «все» оставляем.
-      let show = true;
-      if (kind === 'hot' || kind === 'warm') {
-        if (heat === 'none') show = false;
-        else show = cardMatchesFindPrefs(row, prefs, kind);
-      } else if (prefs.audience || (Array.isArray(prefs.categories) && prefs.categories.filter((v) => v && v !== 'all').length)) {
-        if (heat === 'none') show = false;
-        else show = cardMatchesFindPrefs(row, prefs, kind);
-      }
-      row.hidden = !show;
-      if (show) visibleRows += 1;
-    });
-
-    const bits = [];
-    if (kind === 'hot') bits.push('только горячие');
-    else if (kind === 'warm') bits.push('горячие + тёплые');
-    if (prefs.audience) bits.push(`аудитория: ${prefs.audience}`);
-    if (Array.isArray(prefs.categoryLabels) && prefs.categoryLabels.length) {
-      bits.push(`категории: ${prefs.categoryLabels.join(', ')}`);
-    } else if (Array.isArray(prefs.categories) && prefs.categories.length) {
-      bits.push(`категории: ${prefs.categories.join(', ')}`);
-    }
-    if (note instanceof HTMLElement) {
-      if (!bits.length && !kind) {
-        note.hidden = true;
-        note.textContent = '';
-      } else {
-        note.hidden = false;
-        note.textContent = `Фильтр поиска: ${bits.join(' · ') || 'все'} · карточек ${visibleCards} · строк ${visibleRows}`;
-      }
-    }
-    if (empty instanceof HTMLElement) {
-      empty.hidden = visibleCards > 0 || cards.length === 0;
-    }
-    if (root instanceof HTMLElement) {
-      root.querySelectorAll('[data-find-filter-kind]').forEach((btn) => {
-        if (!(btn instanceof HTMLElement)) return;
-        const value = btn.getAttribute('data-find-filter-kind') || '';
-        btn.classList.toggle('primary', value === (kind || ''));
-        btn.classList.toggle('ghost', value !== (kind || ''));
-      });
-    }
-  };
+  // Results are filtered by the server. A view must load all matching rows,
+  // never hide a previously fetched subset using stale wizard preferences.
+  const findLeadsResultsUrl = () => `${withScanVertical('/radar')}#find-results`;
 
   const scrollToFindResultsIfNeeded = () => {
-    const target = document.getElementById('find-results') || document.querySelector('[data-find-results]');
+    const target = document.getElementById('find-results');
     if (!(target instanceof HTMLElement)) return;
     let shouldScroll = window.location.hash === '#find-results';
     try {
@@ -2809,347 +2663,43 @@
         shouldScroll = true;
         sessionStorage.removeItem('lr:find-leads-pending-results');
       }
-    } catch (_error) {
-      /* ignore */
-    }
-    if (!shouldScroll) return;
-    requestAnimationFrame(() => {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    } catch (_error) { /* storage is optional */ }
+    if (shouldScroll) requestAnimationFrame(() => target.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+      block: 'start',
+    }));
   };
 
-  const syncRadarKindSelect = (kind) => {
-    const select = document.querySelector('.radar-filters select[name="kind"]');
-    if (!(select instanceof HTMLSelectElement)) return;
-    if (kind === 'hot' || kind === 'warm' || kind === '') {
-      select.value = kind;
-    }
-  };
-
-  const clearFindLeadsPrefsFilter = () => {
-    const prefs = readFindLeadsPrefs();
-    const next = {
-      ...prefs,
-      heat: 'all',
-      audience: '',
-      categories: ['all'],
-      categoryLabels: ['Всё'],
-    };
-    try {
-      sessionStorage.setItem('lr:find-leads', JSON.stringify(next));
-    } catch (_error) {
-      /* ignore */
-    }
-    applyFindLeadsCardFilter('');
-    syncRadarKindSelect('');
-    const url = `${withScanVertical('/radar')}#find-results`;
-    window.history.replaceState({}, '', url);
-    toast('Фильтр поиска сброшен');
-  };
-
-  const enhanceFindLeadsResultFilters = () => {
-    const root = document.querySelector('[data-find-results]');
-    if (!(root instanceof HTMLElement)) return;
-    const params = new URLSearchParams(window.location.search);
-    const urlKind = params.get('kind') || '';
-    const prefs = readFindLeadsPrefs();
-    const initial = urlKind === 'hot' || urlKind === 'warm'
-      ? urlKind
-      : (prefs.heat === 'hot' ? 'hot' : (prefs.heat === 'warm' ? 'warm' : ''));
-    applyFindLeadsCardFilter(initial === 'all' ? '' : initial);
-    syncRadarKindSelect(initial === 'all' ? '' : initial);
-    root.addEventListener('click', (event) => {
-      const reset = event.target.closest('[data-find-filter-reset]');
-      if (reset) {
-        event.preventDefault();
-        clearFindLeadsPrefsFilter();
-        return;
-      }
-      const btn = event.target.closest('[data-find-filter-kind]');
-      if (!(btn instanceof HTMLElement)) return;
-      const kind = btn.getAttribute('data-find-filter-kind') || '';
-      const prefsNow = readFindLeadsPrefs();
-      prefsNow.heat = kind === 'hot' ? 'hot' : (kind === 'warm' ? 'warm' : 'all');
-      try {
-        sessionStorage.setItem('lr:find-leads', JSON.stringify(prefsNow));
-      } catch (_error) {
-        /* ignore */
-      }
-      applyFindLeadsCardFilter(kind);
-      syncRadarKindSelect(kind);
-      const next = withScanVertical('/radar');
-      const join = next.includes('?') ? '&' : '?';
-      const url = kind ? `${next}${join}kind=${encodeURIComponent(kind)}#find-results` : `${next}#find-results`;
-      window.history.replaceState({}, '', url);
-    });
-  };
-
-  const enhanceFindLeadsWizard = () => {
-    const root = document.querySelector('[data-find-leads]');
-    if (!(root instanceof HTMLElement)) return;
-    let step = 1;
-    const labels = {
-      audience: {
-        buyers_now: 'Покупателей мебели',
-        interested: 'Интересующихся мебелью',
-        companies_soon: 'Компании с будущей потребностью',
-        makers: 'Производители / дилеры',
-      },
-      heat: {
-        hot: 'Только горячие',
-        warm: 'Горячие + тёплые',
-        all: 'Все потенциальные',
-      },
-      geo: {
-        UZ: 'Узбекистан',
-        Tashkent: 'Ташкент',
-        Samarkand: 'Самарканд',
-        Bukhara: 'Бухара',
-        Andijan: 'Андижан',
-        Fergana: 'Фергана',
-      },
-      category: {
-        chairs: 'Стулья',
-        tables: 'Столы',
-        sets: 'Комплекты',
-        outdoor: 'Уличная мебель',
-        horeca: 'HoReCa мебель',
-        office: 'Офисная мебель',
-        custom: 'Мебель на заказ',
-        rattan: 'Искусственный ротанг',
-        all: 'Всё',
-      },
-      lang: {
-        ru: 'RU',
-        uz_lat: 'UZ lat',
-        uz_cyr: 'UZ кир',
-        mixed: 'RU/UZ',
-      },
-      source: {
-        instagram: 'Instagram',
-        telegram: 'Telegram',
-        tiktok: 'TikTok',
-        facebook: 'Facebook',
-        maps: 'Google / Карты',
-        olx: 'OLX.uz',
-        glotr: 'Glotr.uz',
-        tenders: 'Тендеры',
-        web: 'Web',
-      },
-    };
-
-    const syncChoices = (selector) => {
-      root.querySelectorAll(selector).forEach((label) => {
-        if (!(label instanceof HTMLElement)) return;
-        const input = label.querySelector('input');
-        label.classList.toggle('is-selected', Boolean(input && input.checked));
+  const enhanceHotQueueSearch = () => {
+    const input = document.querySelector('[data-hot-queue-search]');
+    const status = document.querySelector('[data-hot-search-status]');
+    const empty = document.querySelector('[data-hot-search-empty]');
+    const clear = document.querySelector('[data-hot-search-clear]');
+    if (!(input instanceof HTMLInputElement)) return;
+    const items = [...document.querySelectorAll('[data-hot-lead-id]')];
+    const update = () => {
+      const query = input.value.trim().toLocaleLowerCase('ru-RU');
+      let count = 0;
+      items.forEach(item => {
+        const matches = !query || item.textContent.toLocaleLowerCase('ru-RU').includes(query);
+        item.hidden = !matches;
+        if (matches) count += 1;
       });
+      if (status) status.textContent = query ? `На этой странице: ${count} из ${items.length}` : '';
+      if (empty) empty.hidden = count !== 0;
+      if (clear) clear.hidden = !input.value;
     };
-
-    const updateSummary = () => {
-      const sources = [...root.querySelectorAll('input[name="find_source"]:checked')]
-        .map((el) => labels.source[el.value] || el.value);
-      const audience = root.querySelector('input[name="find_audience"]:checked');
-      const heat = root.querySelector('input[name="find_heat"]:checked');
-      const geo = root.querySelector('input[name="find_geo"]:checked');
-      const cats = [...root.querySelectorAll('input[name="find_category"]:checked')]
-        .map((el) => labels.category[el.value] || el.value);
-      const langs = [...root.querySelectorAll('input[name="find_lang"]:checked')]
-        .map((el) => labels.lang[el.value] || el.value);
-      const set = (sel, value) => {
-        const node = root.querySelector(sel);
-        if (node) node.textContent = value;
-      };
-      set('[data-sum-sources]', sources.length ? sources.join(', ') : 'Не выбрано');
-      set('[data-sum-audience]', audience ? (labels.audience[audience.value] || audience.value) : '—');
-      set('[data-sum-category]', cats.length ? cats.join(', ') : '—');
-      set('[data-sum-geo]', geo ? (labels.geo[geo.value] || geo.value) : '—');
-      set('[data-sum-lang]', langs.length ? langs.join(' + ') : '—');
-      set('[data-sum-heat]', heat ? (labels.heat[heat.value] || heat.value) : '—');
-      const langSoft = root.querySelector('[data-find-lang-soft]');
-      if (langSoft) {
-        langSoft.textContent = langs.length
-          ? `Ориентир: ${langs.join(' + ')}. Поиск не режет выдачу по языку и не выдумывает перевод.`
-          : 'Язык не выбран — ориентир широкий. Поиск всё равно идёт по публичным сигналам без языкового среза.';
-      }
-      const geoSoft = root.querySelector('[data-find-geo-soft]');
-      if (geoSoft) {
-        const geoLabel = geo ? (labels.geo[geo.value] || geo.value) : 'не выбрана';
-        geoSoft.textContent = geo && geo.value !== 'UZ'
-          ? `Ориентир: ${geoLabel}. Если город в сигнале не подтверждён — останется «неизвестно», без подстановки.`
-          : 'География — мягкий ориентир по Узбекистану. Неподтверждённый город не выдумываем.';
-      }
-      const sumSoft = root.querySelector('[data-sum-soft]');
-      if (sumSoft) {
-        sumSoft.textContent = 'Язык и город — ориентир для вас, не жёсткий фильтр запуска.';
-      }
-      const warn = root.querySelector('[data-find-heat-warn]');
-      if (warn) warn.hidden = !(heat && heat.value === 'all');
-      const hint = root.querySelector('[data-find-summary-hint]');
-      const cta = root.querySelector('[data-find-summary-cta]');
-      if (hint) {
-        hint.textContent = step >= 4
-          ? 'Готово к запуску'
-          : step === 1
-            ? 'Следующий шаг: что ищем'
-            : step === 2
-              ? 'Следующий шаг: параметры'
-              : 'Следующий шаг: запуск';
-      }
-      if (cta instanceof HTMLButtonElement) {
-        cta.textContent = step >= 4 ? 'Найти лидов →' : 'Далее →';
-        cta.dataset.findNext = step >= 4 ? '' : '1';
-        if (step >= 4) {
-          cta.removeAttribute('data-find-next');
-          cta.setAttribute('data-scan', '');
-          cta.setAttribute('data-find-launch', '');
-        } else {
-          cta.removeAttribute('data-scan');
-          cta.setAttribute('data-find-next', '');
-        }
-      }
-      try {
-        sessionStorage.setItem('lr:find-leads', JSON.stringify({
-          sources: [...root.querySelectorAll('input[name="find_source"]:checked')].map((el) => el.value),
-          audience: audience?.value,
-          heat: heat?.value,
-          geo: geo?.value,
-          categories: [...root.querySelectorAll('input[name="find_category"]:checked')].map((el) => el.value),
-          categoryLabels: cats,
-          languages: [...root.querySelectorAll('input[name="find_lang"]:checked')].map((el) => el.value),
-          languageLabels: langs,
-          step,
-        }));
-      } catch (_error) {
-        /* ignore quota */
-      }
-    };
-
-    const showStep = (next) => {
-      step = Math.max(1, Math.min(4, next));
-      root.querySelectorAll('[data-find-panel]').forEach((panel) => {
-        if (!(panel instanceof HTMLElement)) return;
-        const id = Number(panel.getAttribute('data-find-panel'));
-        const active = id === step;
-        panel.hidden = !active;
-        panel.classList.toggle('is-active', active);
-      });
-      root.querySelectorAll('[data-find-step-tab]').forEach((tab) => {
-        if (!(tab instanceof HTMLElement)) return;
-        const id = Number(tab.getAttribute('data-find-step-tab'));
-        tab.classList.toggle('is-active', id === step);
-        tab.classList.toggle('is-done', id < step);
-      });
-      updateSummary();
-      if (window.lucide && typeof window.lucide.createIcons === 'function') {
-        window.lucide.createIcons();
-      }
-    };
-
-    const applyPreset = (name) => {
-      const setRadio = (nameAttr, value) => {
-        const input = root.querySelector(`input[name="${nameAttr}"][value="${value}"]`);
-        if (input instanceof HTMLInputElement) {
-          input.checked = true;
-        }
-      };
-      const setCats = (values) => {
-        root.querySelectorAll('input[name="find_category"]').forEach((el) => {
-          if (el instanceof HTMLInputElement) el.checked = values.includes(el.value);
-        });
-      };
-      const ig = root.querySelector('input[name="find_source"][value="instagram"]');
-      if (ig instanceof HTMLInputElement) ig.checked = true;
-      if (name === 'quick') {
-        setRadio('find_audience', 'buyers_now');
-        setRadio('find_heat', 'hot');
-        setCats(['all']);
-      } else if (name === 'horeca') {
-        setRadio('find_audience', 'companies_soon');
-        setRadio('find_heat', 'warm');
-        setCats(['horeca', 'chairs', 'tables']);
-      } else if (name === 'wholesale') {
-        setRadio('find_audience', 'makers');
-        setRadio('find_heat', 'hot');
-        setCats(['rattan', 'custom']);
-      }
-      syncChoices('.find-source, .find-choice, .find-chip');
-      updateSummary();
-      showStep(2);
-      toast('Пресет заполнен — проверьте шаги');
-    };
-
-    root.addEventListener('click', (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const next = target.closest('[data-find-next]');
-      const prev = target.closest('[data-find-prev]');
-      const preset = target.closest('[data-find-preset]');
-      const tab = target.closest('[data-find-step-tab]');
-      if (preset) {
-        applyPreset(preset.getAttribute('data-find-preset') || 'quick');
-        return;
-      }
-      if (next && !next.hasAttribute('data-scan')) {
-        event.preventDefault();
-        showStep(step + 1);
-        return;
-      }
-      if (prev) {
-        event.preventDefault();
-        showStep(step - 1);
-        return;
-      }
-      if (tab) {
-        const id = Number(tab.getAttribute('data-find-step-tab'));
-        if (id >= 1 && id <= 4) showStep(id);
-      }
-    });
-
-    root.addEventListener('change', (event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLInputElement)) return;
-      if (target.name === 'find_source' && target.checked && target.closest('.is-soon')) {
-        target.checked = false;
-        toast('Источник ещё не подключён', true);
-      }
-      if (target.name === 'find_category' && target.value === 'all' && target.checked) {
-        root.querySelectorAll('input[name="find_category"]').forEach((el) => {
-          if (el instanceof HTMLInputElement && el.value !== 'all') el.checked = false;
-        });
-      } else if (target.name === 'find_category' && target.value !== 'all' && target.checked) {
-        const all = root.querySelector('input[name="find_category"][value="all"]');
-        if (all instanceof HTMLInputElement) all.checked = false;
-      }
-      syncChoices('.find-source, .find-choice, .find-chip');
-      updateSummary();
-    });
-
-    syncChoices('.find-source, .find-choice, .find-chip');
-    const saved = readFindLeadsPrefs();
-    if (saved.heat) {
-      const heatInput = root.querySelector(`input[name="find_heat"][value="${saved.heat}"]`);
-      if (heatInput instanceof HTMLInputElement) heatInput.checked = true;
-    }
-    if (saved.audience) {
-      const audienceInput = root.querySelector(`input[name="find_audience"][value="${saved.audience}"]`);
-      if (audienceInput instanceof HTMLInputElement) audienceInput.checked = true;
-    }
-    if (Array.isArray(saved.categories) && saved.categories.length) {
-      root.querySelectorAll('input[name="find_category"]').forEach((el) => {
-        if (el instanceof HTMLInputElement) {
-          el.checked = saved.categories.includes(el.value);
-        }
-      });
-    }
-    syncChoices('.find-source, .find-choice, .find-chip');
-    updateSummary();
-    const startStep = Number(saved.step) || 1;
-    showStep(Math.max(1, Math.min(4, startStep)));
+    const reset = () => { input.value = ''; update(); input.focus(); };
+    input.addEventListener('input', update);
+    input.addEventListener('keydown', event => { if (event.key === 'Escape') reset(); });
+    clear?.addEventListener('click', reset);
+    update();
   };
-
-  enhanceFindLeadsWizard();
-  enhanceFindLeadsResultFilters();
+  enhanceHotQueueSearch();
+  document.querySelector('.scan-more-link')?.addEventListener('click', () => {
+    const details = document.getElementById('radar-budget-card')?.closest('details');
+    if (details instanceof HTMLDetailsElement) details.open = true;
+  });
   scrollToFindResultsIfNeeded();
   refreshNavUsage();
   refreshNavHotBadge();

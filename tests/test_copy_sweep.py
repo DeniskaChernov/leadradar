@@ -34,4 +34,4 @@ def test_copy_sweep_rattan_openings_offline():
     assert "Включить Live Radar" not in system
     assert "Включить Live-поиск" in radar
     assert "Включить Live Radar" not in radar
-    assert "Включить Live-поиск" in wizard
+    assert "Открыть настройки" in wizard

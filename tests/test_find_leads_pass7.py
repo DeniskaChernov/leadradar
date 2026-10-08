@@ -1,4 +1,4 @@
-"""Find-leads pass7: soft geo/lang hints (UI-only, no scan payload)."""
+"""Unsupported ingestion preferences must not appear as search controls."""
 
 from pathlib import Path
 
@@ -13,12 +13,10 @@ def test_find_leads_pass7_geo_lang_soft_hints():
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
     base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
 
-    assert "data-find-lang-soft" in wizard
-    assert "data-find-geo-soft" in wizard
-    assert "data-sum-soft" in wizard
-    assert "не жёсткий фильтр" in wizard or "не жёсткий фильтр" in js
-    assert "не выдумывает" in wizard or "не выдумываем" in wizard
-    assert "data-find-lang-soft" in js
-    assert "data-find-geo-soft" in js
-    assert "find-soft-tip" in css
+    assert 'name="find_lang"' not in wizard
+    assert 'name="find_geo"' not in wizard
+    assert "data-sum-soft" not in wizard
+    assert "data-find-lang-soft" not in js
+    assert "data-find-geo-soft" not in js
+    assert ".scan-launch" in css
     assert "13.56.0-cloudflare" in base

@@ -38,16 +38,16 @@ def test_find_leads_pass3_markup():
     assert "Тёплые:" in radar or "overview.warm" in radar
     assert 'value="warm"' in radar
     assert "data-find-result-filters" in radar
-    assert "data-find-filter-kind" in radar
+    assert "&kind=warm#find-results" in radar
     assert "data-lead-heat" in radar
-    assert "Следить постоянно" in wizard
+    assert "Ручной режим" in wizard
     assert "monitor_schedule_enabled" in wizard
     assert "{% block heading %}HOT{% endblock %}" in hot
     assert "Новые лиды" not in hot
     assert "КЛИЕНТЫ ·" in leads or "клиентов" in leads or "Воронка" in leads
-    assert "enhanceFindLeadsResultFilters" in js
+    assert "enhanceFindLeadsResultFilters" not in js
     assert "findLeadsResultsUrl" in js
-    assert "kind=warm" in js or "warm" in js
+    assert "kind=warm" in radar
     assert "13.56.0-cloudflare" in base
 
 

@@ -1,4 +1,4 @@
-"""UI regression: wizard «Найти лидов» на /radar."""
+"""UI composition: one supported manual scan flow on /radar."""
 
 from pathlib import Path
 
@@ -16,37 +16,31 @@ def test_find_leads_wizard_partial_and_radar_wire():
     sw = (PROJECT_ROOT / "app/web/static/sw.js").read_text(encoding="utf-8")
 
     assert 'partials/find_leads_wizard.html' in radar or "find_leads_wizard" in radar
-    assert "Найдите новых клиентов для вашего бизнеса" in wizard
+    assert "Найдите новых клиентов" in wizard
     assert "data-find-leads" in wizard
-    assert "data-find-panel=\"1\"" in wizard
-    assert "data-find-panel=\"4\"" in wizard
-    assert "Быстрый старт" in wizard
-    assert "Рестораны и кафе" in wizard
-    assert "Производители и опт" in wizard
-    assert "Самый мощный источник" in wizard
-    assert 'data-source-available="1"' in wizard
+    assert "scan-launch" in wizard
+    assert 'name="scan_budget"' in wizard
+    assert "active_competitors" in wizard
     assert 'data-source="instagram"' in wizard
-    assert "Не подключено" in wizard or "Скоро" in wizard
-    assert "Ваш поиск" in wizard
-    assert "Пример результата" in wizard
-    assert "UI-пример, не сохранён в базе" in wizard
-    assert "Найти лидов →" in wizard
-    assert "Следить постоянно" in wizard
+    assert "Ручной режим" in wizard
+    assert "Открыть HOT" in wizard
+    assert "а не обещанное число лидов" in wizard
+    assert "Найти лидов" in wizard
+    assert "monitor_schedule_enabled" in wizard
     assert "disabled" in wizard
     assert "Найти лидов" in base
     assert "data-nav-usage" in base
     assert "Текущий месяц" in base
-    assert "enhanceFindLeadsWizard" in js
+    assert "enhanceFindLeadsWizard" not in js
     assert "refreshNavUsage" in js
     assert "lr:find-leads" in js
     assert ".find-leads" in css
-    assert ".find-layout" in css
-    assert ".find-source" in css
+    assert ".scan-launch" in css
     assert "13.56.0-cloudflare" in sw
     assert "13.56.0-cloudflare" in base
     # Safety/backend UI preserved on radar page
-    assert "Сколько разрешить на эту проверку?" in radar
-    assert "Максимальный расход" in radar
+    assert "Сколько разрешить на эту проверку?" in wizard
+    assert "Максимальный расход" in wizard
     assert 'method="post" action="/api/ops/openai-live"' in radar
     assert "Offline-режим" in radar or "scan_budget.is_live" in radar
     assert "data-scan" in wizard
@@ -56,7 +50,8 @@ def test_find_leads_no_fake_provider_launch_hooks():
     wizard = (PROJECT_ROOT / "app/web/templates/partials/find_leads_wizard.html").read_text(
         encoding="utf-8"
     )
-    # Недоступные источники не имеют enabled checkbox для запуска
+    # Unsupported providers must not be offered as a search control.
     for source in ("telegram", "tiktok", "facebook", "olx", "glotr", "tenders", "web", "maps"):
-        assert f'data-source="{source}"' in wizard
-        assert f'value="{source}" disabled' in wizard
+        assert f'data-source="{source}"' not in wizard
+        assert f'value="{source}"' not in wizard
+    assert 'name="find_source"' not in wizard

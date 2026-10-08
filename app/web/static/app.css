@@ -4215,3 +4215,85 @@ details.learning-card.page-task-secondary[open]>summary{margin-bottom:12px}
     display: block !important;
   }
 }
+
+/* Clear scan workflow and compact HOT queue. */
+.scan-launch {
+  display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(230px, 1fr);
+  border: 1px solid var(--line-soft); border-radius: 22px; overflow: hidden;
+  background: #fff; box-shadow: 0 8px 26px rgba(15, 23, 42, .04);
+}
+.scan-launch > * { min-width: 0; padding: 24px; }
+.scan-launch h2 { margin: 8px 0; font-size: clamp(1.45rem, 2.4vw, 2rem); letter-spacing: -.03em; }
+.scan-launch-intro { color: var(--muted); line-height: 1.6; margin: 0 0 20px; max-width: 46rem; }
+.scan-scope { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 14px; border: 1px solid var(--line-soft); border-radius: 14px; }
+.scan-scope > div { flex: 1; min-width: 150px; }
+.scan-scope p { margin: 5px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.scan-source-icon { color: var(--brand); display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: #e8f7ef; }
+.scan-source-icon i { font-size: 12px; font-style: normal; font-weight: 800; }
+.scan-launch-side { background: #f6faf8; border-left: 1px solid var(--line-soft); }
+.scan-cost { display: grid; gap: 8px; }
+.scan-cost > span { color: var(--muted); font-size: 13px; }
+.scan-cost strong { color: #14532d; font-size: 1.65rem; }
+.scan-cost small, .scan-next-steps small { color: var(--muted); line-height: 1.5; }
+.scan-next-steps { list-style: none; padding: 0; margin: 24px 0; display: grid; gap: 20px; }
+.scan-next-steps li { display: flex; gap: 12px; align-items: start; }
+.scan-next-steps li > span { flex: 0 0 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: #e2efe7; color: #166534; font-size: 12px; font-weight: 800; }
+.scan-next-steps li > div { display: grid; gap: 4px; }
+.scan-more-link { font-size: 13px; color: #166534; text-underline-offset: 3px; }
+.scan-launch-budget { margin: 18px 0 10px; }
+.scan-budget-picker > label > input:focus-visible + span { outline: 3px solid var(--brand); outline-offset: 3px; }
+.scan-launch-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 12px; }
+.scan-launch-actions .btn { min-height: 44px; }
+.scan-budget-caption, .scan-launch-note { font-size: 12px; line-height: 1.6; color: var(--muted); margin: 8px 0; }
+.scan-launch-note a { color: inherit; }
+.signal-details > summary { cursor: pointer; font-weight: 700; padding: 8px 0; }
+.signal-details .table-wrap { margin-top: 12px; }
+.find-lead-grid { grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); }
+.find-lead-card { min-width: 0; }
+.find-lead-card header { overflow-wrap: anywhere; }
+.hot-queue-search { padding: 0 18px 12px; display: grid; gap: 6px; }
+.hot-queue-search label { font-size: 12px; font-weight: 650; color: var(--muted); }
+.hot-queue-search > div { display: flex; gap: 6px; align-items: center; }
+.hot-queue-search input { width: 100%; min-width: 0; min-height: 40px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: #fff; color: var(--text); font: inherit; }
+.hot-queue-search [hidden] { display: none !important; }
+.hot-queue-search small { color: var(--muted); min-height: 16px; font-size: 12px; }
+.hot-queue-item[hidden], [data-hot-search-empty][hidden] { display: none !important; }
+.hot-queue-item:focus-visible, .scan-more-link:focus-visible, .signal-details > summary:focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; }
+.scan-launch-actions .btn, .hot-queue-item, .find-lead-card { transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease; }
+@media (min-width: 721px) {
+  .sidebar .nav-more { display: none; }
+  .sidebar .nav-secondary { display: grid; }
+}
+@media (max-width: 1000px) {
+  .scan-launch { grid-template-columns: minmax(0, 1fr); }
+  .scan-launch-side { border-left: 0; border-top: 1px solid var(--line-soft); }
+  .scan-next-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+}
+@media (max-width: 720px) {
+  .shell { display: block; }
+  .sidebar { position: fixed; top: auto; bottom: 0; left: 0; right: 0; width: auto; height: calc(68px + env(safe-area-inset-bottom)); margin: 0; z-index: 100; }
+  .sidebar .brand, .sidebar .side-info, .sidebar .nav-primary > .nav-group-label { display: none; }
+  .sidebar nav { display: grid; grid-template-columns: minmax(0, 1fr) 58px; gap: 4px; overflow: visible; }
+  .sidebar .nav-primary { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .sidebar .nav-more { display: grid; }
+  .mobile-nav-backdrop { z-index: 90; }
+  .sidebar .nav-secondary { display: none; grid-template-columns: 1fr; opacity: 1; transform: none; pointer-events: auto; }
+  .sidebar .nav-secondary.is-open { display: grid; animation: menu-appear .16s ease-out; }
+  .nav-secondary .nav-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; gap: 6px; }
+  .nav-secondary .nav-group-label { display: block; grid-column: 1 / -1; padding: 6px 4px; }
+  .nav-secondary .nav { min-height: 44px; }
+  .nav-secondary .nav b { font-size: 12px; }
+  .switcher-tab span { display: inline; font-size: 11px; }
+  .scan-launch > * { padding: 18px; }
+  .scan-next-steps { grid-template-columns: 1fr; gap: 14px; margin: 20px 0; }
+  .scan-launch .scan-budget-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scan-launch .scan-budget-picker .custom { grid-column: 1 / -1; }
+  .scan-launch-actions .btn { flex: 1 1 140px; justify-content: center; }
+}
+@keyframes menu-appear { from { opacity: 0; } to { opacity: 1; } }
+/* Keep this after every component rule: user motion preferences take priority. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  [data-reveal] { opacity: 1 !important; transform: none !important; }
+  .btn:hover, .task-card:hover, .deal-card:hover, .metric:hover, .nav:hover, .scan-budget-picker > label:hover > span { transform: none !important; }
+}

@@ -16,11 +16,11 @@ def test_find_leads_pass6_reset_sync_and_pages():
     base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
     js = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "data-find-filter-reset" in radar
-    assert "Сбросить фильтр поиска" in radar
-    assert "clearFindLeadsPrefsFilter" in js
-    assert "syncRadarKindSelect" in js
-    assert "saved.step" in js
+    assert 'href="{{ radar_base }}">Сбросить' in radar
+    assert 'class="filters radar-filters" method="get"' in radar
+    assert "clearFindLeadsPrefsFilter" not in js
+    assert "syncRadarKindSelect" not in js
+    assert "saved.step" not in js
     assert "НОВЫЕ ИСТОЧНИКИ" in discovery
     assert "Новые источники" in discovery or "Проверка кандидатов" in discovery
     assert "Найти лидов" in economics

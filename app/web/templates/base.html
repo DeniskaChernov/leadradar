@@ -15,9 +15,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link id="optional-fonts" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print">
-  <link rel="stylesheet" href="/static/app.css?v=13.56.0-cloudflare-20261007-workflows">
+  <link rel="stylesheet" href="/static/app.css?v=13.56.0-cloudflare-20261008-ux3">
   <script async id="lucide-sdk" src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
-  <script defer src="/static/app.js?v=13.56.0-cloudflare-20261007-workflows"></script>
+  <script defer src="/static/app.js?v=13.56.0-cloudflare-20261008-ux3"></script>
 </head>
 <body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}" data-page="{{ active_path }}" data-scan-vertical="{{ selected_vertical }}">
 <a class="skip-link" href="#main-content">Перейти к содержимому</a>
@@ -36,6 +36,8 @@
         <a class="nav {% if active_path.startswith('/hot') %}active{% endif %}" href="/hot{{ vq }}" {% if active_path.startswith('/hot') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="flame"></i></span><b>HOT</b><em class="nav-badge" data-nav-hot-badge hidden>0</em></a>
         <a class="nav {% if active_path.startswith('/radar') %}active{% endif %}" href="/radar{{ vq }}" {% if active_path.startswith('/radar') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="search"></i></span><b>Найти лидов</b></a>
       </div>
+      <button class="nav nav-more" type="button" data-more-toggle aria-expanded="false" aria-controls="more-navigation"><span aria-hidden="true"><i data-lucide="grid-2x2"></i></span><b>Ещё</b></button>
+      <div class="nav-secondary" id="more-navigation" aria-label="Работа и настройки">
       <div class="nav-group">
         <span class="nav-group-label">Разведка</span>
         <a class="nav {% if active_path.startswith('/contacts') or active_path.startswith('/openings') %}active{% endif %}" href="{% if selected_vertical == 'ARTIFICIAL_RATTAN' %}/rattan#companies{% else %}/contacts{% endif %}"><span aria-hidden="true"><i data-lucide="{% if selected_vertical == 'ARTIFICIAL_RATTAN' %}building-2{% else %}contact{% endif %}"></i></span><b>{% if selected_vertical == 'ARTIFICIAL_RATTAN' %}Компании{% else %}Люди{% endif %}</b></a>
@@ -49,13 +51,13 @@
         <a class="nav {% if active_path.startswith('/deals') %}active{% endif %}" href="/deals" {% if active_path.startswith('/deals') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="handshake"></i></span><b>Сделки</b></a>
         <a class="nav {% if active_path.startswith('/analytics') %}active{% endif %}" href="/analytics" {% if active_path.startswith('/analytics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="bar-chart-3"></i></span><b>Аналитика</b></a>
       </div>
-      <button class="nav nav-more" type="button" data-more-toggle aria-expanded="false" aria-controls="more-navigation"><span aria-hidden="true"><i data-lucide="grid-2x2"></i></span><b>Ещё</b></button>
-      <div class="nav-group nav-secondary" id="more-navigation" aria-label="Система и доп.">
+      <div class="nav-group">
         <span class="nav-group-label">Система</span>
         <a class="nav {% if active_path.startswith('/system') %}active{% endif %}" href="/system{{ vq }}" {% if active_path.startswith('/system') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="settings-2"></i></span><b>Настройки</b></a>
         <a class="nav {% if active_path.startswith('/economics') %}active{% endif %}" href="/economics" {% if active_path.startswith('/economics') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="wallet"></i></span><b>Расходы</b></a>
         <a class="nav {% if active_path.startswith('/catalog') %}active{% endif %}" href="/catalog{{ vq }}"><span aria-hidden="true"><i data-lucide="notebook-tabs"></i></span><b>Каталог</b></a>
         <a class="nav {% if active_path.startswith('/discovery') %}active{% endif %}" href="/discovery"><span aria-hidden="true"><i data-lucide="compass"></i></span><b>Новые источники</b></a>
+      </div>
       </div>
     </nav>
     <div class="side-info">
@@ -128,7 +130,7 @@
         {% endif %}
         {% endif %}
         {# Scan CTA только на экранах поиска/источников — не на HOT/CRM #}
-        {% set show_top_scan = active_path in ['/', '/rattan'] or active_path.startswith('/radar') or active_path.startswith('/system') or active_path.startswith('/competitors') or active_path.startswith('/discovery') %}
+        {% set show_top_scan = active_path in ['/', '/rattan'] or active_path.startswith('/system') or active_path.startswith('/competitors') or active_path.startswith('/discovery') %}
         {% if show_top_scan %}
         <button class="btn primary" type="button" data-scan {% if snapshot.cycle_running or search_paused %}disabled{% endif %} data-scan-cap="{{ settings.instagram_max_units_per_scan }}">{% if search_paused %}Поиск приостановлен{% elif active_path.startswith('/radar') %}Найти лидов{% else %}Проверить сейчас{% endif %}</button>
         {% elif snapshot.cycle_running %}

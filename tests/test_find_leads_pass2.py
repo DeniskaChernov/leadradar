@@ -50,7 +50,7 @@ def test_find_leads_pass2_markup_and_cache():
     assert "13.56.0-cloudflare" in base
     assert "13.56.0-cloudflare" in sw
     # safety strings preserved
-    assert "Сколько разрешить на эту проверку?" in radar
+    assert "Сколько разрешить на эту проверку?" in (PROJECT_ROOT / "app/web/templates/partials/find_leads_wizard.html").read_text(encoding="utf-8")
     assert 'method="post" action="/api/ops/openai-live"' in radar
     assert "Offline-режим" in radar
 

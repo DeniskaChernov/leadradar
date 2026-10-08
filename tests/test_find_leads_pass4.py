@@ -1,4 +1,4 @@
-"""Find-leads pass4: audience/category prefs filter + dashboard copy."""
+"""Old wizard preferences must not silently remove server results."""
 
 from pathlib import Path
 
@@ -17,11 +17,11 @@ def test_find_leads_pass4_prefs_filter_and_dashboard():
     base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
 
     assert "data-find-filter-empty" in radar
-    assert "По текущему фильтру поиска карточек нет" in radar
-    assert "cardMatchesFindPrefs" in js
-    assert "FIND_CATEGORY_PRODUCTS" in js
-    assert "FIND_AUDIENCE_INTENTS" in js
-    assert "categoryLabels" in js
+    assert "В этой выборке пока нет готовых лидов" in radar
+    assert "cardMatchesFindPrefs" not in js
+    assert "FIND_CATEGORY_PRODUCTS" not in js
+    assert "FIND_AUDIENCE_INTENTS" not in js
+    assert "readFindLeadsPrefs" not in js
     assert "Найти лидов" in dashboard
     assert "Что сделать сейчас" in dashboard
     assert "Найти лидов" in help_text

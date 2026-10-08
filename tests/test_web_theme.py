@@ -318,15 +318,16 @@ def test_contact_qualification_and_intelligence_sections_have_explicit_layouts()
 
 def test_radar_budget_ui_uses_credit_presets_truthful_max_and_result_facts():
     radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    launch = (PROJECT_ROOT / "app/web/templates/partials/find_leads_wizard.html").read_text(encoding="utf-8")
     javascript = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")
 
-    assert "Сколько разрешить на эту проверку?" in radar
+    assert "Сколько разрешить на эту проверку?" in launch
     assert "Максимальный расход" in radar
     assert "Потрачено" in radar
     assert "ПОСЛЕДНИЙ ЗАПУСК" in radar
     for preset in ("Эконом", "Обычно", "Расширенно", "Глубоко"):
-        assert preset in radar
+        assert preset in launch
     assert "max_credits" in javascript
     assert "getAttribute('method')" in javascript
     assert 'method="post" action="/api/ops/openai-live"' in radar
@@ -413,7 +414,7 @@ def test_phase8_system_agent_export_and_telegram_workspaces():
     assert "Вернуть в работу" in (PROJECT_ROOT / "app/web/templates/partials/lead_funnel_quick_action.html").read_text(encoding="utf-8")
     assert "Просрочен контакт" in (PROJECT_ROOT / "app/web/templates/partials/lead_quality_badge.html").read_text(encoding="utf-8")
     assert "Спорные" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
-    assert "LEAD_SEARCH_ENABLED=false" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    assert "Новый поиск выключен" in (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
     assert "провайдер подтвердил" in (PROJECT_ROOT / "app/web/templates/economics.html").read_text(encoding="utf-8")
     assert "Очередь оценки" in (PROJECT_ROOT / "app/web/templates/agent.html").read_text(encoding="utf-8")
     assert "data-lead-followup" in javascript

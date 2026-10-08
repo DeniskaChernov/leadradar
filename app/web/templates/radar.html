@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{% if (radar_vertical or selected_vertical) == 'ARTIFICIAL_RATTAN' %}Найти лидов · Ротанг{% else %}Найти лидов{% endif %} · Lead Radar{% endblock %}
 {% block heading %}Найти лидов{% endblock %}
-{% block subheading %}{% if (radar_vertical or selected_vertical) == 'ARTIFICIAL_RATTAN' %}Люди и компании, которым нужен искусственный ротанг{% else %}Люди, которым нужна мебель — без технических настроек на виду{% endif %}{% endblock %}
+{% block subheading %}{% if (radar_vertical or selected_vertical) == 'ARTIFICIAL_RATTAN' %}Люди и компании, которым нужен искусственный ротанг{% else %}Запустите поиск комментариев, затем обработайте горячих лидов в HOT{% endif %}{% endblock %}
 {% block content %}
 {% set rv = radar_vertical or selected_vertical or 'FURNITURE' %}
 {% set radar_base = '/radar?vertical=' ~ rv %}
@@ -12,7 +12,7 @@
 <section class="panel compact radar-search-paused">
   <div class="alert warn">
     <b>Поиск лидов приостановлен</b>
-    <span>LEAD_SEARCH_ENABLED=false — Instagram-scan и фоновый мониторинг не запускают новый поиск. Клиенты и оценка уже собранных сигналов работают.</span>
+    <span>Новый поиск выключен. Сохранённые клиенты и оценка уже собранных сигналов доступны.</span>
   </div>
 </section>
 {% endif %}
@@ -20,7 +20,7 @@
 <section class="hero-status radar-hero find-results-hero {% if scan_budget.live_enabled %}live{% else %}safe{% endif %}" data-motion-root id="find-results">
   <div>
     <span class="eyebrow">РЕЗУЛЬТАТЫ ПОИСКА</span>
-    <h2>{% if last_run and last_run.status.value == 'SUCCESS' %}Поиск завершён{% else %}Найденные сигналы{% endif %}</h2>
+    <h2>Сигналы в базе</h2>
     <p class="find-results-count">Найдено <b>{{ overview.qualified }}</b> потенциальных покупателей · сигналов в базе: {{ overview.total }}</p>
     <div class="find-heat-strip" aria-label="Разбивка по силе">
       <span class="heat hot">🔥 Горячие: {{ overview.hot }}</span>
@@ -144,20 +144,12 @@
     <div><small>Прогноз месяца</small><b>~{{ scan_budget.projected_monthly_burn|round|int }} credits</b><span>Мягкий лимит: {{ scan_budget.monthly_soft_limit or '—' }}</span></div>
     <div><small>Примерно хватит</small><b>{% if scan_budget.package_months_remaining_estimate is not none %}{{ scan_budget.package_months_remaining_estimate }} месяца{% else %}Баланс неизвестен{% endif %}</b><span>Цель: ≥6 месяцев</span></div>
   </div>
-  <fieldset class="scan-budget-picker">
-    <legend>Сколько разрешить на эту проверку?</legend>
-    {% for units, title in [(5, 'Эконом'), (10, 'Обычно'), (20, 'Расширенно'), (40, 'Глубоко')] %}
-    <label><input type="radio" name="scan_budget" value="{{ units }}" {% if units == scan_budget.requested_credits %}checked{% endif %}><span><b>{{ units }}</b><small>{{ title }}</small></span></label>
-    {% endfor %}
-    <label class="custom"><input type="radio" name="scan_budget" value="custom"><span><b>Свой лимит</b><input type="number" data-custom-scan-budget min="1" max="{{ scan_budget.maximum_manual_scan_budget or scan_budget.monthly_hard_limit or 3800 }}" value="{{ scan_budget.default_scan_budget or 10 }}" aria-label="Свой лимит ScrapeCreators credits"></span></label>
-  </fieldset>
   <div class="scan-budget-preview">
     <span>Максимальный расход: <b data-budget-max>{{ scan_budget.effective_max_credits }} credits</b></span>
     <span>Осталось в месяце: <b data-budget-monthly>{{ scan_budget.monthly_remaining }}</b></span>
     <span>Доступно сегодня: <b data-budget-daily>{{ scan_budget.daily_remaining }}</b></span>
     <span data-budget-plan>План: ~{{ scan_budget.estimated_competitors_reachable }} конкурентов · ~{{ scan_budget.estimated_comment_pages }} стр. комментариев{% if scan_budget.expected_min_units %} · минимум {{ scan_budget.expected_min_units }} credits{% endif %}</span>
     <span class="budget-clamp" data-budget-clamp {% if not scan_budget.clamped %}hidden{% endif %}>Запрос будет урезан до <b data-budget-clamp-value>{{ scan_budget.effective_max_credits }}</b> credits</span>
-    <button class="btn primary" type="button" data-scan {% if not scan_budget.can_start %}disabled{% endif %}>Найти лидов</button>
   </div>
   {% elif scan_budget.is_live %}
   <div class="alert warn"><span>{% for reason in scan_budget.blocking_reasons %}{{ reason }}{% if not loop.last %} {% endif %}{% endfor %}</span></div>
@@ -192,7 +184,7 @@
     {% if settings.monitor_schedule_enabled %}
     <a class="btn ghost" href="/system{% if rv == 'ARTIFICIAL_RATTAN' %}?vertical=ARTIFICIAL_RATTAN{% endif %}" data-find-monitor>Следить постоянно · в Системе</a>
     {% else %}
-    <button type="button" class="btn ghost" data-find-monitor disabled title="Автомониторинг не включён автоматически">Следить постоянно</button>
+    <span class="muted">Ручной режим · следующую проверку запускаете вы</span>
     {% endif %}
   </div>
 </section>
@@ -207,22 +199,36 @@
   <div class="metric muted-metric"><span>Отсеяно</span><strong>{{ overview.rejected }}</strong><small>Не лид</small></div>
 </div>
 
+<form class="filters radar-filters" method="get" aria-label="Фильтры радара сигналов">
+  <input type="hidden" name="vertical" value="{{ rv }}">
+  <input name="q" value="{{ q }}" aria-label="Поиск по радару" placeholder="Имя, username, комментарий или товар">
+  <select name="competitor" aria-label="Фильтр по конкуренту"><option value="">Все конкуренты</option>{% for item in competitors %}<option value="{{ item.competitor.normalized_handle }}" {% if competitor_filter == item.competitor.normalized_handle %}selected{% endif %}>@{{ item.competitor.normalized_handle }}</option>{% endfor %}</select>
+  <select name="kind" aria-label="Тип сигнала">
+    <option value="" {% if not kind_filter %}selected{% endif %}>Все сигналы</option>
+    <option value="new" {% if kind_filter=='new' %}selected{% endif %}>Новые</option>
+    <option value="baseline" {% if kind_filter in ['history','baseline','archive'] %}selected{% endif %}>Архив комментариев</option>
+    <option value="history" {% if kind_filter=='history' %}selected{% endif %}>История комментариев</option>
+    <option value="hot" {% if kind_filter=='hot' %}selected{% endif %}>Горячие</option>
+    <option value="warm" {% if kind_filter=='warm' %}selected{% endif %}>Тёплые</option>
+    <option value="pending" {% if kind_filter=='pending' %}selected{% endif %}>Нужна оценка</option>
+  </select>
+  <button class="btn">Применить</button><a class="btn ghost" href="{{ radar_base }}">Сбросить</a>
+</form>
 <section class="find-lead-cards" aria-label="Карточки лидов" data-find-results data-hot-threshold="{{ settings.hot_lead_threshold }}">
   <div class="find-results-head">
     <h3>Потенциальные покупатели</h3>
-    <div class="find-result-filters" data-find-result-filters>
-      <span class="muted">По вашему поиску:</span>
-      <button type="button" class="btn tiny {% if kind_filter == 'hot' %}primary{% else %}ghost{% endif %}" data-find-filter-kind="hot">Только горячие</button>
-      <button type="button" class="btn tiny {% if kind_filter == 'warm' %}primary{% else %}ghost{% endif %}" data-find-filter-kind="warm">Горячие + тёплые</button>
-      <button type="button" class="btn tiny {% if not kind_filter %}primary{% else %}ghost{% endif %}" data-find-filter-kind="">Все потенциальные</button>
-      <button type="button" class="btn tiny ghost" data-find-filter-reset>Сбросить фильтр поиска</button>
-      <a class="btn tiny ghost" href="{{ radar_base }}&kind=hot">HOT в URL</a>
-    </div>
-    <p class="muted find-filter-note" data-find-filter-note hidden></p>
+    <nav class="find-result-filters" data-find-result-filters aria-label="Показать сигналы">
+      <a class="btn tiny {{ 'primary' if not kind_filter else 'ghost' }}" href="{{ radar_base }}#find-results" {{ 'aria-current="page"'|safe if not kind_filter }}>Все сигналы</a>
+      <a class="btn tiny {{ 'primary' if kind_filter == 'hot' else 'ghost' }}" href="{{ radar_base }}&kind=hot#find-results" {{ 'aria-current="page"'|safe if kind_filter == 'hot' }}>Горячие</a>
+      <a class="btn tiny {{ 'primary' if kind_filter == 'warm' else 'ghost' }}" href="{{ radar_base }}&kind=warm#find-results" {{ 'aria-current="page"'|safe if kind_filter == 'warm' }}>Тёплые</a>
+      <a class="btn tiny {{ 'primary' if kind_filter == 'pending' else 'ghost' }}" href="{{ radar_base }}&kind=pending#find-results" {{ 'aria-current="page"'|safe if kind_filter == 'pending' }}>Нужна оценка</a>
+    </nav>
   </div>
   <div class="find-lead-grid">
-    {% for comment, contact, competitor, post, lead in rows[:48] %}
-    {% if lead %}
+    {% set cards = namespace(count=0) %}
+    {% for comment, contact, competitor, post, lead in rows %}
+    {% if lead and lead.status.value != 'NOT_LEAD' and cards.count < 48 %}
+    {% set cards.count = cards.count + 1 %}
     {% set ai = lead.analysis_details or {} %}
     {% set heat = 'hot' if lead.lead_score >= settings.hot_lead_threshold else ('warm' if lead.lead_score >= 50 else 'cool') %}
     <article
@@ -247,13 +253,15 @@
         {% if ai.get('location') and ai.get('location') != 'UNKNOWN' %}<span>{{ ai.get('location') }}</span>{% endif %}
       </div>
       <div class="find-lead-meta">
-        <span>Score {{ lead.lead_score }}</span>
-        {% if ai.get('confidence') is not none %}<span>Confidence {% set conf = ai.get('confidence') %}{{ ((conf * 100) if conf <= 1 else conf)|round|int }}%</span>{% endif %}
+        <span>Приоритет {{ lead.lead_score }}/100</span>
+        {% if ai.get('confidence') is not none %}<span>Уверенность {% set conf = ai.get('confidence') %}{{ ((conf * 100) if conf <= 1 else conf)|round|int }}%</span>{% endif %}
         <span>{{ lead_status_label(lead.status) }}</span>
-        {% if ai.get('evidence_ids') %}<span>Evidence: {{ ai.get('evidence_ids')|length }}</span>{% endif %}
+        {% if ai.get('evidence_ids') %}<span>Подтверждений: {{ ai.get('evidence_ids')|length }}</span>{% endif %}
       </div>
       <div class="find-lead-actions">
-        {% if lead.lead_score >= settings.hot_lead_threshold %}
+        {% if lead.status.value in ['WON', 'LOST'] %}
+        <a class="btn tiny primary" href="/leads/{{ lead.id }}">Открыть карточку</a>
+        {% elif lead.lead_score >= settings.hot_lead_threshold %}
         <a class="btn tiny primary" href="/hot?vertical={{ rv }}&lead_id={{ lead.id }}">Написать</a>
         <a class="btn tiny ghost" href="/leads/{{ lead.id }}">Карточка</a>
         {% else %}
@@ -266,28 +274,18 @@
     {% endif %}
     {% endfor %}
   </div>
-  <div class="empty-box find-filter-empty" data-find-filter-empty hidden>
-    <b>По текущему фильтру поиска карточек нет</b>
-    <span>Смягчите силу сигнала или категории — либо сбросьте фильтр ниже.</span>
-    <button type="button" class="btn tiny ghost" data-find-filter-reset>Сбросить фильтр поиска</button>
+  {% if cards.count == 48 %}<p class="muted">Показаны первые 48 карточек. Уточните поиск или откройте подробную таблицу, чтобы найти остальные сигналы.</p>{% endif %}
+  {% if not cards.count %}
+  <div class="empty-box" data-find-filter-empty>
+    <b>В этой выборке пока нет готовых лидов</b>
+    <span>Сигналы без оценки и отсеянные комментарии доступны в подробной таблице ниже.</span>
+    <a class="btn tiny ghost" href="{{ radar_base }}#find-results">Показать все сигналы</a>
   </div>
+  {% endif %}
 </section>
 
-<form class="filters radar-filters" method="get" aria-label="Фильтры радара сигналов">
-  <input type="hidden" name="vertical" value="{{ rv }}">
-  <input name="q" value="{{ q }}" aria-label="Поиск по радару" placeholder="Имя, username, комментарий или товар">
-  <select name="competitor" aria-label="Фильтр по конкуренту"><option value="">Все конкуренты</option>{% for item in competitors %}<option value="{{ item.competitor.normalized_handle }}" {% if competitor_filter == item.competitor.normalized_handle %}selected{% endif %}>@{{ item.competitor.normalized_handle }}</option>{% endfor %}</select>
-  <select name="kind" aria-label="Тип сигнала">
-    <option value="" {% if not kind_filter %}selected{% endif %}>Все сигналы</option>
-    <option value="new" {% if kind_filter=='new' %}selected{% endif %}>Новые</option>
-    <option value="baseline" {% if kind_filter in ['history','baseline','archive'] %}selected{% endif %}>Baseline архив</option>
-    <option value="history" {% if kind_filter=='history' %}selected{% endif %}>Исторические (alias)</option>
-    <option value="hot" {% if kind_filter=='hot' %}selected{% endif %}>Горячие</option>
-    <option value="warm" {% if kind_filter=='warm' %}selected{% endif %}>Тёплые</option>
-    <option value="pending" {% if kind_filter=='pending' %}selected{% endif %}>Нужна оценка</option>
-  </select>
-  <button class="btn">Применить</button><a class="btn ghost" href="{{ radar_base }}">Сбросить</a>
-</form>
+
+<details class="panel signal-details"><summary>Подробная таблица сигналов · {{ rows|length }} в выборке</summary>
 <div class="table-wrap"><table class="responsive-table radar-table">
 <thead><tr><th>Клиент</th><th>Что написал</th><th>Где нашли</th><th>Контекст Reel</th><th>Оценка</th><th>Что делать</th></tr></thead>
 <tbody>
@@ -315,7 +313,7 @@
   <td data-label="Источник"><b>@{{ competitor.normalized_handle }}</b><small><span class="tier tier-{{ competitor.tier|lower }}" title="Приоритет мониторинга">{{ competitor_tier_label(competitor.tier) }}</span> · <a target="_blank" rel="noopener" href="{{ post.url }}">Открыть Reel ↗</a></small></td>
   <td data-label="Контекст Reel" class="context">{{ post.caption[:165] or 'Описание Reel не получено' }}{% if post.caption|length > 165 %}…{% endif %}</td>
   <td data-label="Оценка">{% if lead and lead.status.value == 'ANALYZING' %}<span class="tag pending">Ставим оценку</span><small>Лид уже виден менеджеру</small>{% elif lead and lead.status.value == 'AI_PENDING' %}<span class="tag pending">Система не уверена</span><small>Нужна умная оценка GPT</small>{% elif lead %}<div class="score-line"><div class="lead-score {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead.lead_score >= 50 %}warm{% endif %}">{{ lead.lead_score }}</div><div><b>{{ intent_label(lead.intent) }}</b><small>{{ product_label(lead.product_category) }} · {{ ai_source_label(lead.ai_source) }}</small></div></div>{% else %}<span class="tag pending">Нет оценки</span>{% endif %}</td>
-  <td data-label="Действие">{% if lead %}{% if lead.lead_score >= settings.hot_lead_threshold %}<a class="btn tiny primary" href="/hot?vertical={{ rv }}&lead_id={{ lead.id }}">Написать</a>{% else %}<a class="btn tiny" href="/leads/{{ lead.id }}">Открыть лид</a>{% endif %}<small class="human-status">{{ lead_status_label(lead.status) }}</small>{% else %}<a class="btn tiny ghost" href="/contacts/{{ contact.id }}">Карточка клиента</a>{% endif %}</td>
+  <td data-label="Действие">{% if lead %}{% if lead.lead_score >= settings.hot_lead_threshold and lead.status.value not in ['NOT_LEAD', 'WON', 'LOST'] %}<a class="btn tiny primary" href="/hot?vertical={{ rv }}&lead_id={{ lead.id }}">Написать</a>{% else %}<a class="btn tiny" href="/leads/{{ lead.id }}">Открыть лид</a>{% endif %}<small class="human-status">{{ lead_status_label(lead.status) }}</small>{% else %}<a class="btn tiny ghost" href="/contacts/{{ contact.id }}">Карточка клиента</a>{% endif %}</td>
 </tr>
 {% else %}
 <tr>
@@ -341,4 +339,5 @@
 {% endfor %}
 </tbody>
 </table></div>
+</details>
 {% endblock %}
