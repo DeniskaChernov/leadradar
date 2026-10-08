@@ -15,7 +15,35 @@
   </div>
 </section>
 
+<section class="panel" id="server-runtime">
+  <div class="panel-head"><div><h2>Работа сервера</h2><p>Состояние текущего процесса; доступность Instagram и OpenAI проверяется отдельно.</p></div></div>
+  {% if runtime_diagnostics %}
+  <div class="mini-metrics">
+    <span><b>{{ runtime_diagnostics.started_at|display_dt }}</b> запущен</span>
+    <span><b>{{ runtime_diagnostics.heartbeat_at|display_dt }}</b> последнее подтверждение работы</span>
+    <span><b>{% if runtime_diagnostics.phase == 'SERVING' %}Работает{% else %}Запускается{% endif %}</b> кабинет</span>
+  </div>
+  {% if runtime_diagnostics.previous and runtime_diagnostics.previous.unfinished %}
+  <div class="alert warn"><b>Предыдущий процесс не сохранил завершение</b><span>Последнее подтверждение: {{ runtime_diagnostics.previous.heartbeat_at|display_dt }}. Причина остановки неизвестна; запись не доказывает поломку базы или провайдера.</span></div>
+  {% elif runtime_diagnostics.previous and runtime_diagnostics.previous.state == 'FAILED' %}
+  <div class="alert warn"><b>Предыдущий запуск завершился с ошибкой</b><span>Тип: {{ runtime_diagnostics.previous.error_type or 'ненулевой код завершения' }}. Подробности — в журнале сервера.</span></div>
+  {% elif runtime_diagnostics.previous and runtime_diagnostics.previous.state == 'INTERRUPTED' %}
+  <p class="muted">Предыдущий запуск прерван остановкой процесса.</p>
+  {% elif runtime_diagnostics.previous and runtime_diagnostics.previous.state == 'UNREADABLE' %}
+  <p class="muted">Предыдущая запись состояния недоступна; причину завершения подтвердить нельзя.</p>
+  {% endif %}
+  {% if runtime_diagnostics.persistent_supported and not runtime_diagnostics.persisted %}
+  <div class="alert warn"><b>Журнал состояния не сохранён</b><span>Сервер работает, но диагностика после перезапуска недоступна. Проверьте свободное место и права записи.</span></div>
+  {% elif not runtime_diagnostics.persistent_supported %}
+  <p class="muted">История процесса в этом режиме хранится только до перезапуска.</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">Диагностика процесса появится при запуске через python -m app.main.</p>
+  {% endif %}
+</section>
+
 <nav class="system-toc panel" aria-label="Разделы настроек">
+  <a href="#server-runtime">Сервер</a>
   <span class="system-toc-group">Запуск</span>
   <a href="#ops-arm">Live / OpenAI</a>
   <a href="#cost-guard">Лимиты</a>

@@ -1,64 +1,104 @@
-# Lead Radar — Database Backup & Restore Runbook
+# Lead Radar — резервная копия и восстановление SQLite
 
-## 1. Automated Backups
-Lead Radar automatically backs up the SQLite database before app startup or database migrations when `DATABASE_BACKUP_ON_START=true` (default).
+Обновлено 2026-10-08. Команды ниже выполняются из корня рабочего checkout
+в PowerShell. PostgreSQL и SQLite в памяти этим инструментом не копируются.
+Модульный запуск `-m scripts.<команда>` включает корень проекта в путь импорта;
+запуск файла из `scripts/` напрямую требует отдельной настройки PYTHONPATH.
 
-Backups are stored in `.backups/` with filenames formatted as:
-`lead_radar_YYYYMMDD_HHMMSS.db`
+## Создание копии
 
-The system automatically maintains the last N backups (configurable via `DATABASE_BACKUP_KEEP=10`).
-
-## 2. Manual Backup Creation
-To create a manual backup at any time:
-```bash
-python scripts/backup_database.py
+```powershell
+.venv\Scripts\python.exe -m scripts.backup_database
 ```
 
-## 3. Database Restoration
-To restore from the most recent backup:
-```bash
-python scripts/restore_database.py
+Ручная команда создаёт копию даже при `DATABASE_BACKUP_ON_START=false`.
+Автоматическая копия перед запуском/миграцией зависит от этой настройки.
+Отсутствующая или пустая база пропускается; ошибка чтения/публикации не считается
+успехом. Копии находятся в `.backups` рядом с фактическим файлом DATABASE_URL,
+а не обязательно в текущем каталоге терминала.
+
+Имя: `<имя базы без расширения>-<UTC YYYYMMDD-HHMMSS-microseconds>.db`
+для рабочей `lead_radar.db`. При другом расширении оно сохраняется.
+`DATABASE_BACKUP_KEEP` ограничивает количество копий с этим префиксом.
+Удаление старых копий начинается только после успешной публикации новой;
+чужие копии и файлы `.original` этот механизм не удаляет.
+
+Используется [SQLite Backup API](https://www.sqlite.org/backup.html): снимок
+включает зафиксированные изменения, в том числе из
+[WAL](https://www.sqlite.org/wal.html), и не включает незавершённые транзакции.
+Новая копия сначала создаётся во временном файле, проходит `integrity_check`
+и `foreign_key_check`, переводится в самостоятельный файл без WAL/SHM,
+синхронизируется с диском и публикуется заменой файла. Незавершённая копия
+не заменяет предыдущий файл. Это локальная копия; отказ диска может уничтожить
+и базу, и копии. Отдельное хранилище пока не настроено.
+
+## Восстановление
+
+1. Остановить все процессы Lead Radar, использующие целевую базу, и закрыть
+   сторонние подключения SQLite. Не удалять `instance.lock`, WAL, SHM или journal
+   вручную. При оставшихся журналах выполнить штатное восстановление/checkpoint
+   SQLite после закрытия подключений и повторить проверку.
+2. Выбрать конкретный проверенный backup. Команда без пути выбирает последнюю
+   копию с префиксом целевой базы из её `.backups`; затем проверяет её содержимое.
+3. Выполнить восстановление:
+
+```powershell
+.venv\Scripts\python.exe -m scripts.restore_database .backups\lead_radar-<stamp>.db
 ```
 
-To restore from a specific backup file:
-```bash
-python scripts/restore_database.py .backups/lead_radar_20260827_120000.db
+Для автоматизированного сценария:
+
+```powershell
+.venv\Scripts\python.exe -m scripts.restore_database .backups\lead_radar-<stamp>.db --force
 ```
 
-To bypass confirmation in automated recovery scripts:
-```bash
-python scripts/restore_database.py .backups/lead_radar_20260827_120000.db --force
+`--force` пропускает только вопрос `YES`. Владение базой, оставшиеся журналы,
+целостность, связи, обязательные таблицы Lead Radar и точная известная ревизия
+Alembic проверяются всегда. Символические значения версии вроде `head` не
+принимаются. Файл источника должен отличаться от назначения, включая hardlink.
+Очень ранние схемы без современных обязательных таблиц требуют отдельного
+плана миграции; этот runbook не обещает их автоматическое восстановление.
+
+Инструмент удерживает тот же `DatabaseRuntimeLock`, что и приложение. Он
+подготавливает и проверяет снимок до изменения назначения, сохраняет исходный
+закрытый файл в `.backups/pre-restore-<имя>-<stamp>-<id>.original`, повторно
+проверяет журналы и заменяет целевую базу. Исходный файл сохраняется даже при
+повреждении, чтобы его можно было исследовать. `.original` не является
+проверенным backup и не предлагается командой автоматически.
+
+Блокировка защищает процессы Lead Radar, которые соблюдают её протокол.
+Стороннюю SQLite-программу она не координирует: такие подключения необходимо
+закрыть до восстановления. Повторное восстановление намеренно откатывает
+изменения, сделанные после выбранного снимка.
+
+4. Запустить приложение штатным launcher; оно проверит/обновит схему.
+5. Проверить базу, `/health`, `/ready` и основные страницы:
+
+```powershell
+.venv\Scripts\python.exe -m scripts.check_data_integrity
+.venv\Scripts\python.exe -m pytest -q
+.venv\Scripts\python.exe -m ruff check .
 ```
 
-## 4. Post-Restore Verification
-Always run integrity checks after restoring:
-```bash
-$env:PYTHONPATH="."
-python scripts/check_data_integrity.py
-python -m pytest -q
-```
+`backup_present` на странице системы означает наличие непустого файла,
+а не доказательство успешного восстановления.
 
-## 5. Restore Drill (ежеквартально)
+## Restore Drill — испытание на отдельной базе
 
-Цель: убедиться, что backup реально восстанавливается, а не только создаётся.
+1. Создать снимок рабочей БД штатной командой.
+2. Зафиксировать число записей во всех таблицах, ревизию, результаты integrity/FK
+   и SHA256 упорядоченной истории `contact_events`.
+3. Подготовить отдельную временную SQLite-базу из снимка. Направить её
+   `DATABASE_URL` явно на временный файл; перепроверить путь.
+4. Создать контрольную запись/таблицу только в этой временной базе.
+5. Восстановить снимок в неё и проверить исчезновение контрольного изменения,
+   совпадение чисел, истории, расходов, связей и миграции.
+6. Сверить рабочую базу повторно: она не должна измениться. Сохранить результат
+   в датированном отчёте и PROJECT_STATUS.
 
-### Шаги (staging / локальная копия prod)
+Проверка 2026-10-08: [RECOVERY_FOUNDATION](RECOVERY_FOUNDATION_2026-10-08.md).
+Рабочую базу в этом испытании не восстанавливали и тестовые записи в неё не
+добавляли. PostgreSQL требует собственного проверенного snapshot/PITR runbook.
 
-1. Зафиксировать текущее состояние: `python scripts/check_data_integrity.py` → OK.
-2. Создать manual backup: `python scripts/backup_database.py`.
-3. Внести контрольное изменение (например, создать тестового конкурента на паузе).
-4. Восстановить backup: `python scripts/restore_database.py .backups/<latest>.db --force`.
-5. Проверить, что контрольное изменение исчезло.
-6. Прогнать `check_data_integrity` + `pytest -q`.
-7. Записать результат в `State.md`: `backup-drill: OK|FAIL YYYY-MM-DD`.
-
-### PostgreSQL
-
-Managed PG: drill через snapshot/PITR провайдера (Railway/Neon). SQLite runbook выше —
-только для локального/staging SQLite.
-
-### Критерий успеха
-
-- Restore завершился без ошибок.
-- Integrity scan → 0 duplicates.
-- `GET /ready` → 200 после перезапуска web.
+Остаются отдельные задачи: копия вне рабочего диска, проверка реального reboot,
+наблюдение 72 часа и проверенный перенос на автономный сервер.

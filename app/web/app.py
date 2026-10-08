@@ -4,6 +4,7 @@ import asyncio
 import csv
 import io
 import logging
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -111,6 +112,14 @@ _DEV_MUTATION_FORBIDDEN_DETAIL = (
 )
 
 
+@asynccontextmanager
+async def _web_lifespan(app: FastAPI):
+    diagnostics = getattr(app.state, "runtime_diagnostics", None)
+    if diagnostics is not None:
+        diagnostics.ready()
+    yield
+
+
 def build_web_app(
     settings: Settings,
     queries: WebQueryService,
@@ -124,6 +133,7 @@ def build_web_app(
 ) -> FastAPI:
     app = FastAPI(
         title="Lead Radar",
+        lifespan=_web_lifespan,
         docs_url="/api/docs" if settings.web_auth_enabled else None,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.web_auth_enabled else None,
@@ -1236,6 +1246,10 @@ def build_web_app(
                 pricing_configs=pricing_configs,
                 fx_policies=fx_policies,
                 export_recipes=export_recipes,
+                runtime_diagnostics=(
+                    app.state.runtime_diagnostics.display_snapshot()
+                    if getattr(app.state, "runtime_diagnostics", None) is not None else None
+                ),
             ),
         )
 

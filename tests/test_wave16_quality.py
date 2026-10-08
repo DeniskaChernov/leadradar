@@ -86,7 +86,10 @@ def test_configure_logging_json_format(monkeypatch):
     configure_logging(Settings(_env_file=None, log_level="INFO"))
     root = logging.getLogger()
     assert root.handlers
-    assert '"level"' in root.handlers[0].formatter._fmt
+    import json
+
+    record = logging.LogRecord("probe", logging.INFO, "", 1, 'quoted "value"', (), None)
+    assert json.loads(root.handlers[0].formatter.format(record))["level"] == "INFO"
 
 
 def test_init_error_monitoring_noop_without_dsn():

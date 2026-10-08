@@ -8,11 +8,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 from pathlib import Path
 
 from app.config import get_settings
+from app.services.database_backup_service import DatabaseBackupError, restore_sqlite_database
+from app.services.database_runtime_lock import DatabaseRuntimeOwnershipError, sqlite_database_path
 
 
 def main() -> None:
@@ -31,25 +32,29 @@ def main() -> None:
 
     settings = get_settings()
 
-    # Determine target database path
-    raw_url = settings.database_url
-    if "///" in raw_url:
-        db_path = Path(raw_url.split("///")[1]).resolve()
-    else:
-        print(f"Error: Database URL is not a local SQLite file: {raw_url}")
+    try:
+        db_path = sqlite_database_path(settings.database_url)
+    except DatabaseRuntimeOwnershipError as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
+    if db_path is None:
+        print("Error: Restore requires a file-backed SQLite database.")
         sys.exit(1)
 
     # Determine backup path
     if args.backup_path:
         source_file = Path(args.backup_path).resolve()
     else:
-        backups_dir = Path(".backups").resolve()
+        backups_dir = db_path.parent / ".backups"
         if not backups_dir.exists():
             print("Error: .backups/ directory does not exist.")
             sys.exit(1)
-        backup_files = sorted(backups_dir.glob("*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+        backup_files = sorted(
+            backups_dir.glob(f"{db_path.stem}-*{db_path.suffix or '.db'}"),
+            key=lambda p: p.stat().st_mtime, reverse=True,
+        )
         if not backup_files:
-            print("Error: No backup .db files found in .backups/")
+            print("Error: No backups matching the configured database were found.")
             sys.exit(1)
         source_file = backup_files[0]
 
@@ -66,8 +71,13 @@ def main() -> None:
             print("Restore cancelled.")
             sys.exit(0)
 
-    # Perform atomic restore
-    shutil.copy2(source_file, db_path)
+    try:
+        result = restore_sqlite_database(settings.database_url, source_file)
+    except (DatabaseBackupError, DatabaseRuntimeOwnershipError) as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
+    if result.recovery_copy is not None:
+        print(f"Original file preserved: {result.recovery_copy}")
     print(f"Database successfully restored from {source_file.name} to {db_path.name}")
 
 

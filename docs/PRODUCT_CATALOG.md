@@ -2,6 +2,12 @@
 
 ## Source of truth
 
+The live catalog also includes the reviewed Benten Trade snapshot dated
+2026-10-06: 27 imported products alongside the original ten, for 37 total in
+the last verified database. See [HARDENING_2026-10-06](HARDENING_2026-10-06.md).
+This is a dated import, not continuous synchronization of prices or warehouse
+quantities. Imported facts carry their source; manager-confirmed values are protected.
+
 The products table is the only internal source for product claims made by the grounded
 recommendation engine. The initial seed contains exactly the ten positions confirmed in the
 current master specification:
@@ -49,4 +55,6 @@ and check availability before making an offer.
 The old hardcoded agent returned fake score 91, fake evidence, fake catalog SKU, stock, 10% discount
 and 24-hour delivery. It has been removed. The /api/agent/query endpoint now runs
 `AgentSessionService` with DB-backed read tools and deterministic grounded synthesis.
-Write MCP tools still return NOT_CONNECTED until individually wired.
+Write tools are individually wired and gated; crm.assign_lead has an approval
+flow, while Meta actions depend on separate connectivity/data/budget settings.
+See [the current capability register](CAPABILITY_REGISTER_2026-10-08.md).

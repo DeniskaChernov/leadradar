@@ -24,6 +24,30 @@ Railway и Docker по умолчанию используют **web-only**.
 
 Railway: `healthcheckPath=/ready` в `railway.json`. Подробнее: `docs/RAILWAY.md`.
 
+Эти probes не делают внешний Instagram/OpenAI запрос и не доказывают доступность
+провайдера. `backup_present` проверяет подходящий файл рядом с настроенной SQLite;
+успешное восстановление подтверждается отдельным drill.
+
+## Диагностика процесса
+
+app.main фиксирует режим, PID, run_id, build диагностики, время старта,
+heartbeat раз в 30 секунд и терминальный результат. Для файловой SQLite receipt
+лежит в `.runtime/<database filename>.lifecycle.json` рядом с БД. Запись атомарна;
+предыдущая сохраняется кратким snapshot. Блокировка БД защищает receipt
+активного процесса от второго экземпляра. PostgreSQL/in-memory — память на этом этапе.
+
+Нормальное завершение — STOPPED; исключение/ненулевой код — FAILED;
+отмена/KeyboardInterrupt — INTERRUPTED. OS kill не может записать finally:
+следующий старт показывает прошлый RUNNING как незавершённый. Это возможно
+и при штатном принудительном Windows Stop-Process; receipt не отличает его
+от аварии и не устанавливает причину старой остановки. Тип исключения сохраняется,
+текст и настройки соединения в receipt не записываются.
+
+«Система → Работа сервера» показывает текущий процесс и прошлое завершение.
+LOG_FORMAT=json сериализует сообщения/исключения: кавычки, переводы строк и
+Windows paths не ломают JSON. Uvicorn/Alembic могут иметь собственное оформление;
+весь stderr не объявляется чистым JSONL.
+
 ## Обязательные переменные (production)
 
 ```env
@@ -52,8 +76,8 @@ WEB_MANAGER_ID=123456789
 
 | Режим | Поведение |
 |-------|-----------|
-| `WEB_AUTH_ENABLED=true` | Auth через Telegram initData; `WEB_MANAGER_ID` не обязателен |
-| `WEB_AUTH_ENABLED=false` + `WEB_MANAGER_ID=0` | Mutating API → **403**, UI показывает баннер на `/leads` |
+| `WEB_AUTH_ENABLED=true` | Auth через Telegram initData или настроенный admin-пароль; `WEB_MANAGER_ID` не обязателен |
+| `WEB_AUTH_ENABLED=false` + `WEB_MANAGER_ID=0` | Только loopback; используется первый admin ID, если настроен; без него mutation запрещена |
 | `WEB_AUTH_ENABLED=false` + `WEB_MANAGER_ID>0` | Mutating API разрешены от имени указанного manager id |
 
 Production: используйте `WEB_AUTH_ENABLED=true` и HTTPS `WEB_PUBLIC_URL`. `WEB_MANAGER_ID` —
@@ -90,6 +114,9 @@ Windows dev: Ctrl+C через `KeyboardInterrupt`.
 3. Catalog/market sync
 4. Uvicorn web server
 
+Backup и offline restore: [BACKUP_RESTORE_RUNBOOK](BACKUP_RESTORE_RUNBOOK.md).
+.env остаётся локальным/ignored.
+
 Проверка перед live pilot: `python scripts/live_readiness_check.py`.
 
 ## Логи
@@ -107,5 +134,5 @@ Windows dev: Ctrl+C через `KeyboardInterrupt`.
 ## Безопасность
 
 - Публичный доступ требует `WEB_AUTH_ENABLED=true` и HTTPS `WEB_PUBLIC_URL`.
-- В dev без auth mutating `POST /api/*` блокируется без `WEB_MANAGER_ID`.
+- В dev без auth mutating `POST /api/*` требует `WEB_MANAGER_ID` либо первого настроенного admin ID.
 - `/api/docs` скрыт когда auth выключен.

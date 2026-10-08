@@ -16,6 +16,7 @@ from alembic import command
 from app.config import Settings
 from app.db.models import ExternalBudgetReservation, ReservationStatus
 from app.db.session import create_engine
+from app.services.database_runtime_lock import sqlite_database_path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -60,7 +61,10 @@ def alembic_config() -> Config:
 
 def backup_present(settings: Settings) -> bool:
     if settings.database_url.startswith("sqlite"):
-        backups = (PROJECT_ROOT / ".backups").glob("*.db")
+        source = sqlite_database_path(settings.database_url)
+        if source is None:
+            return False
+        backups = (source.parent / ".backups").glob(f"{source.stem}-*{source.suffix or '.db'}")
         return any(path.is_file() and path.stat().st_size > 0 for path in backups)
     # PostgreSQL: never claim backup exists without an explicit restore-drill marker.
     marker = PROJECT_ROOT / ".runtime" / "postgres_backup_verified"

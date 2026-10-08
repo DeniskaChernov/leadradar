@@ -108,8 +108,13 @@ EXTERNAL_LIVE_UNLOCK = ALLOW_EXTERNAL_CALLS
 - `LATEST_ONLY` — контракт provider даёт только последние комментарии;
 - `UNKNOWN` — полнота не доказана.
 
-ScrapeCreators идёт по cursor, но incremental sync прекращается после встречи уже известного
-`comment_id`. Baseline и incremental page limits задаются отдельно.
+ScrapeCreators идёт по cursor и не прекращает обход только из-за знакомого
+`comment_id`: API не гарантирует хронологический порядок. Baseline и incremental
+page limits задаются отдельно. Позиция добора сохраняется с provider identity;
+проверка начала списка новых комментариев не уничтожает исторический cursor.
+Повторный cursor/цикл завершает batch как PARTIAL с сохранёнными комментариями.
+Список публикаций источника пока использует первую страницу; вложенные публичные
+ответы не раскрываются дополнительным запросом.
 
 ## Mini App
 
@@ -163,8 +168,8 @@ Business actions проходят через services; templates не обращ
 ```text
 single process
 SQLite
-Telegram long polling
-FastAPI Mini App
+FastAPI CRM (web-only)
+Cloudflare Quick Tunnel -> включённый Windows-компьютер
 ```
 
 Позже:
@@ -178,6 +183,14 @@ Telegram Mini App auth
 
 При нескольких application instances scheduler/outbox/locks нужно вынести в shared coordination
 layer (Redis/queue/advisory locks). До этого масштабировать процесс горизонтально нельзя.
+
+Файловая SQLite защищена DatabaseRuntimeLock до стартовых операций и на весь
+процесс; restore использует ту же блокировку. Backup — SQLite Online Backup API
+с проверкой снимка и атомарной публикацией. Lifecycle receipt фиксирует PID/run/build,
+heartbeat и завершение без текста исключения/секретов. Прошлый RUNNING означает
+отсутствие финального receipt, а не установленную причину аварии. PostgreSQL имеет
+диагностику в памяти; распределённое владение и cutover остаются отдельными задачами.
+Актуальный [реестр возможностей](docs/CAPABILITY_REGISTER_2026-10-08.md).
 
 
 ## Market intelligence V3.2

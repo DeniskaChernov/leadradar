@@ -41,6 +41,7 @@ from app.services.instagram_monitor import InstagramMonitor
 from app.services.lead_analysis_pipeline import LeadAnalysisPipeline
 from app.services.lead_service import LeadService
 from app.services.lead_workflow_service import LeadWorkflowService
+from app.services.logging_service import JsonLogFormatter
 from app.services.market_intelligence_service import MarketIntelligenceService
 from app.services.meta_audience_service import MetaAudiencePlanningService
 from app.services.monitor_controller import MonitorController
@@ -51,6 +52,7 @@ from app.services.place_opening_service import PlaceOpeningService
 from app.services.product_catalog_service import ProductCatalogService
 from app.services.quality_report_service import QualityReportService
 from app.services.rattan_vertical_service import RattanVerticalService
+from app.services.runtime_diagnostics_service import RuntimeDiagnostics
 from app.services.significant_change_service import SignificantChangeDetector
 from app.services.telegram_notification_service import TelegramLeadNotifier
 from app.services.usage_service import ExternalUsageService
@@ -104,19 +106,37 @@ async def _serve_web_until_shutdown(
 async def run(*, once: bool = False, web_only: bool = False) -> int:
     settings = get_settings()
     with DatabaseRuntimeLock(settings.database_url) as ownership:
-        return await _run_owned(
-            settings, once=once, web_only=web_only, exclusive_runtime=ownership.exclusive,
-        )
+        configure_logging(settings)
+        diagnostics = RuntimeDiagnostics(settings.database_url, "once" if once else "web-only" if web_only else "full")
+        diagnostics.start()
+        heartbeat = asyncio.create_task(diagnostics.heartbeat(), name="lead-radar-heartbeat")
+        exit_code = None
+        error = None
+        try:
+            exit_code = await _run_owned(
+                settings, once=once, web_only=web_only, exclusive_runtime=ownership.exclusive,
+                diagnostics=diagnostics,
+            )
+            return exit_code
+        except BaseException as exc:
+            error = exc
+            raise
+        finally:
+            heartbeat.cancel()
+            await asyncio.gather(heartbeat, return_exceptions=True)
+            diagnostics.finish(exit_code=exit_code, error=error)
 
 
 async def _run_owned(
     settings: Settings, *, once: bool = False, web_only: bool = False,
     exclusive_runtime: bool = False,
+    diagnostics: RuntimeDiagnostics | None = None,
 ) -> int:
     backup = backup_sqlite_database(settings)
     if backup is not None:
         print(f"Database backup: {backup}")
     await upgrade_database()
+    # Alembic's env.py configures logging during migration; restore our format.
     configure_logging(settings)
     init_error_monitoring(settings)
     engine = create_engine(settings)
@@ -247,6 +267,8 @@ async def _run_owned(
             requested_credit_budget=settings.instagram_max_units_per_scan,
             effective_credit_budget=settings.instagram_max_units_per_scan,
         )
+        if diagnostics is not None:
+            diagnostics.ready()
         try:
             stats = await monitor.run_cycle(force=True)
             await run_service.finish_success(run_id, stats)
@@ -319,6 +341,8 @@ async def _run_owned(
                 access_log=False,
             )
         )
+        if diagnostics is not None:
+            web_app.state.runtime_diagnostics = diagnostics
         monitor_task = asyncio.create_task(_monitor_loop(controller, settings))
         analysis_task = asyncio.create_task(
             _analysis_loop(analysis_pipeline, settings), name="lead-radar-analysis"
@@ -444,6 +468,8 @@ async def _run_owned(
             log_level=settings.log_level.lower(),
             access_log=False,
         )
+        if diagnostics is not None:
+            web_app.state.runtime_diagnostics = diagnostics
         web_server = uvicorn.Server(web_config)
         web_task = asyncio.create_task(web_server.serve(), name="lead-radar-web")
         logger.info("web_dashboard_started url=http://%s:%s", settings.web_host, settings.web_port)
@@ -455,6 +481,8 @@ async def _run_owned(
     )
     shutdown_event = asyncio.Event()
     _install_shutdown_handlers(shutdown_event, web_server=web_server)
+    if diagnostics is not None and web_server is None:
+        diagnostics.ready()
     polling_task = asyncio.create_task(dispatcher.start_polling(bot), name="lead-radar-polling")
 
     def _mark_shutdown(_task: asyncio.Task[object]) -> None:
@@ -604,15 +632,14 @@ def configure_logging(settings: Settings) -> None:
 
     log_format = os.environ.get("LOG_FORMAT", "text").strip().lower()
     if log_format == "json":
-        fmt = (
-            '{"time":"%(asctime)s","level":"%(levelname)s",'
-            '"logger":"%(name)s","message":"%(message)s"}'
-        )
+        formatter = JsonLogFormatter()
     else:
-        fmt = "%(asctime)s %(levelname)s %(name)s %(message)s"
+        formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
     logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format=fmt,
+        level=getattr(logging, getattr(settings, "log_level", "INFO").upper(), logging.INFO),
+        handlers=[handler],
         force=True,
     )
 
