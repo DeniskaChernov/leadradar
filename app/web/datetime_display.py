@@ -28,3 +28,12 @@ def parse_display_dt(value: str, *, timezone: str = "Asia/Tashkent") -> datetime
         return dt.astimezone(UTC)
     local = dt.replace(tzinfo=ZoneInfo(timezone))
     return local.astimezone(UTC)
+
+
+def deadline_overdue(value: datetime | None, now: datetime) -> bool:
+    """SQLite returns naive UTC values; compare instants consistently with PostgreSQL."""
+    if value is None:
+        return False
+    due = value.replace(tzinfo=UTC) if value.tzinfo is None else value
+    clock = now.replace(tzinfo=UTC) if now.tzinfo is None else now
+    return due < clock

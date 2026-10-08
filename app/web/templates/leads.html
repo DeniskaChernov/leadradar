@@ -15,15 +15,15 @@
 {% endfor %}
 {% set query_suffix = '&' ~ vq %}
 {% if q %}{% set query_suffix = query_suffix ~ '&q=' ~ (q|urlencode) %}{% endif %}
-{% set show_list = status_filter or quality_filter %}
+{% set show_list = view == 'list' %}
 {% set board_href = '/leads?' ~ vq %}
 {% if q %}{% set board_href = board_href ~ '&q=' ~ (q|urlencode) %}{% endif %}
 
 <section class="hero-status leads-hero page-task {% if safe_mode %}safe{% else %}live{% endif %}" data-motion-root data-page-task="leads">
   <div>
     <span class="eyebrow">ВОРОНКА · {% if rv == 'ARTIFICIAL_RATTAN' %}РОТАНГ{% else %}МЕБЕЛЬ{% endif %}</span>
-    <h2>{% if ns.total %}{{ ns.total }} в воронке · {{ ns.hot }} к контакту{% else %}Воронка пока пуста{% endif %}</h2>
-    <p>{% if ns.total %}{{ ns.new }} новых · {{ ns.active }} в работе. Двигайте стадии после реального контакта.{% else %}Клиенты появятся здесь после «Найти лидов».{% endif %}</p>
+    <h2>{% if ns.total %}{{ pagination.total }} клиентов по фильтру{% else %}Воронка пока пуста{% endif %}</h2>
+    <p>{% if ns.total %}{{ ns.new }} новых · {{ ns.active }} в работе на этой странице. Двигайте стадии после реального контакта.{% else %}Клиенты появятся здесь после «Найти лидов».{% endif %}</p>
   </div>
   <div class="hero-actions">
     {% if not ns.total %}
@@ -43,6 +43,8 @@
 
 <form class="filters leads-filters" method="get" aria-label="Фильтр лидов">
   <input type="hidden" name="vertical" value="{{ rv }}">
+  <input type="hidden" name="view" value="{{ view }}">
+  {% if quality_filter %}<input type="hidden" name="quality" value="{{ quality_filter }}">{% endif %}
   <input name="q" value="{{ q }}" aria-label="Поиск лидов" placeholder="Клиент, комментарий, товар или конкурент">
   <select name="status" aria-label="Стадия лида">
     <option value="">Все стадии</option>
@@ -56,6 +58,7 @@
 
 <div class="filters segmented-control leads-view-toggle" aria-label="Быстрый фильтр">
   <a class="btn {% if show_list %}ghost{% endif %}" href="{{ board_href }}" {% if not show_list %}aria-current="page"{% endif %}>Доска</a>
+  <a class="btn {% if view != 'list' %}ghost{% endif %}" href="/leads?view=list{{ query_suffix }}">Список</a>
   <a class="btn {% if status_filter != 'NEW' %}ghost{% endif %}" href="/leads?status=NEW{{ query_suffix }}" {% if status_filter == 'NEW' %}aria-current="page"{% endif %}>Новые</a>
   <a class="btn {% if quality_filter != 'hot' %}ghost{% endif %}" href="/leads?quality=hot{{ query_suffix }}" {% if quality_filter == 'hot' %}aria-current="page"{% endif %}>К контакту</a>
   <a class="btn {% if quality_filter != 'garbage' %}ghost{% endif %}" href="/leads?quality=garbage{{ query_suffix }}" {% if quality_filter == 'garbage' %}aria-current="page"{% endif %}>Подозрительные</a>
@@ -64,6 +67,7 @@
 </div>
 
 {% if show_list %}
+{% include "partials/list_pagination.html" %}
 {% include "partials/lead_bulk_actions.html" %}
 <div class="cards leads-cards">
 {% for lead, contact, comment, competitor, post, deal in rows %}
@@ -113,7 +117,7 @@
   data-kanban-stages="{{ col.statuses|join(',') }}"
   {% if col.drop_status %}data-kanban-stage="{{ col.drop_status }}" data-kanban-drop-status="{{ col.drop_status }}"{% else %}data-kanban-stage="{{ col.key }}"{% endif %}
 >
-  <header><div><b>{{ col.title }}</b><small>{{ stage_rows|length }} · {{ col.hint }}</small></div></header>
+  <header><div><b>{{ col.title }}</b><small>{{ stage_rows|length }} на странице · {{ col.hint }}</small></div></header>
   <div class="kanban-stack"{% if col.drop_status %} data-kanban-drop{% endif %}>
   {% for lead, contact, comment, competitor, post, deal in stage_rows %}
     <article class="kanban-card {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% endif %} {% if lead_is_off_catalog(lead) %}off-catalog{% endif %}" data-lead-card="{{ lead.id }}" data-lead-stage="{{ lead.status.value }}">
@@ -151,4 +155,5 @@
 {% endfor %}
 </div>
 {% endif %}
+{% include "partials/list_pagination.html" %}
 {% endblock %}

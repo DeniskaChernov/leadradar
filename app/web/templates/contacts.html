@@ -6,7 +6,7 @@
 <section class="hero-status safe contacts-hero page-task" data-motion-root data-page-task="contacts">
   <div>
     <span class="eyebrow">БАЗА ЛЮДЕЙ</span>
-    <h2>{{ rows|length }} {% if rows|length == 1 %}человек{% elif rows|length in [2,3,4] %}человека{% else %}человек{% endif %} {% if q %}по запросу{% else %}в базе{% endif %}</h2>
+    <h2>{{ pagination.total }} человек {% if q %}по запросу{% else %}в базе{% endif %}</h2>
     <p>Один человек — одна история. Поиск и переход в карточку.</p>
   </div>
 </section>
@@ -16,6 +16,7 @@
   <button class="btn">Найти</button>
   <a class="btn ghost" href="/contacts">Показать всех</a>
 </form>
+{% include "partials/list_pagination.html" %}
 
 {% if rows %}
 <div class="table-wrap contacts-table-wrap" data-motion-root><table class="responsive-table"><thead><tr><th>Человек</th><th>Сигналов</th><th>Источников</th><th>В воронке</th><th>Лучшая оценка</th><th>Задачи</th><th>Первый сигнал</th><th>Последняя активность</th></tr></thead><tbody>
@@ -35,4 +36,5 @@
   {% endif %}
 </div>
 {% endif %}
+{% include "partials/list_pagination.html" %}
 {% endblock %}

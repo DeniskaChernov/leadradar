@@ -7,7 +7,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import (
@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import Settings
-from app.db.models import Lead, LeadStatus, NotificationPolicy
+from app.db.models import Lead, LeadStatus, NotificationPolicy, TaskStatus
 from app.services.agent_rate_limit_service import AgentRateLimitService, agent_rate_limiter
 from app.services.ai_service import (
     BudgetedCachedOpenAIAnalyzer,
@@ -67,7 +67,7 @@ from app.services.telegram_notification_service import (
 from app.services.usage_service import ExternalUsageService
 from app.web.auth import TelegramAuthError, TelegramWebAuth, WebRole, required_role
 from app.web.csv_export import safe_csv_row
-from app.web.datetime_display import format_display_dt, parse_display_dt
+from app.web.datetime_display import deadline_overdue, format_display_dt, parse_display_dt
 from app.web.labels import (
     AI_SOURCE_LABELS,
     AUDIENCE_HEALTH_LABELS,
@@ -288,6 +288,7 @@ def build_web_app(
         safe_attr=lambda obj, name, default=None: getattr(obj, name, default),
         lead_is_off_catalog=lead_is_off_catalog,
         lead_next_action_overdue=lead_next_action_overdue,
+        deadline_overdue=deadline_overdue,
         lead_quality_badge=lead_quality_badge,
     )
     templates.env.filters["display_dt"] = lambda value, fmt="%d.%m %H:%M": format_display_dt(
@@ -499,7 +500,7 @@ def build_web_app(
 
     @app.post("/api/auth/telegram")
     async def telegram_auth(request: Request):
-        payload = await request.json()
+        payload = await _json_or_form(request)
         try:
             user = auth.validate_init_data(str(payload.get("initData") or ""))
         except TelegramAuthError as exc:
@@ -537,11 +538,13 @@ def build_web_app(
         competitor: str = "",
         kind: str = "",
         vertical: str = "",
+        page: int = 1,
     ):
         selected_vertical = resolve_business_vertical(request, explicit=vertical)
-        rows = await queries.signals(
-            q=q, competitor=competitor, kind=kind, vertical=selected_vertical
+        result = await queries.signals_page(
+            q=q, competitor=competitor, kind=kind, vertical=selected_vertical, page=page
         )
+        rows = result.rows
         competitors = await queries.competitors(vertical=selected_vertical)
         overview = await queries.signal_overview(vertical=selected_vertical)
         scan_budget = await _scan_preview_payload(vertical=selected_vertical)
@@ -562,6 +565,7 @@ def build_web_app(
                 last_run=recent_runs[0] if recent_runs else None,
                 radar_feed=radar_feed,
                 radar_vertical=selected_vertical,
+                **page_context(request, result),
             ),
         )
 
@@ -687,6 +691,16 @@ def build_web_app(
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
 
+    def page_context(request: Request, result) -> dict:
+        params = dict(request.query_params)
+        def page_url(number: int) -> str:
+            return request.url.path + "?" + urlencode({**params, "page": number})
+        return {
+            "pagination": result,
+            "previous_page_url": page_url(result.page - 1) if result.page > 1 else None,
+            "next_page_url": page_url(result.page + 1) if result.page < result.pages else None,
+        }
+
     @app.get("/leads", response_class=HTMLResponse)
     async def leads(
         request: Request,
@@ -695,11 +709,13 @@ def build_web_app(
         quality: str = "",
         view: str = "board",
         vertical: str = "",
+        page: int = 1,
     ):
         selected_vertical = resolve_business_vertical(request, explicit=vertical)
-        rows = await queries.leads(
-            q=q, status=status, quality=quality, vertical=selected_vertical
+        result = await queries.leads_page(
+            q=q, status=status, quality=quality, vertical=selected_vertical, page=page
         )
+        rows = result.rows
         board_columns = OPERATOR_BOARD_COLUMNS
         use_board = view == "board" and not status and quality not in {
             "not_lead",
@@ -727,6 +743,7 @@ def build_web_app(
                 quality_filter=quality,
                 view=view if use_board else "list",
                 events_by_lead=events_by_lead,
+                **page_context(request, result),
             ),
         )
 
@@ -740,49 +757,50 @@ def build_web_app(
     ):
         """CSV воронки: только публичные Instagram-поля, без телефонов/email."""
         selected_vertical = resolve_business_vertical(request, explicit=vertical)
-        rows = await queries.leads(
-            q=q,
-            status=status,
-            quality=quality,
-            vertical=selected_vertical,
-            limit=1000,
-        )
-        buffer = io.StringIO()
-        writer = csv.writer(buffer)
-        writer.writerow(
-            [
-                "lead_id",
-                "username",
-                "display_name",
-                "competitor",
-                "status",
-                "score",
-                "intent",
-                "product",
-                "comment",
-                "created_at",
-                "deal_status",
-            ]
-        )
-        for lead, contact, comment, competitor, _post, deal in rows:
+        async def csv_chunks():
+            buffer = io.StringIO()
+            writer = csv.writer(buffer)
             writer.writerow(
-                safe_csv_row([
-                    lead.id,
-                    contact.username,
-                    contact.display_name or "",
-                    competitor.normalized_handle,
-                    lead.status.value,
-                    lead.lead_score,
-                    lead.intent or "",
-                    lead.product_category or "",
-                    (comment.text or "").replace("\n", " ").strip()[:500],
-                    lead.created_at.isoformat() if lead.created_at else "",
-                    deal.status.value if deal is not None else "",
-                ])
+                [
+                    "lead_id",
+                    "username",
+                    "display_name",
+                    "competitor",
+                    "status",
+                    "score",
+                    "intent",
+                    "product",
+                    "comment",
+                    "created_at",
+                    "deal_status",
+                ]
             )
-        payload = buffer.getvalue()
+            yield buffer.getvalue()
+            buffer.seek(0)
+            buffer.truncate(0)
+            async for lead, contact, comment, competitor, _post, deal in queries.iter_leads(
+                q=q, status=status, quality=quality, vertical=selected_vertical
+            ):
+                writer.writerow(
+                    safe_csv_row([
+                        lead.id,
+                        contact.username,
+                        contact.display_name or "",
+                        competitor.normalized_handle,
+                        lead.status.value,
+                        lead.lead_score,
+                        lead.intent or "",
+                        lead.product_category or "",
+                        (comment.text or "").replace("\n", " ").strip()[:500],
+                        lead.created_at.isoformat() if lead.created_at else "",
+                        deal.status.value if deal is not None else "",
+                    ])
+                )
+                yield buffer.getvalue()
+                buffer.seek(0)
+                buffer.truncate(0)
         return StreamingResponse(
-            iter([payload]),
+            csv_chunks(),
             media_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": 'attachment; filename="leads-funnel.csv"'},
         )
@@ -792,6 +810,7 @@ def build_web_app(
         data = await queries.lead_detail(lead_id)
         if data is None:
             raise HTTPException(status_code=404, detail="Лид не найден")
+        data["deal_currencies"] = await queries.deal_currencies([data["deal"]] if data["deal"] else [])
         commercial_competitors = {
             competitor.id
             for _comment, competitor, _post, history_lead in data["history"]
@@ -828,12 +847,13 @@ def build_web_app(
         )
 
     @app.get("/contacts", response_class=HTMLResponse)
-    async def contacts(request: Request, q: str = ""):
-        rows = await queries.contacts(q=q)
+    async def contacts(request: Request, q: str = "", page: int = 1):
+        result = await queries.contacts_page(q=q, page=page)
+        rows = result.rows
         return templates.TemplateResponse(
             request=request,
             name="contacts.html",
-            context=base_context(request, rows=rows, q=q),
+            context=base_context(request, rows=rows, q=q, **page_context(request, result)),
         )
 
     @app.get("/contacts/{contact_id}", response_class=HTMLResponse)
@@ -841,6 +861,7 @@ def build_web_app(
         data = await queries.contact_detail(contact_id)
         if data is None:
             raise HTTPException(status_code=404, detail="Клиент не найден")
+        data["deal_currencies"] = await queries.deal_currencies(list(data["deals"]))
         return templates.TemplateResponse(
             request=request,
             name="contact_detail.html",
@@ -848,21 +869,24 @@ def build_web_app(
         )
 
     @app.get("/tasks", response_class=HTMLResponse)
-    async def tasks(request: Request, view: str = "open", q: str = ""):
-        rows = await queries.tasks(view=view, q=q)
+    async def tasks(request: Request, view: str = "open", q: str = "", page: int = 1):
+        result = await queries.tasks_page(view=view, q=q, page=page)
+        rows = result.rows
         return templates.TemplateResponse(
             request=request,
             name="tasks.html",
-            context=base_context(request, rows=rows, view=view, q=q),
+            context=base_context(request, rows=rows, view=view, q=q, **page_context(request, result)),
         )
 
     @app.get("/deals", response_class=HTMLResponse)
-    async def deals(request: Request, q: str = "", status: str = ""):
-        rows = await queries.deals(q=q, status=status)
+    async def deals(request: Request, q: str = "", status: str = "", page: int = 1):
+        result = await queries.deals_page(q=q, status=status, page=page)
+        rows = result.rows
+        deal_currencies = await queries.deal_currencies([row[0] for row in rows])
         return templates.TemplateResponse(
             request=request,
             name="deals.html",
-            context=base_context(request, rows=rows, q=q, status_filter=status),
+            context=base_context(request, rows=rows, q=q, status_filter=status, deal_currencies=deal_currencies, **page_context(request, result)),
         )
 
     @app.get("/analytics", response_class=HTMLResponse)
@@ -1212,7 +1236,7 @@ def build_web_app(
 
     @app.post("/api/pricing")
     async def set_pricing(request: Request):
-        data = await request.json()
+        data = await _json_or_form(request)
 
         def optional_decimal(name: str) -> Decimal | None:
             value = str(data.get(name) or "").strip()
@@ -1246,7 +1270,7 @@ def build_web_app(
 
     @app.post("/api/pricing/fx")
     async def set_fx_rate(request: Request):
-        data = await request.json()
+        data = await _json_or_form(request)
         try:
             rate = Decimal(str(data.get("rate") or ""))
             policy = await fx_policy_service.set_rate(
@@ -2042,7 +2066,7 @@ def build_web_app(
     @app.post("/api/contacts/{contact_id}/reply")
     async def customer_reply(request: Request, contact_id: int):
         payload = await _json_or_form(request)
-        lead_id = _int_or_none(payload.get("lead_id"))
+        lead_id = _optional_int(payload.get("lead_id"), field="lead_id")
         try:
             await crm.record_customer_reply(
                 contact_id,
@@ -2066,17 +2090,21 @@ def build_web_app(
             raise HTTPException(
                 status_code=400, detail="Укажите дату и время следующего контакта"
             ) from exc
-        lead_id_raw = payload.get("lead_id")
-        lead_id = int(lead_id_raw) if lead_id_raw not in (None, "") else None
+        lead_id = _optional_int(payload.get("lead_id"), field="lead_id")
         try:
-            await crm.schedule_contact(
+            task = await crm.schedule_contact(
                 contact_id,
                 manager_id(request),
                 due_at=due_at,
                 note=str(payload.get("note") or ""),
                 lead_id=lead_id,
             )
-            return {"ok": True, "message": "Запланирован следующий контакт"}
+            message = {
+                TaskStatus.OPEN: "Запланирован следующий контакт",
+                TaskStatus.DONE: "Эта задача уже выполнена; повторная задача не создана",
+                TaskStatus.CANCELLED: "Эта задача уже отменена; повторная задача не создана",
+            }[task.status]
+            return {"ok": True, "message": message, "task_id": task.id, "status": task.status.value}
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=400, detail=_human_workflow_error(exc)) from exc
 
@@ -2825,8 +2853,13 @@ def build_web_app(
 async def _json_or_form(request: Request) -> dict:
     content_type = request.headers.get("content-type", "")
     if "application/json" in content_type:
-        payload = await request.json()
-        return payload if isinstance(payload, dict) else {}
+        try:
+            payload = await request.json()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Некорректный JSON запроса") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="Ожидается объект JSON")
+        return payload
     form = await request.form()
     return dict(form)
 

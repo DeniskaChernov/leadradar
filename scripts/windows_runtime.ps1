@@ -124,7 +124,14 @@ function Stop-LeadRadarOwnedProcess {
     if ($current.ExecutablePath -ne $Process.ExecutablePath -or $current.CreationDate -ne $Process.CreationDate -or $current.CommandLine -ne $Process.CommandLine) {
         throw 'Process identity changed. The replacement process was not stopped.'
     }
-    Stop-Process -Id $current.ProcessId -ErrorAction Stop
+    try { Stop-Process -Id $current.ProcessId -ErrorAction Stop }
+    catch {
+        # A Python launcher can exit naturally after its worker stops. Only a
+        # missing process is already stopped; permission/identity errors still fail.
+        $remaining = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $current.ProcessId) -ErrorAction Stop
+        if ($remaining) { throw }
+        return
+    }
     Wait-Process -Id $current.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
 }
 

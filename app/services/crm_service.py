@@ -361,6 +361,9 @@ class CRMService:
         if due_at.tzinfo is None:
             due_at = due_at.replace(tzinfo=UTC)
         async with self.session_factory() as session:
+            if lead_id is not None:
+                await self._lock_lead_write(session, lead_id)
+            await self._lock_contact_write(session, contact_id)
             contact = await session.get(Contact, contact_id)
             if contact is None:
                 raise LeadWorkflowError("Клиент не найден")
@@ -368,6 +371,8 @@ class CRMService:
                 lead = await session.get(Lead, lead_id)
                 if lead is None or lead.contact_id != contact_id:
                     raise LeadWorkflowError("Лид не принадлежит этому клиенту")
+                if lead.assigned_manager_telegram_id not in (None, manager_id):
+                    raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
             existing = await session.scalar(
                 select(ContactTask).where(
                     ContactTask.contact_id == contact_id,
@@ -375,7 +380,6 @@ class CRMService:
                     ContactTask.manager_telegram_id == manager_id,
                     ContactTask.due_at == due_at,
                     ContactTask.note == note.strip(),
-                    ContactTask.status == TaskStatus.OPEN,
                 )
             )
             if existing is not None:
@@ -389,10 +393,9 @@ class CRMService:
                 status=TaskStatus.OPEN,
             )
             session.add(task)
-            if lead_id is not None:
-                lead.next_action_at = due_at
-                lead.next_action_note = note.strip()
             await session.flush()
+            if lead_id is not None:
+                await self._refresh_next_contact(session, lead_id)
             await ContactEventRepository(session).add(
                 contact_id,
                 ContactEventType.NEXT_CONTACT_SCHEDULED,
@@ -415,13 +418,13 @@ class CRMService:
                 return task
             if task.status == TaskStatus.CANCELLED:
                 raise LeadWorkflowError("Отменённую задачу нельзя выполнить")
+            if task.lead_id:
+                await self._lock_lead_write(session, task.lead_id)
+            await self._lock_contact_write(session, task.contact_id)
             task.status = TaskStatus.DONE
             task.completed_at = datetime.now(UTC)
             if task.lead_id:
-                lead = await session.get(Lead, task.lead_id)
-                if lead is not None and lead.next_action_at == task.due_at:
-                    lead.next_action_at = None
-                    lead.next_action_note = None
+                await self._refresh_next_contact(session, task.lead_id)
             await ContactEventRepository(session).add(
                 task.contact_id,
                 ContactEventType.NEXT_CONTACT_COMPLETED,
@@ -444,12 +447,12 @@ class CRMService:
                 return task
             if task.status == TaskStatus.DONE:
                 raise LeadWorkflowError("Выполненную задачу нельзя отменить")
+            if task.lead_id:
+                await self._lock_lead_write(session, task.lead_id)
+            await self._lock_contact_write(session, task.contact_id)
             task.status = TaskStatus.CANCELLED
             if task.lead_id:
-                lead = await session.get(Lead, task.lead_id)
-                if lead is not None and lead.next_action_at == task.due_at:
-                    lead.next_action_at = None
-                    lead.next_action_note = None
+                await self._refresh_next_contact(session, task.lead_id)
             await ContactEventRepository(session).add(
                 task.contact_id,
                 ContactEventType.NEXT_CONTACT_CANCELLED,
@@ -459,6 +462,27 @@ class CRMService:
             )
             await session.commit()
             return task
+
+    @staticmethod
+    async def _lock_contact_write(session: AsyncSession, contact_id: int) -> None:
+        # Serialize duplicate task creation, including tasks without a lead.
+        await session.execute(
+            update(Contact).where(Contact.id == contact_id).values(last_seen_at=Contact.last_seen_at)
+        )
+
+    @staticmethod
+    async def _refresh_next_contact(session: AsyncSession, lead_id: int) -> None:
+        lead = await session.get(Lead, lead_id)
+        if lead is None:
+            return
+        next_task = await session.scalar(
+            select(ContactTask)
+            .where(ContactTask.lead_id == lead_id, ContactTask.status == TaskStatus.OPEN)
+            .order_by(ContactTask.due_at, ContactTask.id)
+            .limit(1)
+        )
+        lead.next_action_at = next_task.due_at if next_task else None
+        lead.next_action_note = next_task.note if next_task else None
 
     @staticmethod
     async def _lock_task_write(session: AsyncSession, task_id: int) -> None:

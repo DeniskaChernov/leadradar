@@ -4297,3 +4297,12 @@ details.learning-card.page-task-secondary[open]>summary{margin-bottom:12px}
   [data-reveal] { opacity: 1 !important; transform: none !important; }
   .btn:hover, .task-card:hover, .deal-card:hover, .metric:hover, .nav:hover, .scan-budget-picker > label:hover > span { transform: none !important; }
 }
+
+
+/* Paged CRM lists keep all records reachable without rendering the entire base. */
+.list-pagination { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-block:18px; padding:16px 20px; }
+.list-pagination p { margin:0; }
+.list-pagination small { display:block; margin-top:4px; color:var(--muted); }
+.list-pagination .hero-actions { margin:0; }
+.dashboard-metrics .metric { overflow:clip; }
+@media(max-width:720px) { .list-pagination { flex-wrap:wrap; padding:14px; } .list-pagination .hero-actions { width:100%; } }

@@ -7,15 +7,15 @@
 {% for task, contact, lead in rows %}
   {% if task.status.value == 'OPEN' %}
     {% set ns.open = ns.open + 1 %}
-    {% if task.due_at < now %}{% set ns.overdue = ns.overdue + 1 %}{% endif %}
+    {% if deadline_overdue(task.due_at, now) %}{% set ns.overdue = ns.overdue + 1 %}{% endif %}
   {% endif %}
 {% endfor %}
 
 <section class="hero-status {% if ns.overdue %}warn{% else %}live{% endif %} tasks-hero page-task" data-motion-root data-page-task="tasks">
   <div>
     <span class="eyebrow">ОЧЕРЕДЬ КОНТАКТОВ</span>
-    <h2>{% if rows %}{{ rows|length }} задач · {{ ns.open }} открытых{% else %}Задач пока нет{% endif %}</h2>
-    <p>{% if ns.overdue %}{{ ns.overdue }} просрочено — начните с них.{% elif rows %}Отметьте выполненное после реального контакта.{% else %}Задачи ставят из карточки клиента на следующий шаг.{% endif %}</p>
+    <h2>{% if rows %}{{ pagination.total }} задач по фильтру{% else %}Задач пока нет{% endif %}</h2>
+    <p>{% if ns.overdue %}{{ ns.overdue }} просрочено на этой странице — начните с них.{% elif rows %}Отметьте выполненное после реального контакта.{% else %}Задачи ставят из карточки клиента на следующий шаг.{% endif %}</p>
   </div>
 </section>
 
@@ -26,31 +26,34 @@
     <option value="overdue" {% if view=='overdue' %}selected{% endif %}>Просроченные</option>
     <option value="today" {% if view=='today' %}selected{% endif %}>На ближайшие 24 часа</option>
     <option value="done" {% if view=='done' %}selected{% endif %}>Выполненные</option>
+    <option value="cancelled" {% if view=='cancelled' %}selected{% endif %}>Отменённые</option>
   </select>
   <button class="btn">Показать</button>
   <a class="btn ghost" href="/tasks">Сбросить</a>
 </form>
+{% include "partials/list_pagination.html" %}
 
 <div class="task-list-page" data-motion-root>
 {% for task, contact, lead in rows %}
-<article class="panel task-card {% if task.status.value == 'OPEN' and task.due_at < now %}overdue{% endif %}">
+<article class="panel task-card {% if task.status.value == 'OPEN' and deadline_overdue(task.due_at, now) %}overdue{% endif %}">
   <div class="task-time"><b>{{ task.due_at | display_dt('%d.%m') }}</b><span>{{ task.due_at | display_dt('%H:%M') }}</span></div>
   <div class="task-card-body">
-    <div class="title-line"><h3><a href="/contacts/{{ contact.id }}">{{ contact.display_name or '@' ~ contact.username }}</a></h3>{% if task.status.value == 'DONE' %}<span class="tag status-won">Выполнено</span>{% elif task.due_at < now %}<span class="tag status-lost">Просрочено</span>{% else %}<span class="tag status-contacted">Запланировано</span>{% endif %}</div>
+    <div class="title-line"><h3><a href="/contacts/{{ contact.id }}">{{ contact.display_name or '@' ~ contact.username }}</a></h3>{% if task.status.value == 'DONE' %}<span class="tag status-won">Выполнено</span>{% elif task.status.value == 'CANCELLED' %}<span class="tag muted-tag">Отменено</span>{% elif deadline_overdue(task.due_at, now) %}<span class="tag status-lost">Просрочено</span>{% else %}<span class="tag status-contacted">Запланировано</span>{% endif %}</div>
     <p>{{ task.note or 'Связаться с клиентом' }}</p>
     <small>@{{ contact.username }}{% if lead %} · <a href="/leads/{{ lead.id }}">карточка #{{ lead.id }} · {{ lead.lead_score }}/100</a>{% endif %}</small>
   </div>
   <div class="task-card-actions">
     <a class="btn ghost" href="/contacts/{{ contact.id }}">История</a>
-    {% if lead and lead.lead_score >= settings.hot_lead_threshold %}<a class="btn" href="/hot?lead_id={{ lead.id }}">Написать</a>{% endif %}
-    {% if task.status.value != 'DONE' %}<button class="btn success" type="button" data-task-complete="{{ task.id }}">✓ Выполнено</button>{% endif %}
+    {% if lead and lead.lead_score >= settings.hot_lead_threshold and lead.status.value in ['NEW','TAKEN','CONTACTED','QUALIFIED','ANALYZING','AI_PENDING'] %}<a class="btn" href="/hot?vertical={{ lead.vertical.value }}&lead_id={{ lead.id }}">Написать</a>{% endif %}
+    {% if task.status.value == 'OPEN' %}<button class="btn success" type="button" data-task-complete="{{ task.id }}">✓ Выполнено</button>{% endif %}
   </div>
 </article>
 {% else %}
 <div class="empty-state panel">
   <span class="empty-icon" aria-hidden="true"><i data-lucide="calendar-check"></i></span>
-  <h3>Задач пока нет</h3>
-  <p>Найдите клиентов или откройте горячих — задачи появятся, когда запланируете следующий контакт.</p>
+  <h3>{% if q or view != 'open' %}Нет задач с этим фильтром{% else %}Задач пока нет{% endif %}</h3>
+  <p>{% if q or view != 'open' %}Измените фильтр или откройте все запланированные контакты.{% else %}Задачи появятся, когда запланируете следующий контакт в карточке клиента.{% endif %}</p>
+  {% if q or view != 'open' %}<a class="btn ghost btn-sm" href="/tasks">Все открытые задачи</a>{% endif %}
   <div class="hero-actions">
     <a class="btn primary btn-sm" href="/radar">Найти лидов</a>
     <a class="btn ghost btn-sm" href="/hot">HOT</a>
@@ -58,4 +61,5 @@
 </div>
 {% endfor %}
 </div>
+{% include "partials/list_pagination.html" %}
 {% endblock %}

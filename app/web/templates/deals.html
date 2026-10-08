@@ -11,8 +11,8 @@
 <section class="hero-status live deals-hero page-task" data-motion-root data-page-task="deals">
   <div>
     <span class="eyebrow">СДЕЛКИ</span>
-    <h2>{% if rows %}{{ rows|length }} сделок · {{ ns.won }} продаж{% else %}Сделок пока нет{% endif %}</h2>
-    <p>{% if rows %}{{ ns.open }} в работе. Фильтруйте и открывайте карточку клиента.{% else %}Сделку создают из карточки клиента, когда появилась сумма или товар.{% endif %}</p>
+    <h2>{% if rows %}{{ pagination.total }} сделок по фильтру{% else %}Сделок пока нет{% endif %}</h2>
+    <p>{% if rows %}{{ ns.open }} в работе · {{ ns.won }} продаж на этой странице. Откройте карточку клиента для следующего действия.{% else %}Сделку создают из карточки клиента, когда появилась сумма или товар.{% endif %}</p>
   </div>
 </section>
 
@@ -27,19 +27,21 @@
   <button class="btn">Применить</button>
   <a class="btn ghost" href="/deals">Сбросить</a>
 </form>
+{% include "partials/list_pagination.html" %}
 
 <div class="deal-grid" data-motion-root>
 {% for deal, lead, contact, competitor in rows %}
 <article class="deal-card status-border-{{ deal.status.value|lower }}">
-  <div class="deal-card-head"><div><span class="tag status-{{ deal.status.value|lower }}">{{ deal_status_label(deal.status) }}</span><h3>{{ deal.product_name or product_label(deal.product_category) }}</h3></div><strong>{{ money(deal.final_amount or deal.amount) }} <small>сум</small></strong></div>
+  <div class="deal-card-head"><div><span class="tag status-{{ deal.status.value|lower }}">{{ deal_status_label(deal.status) }}</span><h3>{{ deal.product_name or product_label(deal.product_category) }}</h3></div><strong>{{ money(deal.final_amount if deal.final_amount is not none else deal.amount) }} <small>{{ deal_currencies.get(deal.id) or 'валюта не указана' }}</small></strong></div>
   <dl><dt>Клиент</dt><dd><a href="/contacts/{{ contact.id }}">@{{ contact.username }}</a></dd><dt>Источник</dt><dd>@{{ competitor.normalized_handle }}</dd><dt>В воронке</dt><dd><a href="/leads/{{ lead.id }}">#{{ lead.id }} · {{ lead.lead_score }}/100</a></dd><dt>Количество</dt><dd>{{ deal.quantity or 'не указано' }}</dd>{% if deal.lost_reason %}<dt>Почему не купил</dt><dd>{{ deal.lost_reason }}</dd>{% endif %}</dl>
   <div class="card-actions"><a class="btn primary" href="/leads/{{ lead.id }}">Открыть карточку</a><a class="btn ghost" href="/contacts/{{ contact.id }}">История</a></div>
 </article>
 {% else %}
 <div class="empty-state panel deal-grid-empty">
   <span class="empty-icon" aria-hidden="true"><i data-lucide="handshake"></i></span>
-  <h3>Сделок пока нет</h3>
-  <p>Найдите клиентов, возьмите в работу и зафиксируйте продажу — система учится на реальных чеках.</p>
+  <h3>{% if q or status_filter %}Нет сделок с этим фильтром{% else %}Сделок пока нет{% endif %}</h3>
+  <p>{% if q or status_filter %}Измените поиск или статус, чтобы увидеть остальные сделки.{% else %}Создайте сделку в карточке клиента, когда обсудили товар или сумму.{% endif %}</p>
+  {% if q or status_filter %}<a class="btn ghost btn-sm" href="/deals">Все сделки</a>{% endif %}
   <div class="hero-actions">
     <a class="btn primary btn-sm" href="/radar">Найти лидов</a>
     <a class="btn ghost btn-sm" href="/leads">Открыть воронку</a>
@@ -47,4 +49,5 @@
 </div>
 {% endfor %}
 </div>
+{% include "partials/list_pagination.html" %}
 {% endblock %}

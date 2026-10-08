@@ -180,6 +180,34 @@ try { Get-LeadRadarWebWorker 'python.exe' 8000 | Out-Null } catch { $blocked=$tr
     assert result == {"blocked": True, "stops": 0}
 
 
+@pytest.mark.parametrize("remaining", ["gone", "same", "replacement", "unknown"])
+@pytest.mark.parametrize("powershell", [path for path in (POWERSHELL, POWERSHELL_CORE) if path])
+def test_stop_handles_natural_exit_but_preserves_other_failures(tmp_path, powershell, remaining):
+    result = _run(
+        tmp_path,
+        f"""
+$global:stopCalls=0
+$original=[pscustomobject]@{{ ProcessId=42; ExecutablePath='python.exe';
+    CommandLine='python -m app.main --web-only'; CreationDate=[datetime]'2026-10-07T00:00:00Z' }}
+function Get-CimInstance {{
+    if ($global:stopCalls -gt 0 -and '{remaining}' -eq 'unknown') {{ throw 'Process lookup unavailable' }}
+    if ($global:stopCalls -eq 0 -or '{remaining}' -eq 'same') {{ return $original }}
+    if ('{remaining}' -eq 'replacement') {{
+        return [pscustomobject]@{{ ProcessId=42; ExecutablePath='other.exe';
+            CommandLine='other'; CreationDate=[datetime]'2026-10-07T01:00:00Z' }}
+    }}
+}}
+function Stop-Process {{ $global:stopCalls++; throw 'Process already exited or access denied' }}
+function Wait-Process {{ throw 'Must not wait after a failed Stop-Process' }}
+$failed=$false
+try {{ Stop-LeadRadarOwnedProcess $original }} catch {{ $failed=$true }}
+@{{ failed=$failed; stops=$global:stopCalls }} | ConvertTo-Json -Compress
+""",
+        powershell=powershell,
+    )
+    assert result == {"failed": remaining != "gone", "stops": 1}
+
+
 def test_health_wait_fails_immediately_when_launcher_exits(tmp_path):
     result = _run(
         tmp_path,

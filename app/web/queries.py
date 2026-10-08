@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import json
 import math
 from collections import Counter
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from itertools import combinations
 
-from sqlalchemy import and_, case, desc, func, or_, select
+from sqlalchemy import Select, String, and_, case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import (
@@ -74,6 +76,31 @@ CONFIRMED_LEAD_STATUSES = [
 ]
 
 
+def _analysis_contains(text: str):
+    # Generic JSON has no PostgreSQL-only .astext. Match both JSON serializers
+    # so Cyrillic flags work on SQLite (ASCII escapes) and PostgreSQL alike.
+    document = Lead.analysis_details.cast(String)
+    escaped = json.dumps(text, ensure_ascii=True)[1:-1]
+    return or_(document.contains(text, autoescape=True), document.contains(escaped, autoescape=True))
+
+
+@dataclass(frozen=True, slots=True)
+class QueryPage:
+    rows: list
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+    @property
+    def start(self) -> int:
+        return (self.page - 1) * self.page_size + 1 if self.total else 0
+
+    @property
+    def end(self) -> int:
+        return min(self.page * self.page_size, self.total)
+
+
 class WebQueryService:
     def __init__(
         self, session_factory: async_sessionmaker[AsyncSession], hot_threshold: int, *, signal_max_age_days: int = 30
@@ -81,6 +108,32 @@ class WebQueryService:
         self.session_factory = session_factory
         self.hot_threshold = hot_threshold
         self.signal_max_age_days = max(0, signal_max_age_days)
+
+    async def _paginate(self, stmt: Select, *, page: int, page_size: int = 50) -> QueryPage:
+        async with self.session_factory() as session:
+            total = int(await session.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0)
+            pages = max(1, math.ceil(total / page_size))
+            page = max(1, min(page, pages))
+            rows = (await session.execute(stmt.limit(page_size).offset((page - 1) * page_size))).all()
+        return QueryPage(rows=list(rows), total=total, page=page, page_size=page_size, pages=pages)
+
+    async def deal_currencies(self, deals: list[Deal]) -> dict[int, str | None]:
+        if not deals:
+            return {}
+        async with self.session_factory() as session:
+            snapshots = dict((await session.execute(
+                select(DealSaleSnapshot.deal_id, DealSaleSnapshot.sale_currency)
+                .where(DealSaleSnapshot.deal_id.in_([deal.id for deal in deals]))
+            )).all())
+        # Open/lost quotes are entered in UZS. A completed sale uses its immutable snapshot.
+        return {deal.id: snapshots.get(deal.id) if deal.status == DealStatus.WON else "UZS" for deal in deals}
+
+    async def iter_leads(self, **filters):
+        """Stream every matching public lead; CSV has no silent row cap."""
+        async with self.session_factory() as session:
+            result = await session.stream(self._leads_statement(**filters).execution_options(yield_per=100))
+            async for row in result:
+                yield row
 
     async def ai_safety_diagnostics(self) -> dict:
         now = datetime.now(UTC)
@@ -793,70 +846,81 @@ class WebQueryService:
             )
         return {"analyzing": analyzing, "ai_pending": ai_pending}
 
-    async def signals(
+    async def signals(self, *, limit: int = 300, **filters) -> list:
+        async with self.session_factory() as session:
+            return (await session.execute(self._signals_statement(**filters).limit(limit))).all()
+
+    async def signals_page(self, *, page: int = 1, **filters) -> QueryPage:
+        return await self._paginate(self._signals_statement(**filters), page=page)
+
+    def _signals_statement(
         self,
         *,
         q: str = "",
         competitor: str = "",
         kind: str = "",
         vertical: str | None = None,
-        limit: int = 300,
-    ) -> list:
+    ) -> Select:
         vertical_enum = None
         if vertical:
             try:
                 vertical_enum = Vertical(vertical.strip().upper())
             except ValueError:
                 vertical_enum = None
-        async with self.session_factory() as session:
-            stmt = (
-                select(Comment, Contact, Competitor, Post, Lead)
-                .join(Contact, Contact.id == Comment.contact_id)
-                .join(Competitor, Competitor.id == Comment.competitor_id)
-                .join(Post, Post.id == Comment.post_id)
-                .outerjoin(Lead, Lead.comment_id == Comment.id)
-                .order_by(desc(Comment.discovered_at), desc(Comment.id))
-                .limit(limit)
+        stmt = (
+            select(Comment, Contact, Competitor, Post, Lead)
+            .join(Contact, Contact.id == Comment.contact_id)
+            .join(Competitor, Competitor.id == Comment.competitor_id)
+            .join(Post, Post.id == Comment.post_id)
+            .outerjoin(Lead, Lead.comment_id == Comment.id)
+            .order_by(desc(Comment.discovered_at), desc(Comment.id))
+        )
+        if vertical_enum is not None:
+            stmt = stmt.where(Competitor.vertical == vertical_enum)
+        if q.strip():
+            pattern = f"%{q.strip().lower()}%"
+            stmt = stmt.where(
+                or_(
+                    func.lower(Contact.username).like(pattern),
+                    func.lower(func.coalesce(Contact.display_name, "")).like(pattern),
+                    func.lower(Comment.text).like(pattern),
+                    func.lower(Post.caption).like(pattern),
+                    func.lower(func.coalesce(Lead.product_category, "")).like(pattern),
+                )
             )
-            if vertical_enum is not None:
-                stmt = stmt.where(Competitor.vertical == vertical_enum)
-            if q.strip():
-                pattern = f"%{q.strip().lower()}%"
-                stmt = stmt.where(
-                    or_(
-                        func.lower(Contact.username).like(pattern),
-                        func.lower(func.coalesce(Contact.display_name, "")).like(pattern),
-                        func.lower(Comment.text).like(pattern),
-                        func.lower(Post.caption).like(pattern),
-                        func.lower(func.coalesce(Lead.product_category, "")).like(pattern),
-                    )
+        if competitor.strip():
+            stmt = stmt.where(Competitor.normalized_handle == competitor.strip().lower())
+        normalized_kind = kind.strip().lower()
+        if normalized_kind == "new":
+            stmt = stmt.where(Comment.is_baseline.is_(False))
+        elif normalized_kind in {"history", "archive", "baseline"}:
+            stmt = stmt.where(Comment.is_baseline.is_(True))
+        elif normalized_kind == "hot":
+            stmt = stmt.where(Lead.lead_score >= self.hot_threshold)
+        elif normalized_kind == "warm":
+            stmt = stmt.where(
+                Lead.lead_score >= 50,
+                Lead.lead_score < self.hot_threshold,
+            )
+        elif normalized_kind == "pending":
+            stmt = stmt.where(
+                or_(
+                    Lead.id.is_(None),
+                    Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING]),
                 )
-            if competitor.strip():
-                stmt = stmt.where(Competitor.normalized_handle == competitor.strip().lower())
-            normalized_kind = kind.strip().lower()
-            if normalized_kind == "new":
-                stmt = stmt.where(Comment.is_baseline.is_(False))
-            elif normalized_kind in {"history", "archive", "baseline"}:
-                stmt = stmt.where(Comment.is_baseline.is_(True))
-            elif normalized_kind == "hot":
-                stmt = stmt.where(Lead.lead_score >= self.hot_threshold)
-            elif normalized_kind == "warm":
-                stmt = stmt.where(
-                    Lead.lead_score >= 50,
-                    Lead.lead_score < self.hot_threshold,
-                )
-            elif normalized_kind == "pending":
-                stmt = stmt.where(
-                    or_(
-                        Lead.id.is_(None),
-                        Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING]),
-                    )
-                )
-            elif normalized_kind != "history":
-                stmt = stmt.where(fresh_signal_clause(max_age_days=self.signal_max_age_days))
-            return (await session.execute(stmt)).all()
+            )
+        elif normalized_kind != "history":
+            stmt = stmt.where(fresh_signal_clause(max_age_days=self.signal_max_age_days))
+        return stmt
 
-    async def leads(
+    async def leads(self, *, limit: int = 300, **filters) -> list:
+        async with self.session_factory() as session:
+            return (await session.execute(self._leads_statement(**filters).limit(limit))).all()
+
+    async def leads_page(self, *, page: int = 1, **filters) -> QueryPage:
+        return await self._paginate(self._leads_statement(**filters), page=page)
+
+    def _leads_statement(
         self,
         *,
         q: str = "",
@@ -864,78 +928,75 @@ class WebQueryService:
         quality: str = "",
         contact_id: int | None = None,
         vertical: str | None = None,
-        limit: int = 300,
         include_not_leads: bool = False,
-    ) -> list:
+    ) -> Select:
         vertical_enum = None
         if vertical:
             try:
                 vertical_enum = Vertical(vertical.strip().upper())
             except ValueError:
                 vertical_enum = None
-        async with self.session_factory() as session:
-            stmt = (
-                select(Lead, Contact, Comment, Competitor, Post, Deal)
-                .join(Contact, Contact.id == Lead.contact_id)
-                .join(Comment, Comment.id == Lead.comment_id)
-                .join(Competitor, Competitor.id == Lead.competitor_id)
-                .join(Post, Post.id == Comment.post_id)
-                .outerjoin(Deal, Deal.lead_id == Lead.id)
-                .order_by(desc(Lead.lead_score), desc(Lead.created_at))
-                .limit(limit)
+        stmt = (
+            select(Lead, Contact, Comment, Competitor, Post, Deal)
+            .join(Contact, Contact.id == Lead.contact_id)
+            .join(Comment, Comment.id == Lead.comment_id)
+            .join(Competitor, Competitor.id == Lead.competitor_id)
+            .join(Post, Post.id == Comment.post_id)
+            .outerjoin(Deal, Deal.lead_id == Lead.id)
+            .order_by(desc(Lead.lead_score), desc(Lead.created_at), desc(Lead.id))
+        )
+        if vertical_enum is not None:
+            stmt = stmt.where(Lead.vertical == vertical_enum)
+        if q.strip():
+            pattern = f"%{q.strip().lower()}%"
+            stmt = stmt.where(
+                or_(
+                    func.lower(Contact.username).like(pattern),
+                    func.lower(func.coalesce(Contact.display_name, "")).like(pattern),
+                    func.lower(Comment.text).like(pattern),
+                    func.lower(func.coalesce(Lead.product_category, "")).like(pattern),
+                    func.lower(Competitor.normalized_handle).like(pattern),
+                )
             )
-            if vertical_enum is not None:
-                stmt = stmt.where(Lead.vertical == vertical_enum)
-            if q.strip():
-                pattern = f"%{q.strip().lower()}%"
-                stmt = stmt.where(
-                    or_(
-                        func.lower(Contact.username).like(pattern),
-                        func.lower(func.coalesce(Contact.display_name, "")).like(pattern),
-                        func.lower(Comment.text).like(pattern),
-                        func.lower(func.coalesce(Lead.product_category, "")).like(pattern),
-                        func.lower(Competitor.normalized_handle).like(pattern),
-                    )
+        if contact_id is not None:
+            stmt = stmt.where(Lead.contact_id == contact_id)
+        normalized_quality = quality.strip().lower()
+        if normalized_quality == "hot":
+            stmt = stmt.where(
+                Lead.lead_score >= self.hot_threshold,
+                Lead.status.notin_([LeadStatus.NOT_LEAD, LeadStatus.LOST]),
+            )
+        elif normalized_quality == "not_lead":
+            stmt = stmt.where(Lead.status == LeadStatus.NOT_LEAD)
+        elif normalized_quality == "off_catalog":
+            stmt = stmt.where(
+                or_(
+                    Lead.status == LeadStatus.NOT_LEAD,
+                    func.lower(func.coalesce(Lead.ai_reason, "")).like("%вне каталога%"),
+                    _analysis_contains("Не наш ассортимент"),
                 )
-            if contact_id is not None:
-                stmt = stmt.where(Lead.contact_id == contact_id)
-            normalized_quality = quality.strip().lower()
-            if normalized_quality == "hot":
-                stmt = stmt.where(
-                    Lead.lead_score >= self.hot_threshold,
-                    Lead.status.notin_([LeadStatus.NOT_LEAD, LeadStatus.LOST]),
+            )
+        elif normalized_quality == "garbage":
+            stmt = stmt.where(
+                or_(
+                    Lead.status == LeadStatus.NOT_LEAD,
+                    func.lower(func.coalesce(Lead.ai_reason, "")).like("%вне каталога%"),
+                    _analysis_contains("Не наш ассортимент"),
+                    Lead.intent.in_(["REACTION", "SPAM"]),
                 )
-            elif normalized_quality == "not_lead":
-                stmt = stmt.where(Lead.status == LeadStatus.NOT_LEAD)
-            elif normalized_quality == "off_catalog":
-                stmt = stmt.where(
-                    or_(
-                        Lead.status == LeadStatus.NOT_LEAD,
-                        func.lower(func.coalesce(Lead.ai_reason, "")).like("%вне каталога%"),
-                        Lead.analysis_details.astext.like("%Не наш ассортимент%"),
-                    )
-                )
-            elif normalized_quality == "garbage":
-                stmt = stmt.where(
-                    or_(
-                        Lead.status == LeadStatus.NOT_LEAD,
-                        func.lower(func.coalesce(Lead.ai_reason, "")).like("%вне каталога%"),
-                        Lead.analysis_details.astext.like("%Не наш ассортимент%"),
-                        Lead.intent.in_(["REACTION", "SPAM"]),
-                    )
-                )
-            if status.strip():
-                try:
-                    stmt = stmt.where(Lead.status == LeadStatus(status.strip().upper()))
-                except ValueError:
-                    return []
-            elif not include_not_leads and normalized_quality not in {
-                "not_lead",
-                "off_catalog",
-                "garbage",
-            }:
-                stmt = stmt.where(Lead.status != LeadStatus.NOT_LEAD)
-            return (await session.execute(stmt)).all()
+            )
+        if status.strip():
+            try:
+                stmt = stmt.where(Lead.status == LeadStatus(status.strip().upper()))
+            except ValueError:
+                return stmt.where(False)
+        elif not include_not_leads and normalized_quality not in {
+            "not_lead",
+            "off_catalog",
+            "garbage",
+        }:
+            stmt = stmt.where(Lead.status != LeadStatus.NOT_LEAD)
+        return stmt
 
     async def lead_recent_events(
         self,
@@ -1223,67 +1284,72 @@ class WebQueryService:
                 "grounded": True,
             }
 
-    async def contacts(self, *, q: str = "", limit: int = 300) -> list:
+    async def contacts(self, *, limit: int = 300, **filters) -> list:
         async with self.session_factory() as session:
-            lead_stats = (
-                select(
-                    Lead.contact_id.label("contact_id"),
-                    func.max(Lead.lead_score).label("max_score"),
-                    func.count(Lead.id).label("lead_count"),
-                )
-                .group_by(Lead.contact_id)
-                .subquery()
+            return (await session.execute(self._contacts_statement(**filters).limit(limit))).all()
+
+    async def contacts_page(self, *, page: int = 1, **filters) -> QueryPage:
+        return await self._paginate(self._contacts_statement(**filters), page=page)
+
+    def _contacts_statement(self, *, q: str = "") -> Select:
+        lead_stats = (
+            select(
+                Lead.contact_id.label("contact_id"),
+                func.max(Lead.lead_score).label("max_score"),
+                func.count(Lead.id).label("lead_count"),
             )
-            signal_stats = (
-                select(
-                    Comment.contact_id.label("contact_id"),
-                    func.count(Comment.id).label("signal_count"),
-                )
-                .group_by(Comment.contact_id)
-                .subquery()
+            .group_by(Lead.contact_id)
+            .subquery()
+        )
+        signal_stats = (
+            select(
+                Comment.contact_id.label("contact_id"),
+                func.count(Comment.id).label("signal_count"),
             )
-            source_stats = (
-                select(
-                    Comment.contact_id.label("contact_id"),
-                    func.count(func.distinct(Comment.competitor_id)).label("source_count"),
-                )
-                .group_by(Comment.contact_id)
-                .subquery()
+            .group_by(Comment.contact_id)
+            .subquery()
+        )
+        source_stats = (
+            select(
+                Comment.contact_id.label("contact_id"),
+                func.count(func.distinct(Comment.competitor_id)).label("source_count"),
             )
-            task_stats = (
-                select(
-                    ContactTask.contact_id.label("contact_id"),
-                    func.count(ContactTask.id).label("task_count"),
-                )
-                .where(ContactTask.status == TaskStatus.OPEN)
-                .group_by(ContactTask.contact_id)
-                .subquery()
+            .group_by(Comment.contact_id)
+            .subquery()
+        )
+        task_stats = (
+            select(
+                ContactTask.contact_id.label("contact_id"),
+                func.count(ContactTask.id).label("task_count"),
             )
-            stmt = (
-                select(
-                    Contact,
-                    func.coalesce(signal_stats.c.signal_count, 0),
-                    func.coalesce(source_stats.c.source_count, 0),
-                    func.coalesce(lead_stats.c.lead_count, 0),
-                    func.coalesce(lead_stats.c.max_score, 0),
-                    func.coalesce(task_stats.c.task_count, 0),
-                )
-                .outerjoin(signal_stats, signal_stats.c.contact_id == Contact.id)
-                .outerjoin(source_stats, source_stats.c.contact_id == Contact.id)
-                .outerjoin(lead_stats, lead_stats.c.contact_id == Contact.id)
-                .outerjoin(task_stats, task_stats.c.contact_id == Contact.id)
-                .order_by(desc(Contact.last_seen_at))
-                .limit(limit)
+            .where(ContactTask.status == TaskStatus.OPEN)
+            .group_by(ContactTask.contact_id)
+            .subquery()
+        )
+        stmt = (
+            select(
+                Contact,
+                func.coalesce(signal_stats.c.signal_count, 0),
+                func.coalesce(source_stats.c.source_count, 0),
+                func.coalesce(lead_stats.c.lead_count, 0),
+                func.coalesce(lead_stats.c.max_score, 0),
+                func.coalesce(task_stats.c.task_count, 0),
             )
-            if q.strip():
-                pattern = f"%{q.strip().lower()}%"
-                stmt = stmt.where(
-                    or_(
-                        func.lower(Contact.username).like(pattern),
-                        func.lower(func.coalesce(Contact.display_name, "")).like(pattern),
-                    )
+            .outerjoin(signal_stats, signal_stats.c.contact_id == Contact.id)
+            .outerjoin(source_stats, source_stats.c.contact_id == Contact.id)
+            .outerjoin(lead_stats, lead_stats.c.contact_id == Contact.id)
+            .outerjoin(task_stats, task_stats.c.contact_id == Contact.id)
+            .order_by(desc(Contact.last_seen_at), desc(Contact.id))
+        )
+        if q.strip():
+            pattern = f"%{q.strip().lower()}%"
+            stmt = stmt.where(
+                or_(
+                    func.lower(Contact.username).like(pattern),
+                    func.lower(func.coalesce(Contact.display_name, "")).like(pattern),
                 )
-            return (await session.execute(stmt)).all()
+            )
+        return stmt
 
     async def contact_detail(self, contact_id: int) -> dict | None:
         async with self.session_factory() as session:
@@ -2495,65 +2561,77 @@ class WebQueryService:
                 "tier_a": tier_a,
             }
 
-    async def tasks(self, *, view: str = "open", q: str = "", limit: int = 300) -> list:
-        now = datetime.now(UTC)
+    async def tasks(self, *, limit: int = 300, **filters) -> list:
         async with self.session_factory() as session:
-            stmt = (
-                select(ContactTask, Contact, Lead)
-                .join(Contact, Contact.id == ContactTask.contact_id)
-                .outerjoin(Lead, Lead.id == ContactTask.lead_id)
-                .order_by(ContactTask.status, ContactTask.due_at)
-                .limit(limit)
-            )
-            normalized = view.strip().lower()
-            if normalized == "overdue":
-                stmt = stmt.where(ContactTask.status == TaskStatus.OPEN, ContactTask.due_at < now)
-            elif normalized == "today":
-                stmt = stmt.where(
-                    ContactTask.status == TaskStatus.OPEN,
-                    ContactTask.due_at >= now,
-                    ContactTask.due_at <= now + timedelta(hours=24),
-                )
-            elif normalized == "done":
-                stmt = stmt.where(ContactTask.status == TaskStatus.DONE)
-            else:
-                stmt = stmt.where(ContactTask.status == TaskStatus.OPEN)
-            if q.strip():
-                pattern = f"%{q.strip().lower()}%"
-                stmt = stmt.where(
-                    or_(
-                        func.lower(Contact.username).like(pattern),
-                        func.lower(func.coalesce(Contact.display_name, "")).like(pattern),
-                        func.lower(ContactTask.note).like(pattern),
-                    )
-                )
-            return (await session.execute(stmt)).all()
+            return (await session.execute(self._tasks_statement(**filters).limit(limit))).all()
 
-    async def deals(self, *, status: str = "", q: str = "", limit: int = 300) -> list:
-        async with self.session_factory() as session:
-            stmt = (
-                select(Deal, Lead, Contact, Competitor)
-                .join(Lead, Lead.id == Deal.lead_id)
-                .join(Contact, Contact.id == Deal.contact_id)
-                .join(Competitor, Competitor.id == Lead.competitor_id)
-                .order_by(desc(Deal.updated_at), desc(Deal.created_at))
-                .limit(limit)
+    async def tasks_page(self, *, page: int = 1, **filters) -> QueryPage:
+        return await self._paginate(self._tasks_statement(**filters), page=page)
+
+    def _tasks_statement(self, *, view: str = "open", q: str = "") -> Select:
+        now = datetime.now(UTC)
+        stmt = (
+            select(ContactTask, Contact, Lead)
+            .join(Contact, Contact.id == ContactTask.contact_id)
+            .outerjoin(Lead, Lead.id == ContactTask.lead_id)
+            .order_by(ContactTask.status, ContactTask.due_at, ContactTask.id)
+        )
+        normalized = view.strip().lower()
+        if normalized == "overdue":
+            stmt = stmt.where(ContactTask.status == TaskStatus.OPEN, ContactTask.due_at < now)
+        elif normalized == "today":
+            stmt = stmt.where(
+                ContactTask.status == TaskStatus.OPEN,
+                ContactTask.due_at >= now,
+                ContactTask.due_at <= now + timedelta(hours=24),
             )
-            if status.strip():
-                try:
-                    stmt = stmt.where(Deal.status == DealStatus(status.strip().upper()))
-                except ValueError:
-                    return []
-            if q.strip():
-                pattern = f"%{q.strip().lower()}%"
-                stmt = stmt.where(
-                    or_(
-                        func.lower(Contact.username).like(pattern),
-                        func.lower(func.coalesce(Deal.product_name, "")).like(pattern),
-                        func.lower(Competitor.normalized_handle).like(pattern),
-                    )
+        elif normalized == "done":
+            stmt = stmt.where(ContactTask.status == TaskStatus.DONE)
+        elif normalized == "cancelled":
+            stmt = stmt.where(ContactTask.status == TaskStatus.CANCELLED)
+        else:
+            stmt = stmt.where(ContactTask.status == TaskStatus.OPEN)
+        if q.strip():
+            pattern = f"%{q.strip().lower()}%"
+            stmt = stmt.where(
+                or_(
+                    func.lower(Contact.username).like(pattern),
+                    func.lower(func.coalesce(Contact.display_name, "")).like(pattern),
+                    func.lower(ContactTask.note).like(pattern),
                 )
-            return (await session.execute(stmt)).all()
+            )
+        return stmt
+
+    async def deals(self, *, limit: int = 300, **filters) -> list:
+        async with self.session_factory() as session:
+            return (await session.execute(self._deals_statement(**filters).limit(limit))).all()
+
+    async def deals_page(self, *, page: int = 1, **filters) -> QueryPage:
+        return await self._paginate(self._deals_statement(**filters), page=page)
+
+    def _deals_statement(self, *, status: str = "", q: str = "") -> Select:
+        stmt = (
+            select(Deal, Lead, Contact, Competitor)
+            .join(Lead, Lead.id == Deal.lead_id)
+            .join(Contact, Contact.id == Deal.contact_id)
+            .join(Competitor, Competitor.id == Lead.competitor_id)
+            .order_by(desc(Deal.updated_at), desc(Deal.created_at), desc(Deal.id))
+        )
+        if status.strip():
+            try:
+                stmt = stmt.where(Deal.status == DealStatus(status.strip().upper()))
+            except ValueError:
+                return stmt.where(False)
+        if q.strip():
+            pattern = f"%{q.strip().lower()}%"
+            stmt = stmt.where(
+                or_(
+                    func.lower(Contact.username).like(pattern),
+                    func.lower(func.coalesce(Deal.product_name, "")).like(pattern),
+                    func.lower(Competitor.normalized_handle).like(pattern),
+                )
+            )
+        return stmt
 
     async def economics(self, days: int = 30) -> dict:
         page = await EconomicsPageService(

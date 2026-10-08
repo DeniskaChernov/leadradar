@@ -224,7 +224,8 @@
       <a class="btn tiny {{ 'primary' if kind_filter == 'pending' else 'ghost' }}" href="{{ radar_base }}&kind=pending#find-results" {{ 'aria-current="page"'|safe if kind_filter == 'pending' }}>Нужна оценка</a>
     </nav>
   </div>
-  <div class="find-lead-grid">
+{% include "partials/list_pagination.html" %}
+<div class="find-lead-grid">
     {% set cards = namespace(count=0) %}
     {% for comment, contact, competitor, post, lead in rows %}
     {% if lead and lead.status.value != 'NOT_LEAD' and cards.count < 48 %}
@@ -285,7 +286,7 @@
 </section>
 
 
-<details class="panel signal-details"><summary>Подробная таблица сигналов · {{ rows|length }} в выборке</summary>
+<details class="panel signal-details"><summary>Подробная таблица сигналов · {{ rows|length }} на странице</summary>
 <div class="table-wrap"><table class="responsive-table radar-table">
 <thead><tr><th>Клиент</th><th>Что написал</th><th>Где нашли</th><th>Контекст Reel</th><th>Оценка</th><th>Что делать</th></tr></thead>
 <tbody>
@@ -340,4 +341,5 @@
 </tbody>
 </table></div>
 </details>
+{% include "partials/list_pagination.html" %}
 {% endblock %}

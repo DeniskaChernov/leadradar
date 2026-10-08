@@ -8,6 +8,8 @@
 [WORKFLOW_RECHECK_2026-10-07](WORKFLOW_RECHECK_2026-10-07.md).
 Изменение интерфейса по F06, серверные фильтры и мобильная навигация:
 [UX_REVIEW_2026-10-08](UX_REVIEW_2026-10-08.md).
+Сквозной проход, пагинация общих списков/CSV (F11) и последующие исправления:
+[SYSTEM_PASS_2026-10-08](SYSTEM_PASS_2026-10-08.md).
 
 Проверен работающий checkout `leadradar-main-audit`, ветка
 `codex/audit-hardening-20260924`, исходный commit `9be5f84`, репозиторий
