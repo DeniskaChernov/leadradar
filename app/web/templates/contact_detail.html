@@ -19,7 +19,7 @@
     </div>
   </div>
   <div class="contact-kpis">
-    <div><span>Сигналов</span><b>{{ signals|length }}</b></div>
+    <div><span>Сигналов</span><b>{{ signals_pagination.total }}</b></div>
     <div><span>Источников</span><b>{{ source_count }}</b></div>
     <div><span>Лучшая оценка</span><b>{{ contact.current_lead_score }}</b></div>
     <div><span>Сделок</span><b>{{ deals|length }}</b></div>
@@ -126,8 +126,8 @@
       <label class="wide">Что именно ищет<input name="interest_summary" value="{{ contact.interest_summary or '' }}" placeholder="Например: обеденный комплект на 6 персон для кухни"></label>
       <label>Количество<input name="desired_quantity" type="number" min="1" value="{{ contact.desired_quantity or '' }}" placeholder="6"></label>
       <label>Цвет<input name="desired_color" value="{{ contact.desired_color or '' }}" placeholder="Бежевый"></label>
-      <label>Бюджет от, сум<input name="budget_from" inputmode="decimal" value="{{ contact.budget_from or '' }}" placeholder="8000000"></label>
-      <label>Бюджет до, сум<input name="budget_to" inputmode="decimal" value="{{ contact.budget_to or '' }}" placeholder="10000000"></label>
+      <label>Бюджет от, сум<input name="budget_from" inputmode="decimal" value="{{ contact.budget_from if contact.budget_from is not none else '' }}" placeholder="8000000"></label>
+      <label>Бюджет до, сум<input name="budget_to" inputmode="decimal" value="{{ contact.budget_to if contact.budget_to is not none else '' }}" placeholder="10000000"></label>
       <label>Когда планирует купить<input name="purchase_timeline" value="{{ contact.purchase_timeline or '' }}" placeholder="На этой неделе / до конца месяца"></label>
       <label>Город<input name="city" value="{{ contact.city or '' }}" placeholder="Ташкент"></label>
       <label>Телефон<input name="phone" value="{{ contact.phone or '' }}" placeholder="Только если клиент сам сообщил"></label>
@@ -141,8 +141,9 @@
 
 <div class="contact-layout">
   <div class="contact-main">
-    <section class="panel">
+    <section class="panel" id="contact-signals">
       <div class="panel-head"><div><h2>История интереса</h2><p>Все найденные комментарии и источники, от первого сигнала до сегодняшнего дня</p></div></div>
+      {% with pagination=signals_pager.pagination, previous_page_url=signals_pager.previous_page_url, next_page_url=signals_pager.next_page_url, pagination_label='Страницы истории интереса' %}{% include 'partials/list_pagination.html' %}{% endwith %}
       <div class="timeline">
       {% for comment, competitor, post, signal_lead in signals %}
       <div class="timeline-item">
@@ -160,8 +161,9 @@
       </div>
     </section>
 
-    <section class="panel">
-      <div class="panel-head"><div><h2>CRM-история</h2><p>Ничего не перезаписывается молча: действия менеджеров остаются в хронологии{% if event_groups|length != events|length %} · сжато {{ events|length - event_groups|length }} повторов{% endif %}</p></div></div>
+    <section class="panel" id="contact-events">
+      <div class="panel-head"><div><h2>CRM-история</h2><p>Действия менеджеров остаются в хронологии{% if event_groups|length != events|length %} · на этой странице сжато {{ events|length - event_groups|length }} повторов{% endif %}</p></div></div>
+      {% with pagination=events_pager.pagination, previous_page_url=events_pager.previous_page_url, next_page_url=events_pager.next_page_url, pagination_label='Страницы CRM-истории' %}{% include 'partials/list_pagination.html' %}{% endwith %}
       <div class="event-list rich-events">
       {% for group in event_groups %}
         {% set event = group.latest %}
@@ -207,14 +209,19 @@
     <section class="panel action-form-card quick-crm-card">
       <h3>Клиент ответил</h3>
       <p>Фиксируйте ответ, даже если сделка ещё не определилась. Это часть обучающей истории.</p>
-      <form data-api-form action="/api/contacts/{{ contact.id }}/reply" data-reload="1">
+      <form data-api-form data-idempotent="1" action="/api/contacts/{{ contact.id }}/reply" data-reload="1">
         {% if leads %}<input type="hidden" name="lead_id" value="{{ leads[0].id }}">{% endif %}
-        <textarea name="text" rows="2" aria-label="Результат контакта" placeholder="Например: попросил цену и фото в бежевом цвете"></textarea>
+        <textarea name="text" rows="2" maxlength="4000" aria-label="Результат контакта" placeholder="Например: попросил цену и фото в бежевом цвете"></textarea>
         <button class="btn" type="submit">Зафиксировать ответ</button>
       </form>
     </section>
 
-    <section class="panel action-form-card"><h3>Добавить заметку</h3><form data-api-form action="/api/contacts/{{ contact.id }}/notes" data-reload="1"><textarea name="text" rows="3" aria-label="Заметка о клиенте" placeholder="Свободная заметка для команды"></textarea><button class="btn" type="submit">Сохранить заметку</button></form></section>
+    <section class="panel action-form-card" id="contact-notes">
+      <h3>Заметки команды</h3>
+      {% for note in notes %}<div class="event team-note"><span>{{ note.created_at | display_dt }}</span><p>{{ note.payload_json.get('text') }}</p></div>{% else %}<p class="muted">Заметок пока нет.</p>{% endfor %}
+      {% with pagination=notes_pager.pagination, previous_page_url=notes_pager.previous_page_url, next_page_url=notes_pager.next_page_url, pagination_label='Страницы заметок' %}{% include 'partials/list_pagination.html' %}{% endwith %}
+      <h3>Добавить заметку</h3><form data-api-form data-idempotent="1" action="/api/contacts/{{ contact.id }}/notes" data-reload="1"><textarea name="text" rows="3" maxlength="4000" aria-label="Заметка о клиенте" placeholder="Свободная заметка для команды" required></textarea><button class="btn" type="submit">Сохранить заметку</button></form>
+    </section>
 
     <section class="panel action-form-card"><h3>Следующий контакт</h3><form data-api-form action="/api/contacts/{{ contact.id }}/tasks" data-reload="1"><label>Когда<input name="due_at" type="datetime-local" required></label><label>Что сделать<input name="note" placeholder="Позвонить, отправить фото, уточнить решение"></label>{% if leads %}<label>Связать с лидом<select name="lead_id"><option value="">Без привязки</option>{% for item in leads %}<option value="{{ item.id }}">Лид #{{ item.id }} · {{ lead_status_label(item.status) }}</option>{% endfor %}</select></label>{% endif %}<button class="btn" type="submit">Поставить задачу</button></form></section>
 

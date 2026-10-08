@@ -111,10 +111,17 @@ class WebQueryService:
 
     async def _paginate(self, stmt: Select, *, page: int, page_size: int = 50) -> QueryPage:
         async with self.session_factory() as session:
-            total = int(await session.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0)
-            pages = max(1, math.ceil(total / page_size))
-            page = max(1, min(page, pages))
-            rows = (await session.execute(stmt.limit(page_size).offset((page - 1) * page_size))).all()
+            return await self._paginate_in_session(session, stmt, page=page, page_size=page_size)
+
+    @staticmethod
+    async def _paginate_in_session(
+        session: AsyncSession, stmt: Select, *, page: int, page_size: int = 50, scalars: bool = False,
+    ) -> QueryPage:
+        total = int(await session.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0)
+        pages = max(1, math.ceil(total / page_size))
+        page = max(1, min(page, pages))
+        result = await session.execute(stmt.limit(page_size).offset((page - 1) * page_size))
+        rows = result.scalars().all() if scalars else result.all()
         return QueryPage(rows=list(rows), total=total, page=page, page_size=page_size, pages=pages)
 
     async def deal_currencies(self, deals: list[Deal]) -> dict[int, str | None]:
@@ -1122,7 +1129,7 @@ class WebQueryService:
             "needs_reanalyze": stale > 0,
         }
 
-    async def lead_detail(self, lead_id: int) -> dict | None:
+    async def lead_detail(self, lead_id: int, *, history_page: int = 1) -> dict | None:
         async with self.session_factory() as session:
             row = (
                 await session.execute(
@@ -1138,17 +1145,23 @@ class WebQueryService:
             if row is None:
                 return None
             lead, contact, comment, competitor, post, deal = row
-            history = (
-                await session.execute(
+            history_result = await self._paginate_in_session(
+                    session,
                     select(Comment, Competitor, Post, Lead)
                     .join(Competitor, Competitor.id == Comment.competitor_id)
                     .join(Post, Post.id == Comment.post_id)
                     .outerjoin(Lead, Lead.comment_id == Comment.id)
                     .where(Comment.contact_id == contact.id)
-                    .order_by(desc(Comment.discovered_at))
-                    .limit(20)
+                    .order_by(desc(Comment.discovered_at), desc(Comment.id)),
+                    page=history_page, page_size=20,
+            )
+            commercial_quality = Lead.analysis_details["commercial_quality"].as_string()
+            commercial_competitor_count = int(await session.scalar(
+                select(func.count(func.distinct(Lead.competitor_id))).where(
+                    Lead.contact_id == contact.id, Lead.vertical == lead.vertical,
+                    commercial_quality.is_not(None), commercial_quality != "NON_COMMERCIAL",
                 )
-            ).all()
+            ) or 0)
             tasks = (
                 await session.scalars(
                     select(ContactTask)
@@ -1179,7 +1192,9 @@ class WebQueryService:
                 "competitor": competitor,
                 "post": post,
                 "deal": deal,
-                "history": history,
+                "history": history_result.rows,
+                "history_pagination": history_result,
+                "commercial_competitor_count": commercial_competitor_count,
                 "tasks": tasks,
                 "openai_cost": {
                     "events": len(openai_events),
@@ -1351,29 +1366,40 @@ class WebQueryService:
             )
         return stmt
 
-    async def contact_detail(self, contact_id: int) -> dict | None:
+    async def contact_detail(
+        self, contact_id: int, *, signals_page: int = 1, events_page: int = 1, notes_page: int = 1,
+    ) -> dict | None:
         async with self.session_factory() as session:
             contact = await session.get(Contact, contact_id)
             if contact is None:
                 return None
-            signals = (
-                await session.execute(
+            signals_result = await self._paginate_in_session(
+                    session,
                     select(Comment, Competitor, Post, Lead)
                     .join(Competitor, Competitor.id == Comment.competitor_id)
                     .join(Post, Post.id == Comment.post_id)
                     .outerjoin(Lead, Lead.comment_id == Comment.id)
                     .where(Comment.contact_id == contact_id)
-                    .order_by(desc(Comment.created_at_platform), desc(Comment.discovered_at))
-                )
-            ).all()
-            events = (
-                await session.scalars(
+                    .order_by(desc(func.coalesce(Comment.created_at_platform, Comment.discovered_at)), desc(Comment.id)),
+                    page=signals_page,
+            )
+            events_result = await self._paginate_in_session(
+                    session,
                     select(ContactEvent)
                     .where(ContactEvent.contact_id == contact_id)
-                    .order_by(desc(ContactEvent.created_at))
-                    .limit(150)
-                )
-            ).all()
+                    .order_by(desc(ContactEvent.created_at), desc(ContactEvent.id)),
+                    page=events_page, scalars=True,
+            )
+            note_text = ContactEvent.payload_json["text"].as_string()
+            notes_result = await self._paginate_in_session(
+                session, select(ContactEvent).where(
+                    ContactEvent.contact_id == contact_id,
+                    ContactEvent.event_type == ContactEventType.NOTE_ADDED,
+                    note_text.is_not(None), note_text != "",
+                ).order_by(desc(ContactEvent.created_at), desc(ContactEvent.id)),
+                page=notes_page, page_size=10, scalars=True,
+            )
+            events = events_result.rows
             deals = (
                 await session.scalars(
                     select(Deal)
@@ -1395,15 +1421,12 @@ class WebQueryService:
                     .order_by(ContactTask.status, ContactTask.due_at)
                 )
             ).all()
-            notes = [
-                event
-                for event in events
-                if event.event_type == ContactEventType.NOTE_ADDED
-                and event.payload_json.get("text")
-            ]
-            source_handles = sorted(
-                {competitor.normalized_handle for _comment, competitor, _post, _lead in signals}
-            )
+            source_handles = list(await session.scalars(
+                select(Competitor.normalized_handle)
+                .join(Comment, Comment.competitor_id == Competitor.id)
+                .where(Comment.contact_id == contact_id).distinct()
+                .order_by(Competitor.normalized_handle)
+            ))
             intelligence = await session.scalar(
                 select(ContactIntelligence).where(ContactIntelligence.contact_id == contact_id)
             )
@@ -1429,13 +1452,16 @@ class WebQueryService:
             event_groups = self.compact_contact_events(events)
             return {
                 "contact": contact,
-                "signals": signals,
+                "signals": signals_result.rows,
+                "signals_pagination": signals_result,
                 "events": events,
+                "events_pagination": events_result,
                 "event_groups": event_groups,
                 "deals": deals,
                 "leads": leads,
                 "tasks": tasks,
-                "notes": notes,
+                "notes": notes_result.rows,
+                "notes_pagination": notes_result,
                 "source_handles": source_handles,
                 "source_count": len(source_handles),
                 "intelligence": intelligence,

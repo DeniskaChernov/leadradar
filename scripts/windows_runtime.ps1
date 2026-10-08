@@ -119,10 +119,15 @@ function Remove-LeadRadarProcessFiles {
 function Stop-LeadRadarOwnedProcess {
     param($Process)
     if (-not $Process) { return }
-    $current = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $Process.ProcessId) -ErrorAction SilentlyContinue
-    if (-not $current) { return }
-    if ($current.ExecutablePath -ne $Process.ExecutablePath -or $current.CreationDate -ne $Process.CreationDate -or $current.CommandLine -ne $Process.CommandLine) {
-        throw 'Process identity changed. The replacement process was not stopped.'
+    for ($identityAttempt = 0; $identityAttempt -lt 2; $identityAttempt++) {
+        $current = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $Process.ProcessId) -ErrorAction Stop
+        if (-not $current) { return }
+        if ($current.ExecutablePath -eq $Process.ExecutablePath -and $current.CreationDate -eq $Process.CreationDate -and $current.CommandLine -eq $Process.CommandLine) { break }
+        # CIM can observe a disappearing process with missing identity fields.
+        # Recheck once; never stop a remaining process without exact ownership.
+        if ($identityAttempt -eq 1) {
+            throw 'Process identity changed. The replacement process was not stopped.'
+        }
     }
     try { Stop-Process -Id $current.ProcessId -ErrorAction Stop }
     catch {

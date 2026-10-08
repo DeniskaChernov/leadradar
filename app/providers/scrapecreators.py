@@ -166,6 +166,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         comments: list[InstagramComment] = []
         seen_ids: set[str] = set()
         page_cursor: str | None = cursor
+        requested_cursors: set[str | None] = set()
         pages = 0
         cursor_exhausted = False
         fetch_error: str | None = None
@@ -174,6 +175,7 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             page_limit = max(1, min(page_limit, int(max_pages)))
 
         while pages < page_limit:
+            requested_cursors.add(page_cursor)
             # Reply expansion costs 15 credits and is not consumed by this adapter.
             # Fetch parent comments at the regular page price; preserve reply IDs when present.
             params = {"url": post.url, "include_replies": "false"}
@@ -238,8 +240,10 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
                 cursor_exhausted = True
                 page_cursor = None
                 break
-            if str(next_cursor) == page_cursor:
-                page_cursor = None
+            if str(next_cursor) in requested_cursors:
+                # Keep the page that failed to advance resumable and visible as
+                # an error, instead of erasing progress or repeatedly spending.
+                fetch_error = "RepeatedCommentCursor"
                 break
             page_cursor = str(next_cursor)
 

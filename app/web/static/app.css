@@ -4306,3 +4306,7 @@ details.learning-card.page-task-secondary[open]>summary{margin-bottom:12px}
 .list-pagination .hero-actions { margin:0; }
 .dashboard-metrics .metric { overflow:clip; }
 @media(max-width:720px) { .list-pagination { flex-wrap:wrap; padding:14px; } .list-pagination .hero-actions { width:100%; } }
+.contact-side .list-pagination { flex-direction:column; align-items:stretch; gap:8px; padding:12px; }
+.contact-side .list-pagination .hero-actions { flex-wrap:wrap; }
+.team-note { grid-template-columns:minmax(0,1fr); padding:10px 0; }
+.team-note > :last-child { grid-column:auto; }

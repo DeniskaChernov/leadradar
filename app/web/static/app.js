@@ -1381,6 +1381,36 @@
   if (document.body.dataset.authPage === '1') authenticateTelegram();
 
   const pendingApiForms = new WeakSet();
+  const pendingFormOperations = new WeakMap();
+  const operationStorageKey = (form) => `lr:pending-operation:${new URL(form.action).pathname}`;
+  const requestIdForForm = async (form, body) => {
+    const serialized = JSON.stringify(body);
+    const canPersist = Boolean(window.crypto?.subtle);
+    const signature = canPersist
+      ? [...new Uint8Array(await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(serialized)))]
+        .map(value => value.toString(16).padStart(2, '0')).join('')
+      : serialized;
+    let previous = pendingFormOperations.get(form);
+    if (!previous && canPersist) {
+      try { previous = JSON.parse(sessionStorage.getItem(operationStorageKey(form)) || 'null'); } catch (_) { /* storage can be disabled */ }
+    }
+    const operation = previous?.signature === signature && typeof previous.key === 'string'
+      ? previous
+      : { signature, key: window.crypto?.randomUUID?.() || `op-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}` };
+    pendingFormOperations.set(form, operation);
+    if (canPersist) {
+      // Store only a digest and operation ID, never the manager's text.
+      try { sessionStorage.setItem(operationStorageKey(form), JSON.stringify(operation)); } catch (_) { /* retain in memory */ }
+    }
+    return operation.key;
+  };
+  const forgetFormOperation = (form, key) => {
+    pendingFormOperations.delete(form);
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(operationStorageKey(form)) || 'null');
+      if (saved?.key === key) sessionStorage.removeItem(operationStorageKey(form));
+    } catch (_) { /* storage can be disabled */ }
+  };
 
   document.addEventListener('submit', async (event) => {
     const passwordForm = event.target.closest('[data-password-login]');
@@ -1439,10 +1469,18 @@
       }
       const rawMethod = (form.getAttribute('method') || 'post').trim().toLowerCase();
       const method = rawMethod === 'get' ? 'POST' : rawMethod.toUpperCase();
+      const operationKey = form.dataset.idempotent === '1' ? await requestIdForForm(form, body) : null;
       const data = await api(form.action, {
         method,
         body: multipart ? body : JSON.stringify(body),
+        headers: operationKey ? { 'Idempotency-Key': operationKey } : {},
       });
+      if (operationKey) {
+        if (data.ok !== true || !Number.isInteger(data.event_id) || data.event_id < 1) {
+          throw new Error('Сохранение не подтверждено сервером. Повторите действие: запись не будет дублироваться.');
+        }
+        forgetFormOperation(form, operationKey);
+      }
       toast(data.message || 'Сохранено');
       if (form.dataset.output) {
         const output = document.querySelector(form.dataset.output);

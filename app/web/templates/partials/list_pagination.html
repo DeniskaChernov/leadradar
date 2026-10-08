@@ -1,5 +1,5 @@
 {% if pagination.total %}
-<nav class="list-pagination panel" aria-label="Страницы результатов" data-list-pagination>
+<nav class="list-pagination panel" aria-label="{{ pagination_label|default('Страницы результатов') }}" data-list-pagination>
   <p>Показаны <b>{{ pagination.start }}–{{ pagination.end }}</b> из <b>{{ pagination.total }}</b><small>Страница {{ pagination.page }} из {{ pagination.pages }}</small></p>
   <div class="hero-actions">
     {% if previous_page_url %}<a class="btn ghost" href="{{ previous_page_url }}" rel="prev">← Назад</a>{% endif %}

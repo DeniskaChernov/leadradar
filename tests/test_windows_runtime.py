@@ -208,6 +208,33 @@ try {{ Stop-LeadRadarOwnedProcess $original }} catch {{ $failed=$true }}
     assert result == {"failed": remaining != "gone", "stops": 1}
 
 
+@pytest.mark.parametrize("second", ["gone", "owned", "replacement", "unknown", "first_unknown"])
+@pytest.mark.parametrize("powershell", [path for path in (POWERSHELL, POWERSHELL_CORE) if path])
+def test_partial_cim_identity_rechecked_before_stopping(tmp_path, powershell, second):
+    result = _run(
+        tmp_path,
+        f"""
+$global:lookups=0; $global:stops=0
+$original=[pscustomobject]@{{ ProcessId=42; ExecutablePath='python.exe';
+    CommandLine='python -m app.main --web-only'; CreationDate=[datetime]'2026-10-07T00:00:00Z' }}
+function Get-CimInstance {{
+    $global:lookups++
+    if ('{second}' -eq 'first_unknown' -or ($global:lookups -gt 1 -and '{second}' -eq 'unknown')) {{ throw 'Lookup unavailable' }}
+    if ($global:lookups -eq 1) {{ return [pscustomobject]@{{ ProcessId=42; CreationDate=$original.CreationDate }} }}
+    if ('{second}' -eq 'owned') {{ return $original }}
+    if ('{second}' -eq 'replacement') {{ return [pscustomobject]@{{ ProcessId=42; ExecutablePath='foreign.exe'; CreationDate=[datetime]'2026-10-08T00:00:00Z'; CommandLine='foreign' }} }}
+}}
+function Stop-Process {{ $global:stops++ }}
+function Wait-Process {{ }}
+$failed=$false
+try {{ Stop-LeadRadarOwnedProcess $original }} catch {{ $failed=$true }}
+@{{ failed=$failed; stops=$global:stops; lookups=$global:lookups }} | ConvertTo-Json -Compress
+""",
+        powershell=powershell,
+    )
+    assert result == {"failed": second not in {"gone", "owned"}, "stops": int(second == "owned"), "lookups": 1 if second == "first_unknown" else 2}
+
+
 def test_health_wait_fails_immediately_when_launcher_exits(tmp_path):
     result = _run(
         tmp_path,

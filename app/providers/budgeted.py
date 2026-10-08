@@ -288,10 +288,12 @@ class BudgetedInstagramProvider(InstagramProvider):
         stopped_on_known = False
         coverage = "UNKNOWN"
         page_cursor = cursor
+        requested_cursors: set[str | None] = set()
         provider_name = self.inner.name
         fetch_error: str | None = None
 
         while page_cap is None or pages_fetched < page_cap:
+            requested_cursors.add(page_cursor)
             remaining_before = self.scan_budget.remaining if self.scan_budget is not None else 1
             if remaining_before <= 0:
                 if pages_fetched == 0:
@@ -342,6 +344,15 @@ class BudgetedInstagramProvider(InstagramProvider):
                     "Comment batch failed after delivery started without provider credit proof"
                 ) from exc
 
+            if (
+                not result.fetch_error and not result.cursor_exhausted
+                and not result.stopped_on_known_comment
+                and result.next_cursor is not None and result.next_cursor in requested_cursors
+            ):
+                result = result.model_copy(update={
+                    "fetch_error": "RepeatedCommentCursor", "next_cursor": page_cursor,
+                    "coverage_status": "PARTIAL", "cursor_exhausted": False,
+                })
             confirmed_units = await self._persist_credit_observations()
             units = (
                 confirmed_units

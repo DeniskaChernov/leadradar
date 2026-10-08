@@ -28,6 +28,8 @@ from app.db.models import (
 )
 from app.db.repositories.events import ContactEventRepository
 
+MAX_CRM_AMOUNT = Decimal("999999999999.99")  # Numeric(14, 2)
+MAX_CRM_QUANTITY = 2_147_483_647  # PostgreSQL Integer
 
 class LeadWorkflowError(RuntimeError):
     pass
@@ -281,7 +283,9 @@ class LeadWorkflowService:
             raise LeadWorkflowError("Product name is required")
         if not amount.is_finite() or amount <= 0:
             raise LeadWorkflowError("Deal amount must be positive")
-        if quantity <= 0:
+        if amount > MAX_CRM_AMOUNT:
+            raise LeadWorkflowError("Сумма продажи слишком большая")
+        if isinstance(quantity, bool) or not isinstance(quantity, int) or not 0 < quantity <= MAX_CRM_QUANTITY:
             raise LeadWorkflowError("Deal quantity must be positive")
         normalized_currency = sale_currency.strip().upper()
         if not normalized_currency or len(normalized_currency) > 8:

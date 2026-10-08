@@ -42,7 +42,7 @@ async def client_page(session_factory):
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)
         page = await browser.new_page()
-        state = {"posts": [], "status": 200, "response": {"ok": True, "message": "Сохранено"}}
+        state = {"posts": [], "keys": [], "status": 200, "response": {"ok": True, "event_id": 1, "message": "Сохранено"}}
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
 
@@ -55,6 +55,7 @@ async def client_page(session_factory):
             elif path == "/static/app.css":
                 await route.fulfill(path=str(PROJECT_ROOT / "app/web/static/app.css"))
             elif route.request.method == "POST":
+                state["keys"].append(route.request.headers.get("idempotency-key"))
                 state["posts"].append(
                     route.request.post_data_json
                     if route.request.headers.get("content-type", "").startswith("application/json")
@@ -138,6 +139,78 @@ async def test_saved_note_stays_locked_until_reload_and_posts_once(client_page):
     await form.evaluate("element => element.requestSubmit()")
     await page.wait_for_timeout(50)
     assert state["posts"] == [{"text": "One manager note"}]
+    assert not errors
+
+
+@pytest.mark.parametrize("endpoint", ["notes", "reply"])
+async def test_uncertain_form_retry_key_survives_reload_and_new_text_rotates_it(client_page, endpoint):
+    page, state, errors = client_page
+    state.update(status=503, response={"detail": "Temporary failure"})
+    selector = f'form[data-api-form][action$="/{endpoint}"]'
+
+    async def submit(text):
+        form = page.locator(selector)
+        await form.locator("textarea").fill(text)
+        await form.locator('button[type="submit"]').click()
+        await page.wait_for_function("selector => !document.querySelector(selector).querySelector('textarea').disabled", arg=selector)
+
+    await submit("Private manager text")
+    first = state["keys"][-1]
+    assert first
+    await submit("Private manager text")
+    assert state["keys"][-1] == first
+    stored = await page.evaluate("JSON.stringify(Object.entries(sessionStorage))")
+    assert first in stored and "Private manager text" not in stored
+    await page.reload()
+    await page.wait_for_function("Boolean(window.clientUiTest)")
+    await submit("Private manager text")
+    assert state["keys"][-1] == first
+    await submit("Different text")
+    second = state["keys"][-1]
+    assert second and second != first
+    state.update(status=200, response={"ok": True, "event_id": 1, "message": "Saved"})
+    form = page.locator(selector)
+    await form.locator('button[type="submit"]').click()
+    await page.wait_for_function("window.__reloads === 1")
+    assert state["keys"][-1] == second
+    assert await page.evaluate("Object.keys(sessionStorage).filter(key => key.startsWith('lr:pending-operation:')).length") == 0
+    await page.reload()
+    await page.wait_for_function("Boolean(window.clientUiTest)")
+    state.update(status=503, response={"detail": "Temporary failure"})
+    await submit("Different text")
+    assert state["keys"][-1] != second
+    assert not errors
+
+
+async def test_disabled_session_storage_still_keeps_form_retry_id(client_page):
+    page, state, errors = client_page
+    await page.add_init_script("Object.defineProperty(window, 'sessionStorage', {get() {throw new DOMException('Disabled', 'SecurityError')}})")
+    await page.reload()
+    await page.wait_for_function("Boolean(window.clientUiTest)")
+    state.update(status=503, response={"detail": "Temporary failure"})
+    form = page.locator('form[data-api-form][action$="/notes"]')
+    await form.locator("textarea").fill("Keep this note")
+    for _ in range(2):
+        await form.locator('button[type="submit"]').click()
+        await page.wait_for_function("!document.querySelector('form[action$=\"/notes\"] textarea').disabled")
+    assert state["keys"][-1] and state["keys"][-1] == state["keys"][-2]
+    assert not errors
+
+
+@pytest.mark.parametrize("response", [{}, {"ok": True}, {"ok": True, "event_id": "1"}])
+async def test_unconfirmed_success_keeps_operation_for_safe_retry(client_page, response):
+    page, state, errors = client_page
+    state["response"] = response
+    form = page.locator('form[data-api-form][action$="/notes"]')
+    await form.locator("textarea").fill("Do not duplicate")
+    await form.locator('button[type="submit"]').click()
+    await page.wait_for_function("!document.querySelector('form[action$=\"/notes\"] textarea').disabled")
+    first = state["keys"][-1]
+    assert first and await page.evaluate("window.__reloads") == 0
+    state["response"] = {"ok": True, "event_id": 1}
+    await form.locator('button[type="submit"]').click()
+    await page.wait_for_function("window.__reloads === 1")
+    assert state["keys"][-1] == first
     assert not errors
 
 

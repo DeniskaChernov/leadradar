@@ -140,9 +140,10 @@
     </details>
     {% endif %}
 
-    <details class="panel page-task-secondary">
+    <details class="panel page-task-secondary" id="interest-history" {% if history_pagination.page > 1 %}open{% endif %}>
       <summary><b>История интереса</b><span>Другие сигналы этого Instagram-аккаунта</span></summary>
       <div class="panel-head"><a href="/contacts/{{ contact.id }}">Вся карточка человека →</a></div>
+      {% with pagination=history_pager.pagination, previous_page_url=history_pager.previous_page_url, next_page_url=history_pager.next_page_url, pagination_label='Страницы истории интереса' %}{% include 'partials/list_pagination.html' %}{% endwith %}
       <div class="mini-history">
         {% for h_comment, h_competitor, h_post, h_lead in history %}
         <div class="mini-history-row"><span>{{ h_comment.discovered_at | display_dt('%d.%m.%Y') }}</span><div><b>@{{ h_competitor.normalized_handle }}</b><p>{{ h_comment.text }}</p></div><div>{% if h_lead %}<strong>{{ h_lead.lead_score }}</strong><small>{{ intent_label(h_lead.intent) }}</small>{% else %}<small>без оценки</small>{% endif %}</div></div>
@@ -209,7 +210,7 @@
 
     <details class="panel action-form-card page-task-secondary" open>
       <summary><b>Заметка</b><span>Для команды</span></summary>
-      <form data-api-form action="/api/contacts/{{ contact.id }}/notes" data-reload="1"><textarea name="text" rows="3" aria-label="Заметка менеджера" placeholder="Например: нужен комплект на 6 персон"></textarea><button class="btn" type="submit">Сохранить</button></form>
+      <form data-api-form data-idempotent="1" action="/api/contacts/{{ contact.id }}/notes" data-reload="1"><textarea name="text" rows="3" maxlength="4000" aria-label="Заметка менеджера" placeholder="Например: нужен комплект на 6 персон" required></textarea><button class="btn" type="submit">Сохранить</button></form>
     </details>
 
     <details class="panel action-form-card page-task-secondary" open>

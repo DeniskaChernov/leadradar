@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -26,7 +29,12 @@ from app.db.models import (
     Vertical,
 )
 from app.db.repositories.events import ContactEventRepository
-from app.services.lead_workflow_service import LeadAlreadyAssignedError, LeadWorkflowError
+from app.services.lead_workflow_service import (
+    MAX_CRM_AMOUNT,
+    MAX_CRM_QUANTITY,
+    LeadAlreadyAssignedError,
+    LeadWorkflowError,
+)
 from app.services.rattan_vertical_service import sync_business_vertical_enrollment
 
 ALLOWED_STAGE_TRANSITIONS: dict[LeadStatus, set[LeadStatus]] = {
@@ -42,6 +50,10 @@ ALLOWED_STAGE_TRANSITIONS: dict[LeadStatus, set[LeadStatus]] = {
     LeadStatus.LOST: set(),
     LeadStatus.NOT_LEAD: set(),
 }
+
+
+class CRMRequestConflictError(LeadWorkflowError):
+    """An existing operation key was reused with different event contents."""
 
 
 def stage_path(start: LeadStatus, target: LeadStatus) -> list[LeadStatus] | None:
@@ -229,9 +241,32 @@ class CRMService:
         *,
         text: str = "",
         lead_id: int | None = None,
-    ) -> None:
+        request_id: str | None = None,
+    ) -> ContactEvent:
         cleaned = text.strip()
+        if len(cleaned) > 4000:
+            raise LeadWorkflowError("Ответ клиента слишком длинный")
+        return await self._append_contact_event(
+            contact_id, manager_id, ContactEventType.CUSTOMER_REPLIED,
+            payload={"text": cleaned} if cleaned else {}, lead_id=lead_id,
+            request_id=request_id,
+        )
+
+    async def _append_contact_event(
+        self, contact_id: int, manager_id: int, event_type: ContactEventType,
+        *, payload: dict, lead_id: int | None = None, request_id: str | None = None,
+    ) -> ContactEvent:
+        if request_id is None:
+            # Older callers get deterministic retries; a new explicit key allows
+            # a deliberately repeated note/reply with the same text.
+            contents = json.dumps({"payload": payload, "lead_id": lead_id}, sort_keys=True)
+            request_id = "legacy-v1-" + hashlib.sha256(contents.encode()).hexdigest()
+        if not isinstance(request_id, str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", request_id) is None:
+            raise LeadWorkflowError("Некорректный ключ сохранения")
         async with self.session_factory() as session:
+            if lead_id is not None:
+                await self._lock_lead_write(session, lead_id)
+            await self._lock_contact_write(session, contact_id)
             contact = await session.get(Contact, contact_id)
             if contact is None:
                 raise LeadWorkflowError("Клиент не найден")
@@ -239,15 +274,30 @@ class CRMService:
                 lead = await session.get(Lead, lead_id)
                 if lead is None or lead.contact_id != contact_id:
                     raise LeadWorkflowError("Лид не принадлежит этому клиенту")
-            contact.last_contacted_at = datetime.now(UTC)
-            await ContactEventRepository(session).add(
+            existing = await session.scalar(select(ContactEvent).where(
+                ContactEvent.contact_id == contact_id,
+                ContactEvent.manager_telegram_id == manager_id,
+                ContactEvent.event_type == event_type,
+                ContactEvent.payload_json["request_id"].as_string() == request_id,
+            ))
+            if existing is not None:
+                saved_payload = {key: value for key, value in existing.payload_json.items() if key != "request_id"}
+                if saved_payload != payload or existing.lead_id != lead_id:
+                    raise CRMRequestConflictError("Ключ сохранения уже использован для другого действия. Обновите страницу.")
+                return existing
+            if lead_id is not None and lead.assigned_manager_telegram_id not in (None, manager_id):
+                raise LeadAlreadyAssignedError(lead.assigned_manager_telegram_id)
+            if event_type == ContactEventType.CUSTOMER_REPLIED:
+                contact.last_contacted_at = datetime.now(UTC)
+            event = await ContactEventRepository(session).add(
                 contact_id,
-                ContactEventType.CUSTOMER_REPLIED,
+                event_type,
                 lead_id=lead_id,
                 manager_telegram_id=manager_id,
-                payload={"text": cleaned} if cleaned else {},
+                payload={**payload, "request_id": request_id},
             )
             await session.commit()
+            return event
 
     async def update_contact_qualification(
         self,
@@ -265,14 +315,23 @@ class CRMService:
         purchase_timeline: str | None = None,
         qualification_note: str | None = None,
     ) -> Contact:
-        if desired_quantity is not None and desired_quantity <= 0:
-            raise LeadWorkflowError("Количество должно быть больше нуля")
+        if desired_quantity is not None and (
+            isinstance(desired_quantity, bool) or not isinstance(desired_quantity, int)
+            or not 0 < desired_quantity <= MAX_CRM_QUANTITY
+        ):
+            raise LeadWorkflowError("Количество должно быть целым положительным числом допустимого размера")
+        if any(value is not None and not value.is_finite() for value in (budget_from, budget_to)):
+            raise LeadWorkflowError("Бюджет должен быть конечным числом")
+        if any(value is not None and value > MAX_CRM_AMOUNT for value in (budget_from, budget_to)):
+            raise LeadWorkflowError("Бюджет слишком большой")
         if budget_from is not None and budget_from < 0:
             raise LeadWorkflowError("Минимальный бюджет не может быть отрицательным")
         if budget_to is not None and budget_to < 0:
             raise LeadWorkflowError("Максимальный бюджет не может быть отрицательным")
         if budget_from is not None and budget_to is not None and budget_from > budget_to:
             raise LeadWorkflowError("Минимальный бюджет не может быть больше максимального")
+        budget_from = budget_from.quantize(Decimal("0.01")) if budget_from is not None else None
+        budget_to = budget_to.quantize(Decimal("0.01")) if budget_to is not None else None
 
         allowed_channels = {"", "instagram", "telegram", "phone", "whatsapp", "other"}
         normalized_channel = (preferred_channel or "").strip().lower()
@@ -280,6 +339,7 @@ class CRMService:
             raise LeadWorkflowError("Неизвестный канал связи")
 
         async with self.session_factory() as session:
+            await self._lock_contact_write(session, contact_id)
             contact = await session.get(Contact, contact_id)
             if contact is None:
                 raise LeadWorkflowError("Клиент не найден")
@@ -290,8 +350,8 @@ class CRMService:
                 "city": contact.city,
                 "interest_summary": contact.interest_summary,
                 "desired_quantity": contact.desired_quantity,
-                "budget_from": str(contact.budget_from) if contact.budget_from is not None else None,
-                "budget_to": str(contact.budget_to) if contact.budget_to is not None else None,
+                "budget_from": contact.budget_from,
+                "budget_to": contact.budget_to,
                 "desired_color": contact.desired_color,
                 "purchase_timeline": contact.purchase_timeline,
                 "qualification_note": contact.qualification_note,
@@ -307,7 +367,6 @@ class CRMService:
             contact.desired_color = _clean_optional(desired_color, 128)
             contact.purchase_timeline = _clean_optional(purchase_timeline, 128)
             contact.qualification_note = _clean_optional(qualification_note, 4000)
-            contact.qualification_updated_at = datetime.now(UTC)
 
             after = {
                 "phone": contact.phone,
@@ -315,14 +374,18 @@ class CRMService:
                 "city": contact.city,
                 "interest_summary": contact.interest_summary,
                 "desired_quantity": contact.desired_quantity,
-                "budget_from": str(contact.budget_from) if contact.budget_from is not None else None,
-                "budget_to": str(contact.budget_to) if contact.budget_to is not None else None,
+                "budget_from": contact.budget_from,
+                "budget_to": contact.budget_to,
                 "desired_color": contact.desired_color,
                 "purchase_timeline": contact.purchase_timeline,
                 "qualification_note": contact.qualification_note,
             }
-            changed = {key: value for key, value in after.items() if before.get(key) != value}
+            changed = {
+                key: str(value) if isinstance(value, Decimal) else value
+                for key, value in after.items() if before.get(key) != value
+            }
             if changed:
+                contact.qualification_updated_at = datetime.now(UTC)
                 await ContactEventRepository(session).add(
                     contact_id,
                     ContactEventType.QUALIFICATION_UPDATED,
@@ -332,22 +395,18 @@ class CRMService:
             await session.commit()
             return contact
 
-    async def add_note(self, contact_id: int, manager_id: int, text: str) -> None:
+    async def add_note(
+        self, contact_id: int, manager_id: int, text: str, *, request_id: str | None = None,
+    ) -> ContactEvent:
         cleaned = text.strip()
         if not cleaned:
             raise LeadWorkflowError("Заметка не может быть пустой")
         if len(cleaned) > 4000:
             raise LeadWorkflowError("Заметка слишком длинная")
-        async with self.session_factory() as session:
-            if await session.get(Contact, contact_id) is None:
-                raise LeadWorkflowError("Клиент не найден")
-            await ContactEventRepository(session).add(
-                contact_id,
-                ContactEventType.NOTE_ADDED,
-                manager_telegram_id=manager_id,
-                payload={"text": cleaned},
-            )
-            await session.commit()
+        return await self._append_contact_event(
+            contact_id, manager_id, ContactEventType.NOTE_ADDED,
+            payload={"text": cleaned}, request_id=request_id,
+        )
 
     async def schedule_contact(
         self,
@@ -465,7 +524,7 @@ class CRMService:
 
     @staticmethod
     async def _lock_contact_write(session: AsyncSession, contact_id: int) -> None:
-        # Serialize duplicate task creation, including tasks without a lead.
+        # Serialize contact workflow writes, including events/tasks without a lead.
         await session.execute(
             update(Contact).where(Contact.id == contact_id).values(last_seen_at=Contact.last_seen_at)
         )
@@ -532,8 +591,15 @@ class CRMService:
         quantity: int | None = None,
         amount: Decimal | None = None,
     ) -> Deal:
-        if quantity is not None and quantity <= 0:
-            raise LeadWorkflowError("Количество должно быть больше нуля")
+        if quantity is not None and (
+            isinstance(quantity, bool) or not isinstance(quantity, int)
+            or not 0 < quantity <= MAX_CRM_QUANTITY
+        ):
+            raise LeadWorkflowError("Количество должно быть целым положительным числом допустимого размера")
+        if amount is not None and not amount.is_finite():
+            raise LeadWorkflowError("Сумма сделки должна быть конечным числом")
+        if amount is not None and amount > MAX_CRM_AMOUNT:
+            raise LeadWorkflowError("Сумма сделки слишком большая")
         if amount is not None and amount < 0:
             raise LeadWorkflowError("Сумма сделки не может быть отрицательной")
         async with self.session_factory() as session:

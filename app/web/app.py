@@ -33,7 +33,7 @@ from app.services.ai_service import (
 from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.audience_service import AudienceEngine
 from app.services.competitor_import_service import CompetitorImportService
-from app.services.crm_service import CRMService
+from app.services.crm_service import CRMRequestConflictError, CRMService
 from app.services.deployment_readiness_service import inspect_offline_readiness
 from app.services.discovery_service import DiscoveryService
 from app.services.export_recipe_service import ExportRecipeService
@@ -691,10 +691,11 @@ def build_web_app(
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=409, detail=_human_workflow_error(exc)) from exc
 
-    def page_context(request: Request, result) -> dict:
+    def page_context(request: Request, result, *, page_name: str = "page", anchor: str = "") -> dict:
         params = dict(request.query_params)
         def page_url(number: int) -> str:
-            return request.url.path + "?" + urlencode({**params, "page": number})
+            url = request.url.path + "?" + urlencode({**params, page_name: number})
+            return url + ("#" + anchor if anchor else "")
         return {
             "pagination": result,
             "previous_page_url": page_url(result.page - 1) if result.page > 1 else None,
@@ -806,21 +807,17 @@ def build_web_app(
         )
 
     @app.get("/leads/{lead_id}", response_class=HTMLResponse)
-    async def lead_detail(request: Request, lead_id: int):
-        data = await queries.lead_detail(lead_id)
+    async def lead_detail(request: Request, lead_id: int, history_page: int = 1):
+        data = await queries.lead_detail(lead_id, history_page=history_page)
         if data is None:
             raise HTTPException(status_code=404, detail="Лид не найден")
         data["deal_currencies"] = await queries.deal_currencies([data["deal"]] if data["deal"] else [])
-        commercial_competitors = {
-            competitor.id
-            for _comment, competitor, _post, history_lead in data["history"]
-            if history_lead is not None
-            and (history_lead.analysis_details or {}).get("commercial_quality")
-            not in {None, "NON_COMMERCIAL"}
-        }
+        data["history_pager"] = page_context(
+            request, data["history_pagination"], page_name="history_page", anchor="interest-history",
+        )
         data["catalog_recommendation"] = await product_catalog_service.recommend_for_lead(
             data["lead"],
-            commercial_competitor_count=len(commercial_competitors),
+            commercial_competitor_count=data["commercial_competitor_count"],
         )
         ranked_products, _quantity = await product_catalog_service.ranked_products_for_lead(
             data["lead"]
@@ -857,11 +854,19 @@ def build_web_app(
         )
 
     @app.get("/contacts/{contact_id}", response_class=HTMLResponse)
-    async def contact_detail(request: Request, contact_id: int):
-        data = await queries.contact_detail(contact_id)
+    async def contact_detail(
+        request: Request, contact_id: int, signals_page: int = 1, events_page: int = 1, notes_page: int = 1,
+    ):
+        data = await queries.contact_detail(
+            contact_id, signals_page=signals_page, events_page=events_page, notes_page=notes_page,
+        )
         if data is None:
             raise HTTPException(status_code=404, detail="Клиент не найден")
         data["deal_currencies"] = await queries.deal_currencies(list(data["deals"]))
+        for kind, anchor in (("signals", "contact-signals"), ("events", "contact-events"), ("notes", "contact-notes")):
+            data[kind + "_pager"] = page_context(
+                request, data[kind + "_pagination"], page_name=kind + "_page", anchor=anchor,
+            )
         return templates.TemplateResponse(
             request=request,
             name="contact_detail.html",
@@ -2032,8 +2037,13 @@ def build_web_app(
     async def add_note(request: Request, contact_id: int):
         payload = await _json_or_form(request)
         try:
-            await crm.add_note(contact_id, manager_id(request), str(payload.get("text") or ""))
-            return {"ok": True, "message": "Заметка сохранена"}
+            event = await crm.add_note(
+                contact_id, manager_id(request), str(payload.get("text") or ""),
+                request_id=_crm_request_id(request, payload),
+            )
+            return {"ok": True, "event_id": event.id, "message": "Заметка сохранена"}
+        except CRMRequestConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=400, detail=_human_workflow_error(exc)) from exc
 
@@ -2068,13 +2078,16 @@ def build_web_app(
         payload = await _json_or_form(request)
         lead_id = _optional_int(payload.get("lead_id"), field="lead_id")
         try:
-            await crm.record_customer_reply(
+            event = await crm.record_customer_reply(
                 contact_id,
                 manager_id(request),
                 text=str(payload.get("text") or ""),
                 lead_id=lead_id,
+                request_id=_crm_request_id(request, payload),
             )
-            return {"ok": True, "message": "Ответ клиента добавлен в историю"}
+            return {"ok": True, "event_id": event.id, "message": "Ответ клиента добавлен в историю"}
+        except CRMRequestConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except LeadWorkflowError as exc:
             raise HTTPException(status_code=400, detail=_human_workflow_error(exc)) from exc
 
@@ -2430,7 +2443,8 @@ def build_web_app(
             amount = _decimal_or_none(payload.get("amount"))
             if amount is None or amount < 0:
                 raise ValueError("Укажите сумму продажи")
-            quantity = _int_or_none(payload.get("quantity")) or 1
+            requested_quantity = _int_or_none(payload.get("quantity"))
+            quantity = 1 if requested_quantity is None else requested_quantity
             deal = await workflow.win_deal(
                 deal_id,
                 manager_id(request),
@@ -2867,15 +2881,31 @@ async def _json_or_form(request: Request) -> dict:
 def _decimal_or_none(value: object) -> Decimal | None:
     if value in (None, ""):
         return None
-    return Decimal(str(value).replace(" ", "").replace(",", "."))
+    number = Decimal(str(value).replace(" ", "").replace(",", "."))
+    if not number.is_finite():
+        raise ValueError("Введите конечное числовое значение")
+    return number
+
+
+def _crm_request_id(request: Request, payload: dict) -> str | None:
+    header = request.headers.get("Idempotency-Key")
+    body = payload.get("request_id")
+    if header is not None and body is not None and header != body:
+        raise HTTPException(status_code=400, detail="Ключи сохранения не совпадают")
+    return header if header is not None else body
 
 
 def _int_or_none(value: object) -> int | None:
     if value in (None, ""):
         return None
     try:
-        return int(value)
-    except (TypeError, ValueError) as exc:
+        parsed = int(value)
+        if isinstance(value, bool) or (
+            isinstance(value, (float, Decimal)) and value != parsed
+        ) or not -(2**63) <= parsed < 2**63:
+            raise ValueError
+        return parsed
+    except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError("Некорректное числовое значение") from exc
 
 
@@ -2883,7 +2913,7 @@ def _required_positive_int(value: object, *, field: str) -> int:
     if value in (None, ""):
         raise HTTPException(status_code=400, detail=f"{field} required")
     try:
-        parsed = int(value)
+        parsed = _int_or_none(value)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=f"Некорректный {field}") from exc
     if parsed <= 0:
@@ -2895,7 +2925,10 @@ def _optional_int(value: object, *, field: str) -> int | None:
     if value in (None, ""):
         return None
     try:
-        return int(value)
+        parsed = _int_or_none(value)
+        if parsed <= 0:
+            raise ValueError
+        return parsed
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=f"Некорректный {field}") from exc
 
