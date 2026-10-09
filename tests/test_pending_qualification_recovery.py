@@ -36,6 +36,8 @@ def context(text, *, caption="Buyurtma berish uchun", source="FURNITURE"):
     ("Adres", Intent.LOCATION), ("Борми шу модель дан", Intent.AVAILABILITY),
     ("Можно прайс и размер пожалуйста", Intent.SIZE),
     ("Narhı nıshpul", Intent.PRICE), ("Заказ килмокчи эдим", Intent.BUY),
+    ("Нархи канча асалим  ёзворинг", Intent.PRICE),
+    ("10 kishilogi bormi nechpul", Intent.PRICE),
 ])
 def test_screenshot_commercial_requests_are_hot_without_gpt(text, intent):
     analysis = RuleBasedLeadAnalyzer().classify(context(text))
@@ -43,6 +45,41 @@ def test_screenshot_commercial_requests_are_hot_without_gpt(text, intent):
     assert analysis.intent == intent and analysis.lead_score >= 70
     # A configured furniture source establishes relevance, not an invented SKU.
     assert analysis.product_category is None
+
+
+async def test_local_reanalysis_corrects_legacy_price_score_without_paid_analyzer(session_factory):
+    analyzer = BudgetBlockedAnalyzer()
+    service = LeadService(session_factory, analyzer, 70, rules_version="3.3")
+    result = await pending_signal(
+        session_factory, service, "Нархи канча асалим  ёзворинг", "legacy-price")
+    async with session_factory() as session:
+        source = await session.scalar(select(Competitor))
+        source.active = True
+        post = await session.scalar(select(Post))
+        post.caption = "Buyurtma berish uchun"
+        lead = await session.get(Lead, result.lead_id)
+        lead.status = LeadStatus.NEW
+        lead.intent = Intent.PRICE.value
+        lead.lead_score = 60
+        lead.ai_source = "openai_or_cache"
+        lead.analysis_details = {"rules_version": "3.2", "priority_score": 7}
+        await session.commit()
+        before = [(e.id, e.event_type, e.payload_json) for e in await session.scalars(
+            select(ContactEvent).order_by(ContactEvent.id))]
+        lead_count = await session.scalar(select(func.count(Lead.id)))
+    calls_before = analyzer.calls
+    corrected = await service.analyze_lead(result.lead_id, local_only=True)
+    assert corrected.status == LeadStatus.NEW and corrected.is_hot and corrected.score == 78
+    assert analyzer.calls == calls_before
+    async with session_factory() as session:
+        lead = await session.get(Lead, result.lead_id)
+        assert lead.ai_source == "local_rules" and lead.product_category is None
+        assert lead.analysis_details["rules_version"] == "3.3"
+        assert lead.analysis_details["priority_score"] == lead.lead_score
+        assert await session.scalar(select(func.count(Lead.id))) == lead_count
+        after = [(e.id, e.event_type, e.payload_json) for e in await session.scalars(
+            select(ContactEvent).order_by(ContactEvent.id))]
+        assert after[:len(before)] == before and len(after) > len(before)
 
 
 @pytest.mark.parametrize("text", ["narh", "Narxi nechpul", "Adres", "Катологчи"])
