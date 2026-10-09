@@ -52,6 +52,9 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         return {"x-api-key": self.api_key}
 
     async def _request_json(self, method: str, url: str, **kwargs: Any) -> Any:
+        # One delivered request per durable reservation. A lost/failed response
+        # is reconciled by the budget wrapper, never retried inside the adapter.
+        kwargs["attempts"] = 1
         payload = await super()._request_json(method, url, **kwargs)
         self._capture_credit_observation(payload, url)
         return payload

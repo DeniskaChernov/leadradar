@@ -163,7 +163,8 @@
 <section class="panel scan-result-card find-done-card">
   <div class="scan-result-summary">
     <span class="eyebrow">ПОСЛЕДНИЙ ЗАПУСК</span>
-    <h2>Поиск завершён · {{ last_run.started_at | display_dt }}</h2>
+    <h2>Последний запуск системы · {{ last_run.started_at | display_dt }}</h2>
+    <p class="muted">Общая статистика последнего запуска. Результаты выбранного направления показаны выше.</p>
     {% if last_run.budget_stop_reason %}<p class="muted">Остановлено по выбранному лимиту credits.</p>{% endif %}
     <p class="find-done-breakdown">
       Найдено сигналов: <b>{{ last_run.stats_json.get('comments_created', 0) }}</b>

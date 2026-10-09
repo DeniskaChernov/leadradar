@@ -50,6 +50,32 @@ class ExternalUsageService:
         self.session_factory = session_factory
         self._lock = asyncio.Lock()
 
+    @staticmethod
+    def unresolved_delivery_filters(service: str, now: datetime) -> tuple:
+        return (
+            ExternalBudgetReservation.service == service,
+            or_(
+                ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
+                and_(
+                    ExternalBudgetReservation.call_started_at.is_not(None),
+                    or_(
+                        ExternalBudgetReservation.status == ReservationStatus.EXPIRED,
+                        and_(
+                            ExternalBudgetReservation.status == ReservationStatus.RESERVED,
+                            ExternalBudgetReservation.expires_at <= now,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    async def unresolved_deliveries(self, service: str) -> int:
+        """Unreconciled delivered calls survive day/month and manual-budget resets."""
+        async with self.session_factory() as session:
+            return int(await session.scalar(select(func.count(ExternalBudgetReservation.id)).where(
+                *self.unresolved_delivery_filters(service, datetime.now(UTC)),
+            )) or 0)
+
     async def used_today(self, service: str) -> int:
         now = datetime.now(UTC)
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -130,6 +156,15 @@ class ExternalUsageService:
                     )
                     .values(status=ReservationStatus.EXPIRED, finalized_at=now)
                 )
+                if service == "instagram":
+                    unresolved = await session.scalar(select(func.count(ExternalBudgetReservation.id)).where(
+                        *self.unresolved_delivery_filters(service, now),
+                    ))
+                    if unresolved:
+                        raise ExternalBudgetExceeded(
+                            "Расход предыдущего Instagram-запроса не подтверждён. "
+                            "Сверьте неопределённые расходы в настройках перед новым поиском."
+                        )
                 used = await session.scalar(
                     select(func.coalesce(func.sum(ExternalUsage.units), 0)).where(
                         ExternalUsage.service == service,
@@ -419,8 +454,25 @@ class ExternalUsageService:
         """Ручная сверка UNCERTAIN reservation: подтвердить списание или закрыть без spend."""
         async with self.session_factory() as session:
             reservation = await session.get(ExternalBudgetReservation, reservation_id)
-            if reservation is None or reservation.status != ReservationStatus.UNCERTAIN:
+            if reservation is None:
                 return False
+            if reservation.status != ReservationStatus.UNCERTAIN:
+                expires = reservation.expires_at
+                if expires.tzinfo is None:
+                    expires = expires.replace(tzinfo=UTC)
+                stale_delivery = reservation.call_started_at is not None and (
+                    reservation.status == ReservationStatus.EXPIRED or (
+                        reservation.status == ReservationStatus.RESERVED and expires <= datetime.now(UTC)
+                    )
+                )
+                if reservation.service != "instagram" or not stale_delivery:
+                    return False
+        if reservation.status != ReservationStatus.UNCERTAIN:
+            await self.mark_reservation_uncertain(reservation_id)
+            async with self.session_factory() as session:
+                reservation = await session.get(ExternalBudgetReservation, reservation_id)
+                if reservation is None or reservation.status != ReservationStatus.UNCERTAIN:
+                    return False
         if spent:
             resolved_units = units if units is not None else reservation.units_reserved
             await self.finalize_reservation(
@@ -482,6 +534,11 @@ class ExternalUsageService:
         *,
         enforce_daily_limit: bool = True,
     ) -> None:
+        if service == "instagram" and await self.unresolved_deliveries(service):
+            raise ExternalBudgetExceeded(
+                "Расход предыдущего Instagram-запроса не подтверждён. "
+                "Сверьте неопределённые расходы в настройках перед новым поиском."
+            )
         if not enforce_daily_limit:
             return
         if daily_limit <= 0:

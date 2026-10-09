@@ -16,6 +16,7 @@ from app.db.models import (
     ProviderCreditSnapshot,
     ReservationStatus,
 )
+from app.services.usage_service import ExternalUsageService
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,6 +242,12 @@ class ProviderCreditBudgetService:
             effective = min(effective, balance_value)
 
         reasons: list[str] = []
+        if service == "instagram" and await ExternalUsageService(self.session_factory).unresolved_deliveries(service):
+            reasons.append(
+                "Расход предыдущего Instagram-запроса не подтверждён. "
+                "Сверьте неопределённые расходы в настройках перед новым поиском."
+            )
+            effective = 0
         if requested_units <= 0:
             reasons.append("Лимит проверки должен быть положительным.")
         if monthly_remaining <= 0:

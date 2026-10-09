@@ -3,7 +3,7 @@ from __future__ import annotations
 from httpx import ASGITransport, AsyncClient
 
 from app.config import Settings
-from app.db.models import ProviderBudgetPolicy
+from app.db.models import Competitor, ProviderBudgetPolicy
 from app.services.instagram_monitor import CycleStats
 from app.services.lead_workflow_service import LeadWorkflowService
 from app.services.monitor_controller import MonitorController
@@ -22,6 +22,7 @@ class FakeMonitor:
 
 async def test_live_scan_requires_server_side_confirmation(session_factory):
     async with session_factory() as session:
+        session.add(Competitor(handle="aiko.uz", normalized_handle="aiko.uz", active=True))
         session.add(
             ProviderBudgetPolicy(
                 provider="scrapecreators",
@@ -123,6 +124,7 @@ async def test_safe_replay_scan_does_not_require_confirmation(session_factory):
 
 async def test_live_scan_not_blocked_when_instagram_daily_limit_exhausted(session_factory):
     async with session_factory() as session:
+        session.add(Competitor(handle="aiko.uz", normalized_handle="aiko.uz", active=True))
         session.add(
             ProviderBudgetPolicy(
                 provider="scrapecreators",

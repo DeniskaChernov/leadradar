@@ -1366,6 +1366,11 @@ def build_web_app(
         )
         budget = await provider_budget_service.snapshot(settings.instagram_provider)
         blocking_reasons = list(availability.blocking_reasons) if is_live else []
+        if is_live and plan["active_competitors"] == 0:
+            blocking_reasons.append(
+                "В этом направлении нет активных Instagram-источников. "
+                "Добавьте и включите источник перед поиском."
+            )
         if not settings.lead_search_enabled:
             blocking_reasons.append("Поиск лидов приостановлен.")
         if is_live and not settings.instagram_live_enabled:
@@ -1444,7 +1449,7 @@ def build_web_app(
             ),
             "estimated_comment_pages": max(
                 0, effective - min(plan["active_competitors"], effective)
-            ),
+            ) if plan["active_competitors"] else 0,
             "expected_min_units": plan.get("expected_min_units"),
             "comment_candidates": plan.get("comment_candidates"),
             "clamped": bool(

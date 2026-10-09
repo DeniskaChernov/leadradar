@@ -260,6 +260,12 @@ class RuleBasedLeadAnalyzer:
         }
     )
 
+    _EXPLICIT_PURCHASE_MARKERS: ClassVar[tuple[str, ...]] = (
+        "хочу купить", "хочу заказать", "оформить заказ", "buyurtma",
+        "olmoqchiman", "sotib olmoqchiman", "сотиб олмоқчиман",
+        "сотиб олмокчиман", "буюртма қил",
+    )
+
     def classify(self, context: LeadAnalysisContext) -> LeadAnalysis | None:
         raw = (context.comment or "").strip()
         text = self._norm(raw)
@@ -357,6 +363,23 @@ class RuleBasedLeadAnalyzer:
                 risk_flags=["Явный отказ от покупки"],
             )
 
+        complaint = self._is_complaint(text)
+        closure_question = re.search(
+            r"\b(?:закрыва\w*|ликвидаци\w*|yopil\w*|ёпил\w*)\b", text
+        ) is not None
+        if complaint or closure_question:
+            explicit_buy = any(marker in text for marker in self._EXPLICIT_PURCHASE_MARKERS)
+            price_question = re.search(
+                r"\b(?:сколько\s+(?:стоит|будет)|какая\s+цена|почем|"
+                r"narxi\s+(?:qancha|kancha)|нархи\s+(?:қанча|канча))\b", text
+            ) is not None
+            if not explicit_buy and not price_question:
+                return self._result(
+                    False, 12, Intent.OTHER, self._product(f"{caption} {text}"), language,
+                    "Жалоба или вопрос о магазине без явного запроса о покупке.", context,
+                    risk_flags=["Жалоба без запроса о покупке" if complaint else "Вопрос о магазине"],
+                )
+
         if re.fullmatch(r"\+{1,3}[?!.,…🙏]*", raw.replace(" ", "")):
             parent = self._norm(context.parent_comment or "")
             caption = self._norm(context.post_caption or "")
@@ -431,17 +454,7 @@ class RuleBasedLeadAnalyzer:
             else None
         )
 
-        explicit_purchase = (
-            "хочу купить",
-            "хочу заказать",
-            "оформить заказ",
-            "buyurtma",
-            "olmoqchiman",
-            "sotib olmoqchiman",
-            "сотиб олмоқчиман",
-            "сотиб олмокчиман",
-            "буюртма қил",
-        )
+        explicit_purchase = self._EXPLICIT_PURCHASE_MARKERS
         quantity_pattern = re.search(
             r"\b(?:\d{1,3}|два|две)\s*(?:шт\w*|штук\w*|dona\w*|дона\w*|ta|та|стул\w*|стол\w*|кресл\w*|диван\w*)\b",
             text,
@@ -785,9 +798,21 @@ class RuleBasedLeadAnalyzer:
     @staticmethod
     def _contains_marker(text: str, marker: str) -> bool:
         """Avoid short-word collisions such as Uzbek `rang` inside `restoranga`."""
+        if marker in {"почем", "почём"}:
+            return re.search(r"\bпоч[её]м\b", text) is not None
         if " " not in marker and marker.isalpha() and len(marker) <= 5:
             return re.search(rf"\b{re.escape(marker)}\w*\b", text) is not None
         return marker in text
+
+    @staticmethod
+    def _is_complaint(text: str) -> bool:
+        return re.search(
+            r"\b(?:обман\w*|мошенн\w*|алда\w*|alday\w*|aldov\w*|firibgar\w*)\b|"
+            r"\b(?:цен\w*|нарх\w*|narx\w*)\b.{0,45}"
+            r"(?:\bнет\b|не\s+существ\w*|не\s+соответств\w*|"
+            r"мавжуд\s+эмас|mavjud\s+emas|yo['‘’ʻʼ`]?q)",
+            text,
+        ) is not None
 
     @staticmethod
     def _language(value: str) -> str:

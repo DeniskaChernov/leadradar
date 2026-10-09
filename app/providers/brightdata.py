@@ -64,7 +64,7 @@ class BrightDataProvider(HTTPInstagramProvider):
         if discover:
             params.update({"type": "discover_new", "discover_by": discover_by})
         payload = await self._request_json(
-            "POST", self.api_url, headers=self.headers, params=params, json=inputs
+            "POST", self.api_url, headers=self.headers, params=params, json=inputs, attempts=1
         )
         if isinstance(payload, dict) and isinstance(payload.get("data"), list):
             payload = payload["data"]

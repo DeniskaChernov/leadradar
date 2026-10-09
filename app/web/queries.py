@@ -52,6 +52,7 @@ from app.services.audience_quality_service import AudienceQualityService
 from app.services.economics_page_service import EconomicsPageService
 from app.services.product_catalog_service import normalize_product_category
 from app.services.signal_recency import fresh_signal_clause
+from app.services.usage_service import ExternalUsageService
 from app.web.labels import CHANGE_TYPE_LABELS, label
 
 OPEN_LEAD_STATUSES = [
@@ -165,7 +166,10 @@ class WebQueryService:
             )
             uncertain_reservations = await session.scalar(
                 select(func.count(ExternalBudgetReservation.id)).where(
-                    ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
+                    or_(
+                        ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
+                        and_(*ExternalUsageService.unresolved_delivery_filters("instagram", now)),
+                    ),
                 )
             )
             openai_cost_events = int(
@@ -264,13 +268,16 @@ class WebQueryService:
         return items[:limit]
 
     async def uncertain_external_reservation_queue(self, *, limit: int = 30) -> list[dict]:
-        """UNCERTAIN external budget reservations для ручной сверки списания."""
+        """Unresolved deliveries, including stale Instagram leases, for reconciliation."""
         limit = max(1, min(limit, 100))
         async with self.session_factory() as session:
             rows = (
                 await session.scalars(
                     select(ExternalBudgetReservation)
-                    .where(ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN)
+                    .where(or_(
+                        ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
+                        and_(*ExternalUsageService.unresolved_delivery_filters("instagram", datetime.now(UTC))),
+                    ))
                     .order_by(desc(ExternalBudgetReservation.finalized_at), desc(ExternalBudgetReservation.id))
                     .limit(limit)
                 )

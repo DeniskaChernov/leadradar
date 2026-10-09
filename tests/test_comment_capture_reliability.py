@@ -206,6 +206,17 @@ async def test_monitor_commits_paid_page_after_later_page_failure_and_resumes(se
         assert stats.errors == 1
         resume = await monitor._prepare_post(post)
         assert resume.comment_cursor == "second-page"
+        from app.providers.base import ProviderUsageBlockedError
+
+        with pytest.raises(ProviderUsageBlockedError):
+            await monitor._process_prepared_reel(post, resume, CycleStats())
+        async with session_factory() as session:
+            uncertain = await session.scalar(select(ExternalBudgetReservation.id).where(
+                ExternalBudgetReservation.status == ReservationStatus.UNCERTAIN,
+            ))
+        # The simulated failed delivery was not charged; manual reconciliation
+        # must precede retrying its durable cursor.
+        assert await provider.usage.reconcile_uncertain_reservation(uncertain, spent=False)
         await monitor._process_prepared_reel(post, resume, CycleStats())
     async with session_factory() as session:
         assert await session.scalar(select(func.count(Comment.id))) == 2
