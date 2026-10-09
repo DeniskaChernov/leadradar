@@ -63,5 +63,7 @@ class AIContextFingerprintService:
             "known_customer_context": dict(sorted(context.known_customer_context.items())),
             "evidence_ids": sorted(set(context.evidence_ids)),
         }
+        if context.source_vertical is not None:
+            canonical["source_vertical"] = context.source_vertical
         payload = json.dumps(canonical, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()

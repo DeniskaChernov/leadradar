@@ -42,6 +42,7 @@ from app.services.signal_recency import (
     is_signal_within_window,
     signal_observed_at,
 )
+from app.services.usage_service import ExternalBudgetExceeded
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ class LeadService:
         change_detector: SignificantChangeDetector | None = None,
         *,
         signal_max_age_days: int = 30,
-        rules_version: str = "3.2",
+        rules_version: str = "3.3",
     ) -> None:
         self.session_factory = session_factory
         self.analyzer = analyzer
@@ -83,7 +84,7 @@ class LeadService:
         self.audience_engine = audience_engine
         self.change_detector = change_detector
         self.signal_max_age_days = max(0, signal_max_age_days)
-        self.rules_version = (rules_version or "3.2").strip() or "3.2"
+        self.rules_version = (rules_version or "3.3").strip() or "3.3"
 
     async def process_signal(
         self, signal: PersistedSignal, *, allow_baseline: bool = False
@@ -166,7 +167,7 @@ class LeadService:
             )
             return self._to_result(lead, created=True)
 
-    async def analyze_lead(self, lead_id: int) -> ProcessedLead:
+    async def analyze_lead(self, lead_id: int, *, local_only: bool = False) -> ProcessedLead:
         """Run enrichment after the initial lead and notification have been committed."""
         contact_id: int | None = None
         change_before: IntelligenceSnapshot | None = None
@@ -175,6 +176,9 @@ class LeadService:
             if lead is None:
                 raise RuntimeError(f"Lead {lead_id} was not found")
             context = await self._build_context(session, lead.comment_id)
+            local_analysis = RuleBasedLeadAnalyzer().classify(context) if local_only else None
+            if local_only and local_analysis is None:
+                return self._to_result(lead, created=False)
             contact_id = lead.contact_id
             lead.ai_attempt_count += 1
             lead.ai_last_attempt_at = datetime.now(UTC)
@@ -189,7 +193,10 @@ class LeadService:
                     type(exc).__name__,
                 )
         try:
-            analysis, analysis_source = await self._analyze(context)
+            if local_analysis is not None:
+                analysis, analysis_source = local_analysis, "local_rules"
+            else:
+                analysis, analysis_source = await self._analyze(context)
         except Exception as exc:
             async with self.session_factory() as session:
                 await session.execute(
@@ -201,7 +208,9 @@ class LeadService:
                 if lead.status == LeadStatus.ANALYZING:
                     lead.status = LeadStatus.AI_PENDING
                 lead.ai_reason = (
-                    "Нужна дополнительная проверка; сигнал сохранён и доступен менеджеру"
+                    "Оценка отложена: достигнут лимит AI. Сигнал сохранён и доступен менеджеру."
+                    if isinstance(exc, ExternalBudgetExceeded)
+                    else "Нужна дополнительная проверка; сигнал сохранён и доступен менеджеру"
                 )
                 public_signal = await session.scalar(
                     select(PublicSignal).where(PublicSignal.comment_id == lead.comment_id)
@@ -544,6 +553,20 @@ class LeadService:
         """Повторный разбор одного AI_PENDING/ANALYZING лида тем же analyzer, что и batch retry."""
         return await self._retry_pending_one(lead_id)
 
+    async def retry_pending_local(self, limit: int = 100) -> list[ProcessedLead]:
+        """Recover only locally decidable pending signals without invoking any paid analyzer."""
+        lead_ids = await self.list_pending_lead_ids(limit, cooldown_seconds=0)
+        results: list[ProcessedLead] = []
+        for lead_id in lead_ids:
+            async with self.session_factory() as session:
+                lead = await session.get(Lead, lead_id)
+                if lead is None or lead.status not in {LeadStatus.AI_PENDING, LeadStatus.ANALYZING}:
+                    continue
+            result = await self.analyze_lead(lead_id, local_only=True)
+            if result.status not in {LeadStatus.AI_PENDING, LeadStatus.ANALYZING}:
+                results.append(result)
+        return results
+
     async def _retry_pending_one(self, lead_id: int) -> ProcessedLead | None:
         async with self.session_factory() as session:
             lead = await session.get(Lead, lead_id)
@@ -808,6 +831,7 @@ class LeadService:
                 if public_signal is not None
                 else "FURNITURE"
             ),
+            source_vertical=competitor.vertical.value if competitor.active else None,
         )
 
     async def _analyze(self, context: LeadAnalysisContext):

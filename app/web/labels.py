@@ -2,7 +2,7 @@ from __future__ import annotations
 
 LEAD_STATUS_LABELS = {
     "ANALYZING": "Ставим оценку",
-    "AI_PENDING": "Система не уверена",
+    "AI_PENDING": "Ожидает оценки",
     "NEW": "Новый",
     "TAKEN": "В работе",
     "CONTACTED": "Связались",

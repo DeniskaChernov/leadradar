@@ -74,6 +74,7 @@ class LeadAnalysisContext:
     stable_contact_id: str | None = None
     vertical: str = "FURNITURE"
     catalog_context_version: str = "catalog:v1"
+    source_vertical: str | None = None
 
 
 class LeadAnalyzer(Protocol):
@@ -264,6 +265,7 @@ class RuleBasedLeadAnalyzer:
         "хочу купить", "хочу заказать", "оформить заказ", "buyurtma",
         "olmoqchiman", "sotib olmoqchiman", "сотиб олмоқчиман",
         "сотиб олмокчиман", "буюртма қил",
+        "заказ килмокчи", "заказ қилмоқчи", "zakaz qilmoqchi",
     )
 
     def classify(self, context: LeadAnalysisContext) -> LeadAnalysis | None:
@@ -350,6 +352,7 @@ class RuleBasedLeadAnalyzer:
             "уже купила",
             "buyurtma qilmoqchi emasman",
             "буюртма қилмоқчи эмасман",
+            "заказ килмокчи эмас", "заказ қилмоқчи эмас", "zakaz qilmoqchi emas",
         )
         if any(marker in text for marker in negative_purchase):
             return self._result(
@@ -482,6 +485,7 @@ class RuleBasedLeadAnalyzer:
             (
                 Intent.BUY,
                 (
+                    *explicit_purchase,
                     "хочу купить",
                     "хочу заказать",
                     "заказать",
@@ -523,11 +527,15 @@ class RuleBasedLeadAnalyzer:
                     "почём",
                     "стоимость",
                     "цену",
+                    "прайс",
                     "во сколько обойд",
                     "narx",
+                    "narh",
                     "qancha",
                     "kancha",
                     "nech pul",
+                    "nechpul",
+                    "nishpul",
                     "necha pul",
                     "nechchi",
                     "нарх",
@@ -550,6 +558,7 @@ class RuleBasedLeadAnalyzer:
                 (
                     "доставка",
                     "доставк",
+                    "даставк",
                     "достав",
                     "yetkaz",
                     "yetkazib berish",
@@ -604,6 +613,7 @@ class RuleBasedLeadAnalyzer:
                 Intent.CATALOG,
                 (
                     "каталог",
+                    "католог",
                     "catalog",
                     "katalog",
                     "варианты",
@@ -618,6 +628,7 @@ class RuleBasedLeadAnalyzer:
                 Intent.LOCATION,
                 (
                     "адрес",
+                    "adres",
                     "где посмотреть",
                     "где купить",
                     "где вы",
@@ -697,8 +708,11 @@ class RuleBasedLeadAnalyzer:
             if (
                 intent in self._DEFER_WITHOUT_FURNITURE_INTENTS
                 and self._defer_without_furniture_context(caption, text)
+                and context.source_vertical not in {"FURNITURE", "ARTIFICIAL_RATTAN"}
             ):
                 return None
+            if not self._has_furniture_context(f"{caption} {text}") and context.source_vertical:
+                evidence.append("Мебельное направление подключённого источника; точный товар не определён.")
             return self._result(
                 score >= 65,
                 score,
@@ -793,7 +807,7 @@ class RuleBasedLeadAnalyzer:
 
     @staticmethod
     def _norm(value: str) -> str:
-        return re.sub(r"\s+", " ", value.lower().replace("ё", "е")).strip()
+        return re.sub(r"\s+", " ", value.lower().replace("ё", "е").replace("ı", "i")).strip()
 
     @staticmethod
     def _contains_marker(text: str, marker: str) -> bool:
@@ -808,7 +822,7 @@ class RuleBasedLeadAnalyzer:
     def _is_complaint(text: str) -> bool:
         return re.search(
             r"\b(?:обман\w*|мошенн\w*|алда\w*|alday\w*|aldov\w*|firibgar\w*)\b|"
-            r"\b(?:цен\w*|нарх\w*|narx\w*)\b.{0,45}"
+            r"\b(?:цен\w*|нарх\w*|nar[xh]\w*)\b.{0,45}"
             r"(?:\bнет\b|не\s+существ\w*|не\s+соответств\w*|"
             r"мавжуд\s+эмас|mavjud\s+emas|yo['‘’ʻʼ`]?q)",
             text,
@@ -817,12 +831,12 @@ class RuleBasedLeadAnalyzer:
     @staticmethod
     def _language(value: str) -> str:
         lowered = value.lower()
-        uz_cyrillic_markers = ("нарх", "қанча", "канча", "борми", "керак", "етказ", "кишилик")
+        uz_cyrillic_markers = ("нарх", "қанча", "канча", "борми", "керак", "етказ", "кишилик", "килмокчи")
         if any(ch in lowered for ch in "ўқғҳ") or any(
             marker in lowered for marker in uz_cyrillic_markers
         ):
             return "uz-cyrl"
-        uz_markers = ("narx", "qancha", "kancha", "bormi", "kerak", "yetkaz", "kishilik")
+        uz_markers = ("narx", "narh", "qancha", "kancha", "bormi", "kerak", "yetkaz", "kishilik")
         if any(marker in lowered for marker in uz_markers):
             return "uz"
         return "ru"
