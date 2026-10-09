@@ -7,6 +7,7 @@ from typing import TypeVar
 from app.providers.base import (
     InstagramProvider,
     ProviderCallUncertainError,
+    ProviderResponseError,
     ProviderUsageBlockedError,
 )
 from app.schemas.instagram import (
@@ -14,6 +15,7 @@ from app.schemas.instagram import (
     InstagramComment,
     InstagramPost,
     InstagramProfile,
+    PostFetchResult,
 )
 from app.services.provider_credit_budget_service import ProviderCreditBudgetService
 from app.services.usage_service import ExternalBudgetExceeded, ExternalUsageService
@@ -247,6 +249,22 @@ class BudgetedInstagramProvider(InstagramProvider):
                 "превысило резерв. Проверка остановлена для сверки бюджета."
             )
         return result
+
+    @property
+    def supports_post_pagination(self) -> bool:
+        return self.inner.supports_post_pagination
+
+    @property
+    def post_cursor_provider(self) -> str:
+        return self.inner.post_cursor_provider
+
+    async def get_post_page(self, handle: str, *, cursor: str | None = None) -> PostFetchResult:
+        if cursor is not None and not self.supports_post_pagination:
+            raise ProviderResponseError("This provider does not accept publication cursors")
+        return await self._call(
+            "get_reels", lambda: self.inner.get_post_page(handle, cursor=cursor),
+            source_account=handle,
+        )
 
     async def get_profile(self, handle: str) -> InstagramProfile:
         return await self._call(

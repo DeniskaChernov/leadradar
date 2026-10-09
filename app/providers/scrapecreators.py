@@ -19,6 +19,7 @@ from app.schemas.instagram import (
     InstagramComment,
     InstagramPost,
     InstagramProfile,
+    PostFetchResult,
     ProviderCreditObservation,
 )
 
@@ -117,24 +118,77 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
             profile_url=f"https://www.instagram.com/{username}/",
         ))
 
+    @property
+    def supports_post_pagination(self) -> bool:
+        return True
+
     async def get_reels(self, handle: str) -> list[InstagramPost]:
+        return (await self.get_post_page(handle)).posts
+
+    async def get_post_page(self, handle: str, *, cursor: str | None = None) -> PostFetchResult:
+        if cursor is not None and (not cursor or len(cursor) > 4096):
+            raise ProviderResponseError("Invalid publication request cursor")
+        params = {"handle": handle, "trim": "false"}
+        if cursor is not None:
+            params["next_max_id"] = cursor
         payload = await self._request_json(
             "GET",
             f"{self.base_url}/v2/instagram/user/posts",
             headers=self.headers,
-            params={"handle": handle, "trim": "false"},
+            params=params,
+            # One reserved credit authorizes one HTTP attempt. An ambiguous
+            # failure must return to the budget guard before another paid call.
+            attempts=1,
         )
         ensure_public_source(payload)
         items = payload.get("items") if isinstance(payload, dict) else None
         if not isinstance(items, list):
             raise ProviderResponseError("ScrapeCreators posts response has no items list")
         posts = []
+        seen_ids: set[str] = set()
+        fetch_error = None
         for item in items:
-            if isinstance(item, dict):
-                posts.append(self.normalize_post(item, handle))
+            try:
+                if not isinstance(item, dict):
+                    raise ProviderResponseError("Invalid publication record")
+                post = self.normalize_post(item, handle)
+                if post.platform_post_id not in seen_ids:
+                    posts.append(post)
+                    seen_ids.add(post.platform_post_id)
+            except ProviderUsageBlockedError:
+                raise
+            except (ProviderResponseError, ValueError, TypeError, OverflowError):
+                fetch_error = "MalformedPost"
+        next_cursor = payload.get("next_max_id")
+        more = payload.get("more_available")
+        if next_cursor in (None, ""):
+            next_cursor = None
+        elif not isinstance(next_cursor, str) or len(next_cursor) > 4096:
+            fetch_error = "InvalidPostCursor"
+            next_cursor = None
+        if more is not None and not isinstance(more, bool):
+            fetch_error = "InvalidPostPagination"
+        elif more is True and next_cursor is None:
+            fetch_error = "MissingPostCursor"
+        elif more is False and next_cursor is not None:
+            fetch_error = "ConflictingPostPagination"
+        if next_cursor is not None and next_cursor == cursor:
+            fetch_error = "RepeatedPostCursor"
+        if fetch_error:
+            # Valid siblings can be committed, but retry the requested page;
+            # never skip an invalid record by advancing its publication cursor.
+            return PostFetchResult(
+                posts=posts, provider=self.name, coverage_status="PARTIAL",
+                next_cursor=cursor, fetch_error=fetch_error,
+            )
+        exhausted = more is False
         # This same public response includes photos and carousels. Retain the
         # adapter method name for compatibility without discarding these posts.
-        return posts
+        return PostFetchResult(
+            posts=posts, provider=self.name,
+            coverage_status="FULL" if exhausted else "PARTIAL" if next_cursor else "UNKNOWN",
+            cursor_exhausted=exhausted, next_cursor=next_cursor,
+        )
 
     async def get_post(self, url: str, competitor: str) -> InstagramPost:
         payload = await self._request_json(

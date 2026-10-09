@@ -4,13 +4,13 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import Comment, CoverageStatus, Post
+from app.db.models import Comment, Competitor, CoverageStatus, Post, PostDiscoveryState
 from app.db.repositories import CompetitorRepository, PostRepository
 from app.providers.base import InstagramProvider, ProviderError, ProviderUsageBlockedError
-from app.schemas.instagram import InstagramPost
+from app.schemas.instagram import InstagramPost, PostFetchResult
 from app.services.adaptive_monitoring_service import (
     AdaptiveMonitoringService,
     CompetitorScanPlan,
@@ -19,6 +19,7 @@ from app.services.contact_service import ContactService
 from app.services.lead_analysis_pipeline import LeadAnalysisPipeline
 from app.services.lead_service import LeadService
 from app.services.notification_service import LeadNotifier
+from app.services.post_discovery_service import PostDiscoveryService
 from app.services.scan_progress import ScanProgressTracker
 from app.services.signal_recency import is_signal_within_window
 
@@ -46,6 +47,8 @@ class CycleStats:
     avoided_requests: int = 0
     comments_skipped_stale: int = 0
     fresh_backfilled: int = 0
+    post_pages_fetched: int = 0
+    saved_posts_resumed: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,6 +207,22 @@ class InstagramMonitor:
         required_by_handle: dict[str, int] = {}
         processed_by_handle: dict[str, int] = {}
 
+        def add_candidate(plan: CompetitorScanPlan, reel: InstagramPost, check: PostCheck) -> None:
+            if not check.should_fetch_comments:
+                if check.skip_reason == "ZERO_COMMENTS":
+                    stats.zero_comment_posts_skipped += 1
+                elif check.skip_reason == "UNCHANGED":
+                    stats.posts_skipped_unchanged += 1
+                stats.avoided_requests += 1
+                return
+            if any(item.check.post_id == check.post_id for item in candidates):
+                return
+            required_by_handle[plan.handle] = required_by_handle.get(plan.handle, 0) + 1
+            candidates.append(CommentRefreshCandidate(
+                reel=reel, check=check, competitor=plan,
+                priority_score=self._post_priority(plan, check),
+            ))
+
         # Фаза A: сначала распределяем discovery coverage между источниками.
         for index, plan in enumerate(plans):
             if progress is not None:
@@ -219,7 +238,17 @@ class InstagramMonitor:
                 stats.avoided_requests += deferred
                 break
             try:
-                reels = await self.provider.get_reels(plan.handle)
+                if self.provider.supports_post_pagination:
+                    page = await self.provider.get_post_page(plan.handle)
+                    prepared = await self._prepare_post_page(plan, page)
+                    stats.post_pages_fetched += 1
+                    reels = page.posts
+                    if page.fetch_error:
+                        stats.errors += 1
+                        discovery_failed.add(plan.handle)
+                else:
+                    reels = await self.provider.get_reels(plan.handle)
+                    prepared = None
                 discovered_handles.add(plan.handle)
                 stats.competitors_checked += 1
                 stats.reels_found += len(reels)
@@ -240,27 +269,10 @@ class InstagramMonitor:
                     plan.priority_score,
                     len(reels),
                 )
-                for reel in reels:
+                for reel_index, reel in enumerate(reels):
                     try:
-                        check = await self._prepare_post(reel)
-                        if not check.should_fetch_comments:
-                            if check.skip_reason == "ZERO_COMMENTS":
-                                stats.zero_comment_posts_skipped += 1
-                            elif check.skip_reason == "UNCHANGED":
-                                stats.posts_skipped_unchanged += 1
-                            stats.avoided_requests += 1
-                            continue
-                        required_by_handle[plan.handle] = (
-                            required_by_handle.get(plan.handle, 0) + 1
-                        )
-                        candidates.append(
-                            CommentRefreshCandidate(
-                                reel=reel,
-                                check=check,
-                                competitor=plan,
-                                priority_score=self._post_priority(plan, check),
-                            )
-                        )
+                        check = prepared[reel_index] if prepared is not None else await self._prepare_post(reel)
+                        add_candidate(plan, reel, check)
                     except Exception as exc:
                         discovery_failed.add(plan.handle)
                         stats.errors += 1
@@ -289,6 +301,50 @@ class InstagramMonitor:
                     plan.handle,
                     type(exc).__name__,
                 )
+
+            except Exception as exc:
+                stats.errors += 1
+                discovery_failed.add(plan.handle)
+                logger.exception("post_discovery_save_failed competitor=%s error_type=%s",
+                                 plan.handle, type(exc).__name__)
+
+        if self.provider.supports_post_pagination:
+            # Saved publication metadata is a durable queue. A budget stop or
+            # restart cannot strand a previous page's unfinished comments.
+            for plan in plans:
+                if plan.handle not in discovered_handles:
+                    continue
+                for reel in await self._saved_pending_posts(plan.handle):
+                    if any(item.reel.platform_post_id == reel.platform_post_id for item in candidates):
+                        continue
+                    check = await self._prepare_post(reel)
+                    add_candidate(plan, reel, check)
+                    stats.saved_posts_resumed += 1
+            # At most one historical publication page per manual cycle; leave
+            # two credits for comments when the shared scan cap is present.
+            budget = self.provider.scan_budget_status()
+            if budget is None or budget["remaining"] > (2 if candidates else 0):
+                continuation = await self._next_post_continuation(discovered_handles)
+                if continuation is not None:
+                    handle, cursor = continuation
+                    plan = next(item for item in plans if item.handle == handle)
+                    try:
+                        page = await self.provider.get_post_page(handle, cursor=cursor)
+                        prepared = await self._prepare_post_page(plan, page, cursor=cursor)
+                        stats.post_pages_fetched += 1
+                        stats.reels_found += len(page.posts)
+                        if page.fetch_error:
+                            stats.errors += 1
+                            discovery_failed.add(handle)
+                        for reel, check in zip(page.posts, prepared, strict=True):
+                            add_candidate(plan, reel, check)
+                    except ProviderUsageBlockedError:
+                        stats.budget_stops += 1
+                    except Exception as exc:
+                        stats.errors += 1
+                        discovery_failed.add(handle)
+                        logger.exception("post_continuation_failed competitor=%s error_type=%s",
+                                         handle, type(exc).__name__)
 
         # Фаза B: тратим остаток на лучшие comment refresh среди всех найденных Reel.
         candidates.sort(key=lambda item: (-item.priority_score, item.reel.platform_post_id))
@@ -495,128 +551,193 @@ class InstagramMonitor:
             return 0
         return await notify(change_id)
 
-    async def _prepare_post(self, reel: InstagramPost) -> PostCheck:
+    async def _prepare_post_page(
+        self, plan: CompetitorScanPlan, page: PostFetchResult, *, cursor: str | None = None,
+    ) -> list[PostCheck]:
         async with self.session_factory() as session:
-            competitor = await CompetitorRepository(session).get_or_create(reel.competitor)
-            post, created, previous_comments_count = await PostRepository(session).upsert(
-                competitor, reel
-            )
-            provider_changed = competitor.baseline_provider != self.provider.name
-            is_first_baseline = (
-                (competitor.baseline_completed_at is None or provider_changed)
-                and not self.process_existing_comments
-            )
-            now = datetime.now(UTC)
-            refresh_before = (
-                now - timedelta(seconds=self.force_refresh_seconds)
-                if self.force_refresh_seconds > 0
-                else None
-            )
-            comments_checked_at = post.comments_checked_at
-            if comments_checked_at is not None and comments_checked_at.tzinfo is None:
-                comments_checked_at = comments_checked_at.replace(tzinfo=UTC)
-            cursor_provider = self.provider.comment_cursor_provider
-            if post.comment_backfill_provider != cursor_provider:
-                post.comment_backfill_cursor = None
-                post.comment_backfill_completed_at = None
-            head_refresh_due = bool(
-                refresh_before is not None
-                and comments_checked_at is not None
-                and comments_checked_at <= refresh_before
-            )
-            repair_due = bool(
-                self.auto_repair_partial_coverage
-                and post.coverage_status != CoverageStatus.FULL
-                and post.comment_backfill_completed_at is None
-                and head_refresh_due
-            )
-
-            # Zero comments are authoritative from the Reel metadata and do not justify a second
-            # paid Comments API call. Mark the post synchronized locally.
-            if reel.comments_count == 0:
-                post.comments_fetched_count = 0
-                post.last_synced_remote_count = 0
-                post.comment_pages_fetched = 0
-                post.coverage_status = CoverageStatus.FULL
-                post.last_comment_provider = "metadata"
-                post.comments_checked_at = now
-                post.comment_backfill_cursor = None
-                post.comment_backfill_provider = cursor_provider
-                post.comment_backfill_completed_at = now
-                await session.commit()
-                return PostCheck(
-                    post_id=post.id,
-                    should_fetch_comments=False,
-                    is_baseline=is_first_baseline,
-                    known_comment_ids=set(),
-                    previous_coverage=CoverageStatus.FULL,
-                    skip_reason="ZERO_COMMENTS",
-                    is_new_post=created,
-                    comment_delta=0,
-                    post_age_hours=self._post_age_hours(reel.published_at, now),
-                )
-
-            should_fetch = (
-                provider_changed
-                or comments_checked_at is None
-                or post.last_synced_remote_count != reel.comments_count
-                or head_refresh_due
-                or post.comment_backfill_cursor is not None
-            )
-            # A saved historical cursor must not hide comments that arrived
-            # since the last successful head probe. Refresh within the same
-            # page/credit cap, then resume the saved history on a later scan.
-            # An unacknowledged failed first probe still retries its durable
-            # failed-page cursor before returning to the head.
-            preserve_backfill_cursor = bool(
-                post.comment_backfill_cursor is not None
-                and (
-                    head_refresh_due
-                    or (
-                        post.last_synced_remote_count is not None
-                        and post.last_synced_remote_count != reel.comments_count
-                    )
-                )
-            )
-            is_backfill = bool(
-                not preserve_backfill_cursor
-                and (
-                    post.comment_backfill_cursor is not None
-                    or (repair_due and post.last_synced_remote_count == reel.comments_count)
-                )
-            )
-
-            known_ids = set(
-                (
-                    await session.scalars(
-                        select(Comment.platform_comment_id)
-                        .where(Comment.post_id == post.id)
-                        .order_by(desc(Comment.discovered_at), desc(Comment.id))
-                        .limit(250)
-                    )
-                ).all()
+            competitor = await CompetitorRepository(session).get_or_create(plan.handle)
+            prepared = []
+            for reel in page.posts:
+                if reel.competitor != plan.handle:
+                    raise ValueError("Publication belongs to another source")
+                prepared.append(await self._prepare_post_in_session(reel, session))
+            await PostDiscoveryService(session).record_page(
+                competitor.id, page, requested_cursor=cursor,
+                refresh_seconds=self.force_refresh_seconds,
             )
             await session.commit()
+            return prepared
+
+    async def _next_post_continuation(self, handles: set[str]) -> tuple[str, str] | None:
+        if not handles:
+            return None
+        async with self.session_factory() as session:
+            row = (await session.execute(
+                select(Competitor.normalized_handle, PostDiscoveryState.next_cursor)
+                .join(PostDiscoveryState, PostDiscoveryState.competitor_id == Competitor.id)
+                .where(
+                    Competitor.normalized_handle.in_(handles), Competitor.active.is_(True),
+                    PostDiscoveryState.provider == self.provider.post_cursor_provider,
+                    PostDiscoveryState.next_cursor.is_not(None),
+                    or_(PostDiscoveryState.stop_reason.is_(None),
+                        PostDiscoveryState.stop_reason.not_in(PostDiscoveryService.BLOCKED_REASONS)),
+                )
+                .order_by(PostDiscoveryState.page_checked_at, PostDiscoveryState.id).limit(1)
+            )).first()
+            return (str(row[0]), str(row[1])) if row else None
+
+    async def _saved_pending_posts(self, handle: str) -> list[InstagramPost]:
+        async with self.session_factory() as session:
+            posts = list(await session.scalars(
+                select(Post).join(Competitor, Competitor.id == Post.competitor_id)
+                .where(
+                    Competitor.normalized_handle == handle, Post.comments_count > 0,
+                    or_(Post.comments_checked_at.is_(None),
+                        Post.comment_backfill_cursor.is_not(None),
+                        Post.last_synced_remote_count.is_(None),
+                        Post.last_synced_remote_count != Post.comments_count),
+                ).order_by(Post.comments_checked_at, Post.id).limit(250)
+            ))
+            return [InstagramPost(
+                platform_post_id=post.platform_post_id, competitor=handle, url=post.url,
+                caption=post.caption, post_type=post.post_type, published_at=post.published_at,
+                comments_count=post.comments_count, raw_data=post.raw_data,
+            ) for post in posts]
+
+    async def _prepare_post(self, reel: InstagramPost) -> PostCheck:
+        async with self.session_factory() as session:
+            check = await self._prepare_post_in_session(reel, session)
+            await session.commit()
+            return check
+
+    async def _prepare_post_in_session(
+        self, reel: InstagramPost, session: AsyncSession,
+    ) -> PostCheck:
+        competitor = await CompetitorRepository(session).get_or_create(reel.competitor)
+        post, created, previous_comments_count = await PostRepository(session).upsert(
+            competitor, reel
+        )
+        # Source baseline may need several small-budget runs. A post already
+        # synchronized by the current adapter must not be fetched again merely
+        # because another post is still waiting in that source's baseline.
+        accepted_providers = {self.provider.name, *self.provider.name.split("+"), "metadata"}
+        provider_changed = (
+            competitor.baseline_provider != self.provider.name
+            and post.last_comment_provider not in accepted_providers
+        )
+        is_first_baseline = (
+            (competitor.baseline_completed_at is None or competitor.baseline_provider != self.provider.name)
+            and not self.process_existing_comments
+        )
+        now = datetime.now(UTC)
+        refresh_before = (
+            now - timedelta(seconds=self.force_refresh_seconds)
+            if self.force_refresh_seconds > 0
+            else None
+        )
+        comments_checked_at = post.comments_checked_at
+        if comments_checked_at is not None and comments_checked_at.tzinfo is None:
+            comments_checked_at = comments_checked_at.replace(tzinfo=UTC)
+        cursor_provider = self.provider.comment_cursor_provider
+        if post.comment_backfill_provider != cursor_provider:
+            post.comment_backfill_cursor = None
+            post.comment_backfill_completed_at = None
+        head_refresh_due = bool(
+            refresh_before is not None
+            and comments_checked_at is not None
+            and comments_checked_at <= refresh_before
+        )
+        repair_due = bool(
+            self.auto_repair_partial_coverage
+            and post.coverage_status != CoverageStatus.FULL
+            and post.comment_backfill_completed_at is None
+            and head_refresh_due
+        )
+
+        # Zero comments are authoritative from the Reel metadata and do not justify a second
+        # paid Comments API call. Mark the post synchronized locally.
+        if reel.comments_count == 0:
+            post.comments_fetched_count = 0
+            post.last_synced_remote_count = 0
+            post.comment_pages_fetched = 0
+            post.coverage_status = CoverageStatus.FULL
+            post.last_comment_provider = "metadata"
+            post.comments_checked_at = now
+            post.comment_backfill_cursor = None
+            post.comment_backfill_provider = cursor_provider
+            post.comment_backfill_completed_at = now
             return PostCheck(
                 post_id=post.id,
-                should_fetch_comments=should_fetch,
-                is_baseline=(
-                    is_first_baseline
-                    or (is_backfill and bool(post.comment_backfill_is_baseline))
-                ),
-                known_comment_ids=known_ids,
-                previous_coverage=post.coverage_status,
-                skip_reason=None if should_fetch else "UNCHANGED",
+                should_fetch_comments=False,
+                is_baseline=is_first_baseline,
+                known_comment_ids=set(),
+                previous_coverage=CoverageStatus.FULL,
+                skip_reason="ZERO_COMMENTS",
                 is_new_post=created,
-                comment_delta=max(
-                    0,
-                    reel.comments_count - int(previous_comments_count or 0),
-                ),
+                comment_delta=0,
                 post_age_hours=self._post_age_hours(reel.published_at, now),
-                comment_cursor=post.comment_backfill_cursor if is_backfill else None,
-                is_backfill=is_backfill,
-                preserve_backfill_cursor=preserve_backfill_cursor,
             )
+
+        should_fetch = (
+            provider_changed
+            or comments_checked_at is None
+            or post.last_synced_remote_count != reel.comments_count
+            or head_refresh_due
+            or post.comment_backfill_cursor is not None
+        )
+        # A saved historical cursor must not hide comments that arrived
+        # since the last successful head probe. Refresh within the same
+        # page/credit cap, then resume the saved history on a later scan.
+        # An unacknowledged failed first probe still retries its durable
+        # failed-page cursor before returning to the head.
+        preserve_backfill_cursor = bool(
+            post.comment_backfill_cursor is not None
+            and (
+                head_refresh_due
+                or (
+                    post.last_synced_remote_count is not None
+                    and post.last_synced_remote_count != reel.comments_count
+                )
+            )
+        )
+        is_backfill = bool(
+            not preserve_backfill_cursor
+            and (
+                post.comment_backfill_cursor is not None
+                or (repair_due and post.last_synced_remote_count == reel.comments_count)
+            )
+        )
+
+        known_ids = set(
+            (
+                await session.scalars(
+                    select(Comment.platform_comment_id)
+                    .where(Comment.post_id == post.id)
+                    .order_by(desc(Comment.discovered_at), desc(Comment.id))
+                    .limit(250)
+                )
+            ).all()
+        )
+        return PostCheck(
+            post_id=post.id,
+            should_fetch_comments=should_fetch,
+            is_baseline=(
+                is_first_baseline
+                or (is_backfill and bool(post.comment_backfill_is_baseline))
+            ),
+            known_comment_ids=known_ids,
+            previous_coverage=post.coverage_status,
+            skip_reason=None if should_fetch else "UNCHANGED",
+            is_new_post=created,
+            comment_delta=max(
+                0,
+                reel.comments_count - int(previous_comments_count or 0),
+            ),
+            post_age_hours=self._post_age_hours(reel.published_at, now),
+            comment_cursor=post.comment_backfill_cursor if is_backfill else None,
+            is_backfill=is_backfill,
+            preserve_backfill_cursor=preserve_backfill_cursor,
+        )
 
     @staticmethod
     def _post_priority(plan: CompetitorScanPlan, check: PostCheck) -> int:

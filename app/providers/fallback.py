@@ -15,6 +15,7 @@ from app.schemas.instagram import (
     InstagramComment,
     InstagramPost,
     InstagramProfile,
+    PostFetchResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,23 @@ class FallbackInstagramProvider(InstagramProvider):
     @property
     def comment_cursor_provider(self) -> str:
         return self.primary.comment_cursor_provider
+
+    @property
+    def supports_post_pagination(self) -> bool:
+        return self.primary.supports_post_pagination
+
+    @property
+    def post_cursor_provider(self) -> str:
+        return self.primary.post_cursor_provider
+
+    async def get_post_page(self, handle: str, *, cursor: str | None = None) -> PostFetchResult:
+        if cursor is not None:
+            return await self.primary.get_post_page(handle, cursor=cursor)
+        return await self._call(
+            "get_post_page",
+            lambda: self.primary.get_post_page(handle),
+            lambda: self.fallback.get_post_page(handle),
+        )
 
     def begin_cycle(self) -> None:
         # Both wrappers normally share one ScanBudget. Resetting twice is harmless and keeps this

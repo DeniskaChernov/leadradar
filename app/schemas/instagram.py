@@ -44,6 +44,19 @@ class InstagramComment(BaseModel):
 
 
 
+class PostFetchResult(BaseModel):
+    """One public publication page; coverage describes this traversal, not comments."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    posts: list[InstagramPost] = Field(default_factory=list)
+    provider: str
+    coverage_status: str = "UNKNOWN"
+    cursor_exhausted: bool = False
+    next_cursor: str | None = None
+    fetch_error: str | None = None
+
+
 class CommentFetchResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

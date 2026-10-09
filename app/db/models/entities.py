@@ -425,6 +425,30 @@ class ProductChange(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class PostDiscoveryState(Base):
+    __tablename__ = "post_discovery_states"
+    __table_args__ = (
+        UniqueConstraint("competitor_id", "provider", name="uq_post_discovery_source_provider"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    competitor_id: Mapped[int] = mapped_column(ForeignKey("competitors.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(128))
+    next_cursor: Mapped[str | None] = mapped_column(Text)
+    coverage_status: Mapped[CoverageStatus] = mapped_column(
+        Enum(CoverageStatus, native_enum=False), default=CoverageStatus.UNKNOWN
+    )
+    head_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    page_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stop_reason: Mapped[str | None] = mapped_column(String(64))
+    visited_cursors: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class Post(Base):
     __tablename__ = "posts"
     __table_args__ = (

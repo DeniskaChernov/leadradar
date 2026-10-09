@@ -38,6 +38,7 @@ from app.db.models import (
     NotificationLog,
     NotificationStatus,
     Post,
+    PostDiscoveryState,
     Product,
     PublicSignal,
     ReservationStatus,
@@ -1761,6 +1762,23 @@ class WebQueryService:
                 return []
             competitor_ids = [competitor.id for competitor in competitors]
             stats_by_id = await self._competitor_stats_map(session, competitor_ids)
+            discovery_by_id: dict[int, list[PostDiscoveryState]] = {}
+            for state in await session.scalars(
+                select(PostDiscoveryState)
+                .where(PostDiscoveryState.competitor_id.in_(competitor_ids))
+                .order_by(PostDiscoveryState.head_checked_at.desc(), PostDiscoveryState.id.desc())
+            ):
+                discovery_by_id.setdefault(state.competitor_id, []).append(state)
+            pending_rows = (await session.execute(
+                select(Post.competitor_id, func.count(Post.id)).where(
+                    Post.competitor_id.in_(competitor_ids), Post.comments_count > 0,
+                    or_(Post.comments_checked_at.is_(None),
+                        Post.comment_backfill_cursor.is_not(None),
+                        Post.last_synced_remote_count.is_(None),
+                        Post.last_synced_remote_count != Post.comments_count),
+                ).group_by(Post.competitor_id)
+            )).all()
+            pending_by_id = dict(pending_rows)
             won_rows = (
                 await session.execute(
                     select(Lead.competitor_id, func.count(Deal.id))
@@ -1820,6 +1838,8 @@ class WebQueryService:
                     {
                         "competitor": competitor,
                         **stats,
+                        "post_discovery": discovery_by_id.get(competitor.id, []),
+                        "pending_comment_posts": pending_by_id.get(competitor.id, 0),
                         "won": won,
                         "revenue": revenue,
                         "recommendation": recommendation,

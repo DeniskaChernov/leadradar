@@ -12,6 +12,7 @@ from app.schemas.instagram import (
     InstagramComment,
     InstagramPost,
     InstagramProfile,
+    PostFetchResult,
     ProviderCreditObservation,
 )
 
@@ -53,6 +54,14 @@ class InstagramProvider(ABC):
     name: str
 
     @property
+    def supports_post_pagination(self) -> bool:
+        return False
+
+    @property
+    def post_cursor_provider(self) -> str:
+        return self.name
+
+    @property
     def comment_cursor_provider(self) -> str:
         """Identity of the provider whose pagination cursors this adapter accepts."""
         return self.name
@@ -83,6 +92,11 @@ class InstagramProvider(ABC):
     @abstractmethod
     async def get_reels(self, handle: str) -> list[InstagramPost]:
         raise NotImplementedError
+
+    async def get_post_page(self, handle: str, *, cursor: str | None = None) -> PostFetchResult:
+        if cursor is not None:
+            raise ProviderResponseError("This provider does not accept publication cursors")
+        return PostFetchResult(posts=await self.get_reels(handle), provider=self.name)
 
     @abstractmethod
     async def get_post(self, url: str, competitor: str) -> InstagramPost:
@@ -130,9 +144,12 @@ class HTTPInstagramProvider(InstagramProvider):
         self._owns_client = client is None
         self.client = client or httpx.AsyncClient(timeout=timeout_seconds)
 
-    async def _request_json(self, method: str, url: str, **kwargs: Any) -> Any:
+    async def _request_json(
+        self, method: str, url: str, *, attempts: int | None = None, **kwargs: Any
+    ) -> Any:
         last_error: Exception | None = None
-        for attempt in range(1, self.max_attempts + 1):
+        attempt_limit = self.max_attempts if attempts is None else max(1, attempts)
+        for attempt in range(1, attempt_limit + 1):
             try:
                 response = await self.client.request(method, url, **kwargs)
                 if response.status_code in {401, 402, 403}:
@@ -153,10 +170,10 @@ class HTTPInstagramProvider(InstagramProvider):
                     attempt,
                     type(exc).__name__,
                 )
-                if attempt < self.max_attempts:
+                if attempt < attempt_limit:
                     await asyncio.sleep(0.5 * (2 ** (attempt - 1)))
         raise ProviderError(
-            f"{self.name} request failed after {self.max_attempts} attempts"
+            f"{self.name} request failed after {attempt_limit} attempts"
         ) from last_error
 
     async def aclose(self) -> None:
