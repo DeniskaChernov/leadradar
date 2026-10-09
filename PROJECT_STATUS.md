@@ -1,5 +1,24 @@
 # Lead Radar — состояние проекта
 
+## Cloudflare 1033: сетевой обрыв и восстановление — 2026-10-09
+
+В 17:09–17:14 по Ташкенту существующий quick tunnel потерял соединение с
+Cloudflare: в логе TCP 7844 timeouts, DNS resolver timeout и повторные
+закрытия control stream. Локальный `/health` оставался 200, worker 33148
+работал. cloudflared 7432/2026.10.0 переподключился автоматически в
+17:14:09; URL rochester-howard-animals-red.trycloudflare.com сохранён.
+Перезапусков процессов, смены пароля/настроек и платных запросов не было.
+
+В 17:16 через Cloudflare: health/ready/HOT/radar/system/scan preview — 200,
+password login — 200, anonymous feed — 401. Счётчики всех таблиц и hash
+contact_events до/после проверки совпадают, integrity/FK PASS.
+Свидетельство: `.runtime/tunnel-1033-check-20261009.json`.
+Windows runtime pytest — 59 passed за 87 с, `ruff check .`/diff check PASS.
+Прикладной код и сценарии запуска на этом шаге не менялись.
+Это восстановление доступности после сетевого сбоя, а не подтверждение
+круглосуточного хостинга: quick tunnel зависит от работающего компьютера
+и его связи с Cloudflare. Поиск по-прежнему блокируется расходом 235.
+
 ## Дополнительные скриншоты HOT проверены — 2026-10-09
 
 Все 18 запросов цены с начальным нулём на двух дополнительных скриншотах
