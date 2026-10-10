@@ -383,6 +383,78 @@ def test_existing_cold_start_is_reused_before_port_opens(tmp_path):
     assert result == {"starts": 0, "stops": 0}
 
 
+@pytest.mark.parametrize("command,owned", [
+    ("python -m app.main", True), ("python -m app.main --web-only", True),
+    ("python -m app.main --once", False),
+    ("python -m app.main --web-only --once", False),
+    ("python -m app.main.evil", False), ("python -m another.app", False),
+])
+def test_runtime_ownership_recognizes_full_and_web_only_but_never_once(tmp_path, command, owned):
+    result = _run(tmp_path, f"""
+@{{ owned=(Test-LeadRadarWebCommand {_ps_quote(command)}) }} | ConvertTo-Json -Compress
+""")
+    assert result == {"owned": owned}
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_windows_launcher_starts_or_reuses_full_mode(tmp_path, existing):
+    root = _fake_workspace(tmp_path, fail_health=False, existing=existing)
+    helper = root / "scripts/windows_runtime.ps1"
+    with helper.open("a", encoding="utf-8") as stream:
+        stream.write("""
+function Get-LeadRadarSettings { [pscustomobject]@{ host='127.0.0.1'; port=8000; url=''; auth=$true; mode='full' } }
+function Start-Process {
+    param($FilePath, $ArgumentList)
+    $global:FakeStarts++
+    if (($ArgumentList -join ' ') -ne '-m app.main') { throw 'Full mode arguments lost' }
+    New-FakeProcesses
+    $global:FakeProcesses[500].CommandLine='python -m app.main'
+    $global:FakeProcesses[501].CommandLine='python -m app.main'
+    return [pscustomobject]@{ Id=500 }
+}
+foreach ($process in $global:FakeProcesses.Values) { $process.CommandLine='python -m app.main' }
+""")
+    result = _run(tmp_path, f"""
+& {_ps_quote(root / 'scripts/start_web_windows.ps1')}
+@{{ starts=$global:FakeStarts; stops=$global:FakeStops }} | ConvertTo-Json -Compress
+""")
+    assert result == {"starts": 0 if existing else 1, "stops": 0}
+
+
+def test_explicit_web_only_launch_overrides_persisted_full_mode(tmp_path):
+    root = _fake_workspace(tmp_path, fail_health=False, existing=False)
+    with (root / "scripts/windows_runtime.ps1").open("a", encoding="utf-8") as stream:
+        stream.write("""
+function Get-LeadRadarSettings { [pscustomobject]@{ host='127.0.0.1'; port=8000; url=''; auth=$true; mode='full' } }
+function Start-Process {
+    param($FilePath, $ArgumentList)
+    $global:FakeStarts++
+    if (($ArgumentList -join ' ') -ne '-m app.main --web-only') { throw 'Explicit web-only mode lost' }
+    New-FakeProcesses
+    return [pscustomobject]@{ Id=500 }
+}
+""")
+    result = _run(tmp_path, f"""
+& {_ps_quote(root / 'scripts/start_web_windows.ps1')} -WebOnly
+@{{ starts=$global:FakeStarts; stops=$global:FakeStops }} | ConvertTo-Json -Compress
+""")
+    assert result == {"starts": 1, "stops": 0}
+
+
+def test_mode_change_refuses_to_replace_running_server_implicitly(tmp_path):
+    root = _fake_workspace(tmp_path, fail_health=False, existing=True)
+    with (root / "scripts/windows_runtime.ps1").open("a", encoding="utf-8") as stream:
+        stream.write("""
+function Get-LeadRadarSettings { [pscustomobject]@{ host='127.0.0.1'; port=8000; url=''; auth=$true; mode='full' } }
+""")
+    result = _run(tmp_path, f"""
+$blocked=$false
+try {{ & {_ps_quote(root / 'scripts/start_web_windows.ps1')} }} catch {{ $blocked=$true }}
+@{{ blocked=$blocked; starts=$global:FakeStarts; stops=$global:FakeStops }} | ConvertTo-Json -Compress
+""")
+    assert result == {"blocked": True, "starts": 0, "stops": 0}
+
+
 def test_wildcard_bind_uses_loopback_for_health_and_tunnel(tmp_path):
     result = _run(
         tmp_path,

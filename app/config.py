@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 from pydantic import Field, field_validator, model_validator
@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     telegram_admin_chat_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
     telegram_manager_chat_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
     telegram_viewer_chat_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
+    telegram_notification_chat_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
+    windows_runtime_mode: Literal["web-only", "full"] = "web-only"
 
     openai_api_key: str = ""
     openai_model: str = "gpt-5-mini"
@@ -106,6 +108,13 @@ class Settings(BaseSettings):
     meta_ads_live_calls_enabled: bool = False
 
     @property
+    def telegram_lead_delivery_chat_ids(self) -> list[int]:
+        """Delivery recipients are independent of web access roles."""
+        return list(dict.fromkeys(
+            self.telegram_notification_chat_ids or self.telegram_manager_chat_ids
+        ))
+
+    @property
     def external_spend_unlocked(self) -> bool:
         if self.external_kill_switch:
             return False
@@ -139,6 +148,7 @@ class Settings(BaseSettings):
         "telegram_admin_chat_ids",
         "telegram_manager_chat_ids",
         "telegram_viewer_chat_ids",
+        "telegram_notification_chat_ids",
         mode="before",
     )
     @classmethod
@@ -170,6 +180,13 @@ class Settings(BaseSettings):
         port = os.environ.get("PORT", "").strip()
         if port.isdigit():
             self.web_port = int(port)
+        return self
+
+    @model_validator(mode="after")
+    def validate_notification_recipients(self) -> Settings:
+        allowed = set(self.telegram_admin_chat_ids) | set(self.telegram_manager_chat_ids)
+        if set(self.telegram_notification_chat_ids) - allowed:
+            raise ValueError("Telegram notification recipients must be configured admins or managers")
         return self
 
     @model_validator(mode="after")

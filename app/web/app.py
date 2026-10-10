@@ -234,12 +234,13 @@ def build_web_app(
     notification_readiness_service = NotificationReadinessService(
         workflow.session_factory,
         workflow,
-        manager_chat_ids=settings.telegram_manager_chat_ids,
+        manager_chat_ids=settings.telegram_lead_delivery_chat_ids,
         default_policy=NotificationPolicy(settings.notification_policy),
         hot_threshold=settings.hot_lead_threshold,
         token_configured=bool(settings.telegram_bot_token),
         delivery_allowed_by_config=delivery_allowed_by_config,
         worker_active=notification_worker_active,
+        signal_max_age_days=settings.instagram_signal_max_age_days,
     )
 
     def master_live_ready() -> bool:
@@ -434,7 +435,7 @@ def build_web_app(
             "ops": ops_control.snapshot(),
             "master_live_ready": master_live_ready(),
             "openai_spend_allowed": openai_spend_allowed(),
-            "telegram_manager_count": len(settings.telegram_manager_chat_ids),
+            "telegram_manager_count": len(settings.telegram_lead_delivery_chat_ids),
             "selected_vertical": selected_vertical,
             "ai_version_info": {
                 "rules_version": settings.lead_analysis_version,
@@ -1167,15 +1168,15 @@ def build_web_app(
         notification_policy_info = notification_modes[settings.notification_policy]
         production_notifications = notification_readiness.controlled_pilot_ready
         if production_notifications:
-            telegram_detail = "Production-уведомления включены"
+            telegram_detail = "Доставка лидов включена"
         elif not settings.telegram_bot_token:
-            telegram_detail = "Нет TELEGRAM_BOT_TOKEN"
+            telegram_detail = "Не настроен Telegram-бот"
         elif not notification_readiness.worker_active:
-            telegram_detail = "Worker не запущен (нужен полный python -m app.main, не web-only)"
+            telegram_detail = "Обработчик Telegram не запущен: сейчас работает только сайт"
         elif not notification_readiness.delivery_allowed_by_config:
-            telegram_detail = "Доставка заблокирована конфигурацией (replay/mock или kill switch)"
+            telegram_detail = "Отправка выключена настройками системы"
         elif notification_readiness.admin_target_count <= 0:
-            telegram_detail = "Нет admin chat id для доставки"
+            telegram_detail = "Не настроен получатель лидов"
         else:
             telegram_detail = "Реальная отправка сейчас не выполняется"
         from app.services.export_recipe_service import RECIPES

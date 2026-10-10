@@ -123,7 +123,7 @@
 
 <details class="panel notification-readiness page-task-secondary">
   <summary><b>Готовность Telegram</b><span>Preview без отправки · {% if notification_readiness.controlled_pilot_ready %}worker активен{% else %}pilot заблокирован{% endif %}</span></summary>
-  <div class="panel-head"><div><span class="eyebrow">ПРОВЕРКА · БЕЗ ОТПРАВКИ</span><h2>Готовность Telegram-уведомлений</h2><p>Read-only preview применяет реальные политики и проверяет outbox, но ничего не записывает и не отправляет.</p></div><span class="tag {% if notification_readiness.controlled_pilot_ready %}status-contacted{% else %}neutral{% endif %}">{% if notification_readiness.controlled_pilot_ready %}worker активен{% else %}pilot заблокирован{% endif %}</span></div>
+  <div class="panel-head"><div><span class="eyebrow">ПРОВЕРКА · БЕЗ ОТПРАВКИ</span><h2>Готовность Telegram-уведомлений</h2><p>Показаны последние {{ notification_readiness.total_reviewed }} сигналов. Счётчики ниже относятся к этой выборке; просмотр не отправляет сообщения.</p></div><span class="tag {% if notification_readiness.controlled_pilot_ready %}status-contacted{% else %}neutral{% endif %}">{% if notification_readiness.controlled_pilot_ready %}worker активен{% else %}pilot заблокирован{% endif %}</span></div>
   <div class="mini-metrics">
     <span><b>{% if settings.external_kill_switch %}ВКЛ{% else %}ВЫКЛ{% endif %}</b> глобальный стоп</span>
     <span><b>{{ usage.get('openai', 0) }}</b> AI-запросов сегодня</span>
@@ -136,7 +136,7 @@
     <span><b>{{ notification_readiness.blocked }}</b> без получателя</span>
     <span><b>{{ notification_readiness.uncertain }}</b> требуют сверки</span>
   </div>
-  <div class="alert {% if notification_readiness.controlled_pilot_ready %}good{% else %}warn{% endif %}"><b>{% if notification_readiness.controlled_pilot_ready %}Конфигурация готова к контролируемому pilot{% else %}Реальная отправка сейчас не выполняется{% endif %}</b><span>Token: {% if notification_readiness.token_configured %}настроен{% else %}не настроен{% endif %} · admin targets: {{ notification_readiness.admin_target_count }} · delivery config: {% if notification_readiness.delivery_allowed_by_config %}разрешён{% else %}заблокирован{% endif %} · worker: {% if notification_readiness.worker_active %}активен{% else %}не запущен (web-only){% endif %}</span></div>
+  <div class="alert {% if notification_readiness.controlled_pilot_ready %}good{% else %}warn{% endif %}"><b>{% if notification_readiness.controlled_pilot_ready %}Telegram-доставка включена{% else %}Telegram-доставка требует настройки{% endif %}</b><span>Бот: {% if notification_readiness.token_configured %}настроен{% else %}не настроен{% endif %} · получателей: {{ notification_readiness.admin_target_count }} · отправка: {% if notification_readiness.delivery_allowed_by_config %}разрешена{% else %}заблокирована{% endif %} · обработчик: {% if notification_readiness.worker_active %}активен{% else %}не запущен (режим только сайта){% endif %}</span></div>
   <p class="table-scroll-hint">На узком экране строки сворачиваются в карточки.</p>
   <div class="table-wrap embedded system-table-wrap">
     <table class="responsive-table system-table notification-preview-table">

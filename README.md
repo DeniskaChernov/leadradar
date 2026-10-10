@@ -229,6 +229,18 @@ start_web_only_windows.bat
 start_windows.bat
 ```
 
+Для фонового Windows-запуска сайта и Telegram-бота задайте в локальном `.env`
+`WINDOWS_RUNTIME_MODE=full`. Этот режим используют `scripts/start_web_windows.ps1`
+и сценарии Cloudflare/автозапуска. `start_web_only_windows.bat` явно запускает
+только сайт: обработчик Telegram и очередь отправки в нём не работают.
+
+Получатели лидов задаются через `TELEGRAM_NOTIFICATION_CHAT_IDS`: укажите
+уже настроенного администратора или менеджера. Это не меняет роли доступа.
+Если список пуст, используются `TELEGRAM_MANAGER_CHAT_IDS`. Для отправки
+только горячих лидов используйте `NOTIFICATION_POLICY=HOT_ONLY`.
+Режим полного запуска не включает расписание поиска: им отдельно управляет
+`MONITOR_SCHEDULE_ENABLED`. Проверка доставки — «Настройки → Готовность Telegram».
+
 ## Replay Mode
 
 Replay — главный режим разработки. Он воспроизводит реалистичный Instagram-сценарий из локального
@@ -322,6 +334,8 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_ADMIN_CHAT_IDS=
 TELEGRAM_MANAGER_CHAT_IDS=
 TELEGRAM_VIEWER_CHAT_IDS=
+TELEGRAM_NOTIFICATION_CHAT_IDS=
+WINDOWS_RUNTIME_MODE=web-only
 
 EXTERNAL_LIVE_UNLOCK=
 

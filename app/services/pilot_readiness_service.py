@@ -136,11 +136,11 @@ class PilotReadinessService:
         if self.settings.meta_ads_live_calls_enabled or self.settings.meta_ads_live_enabled:
             blocks.append("Meta live/spend activation must stay OFF")
 
-        if not self.settings.telegram_manager_chat_ids:
+        if not self.settings.telegram_lead_delivery_chat_ids:
             blocks.append(
-                "TELEGRAM_MANAGER_CHAT_IDS пуст — нужен chat для pilot-уведомлений (B7)"
+                "TELEGRAM_NOTIFICATION_CHAT_IDS / TELEGRAM_MANAGER_CHAT_IDS пуст — нужен chat для pilot-уведомлений (B7)"
             )
-        elif set(self.settings.telegram_manager_chat_ids) == set(
+        elif set(self.settings.telegram_lead_delivery_chat_ids) == set(
             self.settings.telegram_admin_chat_ids
         ):
             warnings.append(

@@ -15,6 +15,7 @@ from app.db.models import (
     NotificationStatus,
 )
 from app.services.lead_workflow_service import LeadWorkflowService
+from app.services.signal_recency import is_signal_within_window, signal_observed_at
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +75,7 @@ class NotificationReadinessService:
         token_configured: bool,
         delivery_allowed_by_config: bool,
         worker_active: bool,
+        signal_max_age_days: int = 30,
     ) -> None:
         self.session_factory = session_factory
         self.workflow = workflow
@@ -83,6 +85,7 @@ class NotificationReadinessService:
         self.token_configured = token_configured
         self.delivery_allowed_by_config = delivery_allowed_by_config
         self.worker_active = worker_active
+        self.signal_max_age_days = signal_max_age_days
 
     async def preview(self, *, limit: int = 10) -> NotificationReadinessReport:
         async with self.session_factory() as session:
@@ -92,6 +95,8 @@ class NotificationReadinessService:
                         Lead.id,
                         Lead.assigned_manager_telegram_id,
                         Comment.is_baseline,
+                        Comment.created_at_platform,
+                        Comment.discovered_at,
                         Competitor.notification_policy,
                     )
                     .join(Comment, Comment.id == Lead.comment_id)
@@ -125,6 +130,13 @@ class NotificationReadinessService:
                 policy,
                 target_count,
                 logs_by_lead.get(card.lead_id, []),
+                is_fresh=is_signal_within_window(
+                    signal_observed_at(
+                        created_at_platform=row.created_at_platform,
+                        discovered_at=row.discovered_at,
+                    ),
+                    max_age_days=self.signal_max_age_days,
+                ),
             )
             previews.append(
                 NotificationPreview(
@@ -179,6 +191,8 @@ class NotificationReadinessService:
         policy: NotificationPolicy,
         target_count: int,
         logs: list[NotificationLog],
+        *,
+        is_fresh: bool = True,
     ) -> tuple[str, str]:
         log_statuses = {log.status for log in logs}
         if NotificationStatus.UNCERTAIN in log_statuses:
@@ -191,8 +205,10 @@ class NotificationReadinessService:
             return "SENT", "Сообщение уже подтверждено Telegram и повторно не отправится."
         if is_baseline:
             return "SUPPRESSED", "Исторический baseline не создаёт production-уведомление."
+        if not is_fresh:
+            return "SUPPRESSED", "Сигнал старше окна свежести; остаётся в архиве."
         if target_count == 0:
-            return "BLOCKED", "Не назначен менеджер и не настроен admin chat."
+            return "BLOCKED", "Не назначен менеджер и не настроен получатель уведомлений."
         if policy == NotificationPolicy.ALL_NEW_COMMENTS:
             return "ELIGIBLE", "Новый уникальный сигнал подходит под текущую политику."
         if status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING}:
@@ -201,6 +217,8 @@ class NotificationReadinessService:
             if status != LeadStatus.NOT_LEAD:
                 return "ELIGIBLE", "Локальная классификация подтвердила коммерческий интерес."
             return "SUPPRESSED", "Сигнал классифицирован как некоммерческий."
-        if status != LeadStatus.NOT_LEAD and score >= self.hot_threshold:
+        if status == LeadStatus.NOT_LEAD:
+            return "SUPPRESSED", "Статус «Не лид» запрещает HOT-уведомление независимо от балла."
+        if score >= self.hot_threshold:
             return "ELIGIBLE", f"Лид достиг HOT-порога {self.hot_threshold}."
         return "SUPPRESSED", f"Лид не достиг HOT-порога {self.hot_threshold}."

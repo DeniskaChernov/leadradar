@@ -381,7 +381,7 @@ async def _run_owned(
         bot,
         session_factory,
         workflow,
-        settings.telegram_manager_chat_ids,
+        settings.telegram_lead_delivery_chat_ids,
         admin_chat_ids=settings.telegram_admin_chat_ids,
         hot_threshold=settings.hot_lead_threshold,
         max_attempts=settings.telegram_notification_max_attempts,
@@ -392,6 +392,7 @@ async def _run_owned(
             or ops_control.radar_live_armed()
         ),
         web_public_url=settings.web_public_url or "",
+        signal_max_age_days=settings.instagram_signal_max_age_days,
     )
     monitor = InstagramMonitor(
         session_factory=session_factory,

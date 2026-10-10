@@ -92,9 +92,9 @@ def evaluate_readiness(
         live_blocks.append("TELEGRAM_BOT_TOKEN is missing.")
     if not settings.telegram_admin_chat_ids:
         live_blocks.append("At least one Telegram admin ID is required for a controlled pilot.")
-    if not settings.telegram_manager_chat_ids:
+    if not settings.telegram_lead_delivery_chat_ids:
         live_blocks.append(
-            "TELEGRAM_MANAGER_CHAT_IDS is required for pilot lead notifications."
+            "TELEGRAM_NOTIFICATION_CHAT_IDS or TELEGRAM_MANAGER_CHAT_IDS is required for pilot lead notifications."
         )
     if not state.backup_present:
         live_blocks.append("A non-empty SQLite backup is required before live operation.")

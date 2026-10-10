@@ -30,7 +30,7 @@ function Set-LeadRadarRuntimeText {
 
 function Get-LeadRadarSettings {
     param([string]$PythonPath)
-    $json = 'import json; from app.config import get_settings; s=get_settings(); print(json.dumps(dict(host=s.web_host,port=s.web_port,auth=s.web_auth_enabled,url=s.web_public_url)))' | & $PythonPath -
+    $json = 'import json; from app.config import get_settings; s=get_settings(); print(json.dumps(dict(host=s.web_host,port=s.web_port,auth=s.web_auth_enabled,url=s.web_public_url,mode=s.windows_runtime_mode)))' | & $PythonPath -
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read Lead Radar settings.' }
     return ($json | ConvertFrom-Json)
 }
@@ -52,7 +52,7 @@ function Get-LeadRadarOrigin {
 
 function Test-LeadRadarWebCommand {
     param([string]$CommandLine)
-    return ($CommandLine -match '(?i)(?:^|\s)-m\s+app\.main\s+--web-only(?:\s|$)')
+    return ($CommandLine -match '(?i)(?:^|\s)-m\s+app\.main(?:\s+--web-only)?\s*$')
 }
 
 function Get-LeadRadarWebWorker {
@@ -154,7 +154,7 @@ function Stop-LeadRadarWebLauncher {
 function Stop-LeadRadarWeb {
     param([string]$PythonPath, [string]$Runtime)
     $pidFile = Join-Path $Runtime 'server-launcher.pid'
-    $launcher = Get-LeadRadarSavedProcess $pidFile $PythonPath '(?i)(?:^|\s)-m\s+app\.main\s+--web-only(?:\s|$)'
+    $launcher = Get-LeadRadarSavedProcess $pidFile $PythonPath '(?i)(?:^|\s)-m\s+app\.main(?:\s+--web-only)?\s*$'
     Stop-LeadRadarWebLauncher $launcher
     Remove-LeadRadarProcessFiles $pidFile
 }

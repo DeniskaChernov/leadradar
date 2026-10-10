@@ -38,6 +38,7 @@ from app.db.models import (
 )
 from app.services.lead_workflow_service import LeadCard, LeadWorkflowService
 from app.services.quality_report_delivery_service import QualityReportDeliveryService
+from app.services.signal_recency import fresh_signal_clause
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +63,12 @@ class TelegramLeadNotifier:
         lease_seconds: int = 120,
         worker_id: str | None = None,
         web_public_url: str = "",
+        signal_max_age_days: int = 30,
     ) -> None:
         self.bot = bot
         self.session_factory = session_factory
         self.workflow = workflow
-        # Lead/change delivery targets (pilot B7: TELEGRAM_MANAGER_CHAT_IDS).
+        # Lead/change delivery recipients are independent of access roles.
         self.manager_chat_ids = list(dict.fromkeys(manager_chat_ids))
         # Admin digests only (quality report и т.п.).
         self.admin_chat_ids = list(dict.fromkeys(admin_chat_ids or []))
@@ -77,6 +79,7 @@ class TelegramLeadNotifier:
         self.lease_seconds = lease_seconds
         self.worker_id = worker_id or f"telegram-{uuid4().hex[:12]}"
         self.web_public_url = web_public_url
+        self.signal_max_age_days = signal_max_age_days
         self._delivery_lock = asyncio.Lock()
         self.quality_reports = QualityReportDeliveryService(
             bot, session_factory, lease_seconds=lease_seconds, max_attempts=max_attempts
@@ -128,6 +131,16 @@ class TelegramLeadNotifier:
         return await self._queue_and_deliver(lead_id)
 
     async def _queue_and_deliver(self, lead_id: int) -> int:
+        async with self.session_factory() as session:
+            eligible = await session.scalar(
+                select(Lead.id).join(Comment, Comment.id == Lead.comment_id).where(
+                    Lead.id == lead_id,
+                    Comment.is_baseline.is_(False),
+                    fresh_signal_clause(max_age_days=self.signal_max_age_days),
+                )
+            )
+        if eligible is None:
+            return 0
         targets = await self._target_chat_ids(lead_id)
         if not targets:
             logger.warning("hot_lead_not_sent lead_id=%s reason=no_manager_chat_ids", lead_id)
@@ -383,6 +396,7 @@ class TelegramLeadNotifier:
                         Lead.lead_score >= self.hot_threshold,
                         Lead.status.in_([LeadStatus.NEW, LeadStatus.TAKEN]),
                         Comment.is_baseline.is_(False),
+                        fresh_signal_clause(max_age_days=self.signal_max_age_days),
                     )
                 )
             ).all()
@@ -519,9 +533,13 @@ class TelegramLeadNotifier:
             NotificationLog.next_attempt_at <= now,
         )
         async with self.session_factory() as session:
-            query = select(NotificationLog.id).where(
+            query = select(NotificationLog.id).join(
+                Lead, Lead.id == NotificationLog.lead_id
+            ).join(Comment, Comment.id == Lead.comment_id).where(
                 or_(NotificationLog.status == NotificationStatus.PENDING, retry_due),
                 NotificationLog.attempt_count < self.max_attempts,
+                Comment.is_baseline.is_(False),
+                fresh_signal_clause(max_age_days=self.signal_max_age_days),
             )
             if lead_id is not None:
                 query = query.where(NotificationLog.lead_id == lead_id)

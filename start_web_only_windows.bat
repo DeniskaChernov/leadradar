@@ -16,7 +16,7 @@ if not exist ".env" (
   exit /b 1
 )
 
-powershell.exe -NoProfile -File "%~dp0scripts\start_web_windows.ps1" -OpenBrowser
+powershell.exe -NoProfile -File "%~dp0scripts\start_web_windows.ps1" -WebOnly -OpenBrowser
 
 if errorlevel 1 (
   echo.
