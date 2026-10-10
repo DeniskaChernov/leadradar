@@ -4,7 +4,8 @@
 {% block subheading %}{% if (radar_vertical or selected_vertical) == 'ARTIFICIAL_RATTAN' %}Люди и компании, которым нужен искусственный ротанг{% else %}Запустите поиск комментариев, затем обработайте горячих лидов в HOT{% endif %}{% endblock %}
 {% block content %}
 {% set rv = radar_vertical or selected_vertical or 'FURNITURE' %}
-{% set radar_base = '/radar?vertical=' ~ rv %}
+{% set post_filter = post_filter|default(none) %}
+{% set radar_base = '/radar?vertical=' ~ rv ~ ('&post=' ~ post_filter if post_filter is not none else '') %}
 
 {% include "partials/find_leads_wizard.html" %}
 
@@ -202,6 +203,7 @@
 
 <form class="filters radar-filters" method="get" aria-label="Фильтры радара сигналов">
   <input type="hidden" name="vertical" value="{{ rv }}">
+  {% if post_filter is not none %}<input type="hidden" name="post" value="{{ post_filter }}">{% endif %}
   <input name="q" value="{{ q }}" aria-label="Поиск по радару" placeholder="Имя, username, комментарий или товар">
   <select name="competitor" aria-label="Фильтр по конкуренту"><option value="">Все конкуренты</option>{% for item in competitors %}<option value="{{ item.competitor.normalized_handle }}" {% if competitor_filter == item.competitor.normalized_handle %}selected{% endif %}>@{{ item.competitor.normalized_handle }}</option>{% endfor %}</select>
   <select name="kind" aria-label="Тип сигнала">
@@ -215,90 +217,21 @@
   </select>
   <button class="btn">Применить</button><a class="btn ghost" href="{{ radar_base }}">Сбросить</a>
 </form>
-<section class="find-lead-cards" aria-label="Карточки лидов" data-find-results data-hot-threshold="{{ settings.hot_lead_threshold }}">
-  <div class="find-results-head">
-    <h3>Потенциальные покупатели</h3>
-    <nav class="find-result-filters" data-find-result-filters aria-label="Показать сигналы">
-      <a class="btn tiny {{ 'primary' if not kind_filter else 'ghost' }}" href="{{ radar_base }}#find-results" {{ 'aria-current="page"'|safe if not kind_filter }}>Все сигналы</a>
-      <a class="btn tiny {{ 'primary' if kind_filter == 'hot' else 'ghost' }}" href="{{ radar_base }}&kind=hot#find-results" {{ 'aria-current="page"'|safe if kind_filter == 'hot' }}>Горячие</a>
-      <a class="btn tiny {{ 'primary' if kind_filter == 'warm' else 'ghost' }}" href="{{ radar_base }}&kind=warm#find-results" {{ 'aria-current="page"'|safe if kind_filter == 'warm' }}>Тёплые</a>
-      <a class="btn tiny {{ 'primary' if kind_filter == 'pending' else 'ghost' }}" href="{{ radar_base }}&kind=pending#find-results" {{ 'aria-current="page"'|safe if kind_filter == 'pending' }}>Нужна оценка</a>
-    </nav>
-  </div>
-{% include "partials/list_pagination.html" %}
-<div class="find-lead-grid">
-    {% set cards = namespace(count=0) %}
+{% if radar_groups is defined %}
+{% include "partials/radar_post_results.html" %}
+{% else %}
+{# Keep the previous worker usable while templates are updated before a restart. #}
+<section class="find-lead-cards" aria-label="Карточки лидов">
+  {% include "partials/list_pagination.html" %}
+  <div class="find-lead-grid">
     {% for comment, contact, competitor, post, lead in rows %}
-    {% if lead and lead.status.value != 'NOT_LEAD' and cards.count < 48 %}
-    {% set cards.count = cards.count + 1 %}
-    {% set ai = lead.analysis_details or {} %}
-    {% set awaiting_analysis = lead.status.value in ['AI_PENDING', 'ANALYZING'] %}
-    {% set heat = 'hot' if lead.lead_score >= settings.hot_lead_threshold else ('warm' if lead.lead_score >= 50 else 'cool') %}
-    <article
-      class="find-lead-card"
-      data-lead-id="{{ lead.id }}"
-      data-lead-score="{{ lead.lead_score }}"
-      data-lead-heat="{{ heat }}"
-      data-lead-intent="{{ lead.intent }}"
-      data-lead-role="{{ ai.get('buyer_role') or 'UNKNOWN' }}"
-      data-lead-product="{{ lead.product_category or '' }}"
-    >
-      <header>
-        <b>@{{ contact.username }}</b>
-        <small>Instagram · @{{ competitor.normalized_handle }} · {{ (comment.created_at_platform or comment.discovered_at) | display_dt }}</small>
-      </header>
-      <p>{{ comment.text or 'Пустой комментарий' }}</p>
-      <div class="find-example-tags">
-        {% if awaiting_analysis %}
-        <span>Ожидает оценки</span>
-        {% else %}
-        {% if lead.lead_score >= settings.hot_lead_threshold %}<span class="hot">HOT</span>{% endif %}
-        {% if ai.get('buyer_role') and ai.get('buyer_role') != 'UNKNOWN' %}<span>{{ ai.get('buyer_role') }}</span>{% endif %}
-        <span>{{ intent_label(lead.intent) }}</span>
-        <span>{{ product_label(lead.product_category) }}</span>
-        {% if ai.get('quantity') %}<span>{{ ai.get('quantity') }}</span>{% endif %}
-        {% if ai.get('location') and ai.get('location') != 'UNKNOWN' %}<span>{{ ai.get('location') }}</span>{% endif %}
-        {% endif %}
-      </div>
-      <div class="find-lead-meta">
-        {% if awaiting_analysis %}
-        <span>Оценка ещё не рассчитана</span>
-        {% else %}
-        <span>Приоритет {{ lead.lead_score }}/100</span>
-        {% if ai.get('confidence') is not none %}<span>Уверенность {% set conf = ai.get('confidence') %}{{ ((conf * 100) if conf <= 1 else conf)|round|int }}%</span>{% endif %}
-        {% endif %}
-        <span>{{ lead_status_label(lead.status) }}</span>
-        {% if ai.get('evidence_ids') %}<span>Подтверждений: {{ ai.get('evidence_ids')|length }}</span>{% endif %}
-      </div>
-      {% if awaiting_analysis %}<p class="muted">{{ lead.ai_reason }}</p>{% endif %}
-      <div class="find-lead-actions">
-        {% if lead.status.value in ['WON', 'LOST'] %}
-        <a class="btn tiny primary" href="/leads/{{ lead.id }}">Открыть карточку</a>
-        {% elif lead.lead_score >= settings.hot_lead_threshold %}
-        <a class="btn tiny primary" href="/hot?vertical={{ rv }}&lead_id={{ lead.id }}">Написать</a>
-        <a class="btn tiny ghost" href="/leads/{{ lead.id }}">Карточка</a>
-        {% else %}
-        <a class="btn tiny primary" href="/leads/{{ lead.id }}">Открыть лида</a>
-        <button type="button" class="btn tiny" data-lead-take="{{ lead.id }}">Взять в работу</button>
-        {% endif %}
-        <button type="button" class="btn tiny ghost" data-lead-explain="{{ lead.id }}">Почему это лид?</button>
-      </div>
-    </article>
-    {% endif %}
+      {% if lead and lead.status.value != 'NOT_LEAD' %}{% include "partials/radar_lead_card.html" %}{% endif %}
     {% endfor %}
   </div>
-  {% if cards.count == 48 %}<p class="muted">Показаны первые 48 карточек. Уточните поиск или откройте подробную таблицу, чтобы найти остальные сигналы.</p>{% endif %}
-  {% if not cards.count %}
-  <div class="empty-box" data-find-filter-empty>
-    <b>В этой выборке пока нет готовых лидов</b>
-    <span>Сигналы без оценки и отсеянные комментарии доступны в подробной таблице ниже.</span>
-    <a class="btn tiny ghost" href="{{ radar_base }}#find-results">Показать все сигналы</a>
-  </div>
-  {% endif %}
 </section>
+{% endif %}
 
-
-<details class="panel signal-details"><summary>Подробная таблица сигналов · {{ rows|length }} на странице</summary>
+<details class="panel signal-details"><summary>Подробная таблица показанных комментариев · {{ rows|length }}</summary>
 <div class="table-wrap"><table class="responsive-table radar-table">
 <thead><tr><th>Клиент</th><th>Что написал</th><th>Где нашли</th><th>Контекст Reel</th><th>Оценка</th><th>Что делать</th></tr></thead>
 <tbody>
@@ -323,7 +256,7 @@
 >
   <td data-label="Клиент"><a class="user" href="/contacts/{{ contact.id }}"><b>@{{ contact.username }}</b><small>{{ contact.display_name or 'Имя не указано' }}</small></a></td>
   <td data-label="Комментарий" class="comment-cell"><b>{{ comment.text or 'Пустой комментарий' }}</b><small>{% if comment.is_baseline %}<span class="tag neutral">история</span>{% else %}<span class="tag live">новый</span>{% endif %} {{ (comment.created_at_platform or comment.discovered_at) | display_dt }}</small></td>
-  <td data-label="Источник"><b>@{{ competitor.normalized_handle }}</b><small><span class="tier tier-{{ competitor.tier|lower }}" title="Приоритет мониторинга">{{ competitor_tier_label(competitor.tier) }}</span> · <a target="_blank" rel="noopener" href="{{ post.url }}">Открыть Reel ↗</a></small></td>
+  <td data-label="Источник"><b>@{{ competitor.normalized_handle }}</b><small><span class="tier tier-{{ competitor.tier|lower }}" title="Приоритет мониторинга">{{ competitor_tier_label(competitor.tier) }}</span> · {% if post_urls is defined and post_urls.get(post.id) %}<a target="_blank" rel="noopener noreferrer" href="{{ post_urls[post.id] }}">Открыть публикацию ↗</a>{% else %}Ссылка не получена{% endif %}</small></td>
   <td data-label="Контекст Reel" class="context">{{ post.caption[:165] or 'Описание Reel не получено' }}{% if post.caption|length > 165 %}…{% endif %}</td>
   <td data-label="Оценка">{% if lead and lead.status.value == 'ANALYZING' %}<span class="tag pending">Ставим оценку</span><small>Лид уже виден менеджеру</small>{% elif lead and lead.status.value == 'AI_PENDING' %}<span class="tag pending">Ожидает оценки</span><small>{{ lead.ai_reason }}</small>{% elif lead %}<div class="score-line"><div class="lead-score {% if lead.lead_score >= settings.hot_lead_threshold %}hot{% elif lead.lead_score >= 50 %}warm{% endif %}">{{ lead.lead_score }}</div><div><b>{{ intent_label(lead.intent) }}</b><small>{{ product_label(lead.product_category) }} · {{ ai_source_label(lead.ai_source) }}</small></div></div>{% else %}<span class="tag pending">Нет оценки</span>{% endif %}</td>
   <td data-label="Действие">{% if lead %}{% if lead.lead_score >= settings.hot_lead_threshold and lead.status.value not in ['NOT_LEAD', 'WON', 'LOST'] %}<a class="btn tiny primary" href="/hot?vertical={{ rv }}&lead_id={{ lead.id }}">Написать</a>{% else %}<a class="btn tiny" href="/leads/{{ lead.id }}">Открыть лид</a>{% endif %}<small class="human-status">{{ lead_status_label(lead.status) }}</small>{% else %}<a class="btn tiny ghost" href="/contacts/{{ contact.id }}">Карточка клиента</a>{% endif %}</td>

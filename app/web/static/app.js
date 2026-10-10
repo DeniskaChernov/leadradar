@@ -2371,9 +2371,10 @@
 
   const startRadarPolling = () => {
     if (!(document.body.dataset.page || '').startsWith('/radar')) return;
-    pollRadarFeed();
+    const firstPoll = pollRadarFeed();
     if (radarPollTimer) clearInterval(radarPollTimer);
     radarPollTimer = setInterval(pollRadarFeed, 2000);
+    return firstPoll;
   };
 
   const startGlobalScanProgressPolling = () => {
@@ -2382,10 +2383,13 @@
     scanProgressTimer = setInterval(pollScanProgress, 2000);
   };
 
+  let initialRadarLayout = Promise.resolve();
   if ((document.body.dataset.page || '').startsWith('/radar')) {
-    startRadarPolling();
+    const firstFeed = startRadarPolling();
     const budgetRoot = document.querySelector('.radar-budget-card');
-    if (budgetRoot) refreshScanBudgetPreview(budgetRoot);
+    initialRadarLayout = Promise.allSettled([
+      firstFeed, budgetRoot ? refreshScanBudgetPreview(budgetRoot) : null,
+    ]);
   } else {
     startGlobalScanProgressPolling();
   }
@@ -2693,6 +2697,19 @@
   const findLeadsResultsUrl = () => `${withScanVertical('/radar')}#find-results`;
 
   const scrollToFindResultsIfNeeded = () => {
+    if (window.location.hash === '#radar-post-results') {
+      const grouped = document.getElementById('radar-post-results');
+      if (!(grouped instanceof HTMLElement)) return;
+      // Align after the page has settled, so restored scroll and late layout
+      // changes cannot cover the publication heading with the sticky header.
+      const align = () => requestAnimationFrame(() => requestAnimationFrame(() => grouped.scrollIntoView({
+        behavior: 'instant', block: 'start',
+      })));
+      const afterLayout = () => initialRadarLayout.then(align);
+      if (document.readyState === 'complete') afterLayout();
+      else window.addEventListener('load', afterLayout, { once: true });
+      return;
+    }
     const target = document.getElementById('find-results');
     if (!(target instanceof HTMLElement)) return;
     let shouldScroll = window.location.hash === '#find-results';

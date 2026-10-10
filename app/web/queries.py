@@ -51,6 +51,7 @@ from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.audience_quality_service import AudienceQualityService
 from app.services.economics_page_service import EconomicsPageService
 from app.services.product_catalog_service import normalize_product_category
+from app.services.radar_results_service import RadarCompanyGroup, RadarPostGroup, RadarResultsPage
 from app.services.signal_recency import fresh_signal_clause
 from app.services.usage_service import ExternalUsageService
 from app.web.labels import CHANGE_TYPE_LABELS, label
@@ -867,6 +868,107 @@ class WebQueryService:
 
     async def signals_page(self, *, page: int = 1, **filters) -> QueryPage:
         return await self._paginate(self._signals_statement(**filters), page=page)
+
+    async def radar_posts_page(
+        self, *, page: int = 1, post_id: int | None = None,
+        page_size: int = 8, preview_size: int = 12, **filters,
+    ) -> RadarResultsPage:
+        """Page publications, then fetch bounded previews in bulk (no per-post queries).
+
+        Opening one publication pages its comments instead. Counts always describe
+        the complete filtered selection, not just the cards in the preview.
+        """
+        statement = self._signals_statement(**filters)
+        if post_id is not None:
+            statement = statement.where(Post.id == post_id)
+        matching = statement.order_by(None).with_only_columns(
+            Comment.id.label("comment_id"), Comment.post_id.label("post_id"),
+            Comment.competitor_id.label("competitor_id"), Comment.discovered_at,
+            Lead.id.label("lead_id"), Lead.status, Lead.lead_score,
+        ).subquery()
+        confirmed = matching.c.status.in_(CONFIRMED_LEAD_STATUSES)
+        pending = or_(
+            matching.c.lead_id.is_(None),
+            matching.c.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING]),
+        )
+        post_totals = select(
+            matching.c.post_id, matching.c.competitor_id,
+            func.count().label("total"),
+            func.sum(case((confirmed, 1), else_=0)).label("leads"),
+            func.sum(case((and_(confirmed, matching.c.lead_score >= self.hot_threshold), 1), else_=0)).label("hot"),
+            func.sum(case((pending, 1), else_=0)).label("pending"),
+            func.sum(case((matching.c.status == LeadStatus.NOT_LEAD, 1), else_=0)).label("rejected"),
+            func.max(matching.c.discovered_at).label("latest_signal"),
+        ).group_by(matching.c.post_id, matching.c.competitor_id).subquery()
+        post_statement = select(Post, Competitor, *[
+            post_totals.c[name] for name in ("total", "leads", "hot", "pending", "rejected")
+        ]).join(post_totals, post_totals.c.post_id == Post.id).join(
+            Competitor, Competitor.id == post_totals.c.competitor_id,
+        ).order_by(Competitor.normalized_handle, desc(post_totals.c.latest_signal), desc(Post.id))
+        # Prefer ready leads in previews, but retain all comments in the per-post view.
+        priority = case(
+            (Lead.status.in_(CONFIRMED_LEAD_STATUSES), 0),
+            (Lead.status == LeadStatus.NOT_LEAD, 2), else_=1,
+        )
+        comment_order = (priority, desc(func.coalesce(Lead.lead_score, 0)), desc(Comment.discovered_at), desc(Comment.id))
+        async with self.session_factory() as session:
+            summary = (await session.execute(select(
+                func.count(), func.count(func.distinct(post_totals.c.competitor_id)),
+                func.coalesce(func.sum(post_totals.c.total), 0),
+            ).select_from(post_totals))).one()
+            if post_id is not None:
+                pagination = await self._paginate_in_session(
+                    session, statement.order_by(None).order_by(*comment_order), page=page, page_size=50,
+                )
+                post_rows = (await session.execute(post_statement)).all()
+                rows = pagination.rows
+            else:
+                pagination = await self._paginate_in_session(
+                    session, post_statement, page=page, page_size=max(1, min(page_size, 8)),
+                )
+                post_rows = pagination.rows
+                post_ids = [row[0].id for row in post_rows]
+                ranked = select(
+                    matching.c.comment_id,
+                    func.row_number().over(
+                        partition_by=matching.c.post_id,
+                        order_by=(
+                            case((confirmed, 0), (matching.c.status == LeadStatus.NOT_LEAD, 2), else_=1),
+                            desc(func.coalesce(matching.c.lead_score, 0)),
+                            desc(matching.c.discovered_at), desc(matching.c.comment_id),
+                        ),
+                    ).label("position"),
+                ).where(matching.c.post_id.in_(post_ids)).subquery()
+                rows = list((await session.execute(
+                    statement.where(Comment.id.in_(select(ranked.c.comment_id).where(
+                        ranked.c.position <= max(1, min(preview_size, 12)),
+                    ))).order_by(None).order_by(*comment_order)
+                )).all()) if post_ids else []
+            company_ids = {row[1].id for row in post_rows}
+            company_totals = (await session.execute(select(
+                post_totals.c.competitor_id, func.count().label("post_count"),
+                *[func.sum(post_totals.c[name]).label(name) for name in ("total", "leads", "hot", "pending", "rejected")],
+            ).where(post_totals.c.competitor_id.in_(company_ids)).group_by(
+                post_totals.c.competitor_id,
+            ))).all() if company_ids else []
+        totals_by_company = {row.competitor_id: row for row in company_totals}
+        rows_by_post: dict[int, list] = {}
+        for row in rows:
+            rows_by_post.setdefault(row[0].post_id, []).append(row)
+        companies: dict[int, RadarCompanyGroup] = {}
+        for post, competitor, total, leads, hot, pending_count, rejected in post_rows:
+            if competitor.id not in companies:
+                totals = totals_by_company[competitor.id]
+                companies[competitor.id] = RadarCompanyGroup(
+                    competitor, totals.post_count, totals.total, totals.leads,
+                    totals.hot, totals.pending, totals.rejected,
+                )
+            companies[competitor.id].posts.append(RadarPostGroup(
+                post, total, leads, hot, pending_count, rejected, rows_by_post.get(post.id, []),
+            ))
+        return RadarResultsPage(
+            pagination, list(companies.values()), rows, int(summary[0]), int(summary[1]), int(summary[2]),
+        )
 
     def _signals_statement(
         self,

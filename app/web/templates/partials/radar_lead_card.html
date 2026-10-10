@@ -1,0 +1,53 @@
+    {% set ai = lead.analysis_details or {} %}
+    {% set awaiting_analysis = lead.status.value in ['AI_PENDING', 'ANALYZING'] %}
+    {% set heat = 'hot' if lead.lead_score >= settings.hot_lead_threshold else ('warm' if lead.lead_score >= 50 else 'cool') %}
+    <article
+      class="find-lead-card"
+      data-lead-id="{{ lead.id }}"
+      data-lead-score="{{ lead.lead_score }}"
+      data-lead-heat="{{ heat }}"
+      data-lead-intent="{{ lead.intent }}"
+      data-lead-role="{{ ai.get('buyer_role') or 'UNKNOWN' }}"
+      data-lead-product="{{ lead.product_category or '' }}"
+    >
+      <header>
+        <b>@{{ contact.username }}</b>
+        <small>Instagram · @{{ competitor.normalized_handle }} · {{ (comment.created_at_platform or comment.discovered_at) | display_dt }}</small>
+      </header>
+      <p>{{ comment.text or 'Пустой комментарий' }}</p>
+      <div class="find-example-tags">
+        {% if awaiting_analysis %}
+        <span>Ожидает оценки</span>
+        {% else %}
+        {% if lead.lead_score >= settings.hot_lead_threshold %}<span class="hot">HOT</span>{% endif %}
+        {% if ai.get('buyer_role') and ai.get('buyer_role') != 'UNKNOWN' %}<span>{{ ai.get('buyer_role') }}</span>{% endif %}
+        <span>{{ intent_label(lead.intent) }}</span>
+        <span>{{ product_label(lead.product_category) }}</span>
+        {% if ai.get('quantity') %}<span>{{ ai.get('quantity') }}</span>{% endif %}
+        {% if ai.get('location') and ai.get('location') != 'UNKNOWN' %}<span>{{ ai.get('location') }}</span>{% endif %}
+        {% endif %}
+      </div>
+      <div class="find-lead-meta">
+        {% if awaiting_analysis %}
+        <span>Оценка ещё не рассчитана</span>
+        {% else %}
+        <span>Приоритет {{ lead.lead_score }}/100</span>
+        {% if ai.get('confidence') is not none %}<span>Уверенность {% set conf = ai.get('confidence') %}{{ ((conf * 100) if conf <= 1 else conf)|round|int }}%</span>{% endif %}
+        {% endif %}
+        <span>{{ lead_status_label(lead.status) }}</span>
+        {% if ai.get('evidence_ids') %}<span>Подтверждений: {{ ai.get('evidence_ids')|length }}</span>{% endif %}
+      </div>
+      {% if awaiting_analysis %}<p class="muted">{{ lead.ai_reason }}</p>{% endif %}
+      <div class="find-lead-actions">
+        {% if lead.status.value in ['WON', 'LOST'] %}
+        <a class="btn tiny primary" href="/leads/{{ lead.id }}">Открыть карточку</a>
+        {% elif lead.lead_score >= settings.hot_lead_threshold %}
+        <a class="btn tiny primary" href="/hot?vertical={{ rv }}&lead_id={{ lead.id }}">Написать</a>
+        <a class="btn tiny ghost" href="/leads/{{ lead.id }}">Карточка</a>
+        {% else %}
+        <a class="btn tiny primary" href="/leads/{{ lead.id }}">Открыть лида</a>
+        <button type="button" class="btn tiny" data-lead-take="{{ lead.id }}">Взять в работу</button>
+        {% endif %}
+        <button type="button" class="btn tiny ghost" data-lead-explain="{{ lead.id }}">Почему это лид?</button>
+      </div>
+    </article>

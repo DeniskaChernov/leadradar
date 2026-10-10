@@ -27,6 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def test_find_leads_pass2_markup_and_cache():
     radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    radar += (PROJECT_ROOT / "app/web/templates/partials/radar_lead_card.html").read_text(encoding="utf-8")
     base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
     js = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
     css = (PROJECT_ROOT / "app/web/static/app.css").read_text(encoding="utf-8")

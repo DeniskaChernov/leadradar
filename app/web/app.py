@@ -550,12 +550,17 @@ def build_web_app(
         kind: str = "",
         vertical: str = "",
         page: int = 1,
+        post: int | None = None,
     ):
         selected_vertical = resolve_business_vertical(request, explicit=vertical)
-        result = await queries.signals_page(
-            q=q, competitor=competitor, kind=kind, vertical=selected_vertical, page=page
+        grouped = await queries.radar_posts_page(
+            q=q, competitor=competitor, kind=kind, vertical=selected_vertical, page=page, post_id=post,
         )
-        rows = result.rows
+        result_params = {"vertical": selected_vertical, "q": q, "competitor": competitor, "kind": kind}
+        for company in grouped.companies:
+            company.source_url = "/radar?" + urlencode({**result_params, "competitor": company.competitor.normalized_handle}) + "#radar-post-results"
+            for publication in company.posts:
+                publication.comments_url = "/radar?" + urlencode({**result_params, "post": publication.post.id}) + "#radar-post-results"
         competitors = await queries.competitors(vertical=selected_vertical)
         overview = await queries.signal_overview(vertical=selected_vertical)
         scan_budget = await _scan_preview_payload(vertical=selected_vertical)
@@ -566,7 +571,16 @@ def build_web_app(
             name="radar.html",
             context=base_context(
                 request,
-                rows=rows,
+                rows=grouped.rows,
+                radar_groups=grouped,
+                post_filter=post,
+                radar_all_posts_url="/radar?" + urlencode(result_params) + "#radar-post-results",
+                radar_kind_urls={value: "/radar?" + urlencode({
+                    **result_params, "kind": value, **({"post": post} if post is not None else {}),
+                }) + "#radar-post-results" for value in ("", "hot", "warm", "pending")},
+                post_urls={publication.post.id: publication.public_url for company in grouped.companies for publication in company.posts},
+                pagination_label="Страницы комментариев публикации" if post is not None else "Страницы публикаций",
+                pagination_unit="комментарии" if post is not None else "публикации",
                 q=q,
                 competitor_filter=competitor,
                 kind_filter=kind,
@@ -576,7 +590,7 @@ def build_web_app(
                 last_run=recent_runs[0] if recent_runs else None,
                 radar_feed=radar_feed,
                 radar_vertical=selected_vertical,
-                **page_context(request, result),
+                **page_context(request, grouped.pagination, anchor="radar-post-results"),
             ),
         )
 
