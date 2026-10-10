@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from app.db.session import create_engine
 from app.services.database_runtime_lock import sqlite_database_path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_ALEMBIC_CHECK_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +59,13 @@ def alembic_config() -> Config:
     config = Config(str(PROJECT_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(PROJECT_ROOT / "alembic"))
     return config
+
+
+def _check_migration_drift() -> None:
+    # Alembic's module-level context cannot serve two command checks at once.
+    # This lock runs in a worker thread and never blocks the HTTP event loop.
+    with _ALEMBIC_CHECK_LOCK:
+        command.check(alembic_config())
 
 
 def backup_present(settings: Settings) -> bool:
@@ -116,7 +125,7 @@ async def _inspect_with_engine(settings: Settings, engine: AsyncEngine) -> Offli
     migration_drift_free = False
     if database_healthy and migration_at_head:
         try:
-            await asyncio.to_thread(command.check, alembic_config())
+            await asyncio.to_thread(_check_migration_drift)
             migration_drift_free = True
         except Exception as exc:
             migration_error = f"{type(exc).__name__}: {exc}"

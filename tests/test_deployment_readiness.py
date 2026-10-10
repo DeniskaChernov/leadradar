@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
+import time
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.config import Settings
+from app.services import deployment_readiness_service
 from app.services.deployment_readiness_service import inspect_offline_readiness
 from app.services.lead_workflow_service import LeadWorkflowService
 from app.services.monitor_controller import MonitorController
@@ -50,3 +55,55 @@ def test_platform_port_env_overrides_web_port(monkeypatch):
     monkeypatch.setenv("PORT", "9876")
     settings = Settings(_env_file=None)
     assert settings.web_port == 9876
+
+
+@pytest.mark.asyncio
+async def test_concurrent_readiness_checks_do_not_overlap_alembic_context(
+    migrated_database, monkeypatch,
+):
+    original_check = deployment_readiness_service.command.check
+    entered = threading.Lock()
+    calls = 0
+
+    def guarded_check(config):
+        nonlocal calls
+        if not entered.acquire(blocking=False):
+            raise RuntimeError("Alembic's module context is already in use")
+        try:
+            calls += 1
+            time.sleep(0.05)
+            return original_check(config)
+        finally:
+            entered.release()
+
+    monkeypatch.setattr(deployment_readiness_service.command, "check", guarded_check)
+    settings = Settings(_env_file=None)
+    results = await asyncio.gather(*(inspect_offline_readiness(settings) for _ in range(3)))
+    assert calls == 3
+    assert all(result.ready and result.offline_blocks == () for result in results)
+
+
+@pytest.mark.asyncio
+async def test_failed_migration_check_is_reported_and_next_check_can_run(
+    migrated_database, monkeypatch,
+):
+    original_check = deployment_readiness_service.command.check
+    calls = 0
+
+    def fail_once(config):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("Schema drift detected")
+        return original_check(config)
+
+    monkeypatch.setattr(deployment_readiness_service.command, "check", fail_once)
+    settings = Settings(_env_file=None)
+    failed = await inspect_offline_readiness(settings)
+    assert not failed.ready
+    assert failed.database_healthy and failed.migration_at_head
+    assert "Schema drift detected" in failed.migration_error
+    assert failed.offline_blocks
+    recovered = await inspect_offline_readiness(settings)
+    assert recovered.ready
+    assert recovered.offline_blocks == ()

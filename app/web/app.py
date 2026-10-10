@@ -1166,9 +1166,11 @@ def build_web_app(
             ),
         }
         notification_policy_info = notification_modes[settings.notification_policy]
-        production_notifications = notification_readiness.controlled_pilot_ready
+        production_notifications = notification_readiness.delivery_active
         if production_notifications:
             telegram_detail = "Доставка лидов включена"
+            if notification_readiness.total_uncertain:
+                telegram_detail += f"; отправок на сверке: {notification_readiness.total_uncertain}"
         elif not settings.telegram_bot_token:
             telegram_detail = "Не настроен Telegram-бот"
         elif not notification_readiness.worker_active:

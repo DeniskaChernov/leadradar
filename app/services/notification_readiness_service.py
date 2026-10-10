@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import (
@@ -13,8 +13,10 @@ from app.db.models import (
     NotificationLog,
     NotificationPolicy,
     NotificationStatus,
+    SignificantChangeNotification,
 )
 from app.services.lead_workflow_service import LeadWorkflowService
+from app.services.notification_eligibility import policy_decision
 from app.services.signal_recency import is_signal_within_window, signal_observed_at
 
 
@@ -49,16 +51,20 @@ class NotificationReadinessReport:
     failed: int
     uncertain: int
     previews: tuple[NotificationPreview, ...]
+    total_uncertain: int = 0
 
     @property
-    def controlled_pilot_ready(self) -> bool:
+    def delivery_active(self) -> bool:
         return (
             self.token_configured
             and self.delivery_allowed_by_config
             and self.worker_active
             and self.admin_target_count > 0
-            and self.uncertain == 0
         )
+
+    @property
+    def controlled_pilot_ready(self) -> bool:
+        return self.delivery_active and self.uncertain == 0 and self.total_uncertain == 0
 
 
 class NotificationReadinessService:
@@ -89,6 +95,12 @@ class NotificationReadinessService:
 
     async def preview(self, *, limit: int = 10) -> NotificationReadinessReport:
         async with self.session_factory() as session:
+            total_uncertain = sum([
+                int(await session.scalar(select(func.count(model.id)).where(
+                    model.status == NotificationStatus.UNCERTAIN
+                )) or 0)
+                for model in (NotificationLog, SignificantChangeNotification)
+            ])
             rows = (
                 await session.execute(
                     select(
@@ -122,14 +134,18 @@ class NotificationReadinessService:
         for row in rows:
             card = await self.workflow.get_lead_card(int(row.id))
             policy = row.notification_policy or self.default_policy
-            target_count = 1 if row.assigned_manager_telegram_id else len(self.manager_chat_ids)
+            targets = (
+                [int(row.assigned_manager_telegram_id)]
+                if row.assigned_manager_telegram_id else self.manager_chat_ids
+            )
+            target_count = len(targets)
             decision, reason = self._decision(
                 card.status,
                 card.score,
                 bool(row.is_baseline),
                 policy,
                 target_count,
-                logs_by_lead.get(card.lead_id, []),
+                [log for log in logs_by_lead.get(card.lead_id, []) if log.chat_id in targets],
                 is_fresh=is_signal_within_window(
                     signal_observed_at(
                         created_at_platform=row.created_at_platform,
@@ -181,6 +197,7 @@ class NotificationReadinessService:
             failed=counts["FAILED"],
             uncertain=counts["UNCERTAIN"],
             previews=tuple(previews),
+            total_uncertain=total_uncertain,
         )
 
     def _decision(
@@ -197,10 +214,6 @@ class NotificationReadinessService:
         log_statuses = {log.status for log in logs}
         if NotificationStatus.UNCERTAIN in log_statuses:
             return "UNCERTAIN", "Сетевой результат неоднозначен — требуется ручная сверка."
-        if NotificationStatus.FAILED in log_statuses:
-            return "FAILED", "Предыдущая доставка завершилась подтверждённой ошибкой."
-        if log_statuses & {NotificationStatus.PENDING, NotificationStatus.PROCESSING}:
-            return "QUEUED", "Outbox уже создан; повторный preview не создаёт новую запись."
         if NotificationStatus.SENT in log_statuses:
             return "SENT", "Сообщение уже подтверждено Telegram и повторно не отправится."
         if is_baseline:
@@ -209,16 +222,11 @@ class NotificationReadinessService:
             return "SUPPRESSED", "Сигнал старше окна свежести; остаётся в архиве."
         if target_count == 0:
             return "BLOCKED", "Не назначен менеджер и не настроен получатель уведомлений."
-        if policy == NotificationPolicy.ALL_NEW_COMMENTS:
-            return "ELIGIBLE", "Новый уникальный сигнал подходит под текущую политику."
-        if status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING}:
-            return "SUPPRESSED", "Ожидается завершение локальной классификации."
-        if policy == NotificationPolicy.COMMERCIAL_ONLY:
-            if status != LeadStatus.NOT_LEAD:
-                return "ELIGIBLE", "Локальная классификация подтвердила коммерческий интерес."
-            return "SUPPRESSED", "Сигнал классифицирован как некоммерческий."
-        if status == LeadStatus.NOT_LEAD:
-            return "SUPPRESSED", "Статус «Не лид» запрещает HOT-уведомление независимо от балла."
-        if score >= self.hot_threshold:
-            return "ELIGIBLE", f"Лид достиг HOT-порога {self.hot_threshold}."
-        return "SUPPRESSED", f"Лид не достиг HOT-порога {self.hot_threshold}."
+        decision, reason = policy_decision(status, score, policy, self.hot_threshold)
+        if decision != "ELIGIBLE":
+            return decision, reason
+        if NotificationStatus.FAILED in log_statuses:
+            return "FAILED", "Предыдущая доставка завершилась подтверждённой ошибкой."
+        if log_statuses & {NotificationStatus.PENDING, NotificationStatus.PROCESSING}:
+            return "QUEUED", "Карточка ожидает отправки; повторный просмотр не создаёт копию."
+        return decision, reason

@@ -19,9 +19,10 @@ from aiogram.exceptions import (
     TelegramUnauthorizedError,
 )
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, literal, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.models import (
     Comment,
@@ -37,6 +38,10 @@ from app.db.models import (
     SignificantChangeNotification,
 )
 from app.services.lead_workflow_service import LeadCard, LeadWorkflowService
+from app.services.notification_eligibility import (
+    ACTIVE_NOTIFICATION_STATUSES,
+    eligible_policy_clause,
+)
 from app.services.quality_report_delivery_service import QualityReportDeliveryService
 from app.services.signal_recency import fresh_signal_clause
 
@@ -128,16 +133,38 @@ class TelegramLeadNotifier:
             return await self._deliver_pending_changes(change_id=change_id)
 
     async def _notify_hot_lead(self, lead_id: int) -> int:
-        return await self._queue_and_deliver(lead_id)
+        return await self._queue_and_deliver(lead_id, hot_only=True)
 
-    async def _queue_and_deliver(self, lead_id: int) -> int:
+    def _eligible_leads(
+        self, *, chat_id: int | ColumnElement[int] | None = None, hot_only: bool = False,
+    ):
+        query = select(Lead.id).join(Comment, Comment.id == Lead.comment_id).join(
+            Competitor, Competitor.id == Lead.competitor_id
+        ).where(
+            Comment.is_baseline.is_(False),
+            fresh_signal_clause(max_age_days=self.signal_max_age_days),
+            eligible_policy_clause(self.notification_policy, self.hot_threshold),
+        )
+        if hot_only:
+            query = query.where(
+                Lead.status.in_(ACTIVE_NOTIFICATION_STATUSES),
+                Lead.lead_score >= self.hot_threshold,
+            )
+        if chat_id is not None:
+            recipient = literal(chat_id) if isinstance(chat_id, int) else chat_id
+            query = query.where(or_(
+                Lead.assigned_manager_telegram_id == recipient,
+                and_(
+                    Lead.assigned_manager_telegram_id.is_(None),
+                    recipient.in_(self.manager_chat_ids),
+                ),
+            ))
+        return query.correlate(NotificationLog)
+
+    async def _queue_and_deliver(self, lead_id: int, *, hot_only: bool = False) -> int:
         async with self.session_factory() as session:
             eligible = await session.scalar(
-                select(Lead.id).join(Comment, Comment.id == Lead.comment_id).where(
-                    Lead.id == lead_id,
-                    Comment.is_baseline.is_(False),
-                    fresh_signal_clause(max_age_days=self.signal_max_age_days),
-                )
+                self._eligible_leads(hot_only=hot_only).where(Lead.id == lead_id)
             )
         if eligible is None:
             return 0
@@ -391,12 +418,8 @@ class TelegramLeadNotifier:
             leads = (
                 await session.execute(
                     select(Lead.id, Lead.assigned_manager_telegram_id)
-                    .join(Comment, Comment.id == Lead.comment_id)
                     .where(
-                        Lead.lead_score >= self.hot_threshold,
-                        Lead.status.in_([LeadStatus.NEW, LeadStatus.TAKEN]),
-                        Comment.is_baseline.is_(False),
-                        fresh_signal_clause(max_age_days=self.signal_max_age_days),
+                        Lead.id.in_(self._eligible_leads(hot_only=True)),
                     )
                 )
             ).all()
@@ -533,13 +556,10 @@ class TelegramLeadNotifier:
             NotificationLog.next_attempt_at <= now,
         )
         async with self.session_factory() as session:
-            query = select(NotificationLog.id).join(
-                Lead, Lead.id == NotificationLog.lead_id
-            ).join(Comment, Comment.id == Lead.comment_id).where(
+            query = select(NotificationLog.id).where(
                 or_(NotificationLog.status == NotificationStatus.PENDING, retry_due),
                 NotificationLog.attempt_count < self.max_attempts,
-                Comment.is_baseline.is_(False),
-                fresh_signal_clause(max_age_days=self.signal_max_age_days),
+                NotificationLog.lead_id.in_(self._eligible_leads(chat_id=NotificationLog.chat_id)),
             )
             if lead_id is not None:
                 query = query.where(NotificationLog.lead_id == lead_id)
@@ -563,6 +583,9 @@ class TelegramLeadNotifier:
                     update(NotificationLog)
                     .where(
                         NotificationLog.id == log_id,
+                        NotificationLog.lead_id.in_(
+                            self._eligible_leads(chat_id=NotificationLog.chat_id)
+                        ),
                         or_(
                             NotificationLog.status == NotificationStatus.PENDING,
                             retry_due,
@@ -592,15 +615,18 @@ class TelegramLeadNotifier:
         if claimed is None:
             return False
         lead_id, chat_id, attempt_count = claimed
-        if not await self._mark_lead_delivery_started(log_id, lease_token):
-            return False
+        delivery_attempted = False
         try:
             card = await self.workflow.get_lead_card(lead_id)
             initial = card.status in {LeadStatus.ANALYZING, LeadStatus.AI_PENDING}
+            text = render_signal_card(card) if initial else render_lead_card(card)
+            keyboard = lead_keyboard(card, web_public_url=self.web_public_url)
+            if not await self._mark_lead_delivery_started(log_id, lease_token):
+                await self._release_lead_claim(log_id, lease_token)
+                return False
+            delivery_attempted = True
             message = await self.bot.send_message(
-                chat_id,
-                render_signal_card(card) if initial else render_lead_card(card),
-                reply_markup=lead_keyboard(card, web_public_url=self.web_public_url),
+                chat_id, text, reply_markup=keyboard,
             )
             persisted = False
             async with self.session_factory() as session:
@@ -621,7 +647,7 @@ class TelegramLeadNotifier:
                     persisted = True
             return persisted
         except Exception as exc:
-            definitive = self._definitely_not_delivered(exc)
+            definitive = not delivery_attempted or self._definitely_not_delivered(exc)
             failed_at = datetime.now(UTC)
             next_attempt = (
                 failed_at
@@ -667,6 +693,9 @@ class TelegramLeadNotifier:
                         NotificationLog.id == log_id,
                         NotificationLog.status == NotificationStatus.PROCESSING,
                         NotificationLog.lease_token == lease_token,
+                        NotificationLog.lead_id.in_(
+                            self._eligible_leads(chat_id=NotificationLog.chat_id)
+                        ),
                     )
                     .values(
                         delivery_started_at=now,
@@ -677,6 +706,24 @@ class TelegramLeadNotifier:
             ).scalar_one_or_none()
             await session.commit()
             return marked is not None
+
+    async def _release_lead_claim(self, log_id: int, lease_token: str) -> None:
+        """Release a claim invalidated before any Telegram action, without spending a retry."""
+        async with self.session_factory() as session:
+            await session.execute(
+                update(NotificationLog).where(
+                    NotificationLog.id == log_id,
+                    NotificationLog.status == NotificationStatus.PROCESSING,
+                    NotificationLog.lease_token == lease_token,
+                    NotificationLog.delivery_started_at.is_(None),
+                ).values(
+                    status=NotificationStatus.PENDING,
+                    attempt_count=NotificationLog.attempt_count - 1,
+                    lease_owner=None, lease_token=None, lease_expires_at=None,
+                    error="Delivery deferred: lead or recipient changed before sending",
+                )
+            )
+            await session.commit()
 
     async def _deliver_pending_changes(self, *, change_id: int | None = None) -> int:
         now = datetime.now(UTC)
@@ -744,8 +791,7 @@ class TelegramLeadNotifier:
         if claimed is None:
             return False
         change_id, chat_id, attempt_count = claimed
-        if not await self._mark_change_delivery_started(log_id, lease_token):
-            return False
+        delivery_attempted = False
         try:
             async with self.session_factory() as session:
                 row = (
@@ -759,10 +805,13 @@ class TelegramLeadNotifier:
                     )
                 ).one()
             change, contact, lead, _comment, post = row
+            text = render_significant_change(change, contact)
+            keyboard = significant_change_keyboard(contact, lead, post)
+            if not await self._mark_change_delivery_started(log_id, lease_token):
+                return False
+            delivery_attempted = True
             message = await self.bot.send_message(
-                chat_id,
-                render_significant_change(change, contact),
-                reply_markup=significant_change_keyboard(contact, lead, post),
+                chat_id, text, reply_markup=keyboard,
             )
             persisted = False
             async with self.session_factory() as session:
@@ -782,7 +831,7 @@ class TelegramLeadNotifier:
                     persisted = True
             return persisted
         except Exception as exc:
-            definitive = self._definitely_not_delivered(exc)
+            definitive = not delivery_attempted or self._definitely_not_delivered(exc)
             failed_at = datetime.now(UTC)
             next_attempt = (
                 failed_at

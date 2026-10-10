@@ -8,7 +8,11 @@ from enum import StrEnum
 from sqlalchemy import text
 
 from app.config import Settings, get_settings
-from app.db.session import create_engine
+from app.db.session import create_engine, create_session_factory
+from app.providers.base import ProviderUsageBlockedError
+from app.providers.budgeted import BudgetedInstagramProvider, ScanBudget
+from app.services.operational_control_service import OperationalControlService
+from app.services.usage_service import ExternalUsageService
 
 
 class CheckStatus(StrEnum):
@@ -93,62 +97,68 @@ async def live_checks(settings: Settings) -> list[CheckResult]:
         except Exception as exc:
             results.append(failed("Telegram live", exc))
 
-    if settings.instagram_live_enabled and settings.scrapecreators_api_key:
-        from app.providers.scrapecreators import ScrapeCreatorsProvider
+    results.extend(await instagram_live_checks(settings))
+    return results
 
-        provider = ScrapeCreatorsProvider(
-            settings.scrapecreators_api_key,
-            base_url=settings.scrapecreators_api_url,
-            timeout_seconds=settings.http_timeout_seconds,
-            max_attempts=1,
-            max_comment_pages=1,
-        )
-        try:
-            profile = await provider.get_profile(settings.competitors[0])
-            results.append(
-                CheckResult("ScrapeCreators live", CheckStatus.OK, f"получен @{profile.username}")
-            )
-        except Exception as exc:
-            results.append(failed("ScrapeCreators live", exc))
-        finally:
-            await provider.aclose()
-    elif settings.scrapecreators_api_key:
-        results.append(
-            CheckResult(
-                "ScrapeCreators live",
-                CheckStatus.SKIP,
-                "Live-запрос заблокирован двойным предохранителем — запрос не отправлен",
-            )
-        )
 
-    if settings.instagram_live_enabled and settings.brightdata_api_key:
-        from app.providers.brightdata import BrightDataProvider
+async def instagram_live_checks(settings: Settings) -> list[CheckResult]:
+    """Explicit diagnostics use the same durable spend guards as manual scans."""
+    names = [name for name, configured in (
+        ("ScrapeCreators live", settings.scrapecreators_api_key),
+        ("Bright Data live", settings.brightdata_api_key),
+    ) if configured]
+    if not names:
+        return []
+    if not settings.instagram_live_enabled:
+        return [CheckResult(name, CheckStatus.SKIP,
+            "Внешние запросы выключены настройками; запрос не отправлен") for name in names]
+    if not settings.competitors:
+        return [CheckResult(name, CheckStatus.SKIP,
+            "Не задан публичный источник для проверки; запрос не отправлен") for name in names]
 
-        provider = BrightDataProvider(
-            settings.brightdata_api_key,
-            api_url=settings.brightdata_api_url,
+    from app.providers.brightdata import BrightDataProvider
+    from app.providers.scrapecreators import ScrapeCreatorsProvider
+
+    builders = {
+        "ScrapeCreators live": lambda: ScrapeCreatorsProvider(
+            settings.scrapecreators_api_key, base_url=settings.scrapecreators_api_url,
+            timeout_seconds=settings.http_timeout_seconds, max_attempts=1, max_comment_pages=1,
+        ),
+        "Bright Data live": lambda: BrightDataProvider(
+            settings.brightdata_api_key, api_url=settings.brightdata_api_url,
             profile_dataset_id=settings.brightdata_profile_dataset_id,
             posts_dataset_id=settings.brightdata_posts_dataset_id,
             reels_dataset_id=settings.brightdata_reels_dataset_id,
             comments_dataset_id=settings.brightdata_comments_dataset_id,
-            timeout_seconds=settings.http_timeout_seconds,
-            max_attempts=1,
-        )
-        try:
-            profile = await provider.get_profile(settings.competitors[0])
-            results.append(CheckResult("Bright Data live", CheckStatus.OK, f"получен @{profile.username}"))
-        except Exception as exc:
-            results.append(failed("Bright Data live", exc))
-        finally:
-            await provider.aclose()
-    elif settings.brightdata_api_key:
-        results.append(
-            CheckResult(
-                "Bright Data live",
-                CheckStatus.SKIP,
-                "Live-запрос заблокирован двойным предохранителем — запрос не отправлен",
-            )
-        )
+            timeout_seconds=settings.http_timeout_seconds, max_attempts=1,
+        ),
+    }
+    engine = create_engine(settings)
+    factory = create_session_factory(engine)
+    usage = ExternalUsageService(factory)
+    ops = OperationalControlService(factory)
+    budget = ScanBudget(min(len(names), settings.instagram_max_units_per_scan))
+    results: list[CheckResult] = []
+    try:
+        for name in names:
+            provider = None
+            try:
+                provider = BudgetedInstagramProvider(
+                    builders[name](), usage, enabled=settings.instagram_live_enabled,
+                    daily_limit=settings.instagram_daily_request_limit, scan_budget=budget,
+                    live_gate=ops.radar_live_armed, live_refresh=ops.radar_live_armed_fresh,
+                )
+                profile = await provider.get_profile(settings.competitors[0])
+                results.append(CheckResult(name, CheckStatus.OK, f"получен @{profile.username}"))
+            except ProviderUsageBlockedError as exc:
+                results.append(CheckResult(name, CheckStatus.SKIP, str(exc)[:200]))
+            except Exception as exc:
+                results.append(failed(name, exc))
+            finally:
+                if provider is not None:
+                    await provider.aclose()
+    finally:
+        await engine.dispose()
     return results
 
 
