@@ -35,6 +35,12 @@ class RadarPostGroup:
         return None
 
     @property
+    def replies_excluded(self) -> bool:
+        # This adapter explicitly uses include_replies=false. Pagination completion
+        # does not assert that reply threads were fetched, even for FULL snapshots.
+        return self.post.last_comment_provider == "scrapecreators"
+
+    @property
     def coverage(self) -> str:
         # FULL describes the saved snapshot, never a promise about current Instagram.
         post = self.post

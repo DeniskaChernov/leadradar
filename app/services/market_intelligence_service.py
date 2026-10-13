@@ -108,6 +108,8 @@ class MarketIntelligenceService:
         *,
         tiers: tuple[str, ...] = ("A", "B"),
         catalog_managed_only: bool = True,
+        handles: tuple[str, ...] | None = None,
+        dry_run: bool = False,
     ) -> dict[str, int | list[str]]:
         """Включить мониторинг источников выбранных tier без live-вызовов.
 
@@ -117,26 +119,42 @@ class MarketIntelligenceService:
         allowed = {tier.upper() for tier in tiers if str(tier).upper() in {"A", "B", "C"}}
         if not allowed:
             raise ValueError("Укажите tier A, B и/или C")
+        selected = None
+        if handles is not None:
+            selected = {normalize_instagram_handle(handle) for handle in handles}
+            if not selected or "" in selected:
+                raise ValueError("Укажите непустой список Instagram-источников")
         async with self.session_factory() as session:
-            query = select(Competitor).where(Competitor.tier.in_(sorted(allowed)))
+            query = select(Competitor).where(
+                Competitor.tier.in_(sorted(allowed)), Competitor.platform == "instagram",
+            )
             if catalog_managed_only:
                 query = query.where(Competitor.catalog_managed.is_(True))
-            rows = list((await session.execute(query)).scalars().all())
+            if selected is not None:
+                query = query.where(Competitor.normalized_handle.in_(selected))
+            rows = list((await session.execute(query.order_by(Competitor.id))).scalars().all())
+            if selected is not None:
+                missing = selected - {row.normalized_handle for row in rows}
+                if missing:
+                    raise ValueError("Источники не зарегистрированы или не подходят: " + ", ".join(sorted(missing)))
             activated: list[str] = []
             already_active = 0
             for competitor in rows:
                 if competitor.active:
                     already_active += 1
                     continue
-                competitor.active = True
+                if not dry_run:
+                    competitor.active = True
                 activated.append(competitor.normalized_handle)
-            await session.commit()
+            if not dry_run:
+                await session.commit()
         return {
             "tiers": sorted(allowed),
             "scanned": len(rows),
             "activated": len(activated),
             "already_active": already_active,
             "handles": activated,
+            "dry_run": dry_run,
         }
 
     async def promote_candidate(

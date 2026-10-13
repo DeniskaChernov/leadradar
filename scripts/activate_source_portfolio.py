@@ -12,13 +12,16 @@ from app.services.market_intelligence_service import MarketIntelligenceService
 DEFAULT_TIERS = ("A", "B")
 
 
-async def _run(*, tiers: tuple[str, ...], catalog_managed_only: bool, sync: bool) -> int:
+async def _run(
+    *, tiers: tuple[str, ...], catalog_managed_only: bool, sync: bool,
+    handles: tuple[str, ...] | None = None, dry_run: bool = False,
+) -> int:
     settings = get_settings()
     engine = create_engine(settings)
     factory = create_session_factory(engine)
     service = MarketIntelligenceService(factory)
     try:
-        if sync:
+        if sync and not dry_run:
             synced = await service.sync_catalog()
             print(
                 "activate_source_portfolio sync:",
@@ -29,6 +32,8 @@ async def _run(*, tiers: tuple[str, ...], catalog_managed_only: bool, sync: bool
         result = await service.activate_portfolio(
             tiers=tiers,
             catalog_managed_only=catalog_managed_only,
+            handles=handles,
+            dry_run=dry_run,
         )
         print(
             "activate_source_portfolio:",
@@ -37,6 +42,7 @@ async def _run(*, tiers: tuple[str, ...], catalog_managed_only: bool, sync: bool
             f"activated={result['activated']}",
             f"already_active={result['already_active']}",
             f"handles={result['handles']}",
+            f"dry_run={result['dry_run']}",
         )
         return 0
     finally:
@@ -62,6 +68,14 @@ def main() -> int:
         action="store_true",
         help="Skip catalog sync before activation",
     )
+    parser.add_argument(
+        "--handles", default=None,
+        help="Activate only these registered Instagram handles (comma separated)",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Preview existing sources without catalog sync or database writes",
+    )
     args = parser.parse_args()
     tiers = tuple(
         part.strip().upper()
@@ -73,6 +87,8 @@ def main() -> int:
             tiers=tiers,
             catalog_managed_only=not args.include_manual,
             sync=not args.no_sync,
+            handles=tuple(args.handles.split(",")) if args.handles is not None else None,
+            dry_run=args.dry_run,
         )
     )
 

@@ -18,7 +18,7 @@ SCRIPT = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 SCRIPT = SCRIPT.rsplit("})();", 1)[0] + """
   window.uiTest = { api, enhanceMotion, applyScanProgress, runScan, reloadSoon, restoreViewState,
     pollRadarFeed, pollScanProgress, notePollingFailure, notePollingSuccess,
-    syncScanButtonsFromPreview, refreshScanBudgetPreview };
+    syncScanButtonsFromPreview, refreshScanBudgetPreview, initialRadarLayout };
 })();
 """
 HTML = """<!doctype html><html><head><meta charset="utf-8"></head><body data-page="/radar" data-scan-vertical="FURNITURE">
@@ -169,6 +169,9 @@ async def test_cloudflare_html_error_is_not_dumped_into_user_message(ui_page):
 async def test_poll_disconnect_and_recovery_are_visible(ui_page):
     page, state, _errors = ui_page
     await page.add_script_tag(content=SCRIPT)
+    # Manual polls coalesce with startup. Set failure state only after that
+    # real initial request settles, so two calls represent two failed requests.
+    await page.evaluate("uiTest.initialRadarLayout")
     await page.evaluate("uiTest.pollRadarFeed()")
     state["feed_status"] = 502
     await page.evaluate("uiTest.pollRadarFeed()")
@@ -184,11 +187,47 @@ async def test_poll_disconnect_and_recovery_are_visible(ui_page):
 async def test_expired_session_has_login_action(ui_page):
     page, state, _errors = ui_page
     await page.add_script_tag(content=SCRIPT)
+    await page.evaluate("uiTest.initialRadarLayout")
     await page.evaluate("uiTest.pollRadarFeed()")
     state["feed_status"] = 401
     await page.evaluate("uiTest.pollRadarFeed()")
     assert "Сессия истекла" in await page.locator("[data-poll-connection-text]").inner_text()
     assert await page.locator("[data-poll-login]").is_visible()
+
+
+async def test_disconnect_after_delayed_initial_poll_recovers(ui_page):
+    page, state, errors = ui_page
+    initial_started = asyncio.Event()
+    release_initial = asyncio.Event()
+    requests = 0
+
+    async def delayed_feed(route):
+        nonlocal requests
+        requests += 1
+        status = state["feed_status"]
+        if requests == 1:
+            initial_started.set()
+            await release_initial.wait()
+        await route.fulfill(
+            status=status, body=json.dumps({"cycle_running": False, "changes": [], "hot_leads": []}),
+            content_type="application/json",
+        )
+
+    await page.route("**/api/radar/feed?*", delayed_feed)
+    await page.add_script_tag(content=SCRIPT)
+    await initial_started.wait()
+    state["feed_status"] = 502
+    await page.evaluate("uiTest.pollRadarFeed()")
+    assert requests == 1  # No overlapping request while startup is pending.
+    release_initial.set()
+    await page.evaluate("uiTest.initialRadarLayout")
+    await page.evaluate("uiTest.pollRadarFeed()")
+    await page.evaluate("uiTest.pollRadarFeed()")
+    assert await page.locator("[data-poll-connection-status]").is_visible()
+    state["feed_status"] = 200
+    await page.evaluate("uiTest.pollRadarFeed()")
+    assert await page.locator("[data-poll-connection-status]").is_hidden()
+    assert errors == []
 
 
 async def test_scan_start_is_locked_and_progress_survives_post_response(ui_page):

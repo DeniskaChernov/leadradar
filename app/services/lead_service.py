@@ -177,7 +177,11 @@ class LeadService:
             if lead is None:
                 raise RuntimeError(f"Lead {lead_id} was not found")
             context = await self._build_context(session, lead.comment_id)
-            local_analysis = RuleBasedLeadAnalyzer().classify(context) if local_only else None
+            local_analysis = (
+                RuleBasedLeadAnalyzer().classify(context)
+                if local_only or RuleBasedLeadAnalyzer.is_price_acknowledgement(context.comment)
+                else None
+            )
             if local_only and local_analysis is None:
                 return self._to_result(lead, created=False)
             contact_id = lead.contact_id
@@ -315,6 +319,8 @@ class LeadService:
                 lead.analysis_details["hot_outreach"] = outreach
             lead.analysis_details["vertical"] = lead.vertical.value
             lead.analysis_details["rules_version"] = self.rules_version
+            if RuleBasedLeadAnalyzer.is_price_acknowledgement(context.comment):
+                lead.analysis_details["qualification_guard"] = "price_acknowledgement:v1"
             if taxonomy:
                 lead.analysis_details["rattan_taxonomy"] = taxonomy
             lead.language = analysis.language
@@ -570,6 +576,30 @@ class LeadService:
     async def retry_pending_lead(self, lead_id: int) -> ProcessedLead | None:
         """Повторный разбор одного AI_PENDING/ANALYZING лида тем же analyzer, что и batch retry."""
         return await self._retry_pending_one(lead_id)
+
+    async def repair_price_acknowledgements(self, *, dry_run: bool = True) -> dict:
+        """Locally repair unassigned NEW acknowledgements; retries skip repaired rows."""
+        async with self.session_factory() as session:
+            rows = (await session.execute(
+                select(Lead.id, Comment.text)
+                .join(Comment, Comment.id == Lead.comment_id)
+                .where(Lead.status == LeadStatus.NEW, Lead.assigned_manager_telegram_id.is_(None))
+                .order_by(Lead.id)
+            )).all()
+        matched = [lead_id for lead_id, text in rows
+                   if RuleBasedLeadAnalyzer.is_price_acknowledgement(text)]
+        repaired = []
+        if not dry_run:
+            for lead_id in matched:
+                # Manager choices made since preview still take precedence.
+                async with self.session_factory() as session:
+                    lead = await session.get(Lead, lead_id)
+                    if lead is None or lead.status != LeadStatus.NEW or lead.assigned_manager_telegram_id is not None:
+                        continue
+                result = await self.analyze_lead(lead_id, local_only=True)
+                if result.status == LeadStatus.NOT_LEAD:
+                    repaired.append(lead_id)
+        return {"dry_run": dry_run, "matched": matched, "repaired": repaired}
 
     async def repair_product_contexts(self, limit: int = 500) -> dict:
         """Correct stored product facts locally, retaining scores and workflow decisions."""

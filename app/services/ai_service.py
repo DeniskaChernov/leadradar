@@ -280,6 +280,14 @@ class RuleBasedLeadAnalyzer:
                 False, 0, Intent.OTHER, None, language, "Пустой комментарий.", context
             )
 
+        if self.is_price_acknowledgement(raw):
+            return self._result(
+                False, 8, Intent.REACTION, self._product(caption), language,
+                "Благодарность за опубликованные цены без нового запроса о покупке.",
+                context, buyer_role=BuyerRole.UNKNOWN,
+                risk_flags=["Упоминание цены без покупательского запроса"],
+            )
+
         if self._is_reaction_only(raw, text):
             return self._result(
                 False,
@@ -809,6 +817,38 @@ class RuleBasedLeadAnalyzer:
     @staticmethod
     def _norm(value: str) -> str:
         return re.sub(r"\s+", " ", value.lower().replace("ё", "е").replace("ı", "i")).strip()
+
+    @staticmethod
+    def is_price_acknowledgement(value: str) -> bool:
+        """Recognize thanks for existing prices, preserving a new question or order."""
+        text = RuleBasedLeadAnalyzer._norm(value)
+        gratitude = re.search(
+            r"\b(?:спасибо|благодар\w*|ra[hx]mat|ра[ҳх]мат|"
+            r"baraka\s+toping|барака\s+топинг)\b", text,
+        )
+        if gratitude is None:
+            return False
+        request = re.search(
+            r"[?？]|\b(?:сколько|почем|какая|какую|можно|хочу|куплю|купить|"
+            r"заказать|нуж\w*|скидк\w*|оптом|адрес\w*|достав\w*|размер\w*|"
+            r"цвет\w*|рассроч\w*|каталог\w*|adres|manzil\w*|манзил\w*|"
+            r"yetkaz\w*|етказ\w*|katalog\w*|qancha|kancha|nech\w*|"
+            r"қанча|канча|неч\w*|bormi|борми|kerak|керак|"
+            r"ayt\w*|айт\w*|yubor\w*|юбор\w*|yozing|езинг|"
+            r"qoldiring|қолдиринг|колдиринг|olmoqchiman)\b|"
+            r"\b\d+\s*(?:шт\w*|dona\w*|дона\w*|ta|та)\b", text,
+        )
+        if request or any(marker in text for marker in RuleBasedLeadAnalyzer._EXPLICIT_PURCHASE_MARKERS):
+            return False
+        return re.search(
+            r"\b(?:спасибо|благодар\w*)\b.{0,40}\bза\s+(?:цен\w*|прайс\w*)\b|"
+            r"\b(?:указали|написали|опубликовали|показали)\b.{0,60}"
+            r"\b(?:цен\w*|прайс\w*)\b|"
+            r"\b(?:цен\w*|прайс\w*)\b.{0,60}"
+            r"\b(?:указали|написали|опубликовали|показали)\b|"
+            r"\b(?:nar[xh]\w*|нар[хҳ]\w*)\b.{0,90}"
+            r"\b(?:yozib|езиб)\b.{0,45}(?:gan|ган)", text,
+        ) is not None
 
     @staticmethod
     def _contains_marker(text: str, marker: str) -> bool:
@@ -1742,7 +1782,7 @@ class HybridLeadAnalyzer:
         self.mode = mode
 
     async def analyze_with_source(self, context: LeadAnalysisContext) -> tuple[LeadAnalysis, str]:
-        if self.mode in {"rules", "hybrid"}:
+        if self.mode in {"rules", "hybrid"} or self.rules.is_price_acknowledgement(context.comment):
             local = self.rules.classify(context)
             if local is not None:
                 return local, "local_rules"
