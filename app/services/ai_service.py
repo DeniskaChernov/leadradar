@@ -32,6 +32,7 @@ from app.services.lead_scoring_v3 import (
     LeadScorerV3,
     parse_observed_at,
 )
+from app.services.product_context_service import product_mentions, resolve_product_context
 from app.services.usage_service import ExternalUsageService
 
 logger = logging.getLogger(__name__)
@@ -935,76 +936,15 @@ class RuleBasedLeadAnalyzer:
 
     @staticmethod
     def _product(text: str) -> str | None:
-        """Map raw text to a product taxonomy category.
-
-        Ordered from most-specific to most-generic so that compound signals
-        (e.g. "ротанговый диван для ресторана") hit the right bucket first.
-        """
+        """Infer a physical family without choosing from a fixed marker priority."""
+        categories = product_mentions(text)
+        if categories:
+            return categories[0] if len(categories) == 1 else "MIXED_FURNITURE"
         lowered = (text or "").lower()
-        mapping = [
-            # Specific compound sets — highest priority
-            (("обеден", "dining", "стол со стул", "комплект стол", "komplekt stol"), "DINING_SET"),
-            # Rattan sub-types — before generic rattan
-            (
-                (
-                    "диван ротанг",
-                    "диваны ротанг",
-                    "диваны из ротанга",
-                    "ротанг диван",
-                    "ротанговый диван",
-                    "плетен диван",
-                    "диван плетен",
-                    "rattan sofa",
-                    "rattan divan",
-                ),
-                "RATTAN_SOFA",
-            ),
-            (
-                (
-                    "кресло ротанг",
-                    "ротанг кресл",
-                    "плетен кресл",
-                    "плетеное кресло",
-                    "плетеные кресла",
-                    "rattan armchair",
-                    "rattan kreslo",
-                ),
-                "RATTAN_ARMCHAIR",
-            ),
-            (
-                (
-                    "гарнитур ротанг",
-                    "ротанг набор",
-                    "комплект ротанг",
-                    "rattan garden set",
-                    "rattan komplekt",
-                ),
-                "RATTAN_GARDEN_SET",
-            ),
-            (
-                (
-                    "барный стул",
-                    "барные стулья",
-                    "bar stool",
-                    "высокий стул",
-                    "баркаунтер",
-                    "bar stol",
-                ),
-                "RATTAN_BAR_STOOL",
-            ),
-            (("качел", "swing", "хорч"), "SWING"),
-            (("пергол", "pergola", "беседк"), "PERGOLA"),
-            # Generic rattan — catch-all for unspecified rattan
-            (("ротанг", "rattan", "плетен"), "RATTAN_FURNITURE"),
-            # Standard categories
-            (("стул", "кресл", "chair"), "CHAIRS"),
-            (("стол", "table"), "TABLE"),
-            (("террас", "садов", "garden", "outdoor", "уличн"), "OUTDOOR_FURNITURE"),
-            (("кафе", "ресторан", "horeca"), "HORECA"),
-        ]
-        for markers, category in mapping:
-            if any(marker in lowered for marker in markers):
-                return category
+        if any(marker in lowered for marker in ("террас", "садов", "garden", "outdoor", "уличн")):
+            return "OUTDOOR_FURNITURE"
+        if any(marker in lowered for marker in ("кафе", "ресторан", "horeca")):
+            return "HORECA"
         return None
 
     @staticmethod
@@ -1087,6 +1027,12 @@ class RuleBasedLeadAnalyzer:
         role_score: int | None = None,
         objection_penalty: int = 0,
     ) -> LeadAnalysis:
+        if context:
+            product_context = resolve_product_context(
+                context.comment, context.post_caption, context.parent_comment,
+            )
+            if product_context.categories:
+                product = product_context.category
         raw = RuleBasedLeadAnalyzer._norm(context.comment) if context else ""
         caption = RuleBasedLeadAnalyzer._norm(context.post_caption) if context else ""
         urgent_markers = (
@@ -1272,7 +1218,7 @@ class RuleBasedLeadAnalyzer:
             source_quality_score=scoring.source_quality_score,
             confidence_score=scoring.confidence_score,
             priority_score=score,
-            quantity=scoring.b2b.quantity,
+            quantity=None if product == "MIXED_FURNITURE" else scoring.b2b.quantity,
             next_best_action=recommended_action,
             short_reason=reason,
         )

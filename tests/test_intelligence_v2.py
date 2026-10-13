@@ -67,6 +67,8 @@ def test_intelligence_v2_golden_dataset_calibration():
             assert analysis.intent.value == case["expected_intent"], (
                 f"Case {case['id']} failed intent: got {analysis.intent.value}, expected {case['expected_intent']}"
             )
+        if "expected_product_category" in case:
+            assert analysis.product_category == case["expected_product_category"], case["id"]
         if "expected_buyer_role" in case:
             assert analysis.buyer_role.value == case["expected_buyer_role"], (
                 f"Case {case['id']} failed role: got {analysis.buyer_role.value}, expected {case['expected_buyer_role']}"

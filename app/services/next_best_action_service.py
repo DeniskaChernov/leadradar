@@ -45,6 +45,12 @@ class NextBestActionEngine:
         catalog_products: Sequence[RankedProduct] = (),
     ) -> ActionRecommendation:
         evidence_list = list(evidence_ids)
+        if product_category == "MIXED_FURNITURE":
+            return cls._result(
+                action_type="CLARIFY_PRODUCTS", title="Уточнить позиции заказа",
+                description="Клиент назвал несколько товаров. Уточнить количество каждой позиции и подготовить отдельный расчёт.",
+                candidate=None, ranked_products=(), urgency="MEDIUM", evidence_ids=evidence_list,
+            )
         selected = catalog_products[0] if catalog_products else None
         product = selected.product if selected is not None else None
 
@@ -107,10 +113,9 @@ class NextBestActionEngine:
                 evidence_ids=evidence_list,
             )
 
-        product_text = f" по категории {product_category}" if product_category else ""
         return cls._result(
             action_type="QUESTION",
-            title=f"Уточнить нужную модель и параметры{product_text}",
+            title="Уточнить нужную модель и параметры",
             description=(
                 "Подходящий подтверждённый товар пока не сопоставлен. "
                 "Уточнить количество, размеры и цвет; наличие проверить перед предложением."

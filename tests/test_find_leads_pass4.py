@@ -7,6 +7,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def test_find_leads_pass4_prefs_filter_and_dashboard():
     radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    grouped_results = (
+        PROJECT_ROOT / "app/web/templates/partials/radar_post_results.html"
+    ).read_text(encoding="utf-8")
     dashboard = (PROJECT_ROOT / "app/web/templates/dashboard.html").read_text(
         encoding="utf-8"
     )
@@ -16,8 +19,9 @@ def test_find_leads_pass4_prefs_filter_and_dashboard():
     js = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
     base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
 
-    assert "data-find-filter-empty" in radar
-    assert "В этой выборке пока нет готовых лидов" in radar
+    assert '{% include "partials/radar_post_results.html" %}' in radar
+    assert "data-find-filter-empty" in grouped_results
+    assert "По этим условиям ничего не найдено" in grouped_results
     assert "cardMatchesFindPrefs" not in js
     assert "FIND_CATEGORY_PRODUCTS" not in js
     assert "FIND_AUDIENCE_INTENTS" not in js

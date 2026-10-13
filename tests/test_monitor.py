@@ -67,6 +67,11 @@ async def test_baseline_then_new_comment_creates_one_hot_lead(session_factory):
 
 async def test_provider_change_rebuilds_baseline_without_leads(session_factory):
     first_provider = MockInstagramProvider()
+    first_provider._post = first_provider._post.model_copy(update={
+        "platform_post_id": "3995171968259599771_2958485721",
+        "url": "https://www.instagram.com/reel/DeH4Ac1tp2T/",
+        "raw_data": {"source": "test"},
+    })
     first_monitor = InstagramMonitor(
         session_factory=session_factory,
         provider=first_provider,
@@ -79,6 +84,7 @@ async def test_provider_change_rebuilds_baseline_without_leads(session_factory):
     await first_monitor.run_cycle()
 
     second_provider = MockInstagramProvider()
+    second_provider._post = first_provider._post.model_copy(deep=True)
     second_provider.name = "scrapecreators+brightdata"
     second = await InstagramMonitor(
         session_factory=session_factory,

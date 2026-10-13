@@ -24,6 +24,11 @@
     <div class="lead-hero-tags">
       {% include "partials/lead_quality_badge.html" %}
       <span class="tag">{{ product_label(lead.product_category) }}</span>
+      {% if lead.product_category == 'MIXED_FURNITURE' %}
+      {% for category in (lead.analysis_details or {}).get('product_context', {}).get('categories', []) %}
+      <span class="tag">{{ product_label(category) }}</span>
+      {% endfor %}
+      {% endif %}
       <span class="tag">@{{ competitor.normalized_handle }}</span>
       <span class="tag status-{{ lead.status.value|lower }}">{{ lead_status_label(lead.status) }}</span>
     </div>

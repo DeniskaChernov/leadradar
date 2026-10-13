@@ -27,6 +27,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def test_find_leads_pass3_markup():
     radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
+    grouped_results = (
+        PROJECT_ROOT / "app/web/templates/partials/radar_post_results.html"
+    ).read_text(encoding="utf-8")
     wizard = (
         PROJECT_ROOT / "app/web/templates/partials/find_leads_wizard.html"
     ).read_text(encoding="utf-8")
@@ -37,8 +40,9 @@ def test_find_leads_pass3_markup():
 
     assert "Тёплые:" in radar or "overview.warm" in radar
     assert 'value="warm"' in radar
-    assert "data-find-result-filters" in radar
-    assert "&kind=warm#find-results" in radar
+    assert '{% include "partials/radar_post_results.html" %}' in radar
+    assert "data-find-result-filters" in grouped_results
+    assert "radar_kind_urls['warm']" in grouped_results
     assert "data-lead-heat" in radar
     assert "Ручной режим" in wizard
     assert "monitor_schedule_enabled" in wizard

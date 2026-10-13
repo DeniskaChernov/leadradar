@@ -188,6 +188,12 @@ async def test_head_and_history_keep_default_five_credit_and_two_page_caps(sessi
     await seed_scrapecreators_instagram_policy(session_factory)
     inner = HistoricalPagesProvider()
     inner.name = "scrapecreators"
+    # Simulate public live metadata, rather than a locally generated demo post.
+    inner._post = inner._post.model_copy(update={
+        "platform_post_id": "3995171968259599771_2958485721",
+        "url": "https://www.instagram.com/reel/DeH4Ac1tp2T/",
+        "raw_data": {"source": "scrapecreators"},
+    })
     budget = ScanBudget(default_limit=5)
     provider = BudgetedInstagramProvider(
         inner, ExternalUsageService(session_factory), enabled=True, daily_limit=100,
@@ -223,6 +229,11 @@ async def test_one_remaining_credit_fetches_head_and_preserves_history_without_e
     await seed_scrapecreators_instagram_policy(session_factory)
     inner = HistoricalPagesProvider()
     inner.name = "scrapecreators"
+    inner._post = inner._post.model_copy(update={
+        "platform_post_id": "3995171968259599771_2958485721",
+        "url": "https://www.instagram.com/reel/DeH4Ac1tp2T/",
+        "raw_data": {"source": "scrapecreators"},
+    })
     monitor = _monitor(session_factory, inner, force_refresh_seconds=3600)
     await monitor.run_cycle()
     budget = ScanBudget(default_limit=5, used=4)

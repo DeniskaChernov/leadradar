@@ -23,6 +23,11 @@
         {% if ai.get('buyer_role') and ai.get('buyer_role') != 'UNKNOWN' %}<span>{{ ai.get('buyer_role') }}</span>{% endif %}
         <span>{{ intent_label(lead.intent) }}</span>
         <span>{{ product_label(lead.product_category) }}</span>
+        {% if lead.product_category == 'MIXED_FURNITURE' %}
+        {% for category in ai.get('product_context', {}).get('categories', []) %}
+        <span>{{ product_label(category) }}</span>
+        {% endfor %}
+        {% endif %}
         {% if ai.get('quantity') %}<span>{{ ai.get('quantity') }}</span>{% endif %}
         {% if ai.get('location') and ai.get('location') != 'UNKNOWN' %}<span>{{ ai.get('location') }}</span>{% endif %}
         {% endif %}

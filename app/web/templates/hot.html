@@ -78,7 +78,7 @@
       <div>
         <span class="eyebrow">ЛИД #{{ selected.lead_id }}</span>
         <h2>@{{ selected.username }} · {{ selected.score }}/100</h2>
-        <p>{{ lead_status_label(selected.status) }} · {{ intent_label(selected.intent) }} · {{ product_label(selected.product_category) }}</p>
+        <p>{{ lead_status_label(selected.status) }} · {{ intent_label(selected.intent) }} · {{ product_label(selected.product_category) }}{% for category in selected.get('product_categories', []) %} · {{ product_label(category) }}{% endfor %}</p>
       </div>
       <div class="hot-detail-links">
         <a class="btn" target="_blank" rel="noopener" href="{{ selected.profile_url }}" data-hot-profile>Профиль Instagram ↗</a>

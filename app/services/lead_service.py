@@ -37,6 +37,7 @@ from app.services.ai_service import (
 )
 from app.services.contact_service import PersistedSignal
 from app.services.place_opening_service import PlaceOpeningService
+from app.services.product_context_service import resolve_product_context
 from app.services.signal_recency import (
     fresh_signal_clause,
     is_signal_within_window,
@@ -284,6 +285,15 @@ class LeadService:
                     )
                 )
             product_category = analysis.product_category
+            product_context = resolve_product_context(
+                context.comment, context.post_caption, context.parent_comment,
+            )
+            if product_context.categories and (
+                product_context.source != "POST_CAPTION"
+                or product_context.category is None
+                or analysis_source == "local_rules"
+            ):
+                product_category = product_context.category
             if taxonomy.get("layer") == "RAW_MATERIAL" and taxonomy_products:
                 product_category = str(taxonomy_products[0])
             previous_score = lead.lead_score
@@ -293,6 +303,14 @@ class LeadService:
             lead.ai_reason = analysis.reason
             outreach = (lead.analysis_details or {}).get("hot_outreach")
             lead.analysis_details = analysis.model_dump(mode="json")
+            lead.analysis_details["product_category"] = product_category
+            if (
+                product_context.categories and product_category == product_context.category
+                and taxonomy.get("layer") != "RAW_MATERIAL"
+            ):
+                lead.analysis_details["product_context"] = product_context.as_dict()
+            if product_category == "MIXED_FURNITURE":
+                lead.analysis_details["quantity"] = None
             if outreach is not None:
                 lead.analysis_details["hot_outreach"] = outreach
             lead.analysis_details["vertical"] = lead.vertical.value
@@ -552,6 +570,86 @@ class LeadService:
     async def retry_pending_lead(self, lead_id: int) -> ProcessedLead | None:
         """Повторный разбор одного AI_PENDING/ANALYZING лида тем же analyzer, что и batch retry."""
         return await self._retry_pending_one(lead_id)
+
+    async def repair_product_contexts(self, limit: int = 500) -> dict:
+        """Correct stored product facts locally, retaining scores and workflow decisions."""
+        async with self.session_factory() as session:
+            ids = list(await session.scalars(select(Lead.id).where(
+                Lead.vertical == "FURNITURE",
+                Lead.status.notin_([LeadStatus.AI_PENDING, LeadStatus.ANALYZING]),
+            ).order_by(Lead.id).limit(max(0, min(limit, 5000)))))
+        updated, contacts = [], set()
+        for lead_id in ids:
+            async with self.session_factory() as session:
+                await session.execute(update(Lead).where(Lead.id == lead_id).values(
+                    updated_at=Lead.updated_at,
+                ))
+                lead = await session.get(Lead, lead_id)
+                if lead is None:
+                    continue
+                details = dict(lead.analysis_details or {})
+                if (details.get("rattan_taxonomy") or {}).get("layer") == "RAW_MATERIAL":
+                    continue
+                context = await self._build_context(session, lead.comment_id)
+                product = resolve_product_context(
+                    context.comment, context.post_caption, context.parent_comment,
+                )
+                if not product.categories or (
+                    product.source == "POST_CAPTION" and product.category is not None
+                ):
+                    continue
+                changed = (
+                    lead.product_category != product.category
+                    or (product.category == "MIXED_FURNITURE" and (
+                        details.get("quantity") is not None
+                        or details.get("product_context") != product.as_dict()
+                    ))
+                )
+                if changed:
+                    before = lead.product_category
+                    lead.product_category = product.category
+                    details["product_category"] = product.category
+                    details["product_context"] = product.as_dict()
+                    if product.category == "MIXED_FURNITURE":
+                        details["quantity"] = None
+                    evidence = [item for item in details.get("evidence", [])
+                                if not str(item).startswith("Товарный контекст:")]
+                    if product.category:
+                        evidence.append("Товарный контекст: " + ", ".join(product.categories))
+                    details["evidence"] = evidence[:6]
+                    details["product_context_audience_pending"] = self.audience_engine is not None
+                    lead.analysis_details = details
+                    await ContactEventRepository(session).add(
+                        lead.contact_id, ContactEventType.QUALIFICATION_UPDATED, lead_id=lead.id,
+                        payload={"reason": "Уточнён товар по публичному комментарию и его контексту.",
+                                 "product_category_before": before,
+                                 "product_category": product.category,
+                                 "product_context": product.as_dict()},
+                    )
+                    updated.append(lead.id)
+                if details.get("product_context_audience_pending"):
+                    contacts.add(lead.contact_id)
+                await session.commit()
+        recalculated, pending = [], []
+        if self.audience_engine is not None:
+            for contact_id in sorted(contacts):
+                try:
+                    await self.audience_engine.recalculate_contact(contact_id)
+                    async with self.session_factory() as session:
+                        await session.execute(update(Lead).where(Lead.contact_id == contact_id).values(
+                            updated_at=Lead.updated_at,
+                        ))
+                        for lead in await session.scalars(select(Lead).where(Lead.contact_id == contact_id)):
+                            details = dict(lead.analysis_details or {})
+                            if details.get("product_context_audience_pending"):
+                                details["product_context_audience_pending"] = False
+                                lead.analysis_details = details
+                        await session.commit()
+                    recalculated.append(contact_id)
+                except Exception:
+                    logger.exception("product_context_audience_repair_failed contact_id=%s", contact_id)
+                    pending.append(contact_id)
+        return {"updated": updated, "contacts_recalculated": recalculated, "pending_contacts": pending}
 
     async def retry_pending_local(self, limit: int = 100) -> list[ProcessedLead]:
         """Recover only locally decidable pending signals without invoking any paid analyzer."""

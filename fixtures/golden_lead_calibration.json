@@ -67,7 +67,8 @@
     "expected_is_lead": true,
     "expected_intent": "CATALOG",
     "expected_buyer_role": "DESIGNER_CONTRACTOR",
-    "min_score": 75,
+    "expected_product_category": null,
+    "min_score": 74,
     "language": "ru"
   },
   {

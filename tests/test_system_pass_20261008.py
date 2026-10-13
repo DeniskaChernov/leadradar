@@ -144,8 +144,11 @@ async def test_pagination_links_preserve_active_filters(session_factory, path):
     # The source constraint is meaningful: use the actual fixture's handle.
     if path.startswith("/radar"):
         queries = WebQueryService(session_factory, 70)
-        handle = (await queries.leads(limit=1))[0][3].normalized_handle
+        row = (await queries.leads(limit=1))[0]
+        handle = row[3].normalized_handle
         path = path.replace("competitor=competitor", "competitor=" + handle)
+        # The grouped overview has one publication; its full comments view is paginated.
+        path += "&post=" + str(row[2].post_id)
     async with AsyncClient(transport=ASGITransport(app=_app(session_factory)), base_url="http://test") as client:
         response = await client.get(path)
         assert response.status_code == 200

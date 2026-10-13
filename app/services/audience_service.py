@@ -557,8 +557,19 @@ class AudienceEngine:
             vertical = getattr(signal.vertical, "value", signal.vertical) or "FURNITURE"
             observations = [("INTENT", str(lead.intent), details.get("intent_score"))]
             if lead.product_category:
-                observations.append(
-                    ("PRODUCT", str(lead.product_category), details.get("specificity_score"))
+                context = details.get("product_context")
+                context = context if isinstance(context, dict) else {}
+                products = (
+                    context.get("categories", [])
+                    if lead.product_category == "MIXED_FURNITURE"
+                    and context.get("source") == "COMMENT"
+                    else [lead.product_category]
+                )
+                products = products if isinstance(products, (list, tuple)) else []
+                products = dict.fromkeys(item for item in products if isinstance(item, str) and item)
+                observations.extend(
+                    ("PRODUCT", topic, details.get("specificity_score"))
+                    for topic in products
                 )
             observed_at = self._aware(comment.discovered_at)
             for dimension, topic, component_score in observations:

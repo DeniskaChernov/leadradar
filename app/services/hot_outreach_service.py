@@ -302,12 +302,19 @@ class HotOutreachService:
             and lead.status in OPEN_HOT_STATUSES
             and not (draft and draft.sent_at)
         )
+        product_context = (lead.analysis_details or {}).get("product_context")
+        product_context = product_context if isinstance(product_context, dict) else {}
+        product_categories = product_context.get("categories", [])
+        product_categories = product_categories if isinstance(product_categories, list) else []
         return {
             "lead_id": lead.id,
             "status": lead.status.value,
             "score": lead.lead_score,
             "intent": lead.intent,
             "product_category": lead.product_category,
+            "product_categories": list(dict.fromkeys(
+                item for item in product_categories if isinstance(item, str) and item
+            )) if lead.product_category == "MIXED_FURNITURE" else [],
             "ai_reason": lead.ai_reason,
             "language": lead.language,
             "vertical": lead.vertical.value,
@@ -422,6 +429,7 @@ class HotOutreachService:
             "language": detail["language"],
             "intent": detail["intent"],
             "product_category": detail["product_category"],
+            "product_categories": detail["product_categories"],
             "ai_reason": detail["ai_reason"],
             "score": detail["score"],
             "recommendation_title": detail["recommendation"]["title"],

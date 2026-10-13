@@ -22,6 +22,7 @@ ALLOWED_PRODUCT_CATEGORIES = {
     "CHAIR",
     "ARMCHAIR",
     "SOFA",
+    "BED",
     "TABLE",
     "SET",
     "RAW_RATTAN",
@@ -38,6 +39,7 @@ CATEGORY_ALIASES = {
     "RATTAN_TABLE": "TABLE",
     "DINING_SET": "SET",
     "RATTAN_SET": "SET",
+    "RATTAN_GARDEN_SET": "SET",
     "RAW_RATTAN": "RAW_RATTAN",
 }
 CATALOG_IMPORT_COLUMNS = {

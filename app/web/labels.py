@@ -41,6 +41,12 @@ INTENT_LABELS = {
 }
 
 PRODUCT_LABELS = {
+    "SOFA": "Диван",
+    "BED": "Кровать",
+    "ARMCHAIR": "Кресло",
+    "RATTAN_CHAIR": "Стул плетёный",
+    "RATTAN_TABLE": "Стол плетёный",
+    "MIXED_FURNITURE": "Несколько товаров",
     "DINING_SET": "Обеденный комплект",
     "RATTAN_SOFA": "Диван плетёный",
     "RATTAN_ARMCHAIR": "Кресло плетёное",

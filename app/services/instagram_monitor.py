@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.models import Comment, Competitor, CoverageStatus, Post, PostDiscoveryState
 from app.db.repositories import CompetitorRepository, PostRepository
 from app.providers.base import InstagramProvider, ProviderError, ProviderUsageBlockedError
+from app.providers.publication_origin import is_fixture_publication, uses_live_provider
 from app.schemas.instagram import InstagramPost, PostFetchResult
 from app.services.adaptive_monitoring_service import (
     AdaptiveMonitoringService,
@@ -49,6 +50,7 @@ class CycleStats:
     fresh_backfilled: int = 0
     post_pages_fetched: int = 0
     saved_posts_resumed: int = 0
+    fixture_posts_skipped: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,21 +209,26 @@ class InstagramMonitor:
         required_by_handle: dict[str, int] = {}
         processed_by_handle: dict[str, int] = {}
 
-        def add_candidate(plan: CompetitorScanPlan, reel: InstagramPost, check: PostCheck) -> None:
+        def add_candidate(plan: CompetitorScanPlan, reel: InstagramPost, check: PostCheck) -> bool:
+            if uses_live_provider(self.provider.name) and is_fixture_publication(reel):
+                stats.fixture_posts_skipped += 1
+                stats.avoided_requests += 1
+                return False
             if not check.should_fetch_comments:
                 if check.skip_reason == "ZERO_COMMENTS":
                     stats.zero_comment_posts_skipped += 1
                 elif check.skip_reason == "UNCHANGED":
                     stats.posts_skipped_unchanged += 1
                 stats.avoided_requests += 1
-                return
+                return False
             if any(item.check.post_id == check.post_id for item in candidates):
-                return
+                return False
             required_by_handle[plan.handle] = required_by_handle.get(plan.handle, 0) + 1
             candidates.append(CommentRefreshCandidate(
                 reel=reel, check=check, competitor=plan,
                 priority_score=self._post_priority(plan, check),
             ))
+            return True
 
         # Фаза A: сначала распределяем discovery coverage между источниками.
         for index, plan in enumerate(plans):
@@ -318,8 +325,8 @@ class InstagramMonitor:
                     if any(item.reel.platform_post_id == reel.platform_post_id for item in candidates):
                         continue
                     check = await self._prepare_post(reel)
-                    add_candidate(plan, reel, check)
-                    stats.saved_posts_resumed += 1
+                    if add_candidate(plan, reel, check):
+                        stats.saved_posts_resumed += 1
             # At most one historical publication page per manual cycle; leave
             # two credits for comments when the shared scan cap is present.
             budget = self.provider.scan_budget_status()

@@ -10,6 +10,12 @@ from app.providers.base import (
     ProviderResponseError,
     ProviderUsageBlockedError,
 )
+from app.providers.publication_origin import (
+    FixturePublicationError,
+    is_fixture_publication,
+    is_fixture_url,
+    uses_live_provider,
+)
 from app.schemas.instagram import (
     CommentFetchResult,
     InstagramComment,
@@ -277,6 +283,8 @@ class BudgetedInstagramProvider(InstagramProvider):
         )
 
     async def get_post(self, url: str, competitor: str) -> InstagramPost:
+        if uses_live_provider(self.name) and is_fixture_url(url):
+            raise FixturePublicationError("Тестовая публикация не допускается к платному запросу")
         return await self._call(
             "get_post",
             lambda: self.inner.get_post(url, competitor),
@@ -295,6 +303,8 @@ class BudgetedInstagramProvider(InstagramProvider):
         cursor: str | None = None,
     ) -> CommentFetchResult:
         """Комменты по одной странице: scan/daily учитывают PROVIDER_CONFIRMED credits, не «страницы»."""
+        if uses_live_provider(self.name) and is_fixture_publication(post):
+            raise FixturePublicationError("Тестовая публикация не допускается к платному запросу")
         await self._ensure_enabled()
         page_cap = max(1, int(max_pages)) if max_pages is not None else None
         source_account = post.competitor.strip().lower().lstrip("@")
