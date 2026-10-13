@@ -47,6 +47,7 @@ from app.db.models import (
     TaskStatus,
     Vertical,
 )
+from app.services.assortment_policy import assortment_eligible_clause
 from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.audience_quality_service import AudienceQualityService
 from app.services.economics_page_service import EconomicsPageService
@@ -555,6 +556,7 @@ class WebQueryService:
                 await session.scalar(
                     select(func.count(Lead.id)).where(
                         Lead.lead_score >= self.hot_threshold,
+                        assortment_eligible_clause(Lead),
                         Lead.status.not_in([LeadStatus.NOT_LEAD, LeadStatus.LOST]),
                     )
                 )
@@ -627,6 +629,7 @@ class WebQueryService:
                     .join(Competitor, Competitor.id == Lead.competitor_id)
                     .where(
                         Lead.lead_score >= self.hot_threshold,
+                        assortment_eligible_clause(Lead),
                         Lead.status.in_(OPEN_LEAD_STATUSES),
                     )
                     .order_by(desc(Lead.lead_score), desc(Lead.created_at))
@@ -705,6 +708,7 @@ class WebQueryService:
                 await session.scalar(
                     select(func.count(Lead.id)).where(
                         Lead.lead_score >= self.hot_threshold,
+                        assortment_eligible_clause(Lead),
                         Lead.status.in_(OPEN_LEAD_STATUSES),
                         *lead_filters,
                     )
@@ -786,6 +790,7 @@ class WebQueryService:
                 .join(Competitor, Competitor.id == Lead.competitor_id)
                 .where(
                     Lead.lead_score >= self.hot_threshold,
+                    assortment_eligible_clause(Lead),
                     Lead.status.in_(OPEN_LEAD_STATUSES),
                 )
                 .order_by(desc(Lead.lead_score), desc(Lead.created_at))
@@ -885,6 +890,7 @@ class WebQueryService:
             Comment.id.label("comment_id"), Comment.post_id.label("post_id"),
             Comment.competitor_id.label("competitor_id"), Comment.discovered_at,
             Lead.id.label("lead_id"), Lead.status, Lead.lead_score,
+            assortment_eligible_clause(Lead).label("assortment_eligible"),
         ).subquery()
         confirmed = matching.c.status.in_(CONFIRMED_LEAD_STATUSES)
         pending = or_(
@@ -895,7 +901,7 @@ class WebQueryService:
             matching.c.post_id, matching.c.competitor_id,
             func.count().label("total"),
             func.sum(case((confirmed, 1), else_=0)).label("leads"),
-            func.sum(case((and_(confirmed, matching.c.lead_score >= self.hot_threshold), 1), else_=0)).label("hot"),
+            func.sum(case((and_(confirmed, matching.c.assortment_eligible, matching.c.lead_score >= self.hot_threshold), 1), else_=0)).label("hot"),
             func.sum(case((pending, 1), else_=0)).label("pending"),
             func.sum(case((matching.c.status == LeadStatus.NOT_LEAD, 1), else_=0)).label("rejected"),
             func.max(matching.c.discovered_at).label("latest_signal"),
@@ -1013,7 +1019,7 @@ class WebQueryService:
         elif normalized_kind in {"history", "archive", "baseline"}:
             stmt = stmt.where(Comment.is_baseline.is_(True))
         elif normalized_kind == "hot":
-            stmt = stmt.where(Lead.lead_score >= self.hot_threshold)
+            stmt = stmt.where(Lead.lead_score >= self.hot_threshold, assortment_eligible_clause(Lead))
         elif normalized_kind == "warm":
             stmt = stmt.where(
                 Lead.lead_score >= 50,
@@ -1081,6 +1087,7 @@ class WebQueryService:
         if normalized_quality == "hot":
             stmt = stmt.where(
                 Lead.lead_score >= self.hot_threshold,
+                assortment_eligible_clause(Lead),
                 Lead.status.notin_([LeadStatus.NOT_LEAD, LeadStatus.LOST]),
             )
         elif normalized_quality == "not_lead":
@@ -2537,7 +2544,7 @@ class WebQueryService:
             result[int(competitor_id)]["comments"] = int(count)
 
         commercial_case = case(
-            (and_(Lead.status != LeadStatus.NOT_LEAD, Lead.lead_score >= 50), 1),
+            (and_(Lead.status != LeadStatus.NOT_LEAD, assortment_eligible_clause(Lead), Lead.lead_score >= 50), 1),
             else_=0,
         )
         hot_case = case(
@@ -2545,6 +2552,7 @@ class WebQueryService:
                 and_(
                     Lead.status != LeadStatus.NOT_LEAD,
                     Lead.lead_score >= self.hot_threshold,
+                    assortment_eligible_clause(Lead),
                 ),
                 1,
             ),
@@ -2552,7 +2560,7 @@ class WebQueryService:
         )
         unique_buyer_case = case(
             (
-                and_(Lead.status != LeadStatus.NOT_LEAD, Lead.lead_score >= 50),
+                and_(Lead.status != LeadStatus.NOT_LEAD, assortment_eligible_clause(Lead), Lead.lead_score >= 50),
                 Lead.contact_id,
             ),
         )
@@ -2798,6 +2806,12 @@ class WebQueryService:
     async def analytics(self, days: int = 30) -> dict:
         started_at = datetime.now(UTC) - timedelta(days=days)
         async with self.session_factory() as session:
+            assortment_status = Lead.analysis_details["assortment"]["status"].as_string()
+            assortment_counts = dict((await session.execute(
+                select(assortment_status, func.count(Lead.id))
+                .where(Lead.created_at >= started_at)
+                .group_by(assortment_status)
+            )).all())
             funnel_rows = (
                 await session.execute(
                     select(Lead.status, func.count(Lead.id))
@@ -2820,6 +2834,7 @@ class WebQueryService:
                         Lead.product_category.is_not(None),
                         Lead.status != LeadStatus.NOT_LEAD,
                         Lead.created_at >= started_at,
+                        or_(assortment_status.is_(None), assortment_status.notin_(["EXCLUDED", "REVIEW"])),
                     )
                     .group_by(Lead.product_category)
                     .order_by(desc(func.count(Lead.id)))
@@ -2857,6 +2872,8 @@ class WebQueryService:
             "funnel": {getattr(key, "value", str(key)): value for key, value in funnel_rows},
             "intents": intent_rows,
             "products": product_rows,
+            "assortment_excluded": assortment_counts.get("EXCLUDED", 0),
+            "assortment_review": assortment_counts.get("REVIEW", 0),
             "lost_reasons": lost_rows,
             "feedback_total": feedback_total,
             "feedback_sales": feedback_sales,

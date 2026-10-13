@@ -41,6 +41,17 @@ INTENT_LABELS = {
 }
 
 PRODUCT_LABELS = {
+    "DRESSER": "Комод (вне ассортимента)",
+    "COMPUTER_DESK": "Компьютерный / письменный стол (вне ассортимента)",
+    "OFFICE_CHAIR": "Офисное кресло (вне ассортимента)",
+    "PLASTIC_CHAIRS": "Пластиковые стулья",
+    "DINING_CHAIRS": "Обеденные стулья",
+    "WICKER_CHAIR": "Плетёный стул",
+    "PLASTIC_CHAIR": "Пластиковый стул",
+    "WICKER_ARMCHAIR": "Плетёное кресло",
+    "WICKER_TABLE": "Плетёный стол",
+    "CHAIR": "Обеденный стул",
+    "SET": "Обеденный / плетёный комплект",
     "SOFA": "Диван",
     "BED": "Кровать",
     "ARMCHAIR": "Кресло",
@@ -55,7 +66,7 @@ PRODUCT_LABELS = {
     "SWING": "Качели",
     "PERGOLA": "Пергола / беседка",
     "RATTAN_FURNITURE": "Плетёная мебель (ротанг)",
-    "CHAIRS": "Стулья / кресла",
+    "CHAIRS": "Стулья",
     "TABLE": "Стол",
     "OUTDOOR_FURNITURE": "Мебель для сада / террасы",
     "HORECA": "Мебель HoReCa",

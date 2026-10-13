@@ -29,6 +29,7 @@ from app.db.models import (
     PublicSignal,
     Vertical,
 )
+from app.services.assortment_policy import assortment_eligible
 from app.services.audience_registry import (
     AUDIENCE_DEFINITIONS,
 )
@@ -804,7 +805,7 @@ class AudienceEngine:
             commercial = [
                 (lead, comment)
                 for lead, comment in rows
-                if (
+                if assortment_eligible(lead.analysis_details) and (
                     (lead.analysis_details or {}).get("is_commercial") is True
                     or (
                         (lead.analysis_details or {}).get("intelligence_version") != "3.0"

@@ -27,6 +27,7 @@ from app.db.models import (
     Vertical,
 )
 from app.db.repositories.events import ContactEventRepository
+from app.services.assortment_policy import assortment_eligible, assortment_eligible_clause
 from app.services.crm_service import CRMService
 from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowService
 from app.services.product_catalog_service import ProductCatalogService
@@ -185,6 +186,7 @@ class HotOutreachService:
             .join(Post, Post.id == Comment.post_id)
             .where(
                 Lead.lead_score >= self.hot_threshold,
+                assortment_eligible_clause(Lead),
                 Lead.status.in_(OPEN_HOT_STATUSES),
                 fresh_signal_clause(max_age_days=self.signal_max_age_days),
             )
@@ -291,7 +293,7 @@ class HotOutreachService:
             if vertical_enum is not None and lead.vertical != vertical_enum:
                 return None
             draft = self._read_draft(lead)
-            if lead.lead_score < self.hot_threshold and not (include_saved_history and draft):
+            if (lead.lead_score < self.hot_threshold or not assortment_eligible(lead.analysis_details)) and not (include_saved_history and draft):
                 return None
             contact_history = await self._contact_outreach_summary(
                 session, contact.id, exclude_lead_id=lead.id
@@ -299,6 +301,7 @@ class HotOutreachService:
         recommendation = await self.catalog.recommend_for_lead(lead)
         writable = (
             lead.lead_score >= self.hot_threshold
+            and assortment_eligible(lead.analysis_details)
             and lead.status in OPEN_HOT_STATUSES
             and not (draft and draft.sent_at)
         )
@@ -755,7 +758,7 @@ class HotOutreachService:
         return lead
 
     def _assert_editable(self, lead: Lead, manager_id: int) -> None:
-        if lead.lead_score < self.hot_threshold:
+        if lead.lead_score < self.hot_threshold or not assortment_eligible(lead.analysis_details):
             raise LeadWorkflowError("HOT-лид не найден")
         draft = self._read_draft(lead)
         if draft and draft.sent_at:
@@ -772,6 +775,7 @@ class HotOutreachService:
             Lead.id == lead_id,
             Lead.outreach_claim_token == claim_token,
             Lead.lead_score >= self.hot_threshold,
+            assortment_eligible_clause(Lead),
             Lead.status.in_(OPEN_HOT_STATUSES),
             or_(
                 Lead.assigned_manager_telegram_id.is_(None),

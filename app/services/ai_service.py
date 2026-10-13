@@ -26,6 +26,11 @@ from app.schemas.leads import (
     Urgency,
 )
 from app.services.ai_context_fingerprint_service import AIContextFingerprintService
+from app.services.assortment_policy import (
+    ASSORTMENT_VERSION,
+    apply_assortment,
+    assess_assortment,
+)
 from app.services.b2b_policy import B2BPolicy
 from app.services.lead_scoring_v3 import (
     HistoricalSignal,
@@ -74,7 +79,7 @@ class LeadAnalysisContext:
     lead_id: int | None = None
     stable_contact_id: str | None = None
     vertical: str = "FURNITURE"
-    catalog_context_version: str = "catalog:v1"
+    catalog_context_version: str = ASSORTMENT_VERSION
     source_vertical: str | None = None
 
 
@@ -274,6 +279,12 @@ class RuleBasedLeadAnalyzer:
         text = self._norm(raw)
         caption = self._norm(context.post_caption or "")
         language = self._language(raw)
+
+        assortment = assess_assortment(raw, context.post_caption, context.parent_comment,
+                                      vertical=context.vertical)
+        if assortment.status == "EXCLUDED":
+            return self._result(False, 0, Intent.OTHER, None, language, assortment.reason,
+                                context, risk_flags=["Не наш ассортимент"])
 
         if not raw:
             return self._result(
@@ -1229,7 +1240,7 @@ class RuleBasedLeadAnalyzer:
                 "Уточнить бюджет и критерии выбора; предложить только подтверждённые "
                 "альтернативы без обещания скидки."
             )
-        return LeadAnalysis(
+        analysis = LeadAnalysis(
             is_lead=is_lead,
             lead_score=score,
             intent=intent,
@@ -1262,6 +1273,12 @@ class RuleBasedLeadAnalyzer:
             next_best_action=recommended_action,
             short_reason=reason,
         )
+        if context is not None:
+            return apply_assortment(analysis, assess_assortment(
+                context.comment, context.post_caption, context.parent_comment,
+                vertical=context.vertical,
+            ))
+        return analysis
 
 
 class OpenAILeadAnalyzer:
@@ -1285,10 +1302,9 @@ class OpenAILeadAnalyzer:
                 "wicker furniture",
                 "artificial rattan furniture",
                 "dining sets",
-                "tables",
-                "chairs",
-                "kitchen and dining furniture",
-                "garden and terrace furniture",
+                "plastic chairs",
+                "dining chairs and tables",
+                "woven armchairs",
                 "cafe, restaurant and HoReCa furniture",
             ],
             "business_goal": (
@@ -1305,7 +1321,10 @@ class OpenAILeadAnalyzer:
             "facts that are not present. Evaluate the comment together with the Reel caption and "
             "CTA, product fit, request specificity, repetition across prior signals, comparison "
             "across competitors, buyer role (B2C, HoReCa/B2B, Designer), and manager-entered CRM context. "
-            "The business sells furniture and artificial rattan only. Reject leads about watches, phones, cars, "
+            "The owner sells only wicker furniture, finished artificial-rattan furniture, plastic chairs, dining sets, dining chairs, woven armchairs and HoReCa furniture. "
+            "Sofas (including rattan sofas), beds, dressers, computer or office desks, office chairs, wardrobes, built-in kitchens, shelving and lamps are outside the assortment. "
+            "HoReCa intent never makes an unsupported product eligible. An unspecified armchair needs clarification of whether it is woven. "
+            "Reject leads about watches, phones, cars, "
             "clothing, cosmetics, and other off-catalog products even if the comment asks for a price. "
             "A plus sign is a signal to interpret using the Reel caption and, when present, "
             "ParentComment on a reply thread: commercial when the parent or post explicitly "
@@ -1782,7 +1801,9 @@ class HybridLeadAnalyzer:
         self.mode = mode
 
     async def analyze_with_source(self, context: LeadAnalysisContext) -> tuple[LeadAnalysis, str]:
-        if self.mode in {"rules", "hybrid"} or self.rules.is_price_acknowledgement(context.comment):
+        assortment = assess_assortment(context.comment, context.post_caption, context.parent_comment,
+                                      vertical=context.vertical)
+        if self.mode in {"rules", "hybrid"} or self.rules.is_price_acknowledgement(context.comment) or assortment.status == "EXCLUDED":
             local = self.rules.classify(context)
             if local is not None:
                 return local, "local_rules"
@@ -1790,7 +1811,7 @@ class HybridLeadAnalyzer:
                 return await self.rules.analyze(context), "local_rules"
         if self.openai is None:
             raise AIAnalysisError("OpenAI не настроен для неоднозначного сигнала")
-        return await self.openai.analyze(context), "openai_or_cache"
+        return apply_assortment(await self.openai.analyze(context), assortment), "openai_or_cache"
 
     async def analyze(self, context: LeadAnalysisContext) -> LeadAnalysis:
         analysis, _source = await self.analyze_with_source(context)

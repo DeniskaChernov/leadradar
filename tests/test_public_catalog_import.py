@@ -21,22 +21,22 @@ def btt_snapshot():
 async def test_public_catalog_preview_and_import_are_idempotent(session_factory, btt_snapshot):
     catalog = ProductCatalogService(session_factory)
     preview = await import_btt_snapshot(catalog, btt_snapshot, manager_id=1001, apply=False)
-    assert preview["created"] == 27
+    assert preview["created"] == 21
     assert await catalog.products() == []
     result = await import_btt_snapshot(catalog, btt_snapshot, manager_id=1001, apply=True)
-    assert result["created"] == 27
+    assert result["created"] == 21
     again = await import_btt_snapshot(catalog, btt_snapshot, manager_id=1001, apply=True)
     assert again["created"] == again["updated"] == 0
-    assert again["unchanged"] == 27
+    assert again["unchanged"] == 21
     products = await catalog.products()
-    assert sum(p.price is not None for p in products) == 19
+    assert sum(p.price is not None for p in products) == 13
     assert all(p.currency == "UZS" for p in products)
     assert all(p.stock is None and p.stock_confirmed_at is None and p.cogs is None for p in products)
     assert all(p.category_confirmed_at is not None and p.sku is None for p in products)
     assert all(p.source_reference.startswith("https://bententrade.") for p in products)
     assert all(p.import_source == "BTT_PUBLIC" for p in products)
     async with session_factory() as session:
-        assert await session.scalar(select(func.count(ProductChange.id))) == 27
+        assert await session.scalar(select(func.count(ProductChange.id))) == 21
     assert len(await catalog.matching_products(vertical=Vertical.FURNITURE, category="chairs")) == 7
     assert len(await catalog.matching_products(vertical=Vertical.FURNITURE, category="tables")) == 7
     sets = await catalog.matching_products(vertical=Vertical.FURNITURE, category="DINING_SET")

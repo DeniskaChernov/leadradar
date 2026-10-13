@@ -37,6 +37,7 @@ from app.db.models import (
     SignificantChange,
     SignificantChangeNotification,
 )
+from app.services.assortment_policy import assortment_eligible_clause
 from app.services.lead_workflow_service import LeadCard, LeadWorkflowService
 from app.services.notification_eligibility import (
     ACTIVE_NOTIFICATION_STATUSES,
@@ -149,6 +150,7 @@ class TelegramLeadNotifier:
             query = query.where(
                 Lead.status.in_(ACTIVE_NOTIFICATION_STATUSES),
                 Lead.lead_score >= self.hot_threshold,
+                assortment_eligible_clause(Lead),
             )
         if chat_id is not None:
             recipient = literal(chat_id) if isinstance(chat_id, int) else chat_id

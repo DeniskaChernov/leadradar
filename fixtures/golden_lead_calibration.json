@@ -27,8 +27,10 @@
     "expected_is_lead": true,
     "expected_intent": "DELIVERY",
     "expected_buyer_role": "B2C_CONSUMER",
-    "min_score": 75,
-    "language": "ru"
+    "min_score": 60,
+    "language": "ru",
+    "max_score": 60,
+    "expected_assortment": "REVIEW"
   },
   {
     "id": "ru_availability_01",
@@ -37,8 +39,10 @@
     "expected_is_lead": true,
     "expected_intent": "AVAILABILITY",
     "expected_buyer_role": "B2C_CONSUMER",
-    "min_score": 80,
-    "language": "ru"
+    "min_score": 60,
+    "language": "ru",
+    "max_score": 60,
+    "expected_assortment": "REVIEW"
   },
   {
     "id": "ru_quantity_01",
@@ -78,8 +82,10 @@
     "expected_is_lead": true,
     "expected_intent": "CATALOG",
     "expected_buyer_role": "B2C_CONSUMER",
-    "min_score": 75,
-    "language": "ru"
+    "min_score": 60,
+    "language": "ru",
+    "max_score": 60,
+    "expected_assortment": "REVIEW"
   },
   {
     "id": "ru_contact_01",
@@ -88,8 +94,10 @@
     "expected_is_lead": true,
     "expected_intent": "CONTACT",
     "expected_buyer_role": "B2C_CONSUMER",
-    "min_score": 70,
-    "language": "ru"
+    "min_score": 60,
+    "language": "ru",
+    "max_score": 60,
+    "expected_assortment": "REVIEW"
   },
   {
     "id": "ru_color_01",
@@ -129,8 +137,10 @@
     "expected_is_lead": true,
     "expected_intent": "BUY",
     "expected_buyer_role": "B2C_CONSUMER",
-    "min_score": 85,
-    "language": "ru"
+    "min_score": 60,
+    "language": "ru",
+    "max_score": 60,
+    "expected_assortment": "REVIEW"
   },
   {
     "id": "ru_praise_reaction_01",
@@ -189,8 +199,10 @@
     "expected_is_lead": true,
     "expected_intent": "AVAILABILITY",
     "expected_buyer_role": "B2C_CONSUMER",
-    "min_score": 75,
-    "language": "uz"
+    "min_score": 60,
+    "language": "uz",
+    "max_score": 60,
+    "expected_assortment": "REVIEW"
   },
   {
     "id": "uz_lat_delivery_01",
@@ -200,8 +212,10 @@
     "expected_is_lead": true,
     "expected_intent": "DELIVERY",
     "expected_buyer_role": "B2C_CONSUMER",
-    "min_score": 75,
-    "language": "uz"
+    "min_score": 60,
+    "language": "uz",
+    "max_score": 60,
+    "expected_assortment": "REVIEW"
   },
   {
     "id": "uz_lat_horeca_01",
@@ -220,8 +234,10 @@
     "expected_is_lead": true,
     "expected_intent": "AVAILABILITY",
     "expected_buyer_role": "DESIGNER_CONTRACTOR",
-    "min_score": 75,
-    "language": "uz"
+    "min_score": 60,
+    "language": "uz",
+    "max_score": 60,
+    "expected_assortment": "REVIEW"
   },
   {
     "id": "uz_lat_quantity_01",
@@ -281,8 +297,10 @@
     "expected_is_lead": true,
     "expected_intent": "DELIVERY",
     "expected_buyer_role": "B2C_CONSUMER",
-    "min_score": 75,
-    "language": "uz-cyrl"
+    "min_score": 60,
+    "language": "uz-cyrl",
+    "max_score": 60,
+    "expected_assortment": "REVIEW"
   },
   {
     "id": "uz_cyrl_buy_01",

@@ -117,7 +117,7 @@ class IndependentQualityGatesSnapshot:
 class IndependentQualityGatesService:
     """Оффлайн-оценка независимых наборов без БД и внешних вызовов."""
 
-    LEAD_DATASET = "unseen:v1"
+    LEAD_DATASET = "unseen:v2-owner-assortment"
     RATTAN_DATASET = "unseen:v1"
     AUDIENCE_DATASET = "unseen:v2"
 
@@ -147,7 +147,7 @@ class IndependentQualityGatesService:
         )
 
     def evaluate_lead_unseen(self) -> QualityGateReport:
-        rows = self._load_json("lead_intelligence_unseen_v1.json")
+        rows = self._load_json("lead_intelligence_unseen_v2.json")
         expected_flags: list[bool] = []
         actual_flags: list[bool] = []
         intent_matches: list[bool] = []

@@ -78,8 +78,10 @@ class WrongProductAnalyzer:
                             product_category="CHAIRS", language="ru", reason="Price request")
 
 
-async def _stored_lead(factory, *, mixed=False):
+async def _stored_lead(factory, *, mixed=False, supported=False):
     text = "2 та диван бн 1 та кресло доставка килиб бесила" if mixed else "Диван цена?"
+    if supported:
+        text = "Плетёное кресло и плетёный стол нужны, цена?"
     signal = await ContactService(factory).persist_signal(
         make_post().model_copy(update={"caption": "Кресло, кровать, стол"}),
         make_comment().model_copy(update={"text": text}),
@@ -98,16 +100,16 @@ async def test_explicit_product_corrects_analyzer_output_and_persisted_details(s
 
 
 async def test_hot_mixed_product_families_reach_the_card_and_draft_context(session_factory):
-    _, lead_id, _ = await _stored_lead(session_factory, mixed=True)
+    _, lead_id, _ = await _stored_lead(session_factory, mixed=True, supported=True)
     detail = await _hot(session_factory).detail(lead_id)
     assert detail["product_category"] == "MIXED_FURNITURE"
-    assert detail["product_categories"] == ["SOFA", "ARMCHAIR"]
+    assert detail["product_categories"] == ["RATTAN_ARMCHAIR", "RATTAN_TABLE"]
     app = _hot_web_app(session_factory)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(f"/hot?vertical=FURNITURE&lead_id={lead_id}")
     assert response.status_code == 200
     detail_html = response.text.split('data-hot-detail>', 1)[1]
-    assert "Несколько товаров · Диван · Кресло" in detail_html
+    assert "Несколько товаров · Кресло плетёное · Стол плетёный" in detail_html
     assert "Уточнить позиции заказа" in detail_html
 
 
@@ -138,7 +140,7 @@ async def test_product_repair_is_idempotent_and_preserves_workflow_and_contact_h
         assert lead.product_category == ("MIXED_FURNITURE" if mixed else "SOFA")
         assert lead.status == LeadStatus.TAKEN
         assert lead.assigned_manager_telegram_id == 101
-        assert lead.lead_score == 91
+        assert lead.lead_score == (60 if mixed else 0)
         after = [(event.id, dict(event.payload_json)) for event in
                  await session.scalars(select(ContactEvent).order_by(ContactEvent.id))]
         assert after[:len(before)] == before
@@ -147,7 +149,7 @@ async def test_product_repair_is_idempotent_and_preserves_workflow_and_contact_h
             InterestEvidence.contact_id == contact_id, InterestEvidence.dimension == "PRODUCT",
             InterestEvidence.active.is_(True),
         )))
-        assert topics == ({"SOFA", "ARMCHAIR"} if mixed else {"SOFA"})
+        assert topics == set()  # Off-assortment requests do not build commercial interests.
 
 
 async def test_product_repair_retries_audience_failure_without_duplicating_history(session_factory):

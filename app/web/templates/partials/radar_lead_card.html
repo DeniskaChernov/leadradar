@@ -16,6 +16,7 @@
       </header>
       <p>{{ comment.text or 'Пустой комментарий' }}</p>
       <div class="find-example-tags">
+        {% if ai.get('assortment', {}).get('status') == 'EXCLUDED' %}<span>Не наш ассортимент</span>{% elif ai.get('assortment', {}).get('status') == 'REVIEW' %}<span>Уточнить ассортимент</span>{% endif %}
         {% if awaiting_analysis %}
         <span>Ожидает оценки</span>
         {% else %}

@@ -9,10 +9,9 @@ from app.services.product_catalog_service import CATALOG_IMPORT_COLUMNS, Product
 
 BTT_ORIGIN = "https://bententrade.denisblackman2.workers.dev"
 CATEGORIES = {
-    "wicker-chairs": ("FURNITURE", "CHAIR"),
-    "plastic-chairs": ("FURNITURE", "CHAIR"),
+    "wicker-chairs": ("FURNITURE", "WICKER_CHAIR"),
+    "plastic-chairs": ("FURNITURE", "PLASTIC_CHAIR"),
     "tables": ("FURNITURE", "TABLE"),
-    "lighting": ("FURNITURE", "LAMP"),
     "rattan-raw": ("ARTIFICIAL_RATTAN", "RAW_RATTAN"),
     "sets": ("FURNITURE", "SET"),
 }
@@ -28,9 +27,13 @@ async def import_btt_snapshot(
     writer.writeheader()
     references = {}
     for item in snapshot.get("products", []):
+        if item.get("category") == "lighting":
+            continue  # Not in the owner's confirmed assortment; keep the source snapshot intact.
         if item.get("category") not in CATEGORIES:
             raise ValueError("Неизвестная категория публичного каталога")
         vertical, category = CATEGORIES[item["category"]]
+        if category == "TABLE" and "rotang" in str(item.get("slug", "")).lower():
+            category = "WICKER_TABLE"
         slug = str(item.get("slug", ""))
         # The regular catalog parser validates canonical keys before any database write.
         key = f"btt-{slug}"

@@ -4,6 +4,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.models import Competitor, Lead, LeadStatus, NotificationPolicy
+from app.services.assortment_policy import assortment_eligible_clause
 
 ACTIVE_NOTIFICATION_STATUSES = (LeadStatus.NEW, LeadStatus.TAKEN)
 
@@ -16,6 +17,7 @@ def eligible_policy_clause(
         policy == NotificationPolicy.ALL_NEW_COMMENTS,
         and_(
             Lead.status.in_(ACTIVE_NOTIFICATION_STATUSES),
+            assortment_eligible_clause(Lead),
             or_(
                 policy == NotificationPolicy.COMMERCIAL_ONLY,
                 and_(policy == NotificationPolicy.HOT_ONLY, Lead.lead_score >= hot_threshold),

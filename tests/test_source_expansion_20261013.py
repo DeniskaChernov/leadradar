@@ -43,7 +43,7 @@ def test_price_acknowledgement_is_not_a_buying_request(comment):
     "Раҳмат, нархи қанча?",
     "Спасибо за прайс. Можно доставку?",
     "Baraka toping narxini ayting",
-    "Спасибо, сколько стоит диван",
+    "Спасибо, сколько стоит плетёный стул",
     "Narxlarni yozib qoldiring rahmat",
     "Раҳмат нархини ёзинг",
     "Спасибо за цены, хочу заказать 2 стула",

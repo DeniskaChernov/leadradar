@@ -33,9 +33,10 @@ class MarketCandidateSeed:
 # must never silently increase paid Instagram traffic.
 MONITORED_COMPETITORS: tuple[CompetitorSeed, ...] = (
     CompetitorSeed(
-        "komandor_uz", "Komandor", "DINING", "B",
+        "komandor_uz", "Komandor", "DIRECT", "B",
         "Мебель на заказ в Ташкенте. Instagram подтверждён публичной страницей "
-        "https://t.me/komandor_uz (2026-10-13); актуальность проверяется при ручном поиске.",
+        "https://t.me/komandor_uz (2026-10-13). Подходящий ассортимент в сохранённых "
+        "публикациях не подтверждён; оставить на паузе до проверки плетёных/обеденных товаров.",
         "https://komandor.uz",
     ),
     CompetitorSeed(

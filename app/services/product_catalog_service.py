@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.data.product_catalog import CATALOG_SOURCE_REFERENCE, CONFIRMED_PRODUCTS
 from app.db.models import Lead, Product, ProductChange, Vertical
+from app.services.assortment_policy import UNSUPPORTED_CATEGORIES
 from app.services.next_best_action_service import (
     ActionRecommendation,
     NextBestActionEngine,
@@ -20,23 +21,25 @@ from app.services.next_best_action_service import (
 ALLOWED_PRODUCT_CATEGORIES = {
     "UNCONFIRMED",
     "CHAIR",
-    "ARMCHAIR",
-    "SOFA",
-    "BED",
+    "WICKER_CHAIR",
+    "PLASTIC_CHAIR",
+    "WICKER_ARMCHAIR",
+    "WICKER_TABLE",
     "TABLE",
     "SET",
     "RAW_RATTAN",
-    "LAMP",
 }
 
 CATEGORY_ALIASES = {
     "CHAIRS": "CHAIR",
-    "RATTAN_CHAIR": "CHAIR",
-    "RATTAN_ARMCHAIR": "ARMCHAIR",
+    "RATTAN_CHAIR": "WICKER_CHAIR",
+    "PLASTIC_CHAIRS": "PLASTIC_CHAIR",
+    "DINING_CHAIRS": "CHAIR",
+    "RATTAN_ARMCHAIR": "WICKER_ARMCHAIR",
     "RATTAN_SOFA": "SOFA",
     "TABLE": "TABLE",
     "TABLES": "TABLE",
-    "RATTAN_TABLE": "TABLE",
+    "RATTAN_TABLE": "WICKER_TABLE",
     "DINING_SET": "SET",
     "RATTAN_SET": "SET",
     "RATTAN_GARDEN_SET": "SET",
@@ -123,8 +126,10 @@ class ProductCatalogService:
         self, *, vertical: Vertical, category: str | None
     ) -> list[Product]:
         normalized = normalize_product_category(category)
-        if normalized is None:
+        if normalized is None or normalized in UNSUPPORTED_CATEGORIES or normalized == "ARMCHAIR":
             return []
+        categories = {"CHAIR": ("CHAIR", "WICKER_CHAIR", "PLASTIC_CHAIR"),
+                      "TABLE": ("TABLE", "WICKER_TABLE")}.get(normalized, (normalized,))
         async with self.session_factory() as session:
             return list(
                 await session.scalars(
@@ -132,7 +137,7 @@ class ProductCatalogService:
                     .where(
                         Product.active.is_(True),
                         Product.vertical == vertical,
-                        Product.category == normalized,
+                        Product.category.in_(categories),
                         Product.category_confirmed_at.is_not(None),
                     )
                     .order_by(Product.price, Product.name)
@@ -153,6 +158,7 @@ class ProductCatalogService:
             quantity=quantity,
             evidence_ids=tuple(details.get("evidence_ids") or ()),
             catalog_products=ranked,
+            assortment_status=(details.get("assortment") or {}).get("status"),
         )
 
     async def ranked_products_for_lead(
@@ -160,6 +166,8 @@ class ProductCatalogService:
         lead: Lead,
     ) -> tuple[list[RankedProduct], int | None]:
         details = lead.analysis_details or {}
+        if (details.get("assortment") or {}).get("status") in {"EXCLUDED", "REVIEW"}:
+            return [], None
         raw_quantity = details.get("quantity")
         try:
             quantity = int(raw_quantity) if raw_quantity is not None else None
@@ -223,12 +231,15 @@ class ProductCatalogService:
         stock: str | int | None = None,
         cogs: str | Decimal | None = None,
         active: bool | None = None,
+        vertical: Vertical | None = None,
     ) -> Product:
         async with self.session_factory() as session:
             product = await session.get(Product, product_id)
             if product is None:
                 raise ValueError("Товар не найден")
             before = self._verified_snapshot(product)
+            if vertical is not None:
+                product.vertical = Vertical(vertical)
             if category is not None:
                 normalized = category.strip().upper()
                 if normalized not in ALLOWED_PRODUCT_CATEGORIES:
@@ -547,6 +558,7 @@ class ProductCatalogService:
     @staticmethod
     def _verified_snapshot(product: Product) -> dict[str, object]:
         return {
+            "vertical": product.vertical.value,
             "category": product.category,
             "price": str(product.price) if product.price is not None else None,
             "currency": product.currency,

@@ -27,6 +27,7 @@ from app.db.models import (
     Product,
 )
 from app.db.repositories.events import ContactEventRepository
+from app.services.assortment_policy import assortment_eligible_clause
 
 MAX_CRM_AMOUNT = Decimal("999999999999.99")  # Numeric(14, 2)
 MAX_CRM_QUANTITY = 2_147_483_647  # PostgreSQL Integer
@@ -480,6 +481,7 @@ class LeadWorkflowService:
                     select(Lead.id)
                     .where(
                         Lead.lead_score >= self.hot_threshold,
+                        assortment_eligible_clause(Lead),
                         Lead.status.in_([LeadStatus.NEW, LeadStatus.TAKEN]),
                     )
                     .order_by(Lead.created_at.desc())
@@ -511,7 +513,8 @@ class LeadWorkflowService:
             hot = (
                 await session.scalar(
                     select(func.count(Lead.id)).where(
-                        Lead.lead_score >= self.hot_threshold
+                        Lead.lead_score >= self.hot_threshold,
+                        assortment_eligible_clause(Lead),
                     )
                 )
                 or 0

@@ -39,11 +39,12 @@ def context(text, *, caption="Buyurtma berish uchun", source="FURNITURE"):
     ("Нархи канча асалим  ёзворинг", Intent.PRICE),
     ("10 kishilogi bormi nechpul", Intent.PRICE),
 ])
-def test_screenshot_commercial_requests_are_hot_without_gpt(text, intent):
+def test_screenshot_requests_without_a_product_need_assortment_review_without_gpt(text, intent):
     analysis = RuleBasedLeadAnalyzer().classify(context(text))
     assert analysis is not None and analysis.is_lead
-    assert analysis.intent == intent and analysis.lead_score >= 70
-    # A configured furniture source establishes relevance, not an invented SKU.
+    assert analysis.intent == intent and analysis.lead_score == 60
+    assert not analysis.is_commercial
+    # A broad furniture source does not prove that the requested item is in our assortment.
     assert analysis.product_category is None
 
 
@@ -69,7 +70,7 @@ async def test_local_reanalysis_corrects_legacy_price_score_without_paid_analyze
         lead_count = await session.scalar(select(func.count(Lead.id)))
     calls_before = analyzer.calls
     corrected = await service.analyze_lead(result.lead_id, local_only=True)
-    assert corrected.status == LeadStatus.NEW and corrected.is_hot and corrected.score == 78
+    assert corrected.status == LeadStatus.NEW and not corrected.is_hot and corrected.score == 60
     assert analyzer.calls == calls_before
     async with session_factory() as session:
         lead = await session.get(Lead, result.lead_id)
@@ -146,7 +147,8 @@ async def test_local_recovery_uses_source_context_and_preserves_history_and_ambi
     results = await service.retry_pending_local()
     assert analyzer.calls == calls_before
     assert [r.lead_id for r in results] == [first.lead_id]
-    assert results[0].status == LeadStatus.NEW and results[0].is_hot
+    assert results[0].status == LeadStatus.NEW and not results[0].is_hot
+    assert results[0].score == 60
     async with session_factory() as session:
         unclear = await session.get(Lead, second.lead_id)
         assert unclear.status == LeadStatus.AI_PENDING and unclear.ai_attempt_count == 1

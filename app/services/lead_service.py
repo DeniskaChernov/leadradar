@@ -28,6 +28,7 @@ from app.db.models import (
     PublicSignalStatus,
 )
 from app.db.repositories.events import ContactEventRepository
+from app.schemas.leads import Intent, LeadAnalysis
 from app.services.ai_service import (
     AIAnalysisError,
     LeadAnalysisContext,
@@ -35,6 +36,7 @@ from app.services.ai_service import (
     RuleBasedLeadAnalyzer,
     ValidatedPreviousSignal,
 )
+from app.services.assortment_policy import apply_assortment, assess_assortment, assortment_eligible
 from app.services.contact_service import PersistedSignal
 from app.services.place_opening_service import PlaceOpeningService
 from app.services.product_context_service import resolve_product_context
@@ -177,9 +179,11 @@ class LeadService:
             if lead is None:
                 raise RuntimeError(f"Lead {lead_id} was not found")
             context = await self._build_context(session, lead.comment_id)
+            assortment = assess_assortment(context.comment, context.post_caption, context.parent_comment,
+                                          vertical=context.vertical)
             local_analysis = (
                 RuleBasedLeadAnalyzer().classify(context)
-                if local_only or RuleBasedLeadAnalyzer.is_price_acknowledgement(context.comment)
+                if local_only or RuleBasedLeadAnalyzer.is_price_acknowledgement(context.comment) or assortment.status == "EXCLUDED"
                 else None
             )
             if local_only and local_analysis is None:
@@ -202,6 +206,7 @@ class LeadService:
                 analysis, analysis_source = local_analysis, "local_rules"
             else:
                 analysis, analysis_source = await self._analyze(context)
+            analysis = apply_assortment(analysis, assortment)
         except Exception as exc:
             async with self.session_factory() as session:
                 await session.execute(
@@ -319,6 +324,7 @@ class LeadService:
                 lead.analysis_details["hot_outreach"] = outreach
             lead.analysis_details["vertical"] = lead.vertical.value
             lead.analysis_details["rules_version"] = self.rules_version
+            lead.analysis_details["assortment"] = assortment.as_dict()
             if RuleBasedLeadAnalyzer.is_price_acknowledgement(context.comment):
                 lead.analysis_details["qualification_guard"] = "price_acknowledgement:v1"
             if taxonomy:
@@ -601,6 +607,89 @@ class LeadService:
                     repaired.append(lead_id)
         return {"dry_run": dry_run, "matched": matched, "repaired": repaired}
 
+    async def repair_assortment(self, *, dry_run: bool = True) -> dict:
+        """Apply the owner's scope to saved facts without AI, providers or notifications."""
+        updated, excluded, review, pending_contacts = [], [], [], set()
+        async with self.session_factory() as session:
+            leads = list(await session.scalars(select(Lead).where(
+                Lead.vertical == "FURNITURE",
+                Lead.status.notin_([LeadStatus.AI_PENDING, LeadStatus.ANALYZING]),
+            ).order_by(Lead.id)))
+            for lead in leads:
+                context = await self._build_context(session, lead.comment_id)
+                decision = assess_assortment(context.comment, context.post_caption, context.parent_comment)
+                before = dict(lead.analysis_details or {})
+                details = dict(before)
+                details["assortment"] = decision.as_dict()
+                product = resolve_product_context(context.comment, context.post_caption, context.parent_comment)
+                category = product.category if product.categories else lead.product_category
+                if not product.categories and category == "RAW_RATTAN" and context.vertical == "FURNITURE":
+                    category = None  # A previous raw-material guess is not a fact about finished furniture.
+                    details["product_category"] = None
+                if product.categories:
+                    details["product_context"] = product.as_dict()
+                    details["product_category"] = category
+                if decision.status in {"EXCLUDED", "REVIEW"}:
+                    existing = LeadAnalysis(
+                        is_lead=lead.status != LeadStatus.NOT_LEAD, lead_score=lead.lead_score,
+                        intent=Intent(lead.intent), product_category=category, language=lead.language or "ru",
+                        reason=lead.ai_reason or "", confidence=int(details.get("confidence") or 50),
+                    )
+                    corrected = apply_assortment(existing, decision)
+                    if decision.status == "EXCLUDED" or existing.is_lead:
+                        for field in ("is_lead", "lead_score", "priority_score", "fit_score", "confidence",
+                                      "is_commercial", "commercial_quality", "commercial_stage", "funnel_stage",
+                                      "urgency", "reason", "short_reason", "recommended_action", "next_best_action"):
+                            details[field] = corrected.model_dump(mode="json")[field]
+                        details["risk_flags"] = list(dict.fromkeys([
+                            *corrected.risk_flags, *(before.get("risk_flags") or []),
+                        ]))[:6]
+                        factors = dict(details.get("factors") or {})
+                        factors.update(fit_score=0, priority_score=corrected.lead_score)
+                        details["factors"] = factors
+                if details.get("assortment_audience_pending"):
+                    pending_contacts.add(lead.contact_id)
+                if details == before and category == lead.product_category:
+                    continue
+                updated.append(lead.id)
+                if decision.status == "EXCLUDED":
+                    excluded.append(lead.id)
+                elif decision.status == "REVIEW":
+                    review.append(lead.id)
+                if dry_run:
+                    continue
+                previous_score = lead.lead_score
+                lead.product_category = category
+                if decision.status in {"EXCLUDED", "REVIEW"} and (decision.status == "EXCLUDED" or lead.status != LeadStatus.NOT_LEAD):
+                    lead.lead_score = int(details["lead_score"])
+                    lead.ai_reason = decision.reason
+                if decision.status == "EXCLUDED" and lead.status == LeadStatus.NEW and lead.assigned_manager_telegram_id is None:
+                    lead.status = LeadStatus.NOT_LEAD
+                details["assortment_audience_pending"] = self.audience_engine is not None
+                lead.analysis_details = details
+                await ContactEventRepository(session).add(
+                    lead.contact_id, ContactEventType.QUALIFICATION_UPDATED, lead_id=lead.id,
+                    payload={"source": "assortment_repair", "assortment": decision.as_dict(),
+                             "from": previous_score, "to": lead.lead_score},
+                )
+                if self.audience_engine is not None:
+                    pending_contacts.add(lead.contact_id)
+            if not dry_run:
+                await session.commit()
+        if not dry_run and self.audience_engine is not None:
+            for contact_id in sorted(pending_contacts):
+                await self.audience_engine.recalculate_contact(contact_id)
+                async with self.session_factory() as session:
+                    for lead in await session.scalars(select(Lead).where(Lead.contact_id == contact_id)):
+                        details = dict(lead.analysis_details or {})
+                        if details.get("assortment_audience_pending"):
+                            details["assortment_audience_pending"] = False
+                            lead.analysis_details = details
+                    await session.commit()
+            pending_contacts.clear()
+        return {"dry_run": dry_run, "updated": updated, "excluded": excluded,
+                "review": review, "pending_contacts": sorted(pending_contacts) if not dry_run else []}
+
     async def repair_product_contexts(self, limit: int = 500) -> dict:
         """Correct stored product facts locally, retaining scores and workflow decisions."""
         async with self.session_factory() as session:
@@ -849,6 +938,7 @@ class LeadService:
             intent = str(history_lead.intent or "")
             if (
                 details.get("is_commercial") is not True
+                or not assortment_eligible(details)
                 or quality == "NON_COMMERCIAL"
                 or buyer_role == "JOB_SEEKER"
                 or intent in {"REACTION", "SPAM", "OTHER", ""}
@@ -989,6 +1079,7 @@ class LeadService:
             created=created,
             is_hot=(
                 lead.lead_score >= self.hot_threshold
+                and assortment_eligible(lead.analysis_details)
                 and lead.status not in {LeadStatus.NOT_LEAD, LeadStatus.LOST}
             ),
         )

@@ -45,7 +45,7 @@ from tests.conftest import seed_scrapecreators_instagram_policy
 
 def post():
     return InstagramPost(platform_post_id="search-preparation", competitor="aiko.uz",
-        url="https://www.instagram.com/p/search-preparation/", caption="Мебель, диваны. Распродажа.",
+        url="https://www.instagram.com/p/search-preparation/", caption="Плетёные стулья. Распродажа.",
         published_at=datetime.now(UTC), comments_count=2)
 
 
@@ -188,12 +188,12 @@ async def test_complaints_and_why_questions_are_not_hot_buyers(text):
 
 
 @pytest.mark.parametrize("text,intent", [
-    ("Почём диван?", Intent.PRICE), ("почем?", Intent.PRICE),
+    ("Почём плетёный стул?", Intent.PRICE), ("почем?", Intent.PRICE),
     ("Цена?", Intent.PRICE), ("Narxi qancha?", Intent.PRICE),
     ("Нархи қанча?", Intent.PRICE),
-    ("Хочу купить диван", Intent.BUY),
-    ("Обманывают? Но хочу купить диван, какая цена?", Intent.BUY),
-    ("Ликвидация? Сколько стоит диван?", Intent.PRICE),
+    ("Хочу купить плетёный стул", Intent.BUY),
+    ("Обманывают? Но хочу купить плетёный стул, какая цена?", Intent.BUY),
+    ("Ликвидация? Сколько стоит плетёный стул?", Intent.PRICE),
 ])
 async def test_real_purchase_questions_remain_actionable(text, intent):
     result = await RuleBasedLeadAnalyzer().analyze(LeadAnalysisContext(
@@ -208,7 +208,7 @@ async def test_new_comments_are_classified_and_repeat_ingestion_preserves_histor
     contacts = ContactService(session_factory)
     leads = LeadService(session_factory, RuleBasedLeadAnalyzer(), hot_threshold=70)
     saved = []
-    for index, text in enumerate(["Обманывают, таких цен нет!", "Хочу купить диван"]):
+    for index, text in enumerate(["Обманывают, таких цен нет!", "Хочу купить плетёный стул"]):
         comment = InstagramComment(platform_comment_id=f"new-comment-{index}", username=f"public_{index}",
             profile_url=f"https://www.instagram.com/public_{index}/", text=text, created_at=datetime.now(UTC))
         signal = await contacts.persist_signal(post(), comment)

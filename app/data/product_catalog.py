@@ -14,7 +14,7 @@ class ConfirmedProductSeed:
     dimensions_cm: dict[str, float] | None = None
     max_load_kg: Decimal | None = None
     minimum_order_quantity: int | None = None
-    vertical: Vertical = Vertical.ARTIFICIAL_RATTAN
+    vertical: Vertical = Vertical.FURNITURE
 
 
 CONFIRMED_PRODUCTS: tuple[ConfirmedProductSeed, ...] = (

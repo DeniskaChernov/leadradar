@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from app.db.models import Product
+from app.services.assortment_policy import UNSUPPORTED_CATEGORIES
 from app.services.b2b_policy import B2BPolicy
 
 
@@ -43,8 +44,21 @@ class NextBestActionEngine:
         quantity: int | None = None,
         evidence_ids: Sequence[int] = (),
         catalog_products: Sequence[RankedProduct] = (),
+        assortment_status: str | None = None,
     ) -> ActionRecommendation:
         evidence_list = list(evidence_ids)
+        if assortment_status == "EXCLUDED" or product_category in UNSUPPORTED_CATEGORIES:
+            return cls._result(
+                action_type="OUT_OF_ASSORTMENT", title="Товар вне ассортимента",
+                description="Сохранить запрос для истории. Не предлагать отсутствующие товары.",
+                candidate=None, ranked_products=(), urgency="LOW", evidence_ids=evidence_list,
+            )
+        if assortment_status == "REVIEW" or product_category == "ARMCHAIR":
+            return cls._result(
+                action_type="CLARIFY_PRODUCTS", title="Уточнить товар и ассортимент",
+                description="Уточнить подходящие позиции: плетёная мебель, пластиковые и обеденные стулья, обеденные комплекты, мебель для HoReCa.",
+                candidate=None, ranked_products=(), urgency="LOW", evidence_ids=evidence_list,
+            )
         if product_category == "MIXED_FURNITURE":
             return cls._result(
                 action_type="CLARIFY_PRODUCTS", title="Уточнить позиции заказа",

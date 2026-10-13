@@ -15,6 +15,7 @@ from app.db.models import (
     NotificationStatus,
     SignificantChangeNotification,
 )
+from app.services.assortment_policy import assortment_eligible
 from app.services.lead_workflow_service import LeadWorkflowService
 from app.services.notification_eligibility import policy_decision
 from app.services.signal_recency import is_signal_within_window, signal_observed_at
@@ -106,6 +107,7 @@ class NotificationReadinessService:
                     select(
                         Lead.id,
                         Lead.assigned_manager_telegram_id,
+                        Lead.analysis_details,
                         Comment.is_baseline,
                         Comment.created_at_platform,
                         Comment.discovered_at,
@@ -146,6 +148,7 @@ class NotificationReadinessService:
                 policy,
                 target_count,
                 [log for log in logs_by_lead.get(card.lead_id, []) if log.chat_id in targets],
+                assortment_allowed=assortment_eligible(row.analysis_details),
                 is_fresh=is_signal_within_window(
                     signal_observed_at(
                         created_at_platform=row.created_at_platform,
@@ -210,6 +213,7 @@ class NotificationReadinessService:
         logs: list[NotificationLog],
         *,
         is_fresh: bool = True,
+        assortment_allowed: bool = True,
     ) -> tuple[str, str]:
         log_statuses = {log.status for log in logs}
         if NotificationStatus.UNCERTAIN in log_statuses:
@@ -220,6 +224,8 @@ class NotificationReadinessService:
             return "SUPPRESSED", "Исторический baseline не создаёт production-уведомление."
         if not is_fresh:
             return "SUPPRESSED", "Сигнал старше окна свежести; остаётся в архиве."
+        if not assortment_allowed and policy != NotificationPolicy.ALL_NEW_COMMENTS:
+            return "SUPPRESSED", "Товар вне ассортимента или требует уточнения; HOT-уведомление не отправляется."
         if target_count == 0:
             return "BLOCKED", "Не назначен менеджер и не настроен получатель уведомлений."
         decision, reason = policy_decision(status, score, policy, self.hot_threshold)

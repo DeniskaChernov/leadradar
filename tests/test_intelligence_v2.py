@@ -23,6 +23,7 @@ from app.services.ai_service import (
     RuleBasedLeadAnalyzer,
     ValidatedPreviousSignal,
 )
+from app.services.assortment_policy import assess_assortment
 from app.services.lead_service import LeadService
 
 
@@ -60,6 +61,8 @@ def test_intelligence_v2_golden_dataset_calibration():
             )
 
         assert analysis.intelligence_version == "3.0", f"Case {case['id']} version mismatch"
+        if "expected_assortment" in case:
+            assert assess_assortment(context.comment, context.post_caption).status == case["expected_assortment"]
         assert analysis.is_lead == case["expected_is_lead"], (
             f"Case {case['id']} failed is_lead check: got {analysis.is_lead}, expected {case['expected_is_lead']}"
         )
