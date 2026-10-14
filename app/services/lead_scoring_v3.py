@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from itertools import pairwise
 
@@ -98,7 +98,8 @@ def infer_historical_intent(text: str) -> Intent | None:
 
 
 class LeadScorerV3:
-    VERSION = "3.0"
+    VERSION = "3.1"
+    MAX_HISTORY_AGE_DAYS = 90
 
     @classmethod
     def score(
@@ -113,18 +114,17 @@ class LeadScorerV3:
         history: list[HistoricalSignal],
         current_competitor: str,
         urgency_score: int,
+        now: datetime | None = None,
     ) -> LeadScoreV3:
         quality = signal_quality(is_lead=is_lead, intent=intent)
         b2b = B2BPolicy.assess(text, product=product)
-        commercial = [
-            item
-            for item in history
-            if item.quality != CommercialSignalQuality.NON_COMMERCIAL
-        ]
+        reference = cls._utc(now or datetime.now(UTC))
+        commercial = cls._usable_history(history, reference)
         history_boost, sequence_score = cls._history_scores(
             commercial,
             intent,
             current_competitor=current_competitor,
+            now=reference,
         )
         competitor_count = len(
             {item.competitor for item in commercial if item.competitor}
@@ -194,16 +194,29 @@ class LeadScorerV3:
         )
 
     @staticmethod
+    def _utc(value: datetime) -> datetime:
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+    @classmethod
+    def _usable_history(cls, history: list[HistoricalSignal], now: datetime) -> list[HistoricalSignal]:
+        return [replace(item, observed_at=cls._utc(item.observed_at)) for item in history
+                if item.quality != CommercialSignalQuality.NON_COMMERCIAL
+                and 0 <= (now - cls._utc(item.observed_at)).total_seconds() <= cls.MAX_HISTORY_AGE_DAYS * 86400]
+
+    @classmethod
     def _history_scores(
+        cls,
         history: list[HistoricalSignal],
         current_intent: Intent,
         *,
         current_competitor: str = "",
+        now: datetime | None = None,
     ) -> tuple[int, int]:
-        now = datetime.now(UTC)
+        now = cls._utc(now or datetime.now(UTC))
         counts: dict[Intent, int] = {}
         history_score = 0.0
-        ordered = sorted(history, key=lambda item: item.observed_at)
+        ordered = sorted(cls._usable_history(history, now), key=lambda item: item.observed_at)
+        source_weights: dict[str, float] = {}
         for item in ordered:
             counts[item.intent] = counts.get(item.intent, 0) + 1
             age_days = max(0.0, (now - item.observed_at).total_seconds() / 86400)
@@ -211,17 +224,19 @@ class LeadScorerV3:
             decay = 0.5 ** (age_days / half_life)
             diminishing = 1 / math.sqrt(counts[item.intent])
             history_score += 4.0 * decay * diminishing
-        competitors = {item.competitor for item in ordered if item.competitor}
-        if current_competitor:
-            competitors.add(current_competitor)
-        history_score += min(6, max(0, len(competitors) - 1) * 3)
+            if item.competitor and item.competitor != current_competitor:
+                source_weights[item.competitor] = max(source_weights.get(item.competitor, 0), decay)
+        # The cross-source bonus ages with the evidence establishing that source.
+        history_score += min(6, max(0, sum(source_weights.values()) - (0 if current_competitor else 1)) * 3)
 
-        intents = [item.intent for item in ordered] + [current_intent]
-        sequence_score = sum(
-            SEQUENCE_BONUSES.get(pair, 0)
-            for pair in pairwise(intents)
-        )
-        return min(15, round(history_score)), min(18, sequence_score)
+        sequence = [*ordered, HistoricalSignal(current_competitor, current_intent,
+                                               CommercialSignalQuality.MEDIUM_COMMERCIAL, now)]
+        sequence_score = 0.0
+        for left, right in pairwise(sequence):
+            age = max(0, (now - left.observed_at).total_seconds() / 86400)
+            half_life = min(HALF_LIFE_DAYS.get(left.intent, 30), HALF_LIFE_DAYS.get(right.intent, 30))
+            sequence_score += SEQUENCE_BONUSES.get((left.intent, right.intent), 0) * 0.5 ** (age / half_life)
+        return min(15, round(history_score)), min(18, round(sequence_score))
 
     @staticmethod
     def _confidence(
@@ -246,9 +261,9 @@ class LeadScorerV3:
         return max(20, min(98, confidence))
 
 
-def parse_observed_at(value: str) -> datetime:
+def parse_observed_at(value: str) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return datetime.now(UTC)
+    except (AttributeError, TypeError, ValueError):
+        return None
     return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)

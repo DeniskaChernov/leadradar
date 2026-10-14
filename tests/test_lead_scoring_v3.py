@@ -128,7 +128,7 @@ def test_rule_analysis_exposes_complete_v3_decision_contract():
     )
 
     assert result is not None
-    assert result.intelligence_version == "3.0"
+    assert result.intelligence_version == "3.1"
     assert result.is_commercial is True
     assert result.priority_score == result.lead_score
     assert result.intent_score > 0

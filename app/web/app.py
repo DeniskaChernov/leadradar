@@ -1741,7 +1741,9 @@ def build_web_app(
         limit = max(1, min(int(payload.get("limit") or 100), 500))
         gpt_limit = max(1, min(int(payload.get("gpt_limit") or 10), 50))
         recovered = await local_lead_service.retry_pending_local(limit)
-        results = recovered + await local_lead_service.backfill_unanalyzed_comments(limit - len(recovered))
+        refreshed = await local_lead_service.refresh_local_rules(limit - len(recovered), dry_run=False)
+        results = [*recovered, *refreshed["results"], *(await local_lead_service.backfill_unanalyzed_comments(
+            limit - len(recovered) - len(refreshed["updated"])))]
         rules_pending = sum(item.status == LeadStatus.AI_PENDING for item in results)
         gpt_queued = 0
         gpt_processed = 0
@@ -1783,6 +1785,7 @@ def build_web_app(
             "ok": True,
             "processed": len(results),
             "local_recovered": len(recovered),
+            "rules_refreshed": len(refreshed["updated"]),
             "rules_pending": rules_pending,
             "remaining_pending": remaining_pending,
             "openai_remaining": budget.remaining,
@@ -1820,11 +1823,15 @@ def build_web_app(
         if not 1 <= limit <= 500:
             raise HTTPException(status_code=400, detail="Лимит должен быть целым числом от 1 до 500")
         results = await local_lead_service.retry_pending_local(limit)
+        refreshed = await local_lead_service.refresh_local_rules(limit - len(results), dry_run=False)
         counts = await queries.gpt_queue_counts()
         remaining = counts["ai_pending"] + counts["analyzing"]
-        return {"ok": True, "processed": len(results), "remaining": remaining,
+        processed = len(results) + len(refreshed["updated"])
+        return {"ok": True, "processed": processed, "remaining": remaining,
+                "local_recovered": len(results), "rules_refreshed": len(refreshed["updated"]),
                 "openai_used": False, "async": False,
-                "message": (f"По сохранённым данным оценено: {len(results)}. "
+                "message": (f"По сохранённым данным оценено: {processed}. "
+                            f"Обновлено по новым правилам: {len(refreshed['updated'])}. "
                             f"Ещё ожидают оценки: {remaining}. GPT и новый поиск не запускались.")}
 
     @app.post("/api/leads/retry-pending")

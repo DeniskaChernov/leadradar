@@ -29,7 +29,7 @@ class PlusOpenAIMock:
         )
 
 
-async def test_plus_comment_routes_to_openai_via_hybrid_analyzer(session_factory):
+async def test_explicit_catalog_plus_uses_local_rules_without_inventing_a_hot_product(session_factory):
     mock = PlusOpenAIMock()
     hybrid = HybridLeadAnalyzer(RuleBasedLeadAnalyzer(), mock, mode="hybrid")
     post = make_post().model_copy(
@@ -40,12 +40,14 @@ async def test_plus_comment_routes_to_openai_via_hybrid_analyzer(session_factory
     result = await LeadService(session_factory, hybrid, hot_threshold=70).process_signal(signal)
 
     assert result is not None
-    assert mock.calls == ["+"]
+    assert mock.calls == []
     assert result.status == LeadStatus.NEW
     async with session_factory() as session:
         lead = await session.scalar(select(Lead).where(Lead.comment_id == signal.comment_id))
     assert lead is not None
-    assert lead.ai_source == "openai_or_cache"
+    assert lead.ai_source == "local_rules"
+    assert lead.lead_score <= 60
+    assert lead.analysis_details["assortment"]["status"] == "REVIEW"
 
 
 def test_design_tokens_doc_in_app_css():

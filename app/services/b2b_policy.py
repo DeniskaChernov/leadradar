@@ -4,6 +4,10 @@ import re
 from dataclasses import dataclass
 
 from app.schemas.leads import BuyerRole
+from app.services.product_context_service import (
+    positive_product_request_text,
+    requested_product_clauses,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,14 +49,17 @@ class B2BPolicy:
     )
 
     _QUANTITY_RE = re.compile(
-        r"\b(\d{1,4})\s*(?:шт\w*|штук\w*|dona\w*|дона\w*|та|персон\w*|"
-        r"киши\w*|kishi\w*|ta|комплект\w*|стул\w*|стол\w*|кресл\w*|диван\w*|"
+        r"\b(\d{1,4})(?:\s+(?:пластиков\w*|плетен\w*|ротанг\w*|обеден\w*|барн\w*|"
+        r"бел\w*|черн\w*|plastic\w*|rattan\w*|dining\w*|plastik\w*)){0,2}\s*"
+        r"(?:шт\w*|штук\w*|dona\w*|дона\w*|та|персон\w*|"
+        r"киши\w*|kishi\w*|ta|комплект\w*|стул\w*|стол\w*|крес(?:л|ел)\w*|диван\w*|"
         r"chair\w*|table\w*)\b"
     )
 
     @classmethod
     def extract_quantity(cls, text: str) -> int | None:
-        values = [int(match) for match in cls._QUANTITY_RE.findall(text.lower())]
+        values = [int(match) for clause in requested_product_clauses(text)
+                  for match in cls._QUANTITY_RE.findall(clause)]
         return max(values, default=None)
 
     @classmethod
@@ -63,7 +70,7 @@ class B2BPolicy:
         product: str | None = None,
         quantity_override: int | None = None,
     ) -> B2BDecision:
-        normalized = " ".join(text.lower().replace("ё", "е").split())
+        normalized = " ".join(positive_product_request_text(text).lower().replace("ё", "е").split())
         quantity = max(
             (value for value in (cls.extract_quantity(normalized), quantity_override) if value),
             default=None,

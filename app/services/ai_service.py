@@ -37,7 +37,11 @@ from app.services.lead_scoring_v3 import (
     LeadScorerV3,
     parse_observed_at,
 )
-from app.services.product_context_service import product_mentions, resolve_product_context
+from app.services.product_context_service import (
+    positive_product_request_text,
+    product_mentions,
+    resolve_product_context,
+)
 from app.services.usage_service import ExternalUsageService
 
 logger = logging.getLogger(__name__)
@@ -276,7 +280,7 @@ class RuleBasedLeadAnalyzer:
 
     def classify(self, context: LeadAnalysisContext) -> LeadAnalysis | None:
         raw = (context.comment or "").strip()
-        text = self._norm(raw)
+        text = self._norm(positive_product_request_text(raw))
         caption = self._norm(context.post_caption or "")
         language = self._language(raw)
 
@@ -309,6 +313,14 @@ class RuleBasedLeadAnalyzer:
                 "Это реакция на публикацию без явного намерения купить.",
                 context,
             )
+
+        greeting = re.sub(r"[^\w\s'’-]", "", text).strip()
+        if re.fullmatch(r"(?:salom|салом|здравствуйте|здравствуй|добрый (?:день|вечер)|"
+                        r"assal[oa]mu?\s+al[ae]y?kum|ассал[оа]му?\s+ал[еа]й?кум|"
+                        r"va+u+|ва+у+)", greeting):
+            return self._result(False, 5, Intent.REACTION, None, language,
+                                "Приветствие или реакция без запроса о товаре.", context,
+                                buyer_role=BuyerRole.UNKNOWN)
 
         job_pattern = re.search(
             r"\b(?:ish\s+(?:kerak|bormi)|иш\s+борми|работа\s+нужна|"
@@ -374,7 +386,7 @@ class RuleBasedLeadAnalyzer:
             "буюртма қилмоқчи эмасман",
             "заказ килмокчи эмас", "заказ қилмоқчи эмас", "zakaz qilmoqchi emas",
         )
-        if any(marker in text for marker in negative_purchase):
+        if any(marker in text for marker in negative_purchase) or re.search(r"\bне\s+нуж\w*\b", text):
             return self._result(
                 False,
                 12,
@@ -403,16 +415,16 @@ class RuleBasedLeadAnalyzer:
                     risk_flags=["Жалоба без запроса о покупке" if complaint else "Вопрос о магазине"],
                 )
 
-        if re.fullmatch(r"\+{1,3}[?!.,…🙏]*", raw.replace(" ", "")):
+        if re.fullmatch(r"\+{1,8}[?!.,…🙏👏👍🔥😍❤❤️🙂😊✅\ufe0f]*", raw.replace(" ", "")):
             parent = self._norm(context.parent_comment or "")
             caption = self._norm(context.post_caption or "")
             if parent:
+                if self._is_off_catalog_topic(parent):
+                    return self._result(False, 8, Intent.OTHER, None, language,
+                                        "Ответ относится к обсуждению товара вне нашего ассортимента.", context)
                 combined = f"{parent}\n{caption}".strip()
-                if self._has_furniture_context(combined) and (
-                    self._has_price_or_purchase_signal(parent)
-                    or self._caption_has_commercial_plus_cta(caption)
-                ):
-                    product = self._product(f"{parent} {caption}")
+                if self._has_furniture_context(combined) and self._has_price_or_purchase_signal(parent):
+                    product = resolve_product_context(raw, context.post_caption, context.parent_comment).category
                     return self._result(
                         True,
                         72,
@@ -423,7 +435,16 @@ class RuleBasedLeadAnalyzer:
                         context,
                         evidence=[f"Родительский комментарий: {parent[:120]}"],
                     )
-            # «+» без parent или без явного контекста — OpenAI по caption Reel.
+            if self._caption_has_commercial_plus_cta(caption) and (
+                self._has_furniture_context(caption) or context.source_vertical == "FURNITURE"
+            ) and not self._is_off_catalog_topic(caption):
+                return self._result(
+                    True, 55, Intent.CONTACT, resolve_product_context(raw, context.post_caption).category,
+                    language, "Ответ на явное предложение получить каталог, цену или расчёт мебели.",
+                    context, evidence=[f"Предложение в публикации: {context.post_caption[:180]}"],
+                    risk_flags=["Нужно уточнить модель и конкретность интереса"],
+                )
+            # A bare plus without a commercial request remains ambiguous.
             return None
 
         designer_markers = (
@@ -520,6 +541,8 @@ class RuleBasedLeadAnalyzer:
                     "берём ",
                     "оформить заказ",
                     "нужно ",
+                    "нужен ", "нужны ", "нужна ",
+                    *(("хочу ",) if product_mentions(text) else ()),
                     "buyurtma",
                     "buyurtma qil",
                     "olmoqchiman",
@@ -966,24 +989,13 @@ class RuleBasedLeadAnalyzer:
 
     @staticmethod
     def _caption_has_commercial_plus_cta(caption: str) -> bool:
-        if "+" not in caption and "плюс" not in caption:
-            return False
-        commercial = (
-            "цен",
-            "стоим",
-            "каталог",
-            "заказ",
-            "напиш",
-            "остав",
-            "комментар",
-            "narx",
-            "yoz",
-            "buyurtma",
-            "нарх",
-            "ёз",
-            "буюртма",
-        )
-        return any(marker in caption for marker in commercial)
+        # A phone prefix, rating, or arithmetic plus does not establish a CTA.
+        action = r"(?:напиш\w*|остав\w*|отправ\w*|постав\w*|yoz\w*|qoldir\w*|yubor\w*|ез\w*|қолдир\w*|юбор\w*)"
+        offer = r"(?:цен\w*|стоим\w*|каталог\w*|расчет\w*|рассчита\w*|нарх\w*|narx\w*|katalog\w*|hisob\w*)"
+        for clause in re.split(r"[.!?;\n]", caption):
+            if re.search(rf"\b{action}\b.{{0,70}}(?:плюс|(?<!\d)\+(?!\d))", clause) and re.search(rf"\b{offer}\b", clause):
+                return True
+        return False
 
     @staticmethod
     def _product(text: str) -> str | None:
@@ -1013,14 +1025,16 @@ class RuleBasedLeadAnalyzer:
                 quality = CommercialSignalQuality(item.commercial_quality)
             except ValueError:
                 continue
-            if quality == CommercialSignalQuality.NON_COMMERCIAL:
+            observed_at = parse_observed_at(item.observed_at)
+            if (quality == CommercialSignalQuality.NON_COMMERCIAL or observed_at is None
+                or not item.evidence_ids or item.vertical != context.vertical):
                 continue
             result.append(
                 HistoricalSignal(
                     competitor=item.competitor,
                     intent=intent,
                     quality=quality,
-                    observed_at=parse_observed_at(item.observed_at),
+                    observed_at=observed_at,
                 )
             )
         return result
@@ -1082,9 +1096,9 @@ class RuleBasedLeadAnalyzer:
             product_context = resolve_product_context(
                 context.comment, context.post_caption, context.parent_comment,
             )
-            if product_context.categories:
+            if product_context.categories or product_context.negated_categories:
                 product = product_context.category
-        raw = RuleBasedLeadAnalyzer._norm(context.comment) if context else ""
+        raw = RuleBasedLeadAnalyzer._norm(positive_product_request_text(context.comment)) if context else ""
         caption = RuleBasedLeadAnalyzer._norm(context.post_caption) if context else ""
         urgent_markers = (
             "срочно",

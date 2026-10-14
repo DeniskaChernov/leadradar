@@ -1,2 +1,2 @@
 <button class="btn primary" type="button" data-api-action="/api/signals/review-all" data-payload='{"limit":100,"gpt_limit":10}' data-async-retry="1" title="Сначала бесплатные правила, затем GPT для спорных (если OpenAI включён)">Оценить накопившееся</button>
-<button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending-local" data-payload='{"limit":100}' title="Повторно проверить отложенные оценки по сохранённым данным. Без GPT и нового поиска.">Проверить без GPT</button>
+<button class="btn ghost" type="button" data-api-action="/api/leads/retry-pending-local" data-payload='{"limit":100}' data-reload="1" title="Проверить отложенные сигналы и обновить старые локальные оценки. Без GPT и нового поиска.">Проверить без GPT</button>

@@ -79,7 +79,7 @@ class LeadService:
         change_detector: SignificantChangeDetector | None = None,
         *,
         signal_max_age_days: int = 30,
-        rules_version: str = "3.3",
+        rules_version: str = "3.4",
     ) -> None:
         self.session_factory = session_factory
         self.analyzer = analyzer
@@ -87,7 +87,7 @@ class LeadService:
         self.audience_engine = audience_engine
         self.change_detector = change_detector
         self.signal_max_age_days = max(0, signal_max_age_days)
-        self.rules_version = (rules_version or "3.3").strip() or "3.3"
+        self.rules_version = (rules_version or "3.4").strip() or "3.4"
 
     async def process_signal(
         self, signal: PersistedSignal, *, allow_baseline: bool = False
@@ -171,7 +171,7 @@ class LeadService:
             return self._to_result(lead, created=True)
 
     async def analyze_lead(self, lead_id: int, *, local_only: bool = False,
-                           pending_only: bool = False) -> ProcessedLead:
+                           pending_only: bool = False, refresh_rules_only: bool = False) -> ProcessedLead:
         """Run enrichment after the initial lead and notification have been committed."""
         contact_id: int | None = None
         change_before: IntelligenceSnapshot | None = None
@@ -181,7 +181,9 @@ class LeadService:
                 raise RuntimeError(f"Lead {lead_id} was not found")
             if pending_only and lead.status not in {LeadStatus.AI_PENDING, LeadStatus.ANALYZING}:
                 return self._to_result(lead, created=False)
-            if local_only and pending_only and await self._has_claimed_ai_request(session, lead.id):
+            if refresh_rules_only and not self._needs_rules_refresh(lead):
+                return self._to_result(lead, created=False)
+            if local_only and (pending_only or refresh_rules_only) and await self._has_claimed_ai_request(session, lead.id):
                 return self._to_result(lead, created=False)
             context = await self._build_context(session, lead.comment_id)
             assortment = assess_assortment(context.comment, context.post_caption, context.parent_comment,
@@ -256,7 +258,9 @@ class LeadService:
                 raise RuntimeError(f"Lead {lead_id} was not found")
             if pending_only and lead.status not in {LeadStatus.AI_PENDING, LeadStatus.ANALYZING}:
                 return self._to_result(lead, created=False)
-            if local_only and pending_only and await self._has_claimed_ai_request(session, lead.id):
+            if refresh_rules_only and not self._needs_rules_refresh(lead):
+                return self._to_result(lead, created=False)
+            if local_only and (pending_only or refresh_rules_only) and await self._has_claimed_ai_request(session, lead.id):
                 return self._to_result(lead, created=False)
             comment = await session.get(Comment, lead.comment_id)
             post = await session.get(Post, comment.post_id) if comment is not None else None
@@ -323,7 +327,7 @@ class LeadService:
             lead.analysis_details = analysis.model_dump(mode="json")
             lead.analysis_details["product_category"] = product_category
             if (
-                product_context.categories and product_category == product_context.category
+                (product_context.categories or product_context.negated_categories) and product_category == product_context.category
                 and taxonomy.get("layer") != "RAW_MATERIAL"
             ):
                 lead.analysis_details["product_context"] = product_context.as_dict()
@@ -792,6 +796,46 @@ class LeadService:
         return await session.scalar(select(AIRequest.id).where(
             AIRequest.lead_id == lead_id, AIRequest.status == AIRequestStatus.CLAIMED,
         ).limit(1)) is not None
+
+    def _needs_rules_refresh(self, lead: Lead) -> bool:
+        return (lead.status == LeadStatus.NEW and lead.assigned_manager_telegram_id is None
+                and (lead.analysis_details or {}).get("rules_version") != self.rules_version
+                and lead.ai_source == "local_rules")
+
+    async def refresh_local_rules(self, limit: int = 100, *, dry_run: bool = True) -> dict:
+        """Refresh stale local NEW qualifications; preserve AI and manager decisions."""
+        if limit <= 0:
+            return {"dry_run": dry_run, "matched": [], "updated": [], "results": []}
+        async with self.session_factory() as session:
+            saved_version = Lead.analysis_details["rules_version"].as_string()
+            rows = list(await session.scalars(select(Lead).join(Comment, Comment.id == Lead.comment_id)
+                .where(Lead.status == LeadStatus.NEW, Lead.assigned_manager_telegram_id.is_(None),
+                       Lead.ai_source == "local_rules",
+                       or_(saved_version.is_(None), saved_version != self.rules_version),
+                       fresh_signal_clause(max_age_days=self.signal_max_age_days),
+                       ~select(AIRequest.id).where(AIRequest.lead_id == Lead.id,
+                           AIRequest.status == AIRequestStatus.CLAIMED).exists())
+                .order_by(Lead.id).limit(max(100, min(500, limit * 2)))))
+            matched = []
+            for lead in rows:
+                if not self._needs_rules_refresh(lead):
+                    continue
+                context = await self._build_context(session, lead.comment_id)
+                if RuleBasedLeadAnalyzer().classify(context) is not None:
+                    matched.append(lead.id)
+                if len(matched) >= limit:
+                    break
+        updated = []
+        results = []
+        if not dry_run:
+            for lead_id in matched:
+                result = await self.analyze_lead(lead_id, local_only=True, refresh_rules_only=True)
+                async with self.session_factory() as session:
+                    lead = await session.get(Lead, lead_id)
+                    if lead and (lead.analysis_details or {}).get("rules_version") == self.rules_version:
+                        updated.append(lead_id)
+                        results.append(result)
+        return {"dry_run": dry_run, "matched": matched, "updated": updated, "results": results}
 
     async def retry_pending_local(self, limit: int = 100) -> list[ProcessedLead]:
         """Recover only locally decidable pending signals without invoking any paid analyzer."""

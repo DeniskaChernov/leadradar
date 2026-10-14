@@ -60,7 +60,7 @@ def test_intelligence_v2_golden_dataset_calibration():
                 context,
             )
 
-        assert analysis.intelligence_version == "3.0", f"Case {case['id']} version mismatch"
+        assert analysis.intelligence_version == "3.1", f"Case {case['id']} version mismatch"
         if "expected_assortment" in case:
             assert assess_assortment(context.comment, context.post_caption).status == case["expected_assortment"]
         assert analysis.is_lead == case["expected_is_lead"], (
@@ -293,7 +293,7 @@ async def test_lead_service_links_evidence_ids_in_v2_analysis(session_factory):
         assert stored_lead is not None
         details = stored_lead.analysis_details
         assert details is not None
-        assert details["intelligence_version"] == "3.0"
+        assert details["intelligence_version"] == "3.1"
         assert evidence_id in details["evidence_ids"]
         assert details["buyer_role"] == BuyerRole.B2C_CONSUMER.value
         assert "factors" in details
@@ -311,6 +311,6 @@ async def test_lead_service_links_evidence_ids_in_v2_analysis(session_factory):
         ).all()
         assert len(events) == 1
         payload = events[0].payload_json
-        assert payload["intelligence_version"] == "3.0"
+        assert payload["intelligence_version"] == "3.1"
         assert evidence_id in payload["evidence_ids"]
         assert payload["buyer_role"] == BuyerRole.B2C_CONSUMER.value

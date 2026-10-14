@@ -52,6 +52,7 @@ from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.audience_quality_service import AudienceQualityService
 from app.services.economics_page_service import EconomicsPageService
 from app.services.product_catalog_service import normalize_product_category
+from app.services.qualification_explanation import qualification_explanation
 from app.services.radar_results_service import RadarCompanyGroup, RadarPostGroup, RadarResultsPage
 from app.services.signal_recency import fresh_signal_clause
 from app.services.usage_service import ExternalUsageService
@@ -1414,6 +1415,7 @@ class WebQueryService:
                     if item not in (None, "")
                 ],
                 "grounded": True,
+                "qualification": qualification_explanation(lead.status, details),
             }
 
     async def contacts(self, *, limit: int = 300, **filters) -> list:

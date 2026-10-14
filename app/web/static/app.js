@@ -2647,28 +2647,34 @@
       const data = await api(`/api/leads/${leadId}/explain`, { method: 'GET', signal: controller.signal });
       if (generation !== leadExplainGeneration) return;
       if (subtitle) {
-        subtitle.textContent = `@${data.username || '—'} · score ${data.score}/100 · только данные из БД`;
+        subtitle.textContent = `@${data.username || '—'} · Приоритет ${data.score}/100 · сохранённая оценка`;
       }
       if (openLink instanceof HTMLAnchorElement) {
         openLink.href = `/leads/${leadId}#ai-evidence`;
       }
       const contributions = (data.contributions || [])
-        .map((item) => `<li><b>+${escapeHtml(String(item.score))}</b> ${escapeHtml(item.label || item.key)}</li>`)
+        .map((item) => `<li><b>${escapeHtml(String(item.score))}</b> ${escapeHtml(item.label || item.key)}</li>`)
         .join('');
       const evidence = (data.evidence || [])
         .map((item) => `<li>${escapeHtml(String(item))}</li>`)
         .join('');
       const evidenceIds = (data.evidence_ids || []).length
-        ? `<p class="muted">Evidence IDs: ${(data.evidence_ids || []).map((id) => escapeHtml(String(id))).join(', ')}</p>`
-        : '<p class="muted">Evidence IDs не сохранены для этого лида.</p>';
+        ? `<p class="muted">Сохранено подтверждений: ${(data.evidence_ids || []).length}</p>`
+        : '<p class="muted">Подтверждения ещё не сохранены.</p>';
+      const qualification = data.qualification;
+      const decision = qualification ? `
+        <h4>${escapeHtml(qualification.title || 'Состояние оценки')}</h4>
+        <p>${escapeHtml(qualification.action || '')}</p>
+        <p class="muted">${escapeHtml(qualification.product_source || '')}</p>` : '';
       if (body) {
         body.innerHTML = `
           <p class="lead-explain-reason">${escapeHtml(data.reason || data.short_reason || 'Объяснение ещё не сформировано.')}</p>
           <p class="muted">${escapeHtml(data.comment_preview || '')}</p>
-          <h4>Почему Lead Radar считает его покупателем</h4>
+          ${decision}
+          <h4>Факторы оценки</h4>
           <ul class="lead-explain-factors">${contributions || '<li class="muted">Факторы оценки не сохранены</li>'}</ul>
-          <h4>Evidence</h4>
-          <ul class="lead-explain-evidence">${evidence || '<li class="muted">Текстовые evidence не сохранены</li>'}</ul>
+          <h4>Основания оценки</h4>
+          <ul class="lead-explain-evidence">${evidence || '<li class="muted">Основания ещё не сохранены</li>'}</ul>
           ${evidenceIds}
         `;
       }

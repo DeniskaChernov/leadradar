@@ -71,6 +71,7 @@ async def client_page(session_factory):
                 await route.fulfill(body=json.dumps({
                     "username": f"client{lead}", "score": 91, "reason": f"Reason {lead}",
                     "contributions": [], "evidence": [], "evidence_ids": [],
+                    **state.get("explanation", {}),
                 }), content_type="application/json")
             elif path.startswith("/api/"):
                 await route.fulfill(body="{}", content_type="application/json")
@@ -91,6 +92,23 @@ async def client_page(session_factory):
         await page.wait_for_function("Boolean(window.clientUiTest)")
         yield page, state, errors
         await browser.close()
+
+
+async def test_explanation_does_not_call_a_rejected_comment_a_buyer_and_escapes_context(client_page):
+    page, state, errors = client_page
+    state["explanation"] = {"qualification": {
+        "title": "Покупательский запрос не подтверждён",
+        "action": '<img src=x onerror="window.__unsafe=true">',
+        "product_source": "Товарный контекст не сохранён.",
+    }, "contributions": [{"score": 60, "label": "Намерение"}]}
+    await page.locator('[data-lead-explain="1"]').click()
+    await page.wait_for_function("document.querySelector('[data-lead-explain-subtitle]').textContent.includes('client1')")
+    body = page.locator('[data-lead-explain-body]')
+    text = await body.inner_text()
+    assert "Покупательский запрос не подтверждён" in text
+    assert "считает его покупателем" not in text and "+60" not in text
+    assert await body.locator('img').count() == 0
+    assert not await page.evaluate('Boolean(window.__unsafe)') and not errors
 
 
 async def test_closed_slow_explain_cannot_replace_next_client(client_page):
