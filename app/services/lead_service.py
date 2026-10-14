@@ -170,7 +170,8 @@ class LeadService:
             )
             return self._to_result(lead, created=True)
 
-    async def analyze_lead(self, lead_id: int, *, local_only: bool = False) -> ProcessedLead:
+    async def analyze_lead(self, lead_id: int, *, local_only: bool = False,
+                           pending_only: bool = False) -> ProcessedLead:
         """Run enrichment after the initial lead and notification have been committed."""
         contact_id: int | None = None
         change_before: IntelligenceSnapshot | None = None
@@ -178,6 +179,10 @@ class LeadService:
             lead = await session.get(Lead, lead_id)
             if lead is None:
                 raise RuntimeError(f"Lead {lead_id} was not found")
+            if pending_only and lead.status not in {LeadStatus.AI_PENDING, LeadStatus.ANALYZING}:
+                return self._to_result(lead, created=False)
+            if local_only and pending_only and await self._has_claimed_ai_request(session, lead.id):
+                return self._to_result(lead, created=False)
             context = await self._build_context(session, lead.comment_id)
             assortment = assess_assortment(context.comment, context.post_caption, context.parent_comment,
                                           vertical=context.vertical)
@@ -249,6 +254,10 @@ class LeadService:
             lead = await session.get(Lead, lead_id)
             if lead is None:
                 raise RuntimeError(f"Lead {lead_id} was not found")
+            if pending_only and lead.status not in {LeadStatus.AI_PENDING, LeadStatus.ANALYZING}:
+                return self._to_result(lead, created=False)
+            if local_only and pending_only and await self._has_claimed_ai_request(session, lead.id):
+                return self._to_result(lead, created=False)
             comment = await session.get(Comment, lead.comment_id)
             post = await session.get(Post, comment.post_id) if comment is not None else None
             contact = await session.get(Contact, lead.contact_id)
@@ -458,6 +467,7 @@ class LeadService:
         cooldown_seconds: int = 0,
         retry_failed: bool = True,
         exclude_lead_ids: set[int] | None = None,
+        local_only: bool = False,
     ) -> list[int]:
         if limit <= 0:
             return []
@@ -472,6 +482,16 @@ class LeadService:
             .limit(1)
             .scalar_subquery()
         )
+        if local_only:
+            # A failed API request does not prohibit a free local decision. A
+            # claimed request must release ownership before a local retry.
+            request_filter = ~select(AIRequest.id).where(
+                AIRequest.lead_id == Lead.id,
+                AIRequest.status == AIRequestStatus.CLAIMED,
+            ).exists()
+        else:
+            request_filter = or_(latest_request_status.is_(None),
+                                 latest_request_status != AIRequestStatus.PERMANENT_FAILURE)
         async with self.session_factory() as session:
             return list(
                 await session.scalars(
@@ -480,10 +500,7 @@ class LeadService:
                     .where(
                         fresh_signal_clause(max_age_days=self.signal_max_age_days),
                         Lead.id.not_in(exclude_lead_ids or set()),
-                        or_(
-                            latest_request_status.is_(None),
-                            latest_request_status != AIRequestStatus.PERMANENT_FAILURE,
-                        ),
+                        request_filter,
                         or_(
                             (
                                 (Lead.status == LeadStatus.AI_PENDING)
@@ -770,16 +787,22 @@ class LeadService:
                     pending.append(contact_id)
         return {"updated": updated, "contacts_recalculated": recalculated, "pending_contacts": pending}
 
+    @staticmethod
+    async def _has_claimed_ai_request(session: AsyncSession, lead_id: int) -> bool:
+        return await session.scalar(select(AIRequest.id).where(
+            AIRequest.lead_id == lead_id, AIRequest.status == AIRequestStatus.CLAIMED,
+        ).limit(1)) is not None
+
     async def retry_pending_local(self, limit: int = 100) -> list[ProcessedLead]:
         """Recover only locally decidable pending signals without invoking any paid analyzer."""
-        lead_ids = await self.list_pending_lead_ids(limit, cooldown_seconds=0)
+        lead_ids = await self.list_pending_lead_ids(limit, cooldown_seconds=0, local_only=True)
         results: list[ProcessedLead] = []
         for lead_id in lead_ids:
             async with self.session_factory() as session:
                 lead = await session.get(Lead, lead_id)
                 if lead is None or lead.status not in {LeadStatus.AI_PENDING, LeadStatus.ANALYZING}:
                     continue
-            result = await self.analyze_lead(lead_id, local_only=True)
+            result = await self.analyze_lead(lead_id, local_only=True, pending_only=True)
             if result.status not in {LeadStatus.AI_PENDING, LeadStatus.ANALYZING}:
                 results.append(result)
         return results

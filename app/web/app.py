@@ -1740,12 +1740,16 @@ def build_web_app(
         payload = await _json_or_form(request)
         limit = max(1, min(int(payload.get("limit") or 100), 500))
         gpt_limit = max(1, min(int(payload.get("gpt_limit") or 10), 50))
-        results = await local_lead_service.backfill_unanalyzed_comments(limit)
+        recovered = await local_lead_service.retry_pending_local(limit)
+        results = recovered + await local_lead_service.backfill_unanalyzed_comments(limit - len(recovered))
         rules_pending = sum(item.status == LeadStatus.AI_PENDING for item in results)
         gpt_queued = 0
         gpt_processed = 0
-        use_openai = openai_spend_allowed()
+        openai_armed = openai_spend_allowed()
+        budget = await usage_service.snapshot("openai", settings.openai_daily_request_limit)
+        use_openai = openai_armed and budget.remaining > 0
         if use_openai:
+            gpt_limit = min(gpt_limit, budget.remaining)
             if analysis_pipeline is not None:
                 gpt_queued = await analysis_pipeline.enqueue_retry_batch(
                     gpt_limit, cooldown_seconds=0
@@ -1767,15 +1771,24 @@ def build_web_app(
                 parts.append(f"в очередь GPT: {gpt_queued}")
             elif gpt_processed:
                 parts.append(f"GPT дожал: {gpt_processed}")
-        elif rules_pending:
+        counts = await queries.gpt_queue_counts()
+        remaining_pending = counts["ai_pending"] + counts["analyzing"]
+        if remaining_pending:
+            parts.append(f"ещё ожидают оценки: {remaining_pending}")
+        if remaining_pending and openai_armed and not use_openai:
+            parts.append(f"дневной лимит GPT исчерпан: {budget.used_today}/{budget.daily_limit}; сигналы сохранены")
+        elif remaining_pending and not openai_armed:
             parts.append("включите OpenAI для GPT-оценки спорных")
         return {
             "ok": True,
             "processed": len(results),
+            "local_recovered": len(recovered),
             "rules_pending": rules_pending,
+            "remaining_pending": remaining_pending,
+            "openai_remaining": budget.remaining,
             "gpt_queued": gpt_queued,
             "gpt_processed": gpt_processed,
-            "openai_used": use_openai,
+            "openai_used": bool(gpt_queued or gpt_processed),
             "async": bool(gpt_queued),
             "message": ". ".join(parts) + ".",
         }
@@ -1796,26 +1809,53 @@ def build_web_app(
             ),
         }
 
+    @app.post("/api/leads/retry-pending-local")
+    async def retry_pending_leads_local(request: Request):
+        """Resolve saved pending signals using rules only, regardless of the AI switch."""
+        payload = await _json_or_form(request)
+        try:
+            limit = int(str(payload.get("limit", 100)))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="Лимит должен быть целым числом от 1 до 500") from exc
+        if not 1 <= limit <= 500:
+            raise HTTPException(status_code=400, detail="Лимит должен быть целым числом от 1 до 500")
+        results = await local_lead_service.retry_pending_local(limit)
+        counts = await queries.gpt_queue_counts()
+        remaining = counts["ai_pending"] + counts["analyzing"]
+        return {"ok": True, "processed": len(results), "remaining": remaining,
+                "openai_used": False, "async": False,
+                "message": (f"По сохранённым данным оценено: {len(results)}. "
+                            f"Ещё ожидают оценки: {remaining}. GPT и новый поиск не запускались.")}
+
     @app.post("/api/leads/retry-pending")
     async def retry_pending_leads(request: Request):
         payload = await _json_or_form(request)
         limit = max(1, min(int(payload.get("limit") or 10), 50))
-        use_openai = openai_spend_allowed()
+        results = await local_lead_service.retry_pending_local(limit)
+        openai_armed = openai_spend_allowed()
+        budget = await usage_service.snapshot("openai", settings.openai_daily_request_limit)
+        paid_limit = min(limit - len(results), budget.remaining) if openai_armed else 0
+        use_openai = paid_limit > 0
         if analysis_pipeline is not None and use_openai:
-            queued = await analysis_pipeline.enqueue_retry_batch(limit, cooldown_seconds=0)
+            queued = await analysis_pipeline.enqueue_retry_batch(paid_limit, cooldown_seconds=0)
+            counts = await queries.gpt_queue_counts()
             return {
                 "ok": True,
+                "processed": len(results),
                 "queued": queued,
-                "async": True,
-                "openai_used": True,
+                "async": bool(queued),
+                "openai_used": bool(queued),
+                "openai_remaining": budget.remaining,
+                "still_pending": counts["ai_pending"] + counts["analyzing"],
                 "message": (
-                    f"В очередь GPT поставлено: {queued}. "
-                    "Оценка идёт в фоне — обновите поиск через минуту."
+                    f"По правилам оценено: {len(results)}. В очередь GPT поставлено: {queued}. "
+                    + ("Оценка идёт в фоне — обновите поиск через минуту." if queued else "Новых заданий для GPT нет.")
                 ),
             }
-        service = hybrid_lead_service if use_openai else local_lead_service
-        results = await service.retry_pending(limit, cooldown_seconds=0)
-        still_pending = sum(item.status == LeadStatus.AI_PENDING for item in results)
+        if use_openai:
+            results += await hybrid_lead_service.retry_pending(paid_limit, cooldown_seconds=0)
+        counts = await queries.gpt_queue_counts()
+        still_pending = counts["ai_pending"] + counts["analyzing"]
         if use_openai:
             message = (
                 f"Умный разбор: обработано {len(results)}. "
@@ -1825,13 +1865,17 @@ def build_web_app(
             message = (
                 f"Только правила: обработано {len(results)}. "
                 f"Спорных осталось: {still_pending}. "
-                "Включите OpenAI в Системе для GPT-оценки."
+                + (f"Дневной лимит GPT исчерпан: {budget.used_today}/{budget.daily_limit}."
+                   if openai_armed and budget.remaining == 0 and still_pending else
+                   "Включите OpenAI в Системе для GPT-оценки." if not openai_armed and still_pending else
+                   "Повторная проверка завершена.")
             )
         return {
             "ok": True,
             "processed": len(results),
             "still_pending": still_pending,
             "openai_used": use_openai,
+            "openai_remaining": budget.remaining,
             "async": False,
             "message": message,
         }
