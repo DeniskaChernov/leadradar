@@ -11,7 +11,7 @@ from app.db.models import Comment, Competitor, CoverageStatus, Post, PostDiscove
 from app.db.repositories import CompetitorRepository, PostRepository
 from app.providers.base import InstagramProvider, ProviderError, ProviderUsageBlockedError
 from app.providers.publication_origin import is_fixture_publication, uses_live_provider
-from app.schemas.instagram import InstagramPost, PostFetchResult
+from app.schemas.instagram import InstagramComment, InstagramPost, PostFetchResult
 from app.services.adaptive_monitoring_service import (
     AdaptiveMonitoringService,
     CompetitorScanPlan,
@@ -21,6 +21,7 @@ from app.services.lead_analysis_pipeline import LeadAnalysisPipeline
 from app.services.lead_service import LeadService
 from app.services.notification_service import LeadNotifier
 from app.services.post_discovery_service import PostDiscoveryService
+from app.services.reply_scan_service import ReplyScanService
 from app.services.scan_progress import ScanProgressTracker
 from app.services.signal_recency import is_signal_within_window
 
@@ -103,6 +104,7 @@ class InstagramMonitor:
     ) -> None:
         self.session_factory = session_factory
         self.provider = provider
+        self.reply_scans = ReplyScanService(session_factory, provider)
         self.contact_service = contact_service
         self.lead_service = lead_service
         self.notifier = notifier
@@ -461,6 +463,50 @@ class InstagramMonitor:
                 else self.incremental_max_comment_pages
             )
             stats.avoided_requests += max(0, configured_pages - batch.pages_fetched)
+        await self._ingest_comments(reel, comments, stats, is_baseline=check.is_baseline)
+        await self._mark_comments_fetched(
+            check.post_id,
+            remote_comments_count=reel.comments_count,
+            fetched_count=len(comments),
+            pages_fetched=batch.pages_fetched,
+            coverage_status=batch.coverage_status,
+            provider=batch.provider,
+            previous_coverage=check.previous_coverage,
+            stopped_on_known_comment=batch.stopped_on_known_comment,
+            next_cursor=batch.next_cursor,
+            cursor_exhausted=batch.cursor_exhausted,
+            is_backfill=check.is_backfill,
+            is_head_probe=check.comment_cursor is None,
+            is_baseline=check.is_baseline,
+            preserve_backfill_cursor=check.preserve_backfill_cursor,
+            fetch_failed=bool(batch.fetch_error),
+        )
+        return batch.fetch_error is None
+
+    async def run_reply_cycle(self, request_id: int, *, progress=None) -> CycleStats:
+        stats = CycleStats()
+        if progress is not None:
+            progress.set_prepare("Проверка ответов в выбранной ветке…")
+
+        async def ingest(post, comments):
+            await self._ingest_comments(post, comments, stats, is_baseline=False,
+                                        preserve_post_metadata=True)
+            if progress is not None:
+                progress.update_stats(comments_created=stats.comments_created,
+                                      leads_created=stats.leads_created)
+            return {"comments_created": stats.comments_created, "leads_created": stats.leads_created}
+
+        result = await self.reply_scans.scan(request_id, ingest)
+        stats.comment_requests = result.get("pages", 0)
+        stats.comments_seen = result.get("comments_seen", 0)
+        if result.get("error"):
+            stats.errors += 1
+        return stats
+
+    async def _ingest_comments(
+        self, reel: InstagramPost, comments: list[InstagramComment], stats: CycleStats,
+        *, is_baseline: bool, preserve_post_metadata: bool = False,
+    ) -> None:
         for comment in comments:
             if not is_signal_within_window(
                 comment.created_at,
@@ -468,8 +514,9 @@ class InstagramMonitor:
             ):
                 stats.comments_skipped_stale += 1
                 continue
+            options = {"preserve_post_metadata": True} if preserve_post_metadata else {}
             signal = await self.contact_service.persist_signal(
-                reel, comment, is_baseline=check.is_baseline
+                reel, comment, is_baseline=is_baseline, **options,
             )
             if signal.created:
                 stats.comments_created += 1
@@ -516,24 +563,6 @@ class InstagramMonitor:
                     analyzed.lead_id,
                     type(exc).__name__,
                 )
-        await self._mark_comments_fetched(
-            check.post_id,
-            remote_comments_count=reel.comments_count,
-            fetched_count=len(comments),
-            pages_fetched=batch.pages_fetched,
-            coverage_status=batch.coverage_status,
-            provider=batch.provider,
-            previous_coverage=check.previous_coverage,
-            stopped_on_known_comment=batch.stopped_on_known_comment,
-            next_cursor=batch.next_cursor,
-            cursor_exhausted=batch.cursor_exhausted,
-            is_backfill=check.is_backfill,
-            is_head_probe=check.comment_cursor is None,
-            is_baseline=check.is_baseline,
-            preserve_backfill_cursor=check.preserve_backfill_cursor,
-            fetch_failed=bool(batch.fetch_error),
-        )
-        return batch.fetch_error is None
 
     async def _notify_new_signal(self, lead_id: int) -> int:
         notify = getattr(self.notifier, "notify_new_signal", None)

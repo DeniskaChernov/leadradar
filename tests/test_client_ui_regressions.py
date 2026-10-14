@@ -6,11 +6,13 @@ import asyncio
 import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 import httpx
 import pytest
 import pytest_asyncio
+from jinja2 import Environment, FileSystemLoader
 from playwright.async_api import async_playwright
 from sqlalchemy import select
 
@@ -34,10 +36,16 @@ async def client_page(session_factory):
         catalog_html = (await client.get("/catalog")).text
     import_form = re.search(r'<form[^>]+action="/api/catalog/import".*?</form>', catalog_html, re.S)
     assert import_form is not None
+    reply_html = Environment(loader=FileSystemLoader(PROJECT_ROOT / "app/web/templates"), autoescape=True).get_template(
+        "partials/reply_thread_control.html",
+    ).render(reply_scan_available=True, web_role="ADMIN", search_paused=False,
+             selected_vertical="FURNITURE", comment=SimpleNamespace(
+                 id=1, post_id=1, parent_platform_comment_id=None,
+             ))
     html = html.replace(
         "</main>", '<button type="button" data-lead-explain="1">Explain A</button>'
         '<button type="button" data-lead-explain="2">Explain B</button>'
-        + import_form.group() + '<pre id="catalog-import-result" hidden></pre></main>',
+        + import_form.group() + '<pre id="catalog-import-result" hidden></pre>' + reply_html + '</main>',
     )
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)
@@ -63,8 +71,11 @@ async def client_page(session_factory):
                 )
                 if state.get("release"):
                     await state["release"].wait()
+                response = state["response"]
+                if path.startswith("/api/scan/replies/") and state.get("reply_response"):
+                    response = {**state["reply_response"], "request_key": route.request.headers.get("idempotency-key")}
                 await route.fulfill(
-                    status=state["status"], body=json.dumps(state["response"]), content_type="application/json",
+                    status=state["status"], body=json.dumps(response), content_type="application/json",
                 )
             elif path.endswith("/explain"):
                 lead = path.split("/")[-2]
@@ -73,6 +84,10 @@ async def client_page(session_factory):
                     "contributions": [], "evidence": [], "evidence_ids": [],
                     **state.get("explanation", {}),
                 }), content_type="application/json")
+            elif path.startswith("/api/scan/replies/"):
+                await route.fulfill(body=json.dumps(state.get("reply_preview", {
+                    "saved_replies": 2, "coverage": "PARTIAL", "has_continuation": True,
+                })), content_type="application/json")
             elif path.startswith("/api/"):
                 await route.fulfill(body="{}", content_type="application/json")
             else:
@@ -366,3 +381,36 @@ async def test_closed_client_has_no_deal_mutation_forms(session_factory, status,
     assert "Лид закрыт:" in response.text
     if with_deal:
         assert "Stored deal" in response.text
+
+async def test_reply_preview_is_readonly_and_confirmation_cancel_spends_nothing(client_page):
+    page, state, errors = client_page
+    panel = page.locator('[data-reply-panel="1"]')
+    await panel.locator('summary').click()
+    await page.wait_for_function("document.querySelector('[data-reply-state]').textContent.includes('Сохранено ответов: 2')")
+    assert not state['posts']
+    await panel.locator('[type="submit"]').click()
+    await page.locator('[data-confirm-cancel]').click()
+    await page.wait_for_function("!document.querySelector('[data-reply-form] button[type=submit]').disabled")
+    assert not state['posts'] and not errors
+
+
+async def test_reply_uncertain_http_retry_reuses_key_and_freezes_limit(client_page):
+    page, state, errors = client_page
+    panel = page.locator('[data-reply-panel="1"]')
+    await panel.locator('summary').click()
+    form = panel.locator('[data-reply-form]')
+    state.update(status=503, response={'detail': 'Temporary failure'})
+    await form.locator('[type="submit"]').click()
+    assert await form.locator('input').is_disabled()
+    await page.locator('[data-confirm-ok]').click()
+    await page.wait_for_function("!document.querySelector('[data-reply-form] input').disabled")
+    first = state['keys'][-1]
+    assert first
+    state.update(status=200, reply_response={'ok': True, 'status': 'DONE', 'result': {
+        'comments_created': 3, 'coverage': 'FULL',
+    }})
+    await form.locator('[type="submit"]').click()
+    await page.locator('[data-confirm-ok]').click()
+    await page.wait_for_function("document.querySelector('[data-reply-state]').textContent.includes('Новых комментариев: 3')")
+    assert state['keys'][-1] == first and state['posts'][-1]['confirm_live'] is True
+    assert not errors

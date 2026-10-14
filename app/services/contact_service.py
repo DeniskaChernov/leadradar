@@ -56,10 +56,12 @@ class ContactService:
         comment_data: InstagramComment,
         *,
         is_baseline: bool = False,
+        preserve_post_metadata: bool = False,
     ) -> PersistedSignal:
         for attempt in range(2):
             result = await self._persist_signal_once(
-                post_data, comment_data, is_baseline=is_baseline
+                post_data, comment_data, is_baseline=is_baseline,
+                preserve_post_metadata=preserve_post_metadata,
             )
             if result is not None:
                 return result
@@ -76,6 +78,7 @@ class ContactService:
         comment_data: InstagramComment,
         *,
         is_baseline: bool,
+        preserve_post_metadata: bool = False,
     ) -> PersistedSignal | None:
         async with self.session_factory() as session:
             comments = CommentRepository(session)
@@ -102,7 +105,14 @@ class ContactService:
                 competitor = await CompetitorRepository(session).get_or_create(post_data.competitor)
                 # Портфель ротанга только через explicit enrollment (Competitor.vertical в UI/CRM).
                 # Таксономия размечает сигнал/evidence/lead, но не переводит источник.
-                post, _, _ = await PostRepository(session).upsert(competitor, post_data)
+                if preserve_post_metadata:
+                    post = await PostRepository(session).get_by_identity(
+                        post_data.platform_post_id, post_data.url,
+                    )
+                    if post is None or post.competitor_id != competitor.id:
+                        raise ValueError("Reply source post is missing or belongs to another company")
+                else:
+                    post, _, _ = await PostRepository(session).upsert(competitor, post_data)
                 contact, contact_created = await ContactRepository(session).upsert_from_comment(
                     comment_data
                 )

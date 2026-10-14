@@ -48,8 +48,8 @@
             <div class="radar-post-capture">
               <span class="tag {{ 'success' if publication.coverage == 'FULL' else 'warning' }}">{% if publication.coverage == 'FULL' %}Сбор завершён{% elif publication.coverage == 'PARTIAL' %}Собрано частично{% elif publication.coverage == 'LATEST_ONLY' %}Только последние комментарии{% else %}Полнота не подтверждена{% endif %}</span>
               <span>Проверка комментариев: {% if post.comments_checked_at %}{{ post.comments_checked_at | display_dt }}{% else %}дата не сохранена{% endif %}</span>
-              <span>В базе по посту: {{ post.comments_fetched_count if post.comments_fetched_count is not none else 'не подтверждено' }} · В Instagram при проверке: {{ post.comments_count }}</span>
-              {% if publication.replies_excluded %}<span class="muted">Сбор основных комментариев. Ответы внутри веток в этот сбор не входят.</span>{% endif %}
+              <span>Сохранено в основном сборе: {{ post.comments_fetched_count if post.comments_fetched_count is not none else 'не подтверждено' }} · В Instagram при проверке: {{ post.comments_count }}</span>
+              {% if publication.replies_excluded %}<span class="muted">Статус относится к основным комментариям. Ответы проверяются отдельно в блоке «Ответы в ветке» у выбранного комментария.</span>{% endif %}
             </div>
             <div class="radar-post-links">
               {% if publication.public_url %}<a class="btn tiny ghost" href="{{ publication.public_url }}" target="_blank" rel="noopener noreferrer">Пост в Instagram ↗</a>{% endif %}

@@ -84,6 +84,9 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         if remaining is None and charged is None:
             return
         operation = (
+            "get_reply_page"
+            if url.endswith("/v1/instagram/post/comment/replies")
+            else
             "get_comment_page"
             if url.endswith("/v2/instagram/post/comments")
             else "get_reels"
@@ -210,6 +213,68 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
 
     async def get_comments(self, post: InstagramPost) -> list[InstagramComment]:
         return (await self.get_comment_batch(post)).comments
+
+    @property
+    def supports_comment_replies(self) -> bool:
+        return True
+
+    async def get_reply_batch(
+        self, post: InstagramPost, parent_comment_id: str, *, cursor: str | None = None,
+    ) -> CommentFetchResult:
+        ensure_public_source(post.raw_data)
+        if not parent_comment_id:
+            raise ProviderResponseError("Parent comment ID is required")
+        params = {"url": post.url, "comment_id": parent_comment_id}
+        if cursor:
+            params["cursor"] = cursor
+        payload = await self._request_json(
+            "GET", f"{self.base_url}/v1/instagram/post/comment/replies",
+            headers=self.headers, params=params,
+        )
+        ensure_public_source(payload)
+        if not isinstance(payload, dict) or not isinstance(payload.get("comments"), list):
+            raise ProviderResponseError("ScrapeCreators replies response has no comments list")
+        comments = []
+        seen = set()
+        error = None
+        for item in payload["comments"]:
+            try:
+                if not isinstance(item, dict):
+                    raise ProviderResponseError("Reply is not an object")
+                reply = self.normalize_comment(item)
+                if reply.platform_comment_id == parent_comment_id or (
+                    reply.parent_platform_comment_id not in {None, parent_comment_id}
+                ):
+                    raise ProviderResponseError("Reply belongs to another thread")
+                reply = public_record(reply.model_copy(update={
+                    "parent_platform_comment_id": parent_comment_id,
+                }))
+            except ProviderUsageBlockedError:
+                raise
+            except (ProviderError, ValueError, TypeError, OverflowError):
+                error = "InvalidReplyRecord"
+                continue
+            if reply.platform_comment_id not in seen:
+                seen.add(reply.platform_comment_id)
+                comments.append(reply)
+        next_cursor = payload.get("cursor")
+        more = payload.get("has_more")
+        if next_cursor is not None and (not isinstance(next_cursor, str) or not next_cursor):
+            error = "InvalidReplyCursor"
+        if more is not None and not isinstance(more, bool):
+            error = "InvalidReplyPagination"
+        if (more is True and not next_cursor) or (more is False and next_cursor):
+            error = "InconsistentReplyPagination"
+        if next_cursor and next_cursor == cursor:
+            error = "RepeatedReplyCursor"
+        # Absence of cursor without explicit has_more=false cannot prove completion.
+        exhausted = more is False and not error
+        return CommentFetchResult(
+            comments=comments, provider=self.name, pages_fetched=1,
+            coverage_status="FULL" if exhausted else "PARTIAL" if error or next_cursor else "UNKNOWN",
+            cursor_exhausted=exhausted,
+            next_cursor=cursor if error else next_cursor, fetch_error=error,
+        )
 
     async def get_comment_batch(
         self,

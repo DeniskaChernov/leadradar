@@ -54,6 +54,20 @@ class InstagramProvider(ABC):
     name: str
 
     @property
+    def supports_comment_replies(self) -> bool:
+        return False
+
+    @property
+    def reply_cursor_provider(self) -> str:
+        return self.name
+
+    async def get_reply_batch(
+        self, post: InstagramPost, parent_comment_id: str, *, cursor: str | None = None,
+    ) -> CommentFetchResult:
+        """One page from one public thread; never silently substitute parent comments."""
+        raise ProviderResponseError("This provider does not support comment replies")
+
+    @property
     def supports_post_pagination(self) -> bool:
         return False
 

@@ -3,4 +3,5 @@
   <p>{{ comment.text or 'Пустой комментарий' }}</p>
   <span class="tag neutral">{{ 'Отсеян · не лид' if lead else 'Комментарий без оценки' }}</span>
   {% if lead %}<a class="btn tiny ghost" href="/leads/{{ lead.id }}">Посмотреть оценку</a>{% else %}<a class="btn tiny ghost" href="/contacts/{{ contact.id }}">Карточка клиента</a>{% endif %}
+  {% include "partials/reply_thread_control.html" %}
 </article>

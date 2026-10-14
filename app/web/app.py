@@ -60,6 +60,7 @@ from app.services.product_catalog_service import (
     ProductCatalogService,
 )
 from app.services.provider_credit_budget_service import ProviderCreditBudgetService
+from app.services.reply_scan_service import ReplyScanConflict
 from app.services.significant_change_service import SignificantChangeDetector
 from app.services.telegram_notification_service import (
     resolve_uncertain_change_log,
@@ -168,6 +169,7 @@ def build_web_app(
     provider_budget_service = ProviderCreditBudgetService(workflow.session_factory)
     crm = crm or CRMService(workflow.session_factory)
     ops_control = ops_control or OperationalControlService(workflow.session_factory)
+    reply_start_lock = asyncio.Lock()
     # analyze-local stays rules-only. retry-pending uses hybrid with live_gate.
     market_service = MarketIntelligenceService(workflow.session_factory)
     meta_audience_service = MetaAudiencePlanningService(workflow.session_factory)
@@ -422,6 +424,9 @@ def build_web_app(
             "now": datetime.now().astimezone(),
             "snapshot": snapshot,
             "settings": settings,
+            "reply_scan_available": bool(
+                getattr(getattr(controller.monitor, "provider", None), "supports_comment_replies", False)
+            ),
             "active_path": request.url.path,
             "manager_id": getattr(request.state, "manager_id", local_manager_id()),
             "web_role": getattr(request.state, "web_role", WebRole.ADMIN).name,
@@ -1544,6 +1549,86 @@ def build_web_app(
                 "vertical": vertical,
             }
         )
+
+    def reply_scan_service():
+        service = getattr(controller.monitor, "reply_scans", None)
+        if service is None:
+            raise HTTPException(409, "Проверка ответов недоступна в этом режиме")
+        return service
+
+    def reply_request_payload(row):
+        active = controller.snapshot().cycle_running and controller.reply_request_id == row.id
+        status = "INTERRUPTED" if row.status in {"ACCEPTED", "RUNNING"} and not active else row.status
+        return {
+            "ok": True, "request_key": row.request_key, "status": status,
+            "result": row.result, "error": row.error,
+            "message": "Проверка ответов запущена" if active else
+            "Запрос уже сохранён; повторного расхода нет",
+        }
+
+    @app.get("/api/scan/replies/{comment_id}")
+    async def reply_preview(comment_id: int):
+        try:
+            data = await reply_scan_service().preview(comment_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        data["budget"] = await _scan_preview_payload(1, vertical=data["vertical"])
+        data["running"] = controller.snapshot().cycle_running
+        return data
+
+    @app.get("/api/scan/replies/requests/{key}")
+    async def reply_request_status(request: Request, key: str):
+        row = await reply_scan_service().existing(key)
+        if row is None or row.manager_id != manager_id(request):
+            raise HTTPException(404, "Запрос проверки не найден")
+        return reply_request_payload(row)
+
+    @app.post("/api/scan/replies/{comment_id}")
+    async def scan_replies(request: Request, comment_id: int):
+        service = reply_scan_service()
+        payload = await _json_or_form(request)
+        key = request.headers.get("Idempotency-Key", "")
+        raw = payload.get("max_credits")
+        if isinstance(raw, bool) or not str(raw).isdigit():
+            raise HTTPException(400, "max_credits должен быть целым от 1 до 20")
+        credits = int(raw)
+        async with reply_start_lock:
+            try:
+                existing = await service.existing(key)
+                if existing:
+                    row, _ = await service.accept(key, comment_id, manager_id(request), credits)
+                    return reply_request_payload(row)
+                if controller.snapshot().cycle_running:
+                    raise HTTPException(409, "Дождитесь завершения текущей проверки")
+                if not settings.lead_search_enabled:
+                    raise HTTPException(409, "Поиск временно приостановлен")
+                if not 1 <= credits <= service.MAX_CREDITS:
+                    raise ValueError("Лимит ответов должен быть от 1 до 20")
+                data = await service.preview(comment_id)
+                is_live = settings.instagram_provider not in {"mock", "replay"}
+                if is_live:
+                    await ops_control.load()
+                    if not radar_spend_allowed():
+                        raise HTTPException(409, "Live Radar выключен")
+                    if payload.get("confirm_live") is not True:
+                        raise HTTPException(428, "Подтвердите расход на проверку ответов")
+                    budget = await _scan_preview_payload(credits, vertical=data["vertical"])
+                    if not budget["can_start"] or budget["effective_max_credits"] < credits:
+                        raise HTTPException(409, " ".join(budget["blocking_reasons"]) or
+                                            "Уменьшите лимит до доступного остатка")
+                row, created = await service.accept(key, comment_id, manager_id(request), credits)
+                if created:
+                    controller.start_cycle("replies", max_units=credits, requested_units=credits,
+                                           vertical=data["vertical"], reply_request_id=row.id)
+                return reply_request_payload(row)
+            except LookupError as exc:
+                raise HTTPException(404, str(exc)) from exc
+            except ReplyScanConflict as exc:
+                raise HTTPException(409, str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
 
     @app.post("/api/ops/radar-live")
     async def set_radar_live(request: Request):

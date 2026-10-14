@@ -557,6 +557,38 @@ class Comment(Base):
     public_signal: Mapped[PublicSignal | None] = relationship(back_populates="comment")
 
 
+class ReplyThreadState(Base):
+    """Independent saved traversal for one public parent comment."""
+
+    __tablename__ = "reply_thread_states"
+
+    comment_id: Mapped[int] = mapped_column(ForeignKey("comments.id"), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(128))
+    next_cursor: Mapped[str | None] = mapped_column(Text)
+    coverage_status: Mapped[str] = mapped_column(String(32), default="UNKNOWN")
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pages_fetched: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(128))
+    visited_cursors: Mapped[list] = mapped_column(JSON, default=list)
+
+
+class ReplyScanRequest(Base):
+    """A retried HTTP operation must never authorize another paid traversal."""
+
+    __tablename__ = "reply_scan_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_key: Mapped[str] = mapped_column(String(128), unique=True)
+    comment_id: Mapped[int] = mapped_column(ForeignKey("comments.id"), index=True)
+    manager_id: Mapped[int] = mapped_column(BigInteger)
+    max_credits: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), default="ACCEPTED")
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class PublicSignal(Base):
     __tablename__ = "public_signals"
     __table_args__ = (

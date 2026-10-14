@@ -1,5 +1,30 @@
 # Lead Radar — состояние проекта
 
+## Ответы в ветках Instagram — 2026-10-14
+
+Добавлена ручная проверка выбранного основного комментария в Радаре и
+карточке лида: отдельный replies endpoint, default 1 / cap 20, подтверждение,
+кредитный резерв и общий контроллер поиска. Состояние читается бесплатно.
+Ключ запроса и отдельный курсор сохранены в БД; повтор запроса не повторяет
+списание. Кеш FULL — час. Основные метаданные/полнота поста сохраняются.
+Ответы используют существующую квалификацию, бюджет GPT и DB-before-Telegram.
+Ручной основной поиск default 5 и отсутствие автоматических paid scans сохранены.
+
+78 целевых тестов PASS; окончательные 25 (reply/contact/migration) PASS.
+Полный окончательный pytest: 1522 passed, 2 skipped за 1030,71 с; JUnit без
+failures/errors. Ruff/diff PASS; Alembic head b9f2a6c81d40 без drift.
+Backup replies-20261014-103541-048393, integrity ok/FK 0. 46 старых таблиц
+совпадают полностью; 4 производных кеша проверены по фактам/возрасту.
+439 comments/leads, 397 contacts, 2124 contact_events, 445 cost_events сохранены.
+Новые таблицы пусты: реальный replies API не запускался, кредитов не расходовал.
+Runtime replies1 full RUNNING/SERVING, PID 16980; read-only UI ветки проверен.
+Прежний Cloudflare терял соединение (520/530), пересоздан штатными скриптами.
+Новый https://avi-favourite-advertising-fcc.trycloudflare.com/radar:
+по 16 страниц/API + 4 assets локально/внешне 200, без повторов. HOT очередь 8,
+JS errors 0; preview can_start=true, manual default 5. Quick Tunnel временный.
+Подробности: [REPLY_THREAD_SCANS_2026-10-14.md](docs/REPLY_THREAD_SCANS_2026-10-14.md).
+
+
 ## Контекстные алгоритмы 3.4 — 2026-10-14
 
 Переработаны товарный контекст 2.0, частичный отказ от товара, явные ответы

@@ -1413,6 +1413,12 @@
   };
 
   document.addEventListener('submit', async (event) => {
+    const replyForm = event.target.closest('[data-reply-form]');
+    if (replyForm) {
+      event.preventDefault();
+      await submitReplyScan(replyForm);
+      return;
+    }
     const passwordForm = event.target.closest('[data-password-login]');
     if (passwordForm) {
       event.preventDefault();
@@ -1516,7 +1522,84 @@
     }
   });
 
+  const replyLabels = { FULL: 'Проверка ветки завершена', PARTIAL: 'Ветка собрана частично', UNKNOWN: 'Ветка ещё не проверена' };
+  const replyPreviewBusy = new WeakSet();
+  const previewReplyThread = async (panel) => {
+    if (replyPreviewBusy.has(panel)) return;
+    replyPreviewBusy.add(panel);
+    const status = panel.querySelector('[data-reply-state]');
+    try {
+      const data = await api(`/api/scan/replies/${panel.dataset.replyPanel}`, { method: 'GET' });
+      if (status) status.textContent = `${replyLabels[data.coverage] || replyLabels.UNKNOWN}. Сохранено ответов: ${data.saved_replies || 0}. ${data.has_continuation ? 'Следующий запуск продолжит сохранённую страницу.' : ''}${data.last_error ? ' Последняя страница не завершена; доступен повтор.' : ''}${data.running ? ' Сейчас выполняется проверка.' : ''}${data.source_active === false ? ' Источник приостановлен.' : ''}`;
+    } catch (error) {
+      if (status) status.textContent = error.message;
+    } finally {
+      replyPreviewBusy.delete(panel);
+    }
+  };
+  document.addEventListener('toggle', (event) => {
+    const panel = event.target;
+    if (panel instanceof HTMLDetailsElement && panel.matches('[data-reply-panel]') && panel.open) {
+      previewReplyThread(panel);
+    }
+  }, true);
+  let replySubmissionPending = false;
+  const submitReplyScan = async (form) => {
+    if (replySubmissionPending || pendingApiForms.has(form) || !form.reportValidity()) return;
+    const panel = form.closest('[data-reply-panel]');
+    const status = panel.querySelector('[data-reply-state]');
+    const button = form.querySelector('[type="submit"]');
+    const credits = Number(form.elements.max_credits.value);
+    if (!Number.isInteger(credits) || credits < 1 || credits > 20) {
+      toast('Выберите целый лимит от 1 до 20 кредитов', true);
+      return;
+    }
+    pendingApiForms.add(form);
+    replySubmissionPending = true;
+    const controls = [...form.querySelectorAll('input,button')].map(control => ({ control, disabled: control.disabled }));
+    controls.forEach(({ control }) => { control.disabled = true; });
+    setLoading(button, true);
+    try {
+      const proceed = await confirmAction('Проверить ответы в этой ветке?', `Лимит: ${credits} кредитов. Проверяется только выбранный комментарий. Оценка новых ответов использует отдельный лимит GPT.`);
+      if (!proceed) return;
+      const body = { max_credits: credits, confirm_live: true };
+      const key = await requestIdForForm(form, body);
+      let data = await api(form.action, { method: 'POST', body: JSON.stringify(body), headers: { 'Idempotency-Key': key } });
+      if (data.ok !== true || data.request_key !== key) throw new Error('Сервер не подтвердил запрос. Повтор безопасен: ключ запроса сохранён.');
+      for (let attempt = 0; ['ACCEPTED', 'RUNNING'].includes(data.status) && attempt < 30; attempt += 1) {
+        if (status) status.textContent = 'Проверка ответов выполняется. Можно продолжать работу на других страницах.';
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        data = await api(`/api/scan/replies/requests/${encodeURIComponent(key)}`, { method: 'GET' });
+        if (data.ok !== true || data.request_key !== key || !['ACCEPTED', 'RUNNING', 'DONE', 'FAILED', 'INTERRUPTED'].includes(data.status)) {
+          throw new Error('Результат проверки не подтверждён. Повтор безопасен: ключ запроса сохранён.');
+        }
+      }
+      if (['DONE', 'FAILED', 'INTERRUPTED'].includes(data.status)) {
+        forgetFormOperation(form, key);
+        const result = data.result || {};
+        const message = data.status === 'DONE'
+          ? `${result.cached ? 'Использована свежая проверка, без расхода.' : 'Проверка ответов завершена.'} Новых комментариев: ${result.comments_created || 0}. ${replyLabels[result.coverage] || ''}`
+          : `Проверка остановлена. Сохранено новых комментариев: ${result.comments_created || 0}. Проверьте журнал расходов и состояние системы перед новым запуском.`;
+        if (status) status.textContent = message;
+        toast(message, data.status !== 'DONE');
+      } else if (status) status.textContent = 'Проверка продолжается. Повторное нажатие покажет результат того же запроса.';
+    } catch (error) {
+      if (status) status.textContent = error.message;
+      toast(error.message, true);
+    } finally {
+      setLoading(button, false);
+      controls.forEach(({ control, disabled }) => { control.disabled = disabled; });
+      replySubmissionPending = false;
+      pendingApiForms.delete(form);
+    }
+  };
+
   document.addEventListener('click', async (event) => {
+    const replyPreview = event.target.closest('[data-reply-preview]');
+    if (replyPreview) {
+      await previewReplyThread(replyPreview.closest('[data-reply-panel]'));
+      return;
+    }
     const tracked = event.target.closest(
       '[data-lead-action],[data-stage],[data-api-action],[data-lead-bulk],[data-competitor-bulk],[data-task-complete],[data-lead-followup],[data-discovery-import],[data-competitor-import]'
     );

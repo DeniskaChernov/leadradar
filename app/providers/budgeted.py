@@ -294,6 +294,23 @@ class BudgetedInstagramProvider(InstagramProvider):
     async def get_comments(self, post: InstagramPost) -> list[InstagramComment]:
         return (await self.get_comment_batch(post)).comments
 
+    @property
+    def supports_comment_replies(self) -> bool:
+        return self.inner.supports_comment_replies
+
+    @property
+    def reply_cursor_provider(self) -> str:
+        return self.inner.reply_cursor_provider
+
+    async def get_reply_batch(
+        self, post: InstagramPost, parent_comment_id: str, *, cursor: str | None = None,
+    ) -> CommentFetchResult:
+        if not self.supports_comment_replies:
+            raise ProviderResponseError("This provider does not support comment replies")
+        return await self._get_comment_pages(
+            post, max_pages=1, cursor=cursor, parent_comment_id=parent_comment_id,
+        )
+
     async def get_comment_batch(
         self,
         post: InstagramPost,
@@ -301,6 +318,15 @@ class BudgetedInstagramProvider(InstagramProvider):
         known_comment_ids: set[str] | None = None,
         max_pages: int | None = None,
         cursor: str | None = None,
+    ) -> CommentFetchResult:
+        return await self._get_comment_pages(
+            post, known_comment_ids=known_comment_ids, max_pages=max_pages, cursor=cursor,
+        )
+
+    async def _get_comment_pages(
+        self, post: InstagramPost, *, known_comment_ids: set[str] | None = None,
+        max_pages: int | None = None, cursor: str | None = None,
+        parent_comment_id: str | None = None,
     ) -> CommentFetchResult:
         """Комменты по одной странице: scan/daily учитывают PROVIDER_CONFIRMED credits, не «страницы»."""
         if uses_live_provider(self.name) and is_fixture_publication(post):
@@ -331,7 +357,9 @@ class BudgetedInstagramProvider(InstagramProvider):
                 break
 
             try:
-                reservation_id = await self._reserve("get_comment_batch", 1)
+                reservation_id = await self._reserve(
+                    "get_reply_batch" if parent_comment_id is not None else "get_comment_batch", 1,
+                )
             except ProviderUsageBlockedError:
                 if pages_fetched == 0:
                     raise
@@ -346,12 +374,14 @@ class BudgetedInstagramProvider(InstagramProvider):
                 "page_index": pages_fetched + 1,
             }
             try:
-                result = await self.inner.get_comment_batch(
-                    post,
-                    known_comment_ids=known_comment_ids,
-                    max_pages=1,
-                    cursor=page_cursor,
-                )
+                if parent_comment_id is not None:
+                    result = await self.inner.get_reply_batch(
+                        post, parent_comment_id, cursor=page_cursor,
+                    )
+                else:
+                    result = await self.inner.get_comment_batch(
+                        post, known_comment_ids=known_comment_ids, max_pages=1, cursor=page_cursor,
+                    )
             except Exception as exc:
                 await self._settle_failed_call(
                     reservation_id,

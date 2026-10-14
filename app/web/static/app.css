@@ -4354,3 +4354,11 @@ details.learning-card.page-task-secondary[open]>summary{margin-bottom:12px}
 .contact-side .list-pagination .hero-actions { flex-wrap:wrap; }
 .team-note { grid-template-columns:minmax(0,1fr); padding:10px 0; }
 .team-note > :last-child { grid-column:auto; }
+
+.reply-thread-control { margin-block: 12px; padding: 10px 12px; border: 1px solid var(--line, #dbe3ef); border-radius: 12px; background: #f7fafc; }
+.reply-thread-control > summary { cursor: pointer; font-weight: 700; font-size: 13px; }
+.reply-thread-control form { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; margin-block: 10px; }
+.reply-thread-control label { display: grid; gap: 4px; font-size: 12px; }
+.reply-thread-control input { width: 100px; min-height: 36px; }
+.reply-thread-control [data-reply-state] { margin-block: 10px; overflow-wrap: anywhere; }
+.reply-parent-context { font-size: 12px; color: var(--muted, #52627a); overflow-wrap: anywhere; }

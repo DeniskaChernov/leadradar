@@ -207,6 +207,7 @@ RUN_STATUS_LABELS = {
 TRIGGER_LABELS = {
     "schedule": "По расписанию",
     "web": "Вручную из Mini App",
+    "replies": "Вручную · ответы в ветке",
     "manual": "Вручную",
     "bot": "Из Telegram",
     "once": "Разовая проверка",

@@ -1,0 +1,17 @@
+{% if reply_scan_available and not comment.parent_platform_comment_id %}
+<details class="reply-thread-control" data-reply-panel="{{ comment.id }}">
+  <summary>Ответы в ветке</summary>
+  <p class="muted" data-reply-state role="status">Состояние ещё не загружено.</p>
+  <button class="btn tiny ghost" type="button" data-reply-preview>Обновить состояние</button>
+  <a class="btn tiny ghost" href="/radar?post={{ comment.post_id }}&amp;vertical={{ selected_vertical }}#radar-post-results">Комментарии этого поста →</a>
+  {% if web_role == 'ADMIN' %}
+  <form data-reply-form action="/api/scan/replies/{{ comment.id }}" method="post">
+    <label>Лимит кредитов <input type="number" name="max_credits" value="1" min="1" max="20" required></label>
+    <button class="btn tiny" type="submit" {% if search_paused %}disabled{% endif %}>Проверить ответы</button>
+  </form>
+  <small class="muted">Только эта ветка. Одна страница обычно стоит 1 кредит. Свежая завершённая проверка повторно не оплачивается в течение часа. GPT использует отдельный лимит оценки.</small>
+  {% endif %}
+</details>
+{% elif comment.parent_platform_comment_id %}
+<p class="reply-parent-context"><span class="tag neutral">Ответ в ветке</span>{% if comment.parent_comment_text %} {{ comment.parent_comment_text[:180] }}{% endif %}</p>
+{% endif %}

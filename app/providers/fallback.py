@@ -33,6 +33,20 @@ class FallbackInstagramProvider(InstagramProvider):
         return self.primary.comment_cursor_provider
 
     @property
+    def supports_comment_replies(self) -> bool:
+        return self.primary.supports_comment_replies
+
+    @property
+    def reply_cursor_provider(self) -> str:
+        return self.primary.reply_cursor_provider
+
+    async def get_reply_batch(
+        self, post: InstagramPost, parent_comment_id: str, *, cursor: str | None = None,
+    ) -> CommentFetchResult:
+        # Thread cursors and billing belong to primary; no unrelated paid fallback.
+        return await self.primary.get_reply_batch(post, parent_comment_id, cursor=cursor)
+
+    @property
     def supports_post_pagination(self) -> bool:
         return self.primary.supports_post_pagination
 

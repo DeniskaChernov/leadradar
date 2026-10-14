@@ -45,6 +45,7 @@ class MonitorController:
         self._requested_credit_budget: int | None = None
         self._effective_credit_budget: int | None = None
         self._scan_vertical: str | None = None
+        self.reply_request_id: int | None = None
         self._task: asyncio.Task[CycleStats] | None = None
         self._progress = ScanProgressTracker()
 
@@ -55,6 +56,7 @@ class MonitorController:
         max_units: int | None = None,
         requested_units: int | None = None,
         vertical: str | None = None,
+        reply_request_id: int | None = None,
     ) -> bool:
         if self._task is not None and not self._task.done():
             return False
@@ -62,6 +64,7 @@ class MonitorController:
         self._requested_credit_budget = requested_units
         self._effective_credit_budget = max_units
         self._scan_vertical = (vertical or "").strip().upper() or None
+        self.reply_request_id = reply_request_id
         provider = getattr(self.monitor, "provider", None)
         if provider is not None:
             if max_units is not None:
@@ -130,7 +133,12 @@ class MonitorController:
                 kwargs["progress"] = self._progress
             if "vertical" in parameters and self._scan_vertical:
                 kwargs["vertical"] = self._scan_vertical
-            stats = await self.monitor.run_cycle(**kwargs)
+            if self.reply_request_id is not None:
+                stats = await self.monitor.run_reply_cycle(
+                    self.reply_request_id, progress=self._progress,
+                )
+            else:
+                stats = await self.monitor.run_cycle(**kwargs)
             self.last_stats = stats
             self.cycles_completed += 1
             if stats.errors:
