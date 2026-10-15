@@ -3,7 +3,7 @@
     {% if queue %}
     <div class="hot-queue-search">
       <label for="hot-queue-search">Найти в очереди на этой странице</label>
-      <div><input id="hot-queue-search" type="search" data-hot-queue-search placeholder="Имя, комментарий, источник" autocomplete="off"><button class="btn tiny ghost" type="button" data-hot-search-clear hidden aria-label="Очистить поиск в очереди">Сбросить</button></div>
+      <div><input id="hot-queue-search" type="search" data-hot-queue-search maxlength="200" placeholder="Имя, комментарий, источник" autocomplete="off"><button class="btn tiny ghost" type="button" data-hot-search-clear hidden aria-label="Очистить поиск в очереди">Сбросить</button></div>
       <small data-hot-search-status role="status" aria-live="polite"></small>
     </div>
     {% endif %}

@@ -34,7 +34,7 @@
 {% endif %}
 {% set draft_sent = selected and (selected.already_sent or (selected.draft and selected.draft.sent_at)) %}
 {% set hot_editable = selected and selected.can_save_draft|default(selected.status in ['NEW', 'AI_PENDING', 'ANALYZING', 'TAKEN', 'CONTACTED', 'QUALIFIED'] and not draft_sent) %}
-<div class="hot-workspace{% if selected %} has-selection{% endif %}" data-hot-workspace data-hot-vertical="{{ rv }}" data-hot-editable="{{ '1' if hot_editable else '0' }}" data-hot-already-sent="{{ '1' if draft_sent else '0' }}">
+<div class="hot-workspace{% if selected %} has-selection{% endif %}" data-hot-workspace data-hot-vertical="{{ rv }}" data-hot-page="{{ queue_page }}" data-hot-editable="{{ '1' if hot_editable else '0' }}" data-hot-already-sent="{{ '1' if draft_sent else '0' }}">
   {% if selected and queue %}
   <div class="hot-mobile-tools" aria-label="Рабочая область HOT">
     <button class="btn" type="button" data-hot-queue-toggle aria-controls="hot-queue-panel" aria-expanded="true">Очередь · {{ queue_total }}</button>

@@ -892,6 +892,7 @@ def build_web_app(
         )
         if data is None:
             raise HTTPException(status_code=404, detail="Клиент не найден")
+        data["hot_target"] = await hot_outreach_service.contact_target(contact_id)
         data["deal_currencies"] = await queries.deal_currencies(list(data["deals"]))
         for kind, anchor in (("signals", "contact-signals"), ("events", "contact-events"), ("notes", "contact-notes")):
             data[kind + "_pager"] = page_context(

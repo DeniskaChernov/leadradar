@@ -201,6 +201,19 @@ class HotOutreachService:
         async with self.session_factory() as session:
             return int(await session.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
 
+    async def contact_target(self, contact_id: int) -> dict[str, Any] | None:
+        """Choose this contact's first actionable lead using the complete HOT queue."""
+        stmt, already_contacted, sent = self._queue_query(None)
+        stmt = (
+            stmt.with_only_columns(Lead.id, Lead.vertical)
+            .where(Lead.contact_id == contact_id)
+            .order_by(*self._queue_ordering(already_contacted, sent))
+            .limit(1)
+        )
+        async with self.session_factory() as session:
+            row = (await session.execute(stmt)).first()
+        return {"lead_id": row.id, "vertical": row.vertical.value} if row else None
+
     async def queue(
         self,
         *,

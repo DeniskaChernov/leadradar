@@ -2943,6 +2943,11 @@
     const empty = document.querySelector('[data-hot-search-empty]');
     const clear = document.querySelector('[data-hot-search-clear]');
     if (!(input instanceof HTMLInputElement)) return;
+    const workspace = document.querySelector('[data-hot-workspace]');
+    const toggle = workspace?.querySelector('[data-hot-queue-toggle]');
+    const toggleLabel = toggle?.textContent;
+    const storageKey = `lr:hot-search:${workspace?.dataset.hotVertical || 'FURNITURE'}:${workspace?.dataset.hotPage || '1'}`;
+    input.value = (sessionGet(storageKey) || input.value).slice(0, 200);
     const items = [...document.querySelectorAll('[data-hot-lead-id]')];
     const update = () => {
       const query = input.value.trim().toLocaleLowerCase('ru-RU');
@@ -2955,6 +2960,9 @@
       if (status) status.textContent = query ? `На этой странице: ${count} из ${items.length}` : '';
       if (empty) empty.hidden = count !== 0;
       if (clear) clear.hidden = !input.value;
+      if (toggle) toggle.textContent = query ? `Очередь · ${count} (фильтр)` : toggleLabel;
+      if (input.value) sessionSet(storageKey, input.value);
+      else sessionRemove(storageKey);
     };
     const reset = () => { input.value = ''; update(); input.focus(); };
     input.addEventListener('input', update);

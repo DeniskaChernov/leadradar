@@ -6,7 +6,7 @@ import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 import pytest_asyncio
@@ -16,7 +16,8 @@ from playwright.async_api import async_playwright
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def render_hot(*, count=40, sent=False, writable=True, notice="", generation=True):
+def render_hot(*, count=40, sent=False, writable=True, notice="", generation=True,
+               page=1, vertical="FURNITURE"):
     environment = Environment(
         loader=FileSystemLoader(PROJECT_ROOT / "app/web/templates"),
         autoescape=select_autoescape(["html"]),
@@ -42,11 +43,11 @@ def render_hot(*, count=40, sent=False, writable=True, notice="", generation=Tru
     return environment.get_template("hot.html").render(
         csrf_token="offline-test", safe_mode=True,
         settings=SimpleNamespace(instagram_max_units_per_scan=5, web_auth_enabled=False),
-        active_path="/hot", selected_vertical="FURNITURE", search_paused=False,
+        active_path="/hot", selected_vertical=vertical, search_paused=False,
         snapshot=SimpleNamespace(last_error="", cycle_running=False, progress={}),
         openai_spend_allowed=generation, openai_usage={"used": 1, "limit": 25, "remaining": 24},
         selected=selected if count else None, selection_notice=notice,
-        queue_total=count, queue_page=1, queue_pages=1,
+        queue_total=count, queue_page=page, queue_pages=1,
         queue=[{
             "lead_id": index, "username": f"hot_{index}", "score": 91,
             "comment_preview": "Цена на этот комплект? Нужен срочно", "competitor": "seller",
@@ -72,9 +73,12 @@ async def hot_page():
         async def route_request(route):
             path = urlsplit(route.request.url).path
             if path == "/hot":
+                query = parse_qs(urlsplit(route.request.url).query)
                 await route.fulfill(content_type="text/html", body=render_hot(
                     count=state["count"], sent=state["sent"], writable=state["writable"],
                     notice=state["notice"], generation=state["generation"],
+                    page=int(query.get('page', ['1'])[0]),
+                    vertical=query.get('vertical', ['FURNITURE'])[0],
                 ))
                 return
             if path == "/static/app.css":
@@ -381,3 +385,78 @@ async def test_draft_readiness_and_character_count_follow_committed_result(hot_p
     assert 'Текст сохранён' in await page.locator('[data-hot-workflow]').inner_text()
     assert await draft.input_value() == 'Новый текст'
     assert state['posts'] == [('draft', {'message': 'Новый текст'})] and not errors
+
+
+async def test_hidden_nav_badge_cannot_paint_false_zero(hot_page):
+    page, _state, errors = hot_page
+    badge = page.locator('[data-nav-hot-badge]')
+    # Simulate initial loading, an empty queue and a failed count request.
+    await badge.evaluate('el => { el.hidden = true; el.textContent = "0"; }')
+    assert not await badge.is_visible()
+    assert not errors
+
+
+async def test_hot_search_survives_client_navigation_and_reload(hot_page):
+    page, state, errors = hot_page
+    search = page.locator('[data-hot-queue-search]')
+    await search.fill('hot_2')
+    await page.locator('[data-hot-lead-id="2"]').click()
+    assert await search.input_value() == 'hot_2'
+    assert await page.locator('[data-hot-lead-id]').filter(visible=True).count() == 11
+    await page.reload()
+    assert await search.input_value() == 'hot_2'
+    assert not state['posts'] and not errors
+
+
+async def test_hot_search_is_scoped_to_page_and_vertical_and_reset_is_persistent(hot_page):
+    page, state, errors = hot_page
+    await page.evaluate('''() => {
+      sessionStorage.setItem('lr:hot-search:FURNITURE:1', 'hot_2');
+      sessionStorage.setItem('lr:hot-search:FURNITURE:2', 'different-page');
+      sessionStorage.setItem('lr:hot-search:ARTIFICIAL_RATTAN:1', 'different-vertical');
+    }''')
+    await page.reload()
+    search = page.locator('[data-hot-queue-search]')
+    assert await search.input_value() == 'hot_2'
+    await page.goto('http://127.0.0.1/hot?vertical=FURNITURE&page=2')
+    assert await search.input_value() == 'different-page'
+    await page.goto('http://127.0.0.1/hot?vertical=ARTIFICIAL_RATTAN&page=1')
+    assert await search.input_value() == 'different-vertical'
+    await page.goto('http://127.0.0.1/hot?vertical=FURNITURE&page=1')
+    assert await search.input_value() == 'hot_2'
+    await search.press('Escape')
+    await page.reload()
+    assert await search.input_value() == ''
+    assert await page.evaluate("sessionStorage.getItem('lr:hot-search:FURNITURE:1')") is None
+    assert await page.evaluate("sessionStorage.getItem('lr:hot-search:FURNITURE:2')") == 'different-page'
+    assert await page.evaluate("sessionStorage.getItem('lr:hot-search:ARTIFICIAL_RATTAN:1')") == 'different-vertical'
+    assert not state['posts'] and not errors
+
+
+@pytest.mark.parametrize('width', [320, 390])
+async def test_mobile_restored_filter_is_visible_in_closed_queue_toggle(hot_page, width):
+    page, state, errors = hot_page
+    await page.set_viewport_size({'width': width, 'height': 844})
+    await page.evaluate("sessionStorage.setItem('lr:hot-search:FURNITURE:1', 'hot_2')")
+    await page.reload()
+    toggle = page.locator('[data-hot-queue-toggle]')
+    assert '11 (фильтр)' in await toggle.inner_text()
+    assert not await page.locator('.hot-queue').is_visible()
+    assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    await toggle.click()
+    await page.locator('[data-hot-search-clear]').click()
+    assert '(фильтр)' not in await toggle.inner_text()
+    assert not state['posts'] and not errors
+
+
+async def test_queue_search_works_when_session_storage_is_blocked(hot_page):
+    page, state, errors = hot_page
+    await page.add_init_script('''Object.defineProperty(window, 'sessionStorage', {
+      get() { throw new DOMException('Storage disabled', 'SecurityError'); }
+    });''')
+    await page.reload()
+    await page.locator('[data-hot-queue-search]').fill('hot_2')
+    assert await page.locator('[data-hot-lead-id]').filter(visible=True).count() == 11
+    await page.locator('[data-hot-search-clear]').click()
+    assert await page.locator('[data-hot-lead-id]').filter(visible=True).count() == 40
+    assert not state['posts'] and not errors
