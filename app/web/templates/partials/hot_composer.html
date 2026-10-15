@@ -1,0 +1,20 @@
+<div class="hot-draft-box" data-hot-composer>
+      <div class="hot-draft-head">
+        <h3>Текст для Instagram</h3>
+        <span class="tag {% if selected.draft %}success{% else %}muted-tag{% endif %}" data-hot-draft-badge aria-live="polite">{% if draft_sent %}Отправлено{% elif selected.draft %}Готов{% else %}Нет текста{% endif %}</span>
+      </div>
+      <textarea class="hot-draft-text" rows="7" maxlength="4000" aria-label="Текст предложения для Instagram" data-hot-draft-text {% if not hot_editable %}readonly{% endif %} placeholder="Вставьте или отредактируйте текст. «Подготовить текст» — через GPT; можно писать вручную и сразу «Отправил».">{% if selected.draft %}{{ selected.draft.message }}{% endif %}</textarea>
+      <div class="hot-draft-meta"><span data-hot-workflow role="status">{% if draft_sent %}Отправка отмечена. История сохранена.{% elif selected.draft %}Текст сохранён. Проверьте его перед отправкой.{% else %}Подготовьте текст через GPT или напишите вручную.{% endif %}</span><span data-hot-char-count>{{ selected.draft.message|length if selected.draft else 0 }} / 4000</span></div>
+      <div class="hot-draft-actions">
+        <div class="hot-compose-tools" role="group" aria-label="Подготовка текста">
+        <button class="btn primary" type="button" data-hot-prepare data-lead-id="{{ selected.lead_id }}" {% if not openai_spend_allowed or not hot_editable or not selected.can_prepare|default(true) %}disabled title="{% if not openai_spend_allowed %}GPT выключен в Настройках{% else %}Карточка доступна только для просмотра{% endif %}"{% endif %}>Подготовить текст</button>
+        <button class="btn" type="button" data-hot-save data-lead-id="{{ selected.lead_id }}" disabled>Сохранить текст</button>
+        <button class="btn" type="button" data-hot-copy {% if not selected.draft %}disabled{% endif %}>Скопировать</button>
+        </div>
+        <div class="hot-send-tools" role="group" aria-label="Отправка в Instagram">
+        <a class="btn" target="_blank" rel="noopener" href="{{ selected.profile_url }}" data-hot-open-ig>Открыть профиль</a>
+        <button class="btn success" type="button" data-hot-sent data-lead-id="{{ selected.lead_id }}" {% if not selected.draft or draft_sent or not hot_editable %}disabled{% endif %}>Отправил</button>
+        </div>
+      </div>
+      <p class="muted hot-hint">{% if hot_editable %}Нажмите «Сохранить текст» после правок. «Отправил» тоже сохраняет текст — отмечайте только после отправки в Instagram.{% else %}Этот текст доступен для просмотра и копирования. История отправки сохранена в карточке.{% endif %}</p>
+    </div>

@@ -239,3 +239,23 @@ async def test_reduced_motion_keeps_controls_visible_and_disables_animation(ux_p
     assert await page.locator("[data-find-leads] [data-scan]").evaluate("element => getComputedStyle(element).transitionDuration") == "0s"
     assert not await page.locator('[data-reveal]:not(.is-visible)').count()
     assert not errors
+
+@pytest.mark.parametrize('width', [360, 390, 760, 1184, 1440])
+async def test_custom_scan_budget_stays_inside_its_option_at_all_breakpoints(ux_page, width):
+    page, state, errors = ux_page
+    await page.set_viewport_size({'width': width, 'height': 844})
+    await page.goto('http://127.0.0.1/radar')
+    custom = page.locator('[data-custom-scan-budget]')
+    await custom.fill('150')
+    assert await page.locator('input[name="scan_budget"][value="custom"]').is_checked()
+    # This fixture caps the effective server budget at 20; the requested input
+    # still has to select the custom option and reach the preview unchanged.
+    await page.wait_for_function("document.querySelector('[data-budget-max]').textContent === '20 credits'")
+    assert any(parse_qs(urlsplit(url).query).get('max_credits') == ['150'] for url in state['gets'])
+    bounds = await custom.evaluate('''input => {
+      const inner = input.getBoundingClientRect(); const outer = input.closest('label').getBoundingClientRect();
+      return {left: inner.left >= outer.left, right: inner.right <= outer.right + 1,
+              fitsPage: document.documentElement.scrollWidth <= innerWidth + 1};
+    }''')
+    assert all(bounds.values()), bounds
+    assert not state['posts'] and not errors

@@ -34,6 +34,8 @@ async def test_hot_manual_save_reload_and_sent_opens_next_client(
             await page.locator("[data-hot-sent]").click()
             await page.locator("#confirm.is-open [data-confirm-ok]").click()
             await page.wait_for_url(f"**/hot?vertical=FURNITURE&lead_id={next_id}")
+            await expect(page.locator('[data-hot-queue-toggle]')).to_have_attribute('aria-expanded', 'false')
+            await page.locator('[data-hot-queue-toggle]').click()
             await page.locator(f'[data-hot-lead-id="{next_id}"].is-active').wait_for()
             assert await page.locator(f'[data-hot-lead-id="{lead_id}"]').count() == 0
             assert "hot_browser_two" in await page.locator("[data-hot-detail] h2").inner_text()

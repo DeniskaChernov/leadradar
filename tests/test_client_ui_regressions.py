@@ -84,6 +84,12 @@ async def client_page(session_factory):
                     "contributions": [], "evidence": [], "evidence_ids": [],
                     **state.get("explanation", {}),
                 }), content_type="application/json")
+            elif path.startswith("/api/scan/replies/requests/"):
+                state.setdefault("reply_gets", []).append(path.rsplit("/", 1)[-1])
+                response = state.get("reply_lookup", state.get("reply_response"))
+                await route.fulfill(status=state.get("reply_lookup_status", 200 if response else 404),
+                                    body=json.dumps({**(response or {}), "request_key": path.rsplit("/", 1)[-1]}),
+                                    content_type="application/json")
             elif path.startswith("/api/scan/replies/"):
                 await route.fulfill(body=json.dumps(state.get("reply_preview", {
                     "saved_replies": 2, "coverage": "PARTIAL", "has_continuation": True,
@@ -403,14 +409,98 @@ async def test_reply_uncertain_http_retry_reuses_key_and_freezes_limit(client_pa
     await form.locator('[type="submit"]').click()
     assert await form.locator('input').is_disabled()
     await page.locator('[data-confirm-ok]').click()
-    await page.wait_for_function("!document.querySelector('[data-reply-form] input').disabled")
+    await page.wait_for_function("document.querySelector('[data-reply-form] button[type=submit]').textContent === 'Показать результат'")
+    assert await form.locator('input').is_disabled()
     first = state['keys'][-1]
     assert first
     state.update(status=200, reply_response={'ok': True, 'status': 'DONE', 'result': {
         'comments_created': 3, 'coverage': 'FULL',
     }})
     await form.locator('[type="submit"]').click()
-    await page.locator('[data-confirm-ok]').click()
     await page.wait_for_function("document.querySelector('[data-reply-state]').textContent.includes('Новых комментариев: 3')")
     assert state['keys'][-1] == first and state['posts'][-1]['confirm_live'] is True
+    assert state['reply_gets'] == [first] and len(state['posts']) == 1
+    assert not errors
+
+@pytest.mark.parametrize('preview', [
+    {'saved_replies': 0, 'coverage': 'UNKNOWN', 'source_active': False},
+    {'saved_replies': 0, 'coverage': 'UNKNOWN', 'running': True},
+    {'saved_replies': 0, 'coverage': 'UNKNOWN', 'budget': {'can_start': False}},
+    {},
+])
+async def test_reply_unavailable_or_unconfirmed_state_cannot_start_search(client_page, preview):
+    page, state, errors = client_page
+    state['reply_preview'] = preview
+    panel = page.locator('[data-reply-panel="1"]')
+    await panel.locator('summary').click()
+    await page.wait_for_function("document.querySelector('[data-reply-preview]').getAttribute('aria-busy') === 'false'")
+    assert await panel.locator('[type="submit"]').is_disabled()
+    await panel.locator('form').evaluate('form => form.requestSubmit()')
+    assert not state['posts'] and not errors
+
+
+async def test_reply_pending_result_survives_reload_and_uses_only_get(client_page):
+    page, state, errors = client_page
+    panel = page.locator('[data-reply-panel="1"]')
+    await panel.locator('summary').click()
+    await panel.locator('input').fill('4')
+    state.update(status=503, response={'detail': 'Temporary failure'})
+    await panel.locator('[type="submit"]').click()
+    await page.locator('[data-confirm-ok]').click()
+    await page.wait_for_function("document.querySelector('[data-reply-form] button[type=submit]').textContent === 'Показать результат'")
+    key = state['keys'][-1]
+    state.update(status=200, reply_lookup={'ok': True, 'status': 'DONE', 'result': {'comments_created': 2, 'coverage': 'FULL'}})
+    await page.reload()
+    panel = page.locator('[data-reply-panel="1"]')
+    await panel.locator('summary').click()
+    await page.wait_for_function("document.querySelector('[data-reply-form] button[type=submit]').textContent === 'Показать результат'")
+    assert await panel.locator('input').input_value() == '4'
+    assert await panel.locator('input').is_disabled()
+    await panel.locator('[type="submit"]').click()
+    await page.wait_for_function("document.querySelector('[data-reply-state]').textContent.includes('Новых комментариев: 2')")
+    assert state['reply_gets'] == [key] and len(state['posts']) == 1
+    assert not errors
+
+
+async def test_unreceived_reply_request_retries_original_key_and_budget_after_confirmation(client_page):
+    page, state, errors = client_page
+    panel = page.locator('[data-reply-panel="1"]')
+    await panel.locator('summary').click()
+    await panel.locator('input').fill('3')
+    state.update(status=503, response={'detail': 'Temporary failure'})
+    await panel.locator('[type="submit"]').click()
+    await page.locator('[data-confirm-ok]').click()
+    await page.wait_for_function("document.querySelector('[data-reply-form] button[type=submit]').textContent === 'Показать результат'")
+    first = state['keys'][-1]
+    state.update(status=200, reply_lookup_status=404, reply_response={'ok': True, 'status': 'DONE', 'result': {'comments_created': 1, 'coverage': 'FULL'}})
+    await panel.locator('[type="submit"]').click()
+    await page.locator('#confirm.is-open').wait_for(state='visible')
+    assert 'Лимит: 3' in await page.locator('#confirm-text').inner_text()
+    await page.locator('[data-confirm-ok]').click()
+    await page.wait_for_function("document.querySelector('[data-reply-state]').textContent.includes('Новых комментариев: 1')")
+    assert state['keys'] == [first, first]
+    assert state['posts'][0] == state['posts'][1] == {'max_credits': 3, 'confirm_live': True}
+    assert not errors
+
+@pytest.mark.parametrize('rejection', [400, 409, 428])
+async def test_rejected_reply_budget_can_be_corrected_with_same_operation_key(client_page, rejection):
+    page, state, errors = client_page
+    panel = page.locator('[data-reply-panel="1"]')
+    await panel.locator('summary').click()
+    await panel.locator('input').fill('9')
+    state.update(status=rejection, response={'detail': 'Уменьшите лимит'})
+    await panel.locator('[type="submit"]').click()
+    await page.locator('[data-confirm-ok]').click()
+    await page.wait_for_function("document.querySelector('[data-reply-form] button[type=submit]').textContent === 'Повторить запрос'")
+    first = state['keys'][-1]
+    assert await panel.locator('input').is_enabled()
+    await panel.locator('input').fill('2')
+    state.update(status=200, reply_lookup_status=404, reply_response={'ok': True, 'status': 'DONE', 'result': {'comments_created': 0, 'coverage': 'FULL'}})
+    await panel.locator('[type="submit"]').click()
+    await page.locator('#confirm.is-open').wait_for(state='visible')
+    assert 'Лимит: 2' in await page.locator('#confirm-text').inner_text()
+    await page.locator('[data-confirm-ok]').click()
+    await page.wait_for_function("document.querySelector('[data-reply-state]').textContent.includes('Проверка ответов завершена')")
+    assert state['keys'] == [first, first] and state['reply_gets'] == [first]
+    assert state['posts'][1] == {'max_credits': 2, 'confirm_live': True}
     assert not errors

@@ -129,6 +129,8 @@ async def hot_page():
 async def test_hot_full_queue_never_clips_detail_or_overflows_viewport(hot_page, width):
     page, _state, errors = hot_page
     await page.set_viewport_size({"width": width, "height": 800})
+    if await page.locator('[data-hot-queue-toggle]').is_visible():
+        await page.locator('[data-hot-queue-toggle]').click()
     layout = await page.evaluate("""() => {
       const root = document.querySelector('.hot-workspace');
       const detail = document.querySelector('.hot-detail');
@@ -288,7 +290,8 @@ async def test_invalid_selection_notice_is_rendered(hot_page):
     page, state, errors = hot_page
     state["notice"] = "Этот лид уже отправлен. Открыт следующий HOT."
     await page.reload()
-    assert await page.locator(".hot-selection-notice[role='status']").inner_text() == state["notice"]
+    assert await page.locator(".hot-selection-notice[role='status'] > span").inner_text() == state["notice"]
+    assert 'lead_id=1' in await page.locator('.hot-selection-notice a').get_attribute('href')
     assert not errors
 
 
@@ -343,3 +346,38 @@ async def test_hot_timeout_keeps_text_and_never_retries_post(hot_page):
     assert await page.evaluate("window.hotMutationCalls") == 1
     assert state["posts"] == []
     assert not errors
+
+async def test_mobile_queue_toggle_and_editor_jump_preserve_unsaved_text(hot_page):
+    page, state, errors = hot_page
+    await page.set_viewport_size({'width': 390, 'height': 800})
+    toggle = page.locator('[data-hot-queue-toggle]')
+    assert await toggle.get_attribute('aria-expanded') == 'false'
+    assert not await page.locator('.hot-queue').is_visible()
+    draft = page.locator('[data-hot-draft-text]')
+    await draft.fill('Не потерять этот текст')
+    await toggle.click()
+    assert await page.locator('.hot-queue').is_visible()
+    assert await toggle.get_attribute('aria-expanded') == 'true'
+    await page.locator('[data-hot-editor-jump]').click()
+    assert await draft.input_value() == 'Не потерять этот текст'
+    assert await draft.evaluate('el => document.activeElement === el')
+    assert not await page.locator('.hot-queue').is_visible()
+    await page.set_viewport_size({'width': 1440, 'height': 800})
+    assert await page.locator('.hot-queue').is_visible()
+    assert not state['posts'] and not errors
+
+
+async def test_draft_readiness_and_character_count_follow_committed_result(hot_page):
+    page, state, errors = hot_page
+    draft = page.locator('[data-hot-draft-text]')
+    await draft.fill('Новый текст')
+    assert 'несохранённые' in await page.locator('[data-hot-workflow]').inner_text()
+    assert await page.locator('[data-hot-char-count]').inner_text() == '11 / 4000'
+    state['deferred']['draft'] = asyncio.get_running_loop().create_future()
+    await page.locator('[data-hot-save]').click()
+    assert 'защищён' in await page.locator('[data-hot-workflow]').inner_text()
+    state['deferred']['draft'].set_result(None)
+    await page.wait_for_function("document.querySelector('[data-hot-workspace]').dataset.draftState === 'ready'")
+    assert 'Текст сохранён' in await page.locator('[data-hot-workflow]').inner_text()
+    assert await draft.input_value() == 'Новый текст'
+    assert state['posts'] == [('draft', {'message': 'Новый текст'})] and not errors

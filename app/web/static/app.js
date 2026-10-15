@@ -425,47 +425,56 @@
     });
   };
 
+  let motionCleanup = null;
   const enhanceMotion = () => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    motionCleanup?.();
+    const preference = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    const running = new Set();
+    let observer = null;
+    const stop = () => {
+      running.forEach(animation => animation.cancel());
+      running.clear();
+    };
+    const syncPolicy = () => {
+      document.documentElement.classList.toggle('motion-suspended', document.hidden);
+      if (preference?.matches || document.hidden) stop();
+    };
+    preference?.addEventListener?.('change', syncPolicy);
+    document.addEventListener('visibilitychange', syncPolicy);
+    motionCleanup = () => {
+      stop();
+      observer?.disconnect();
+      preference?.removeEventListener?.('change', syncPolicy);
+      document.removeEventListener('visibilitychange', syncPolicy);
+    };
+    syncPolicy();
+    // Content is visible by default. Animation failure must never hide controls.
+    document.documentElement.classList.remove('motion-ready');
     if (typeof window.IntersectionObserver !== 'function') return;
-    // Канбан не участвует: translateY/scale ломает выравнивание колонок и даёт наложение.
-    const elements = document.querySelectorAll(
+    const elements = [...document.querySelectorAll(
       '[data-motion-root]:not([data-kanban-board]) > *, .cards > *, .task-list-page > *, .catalog-grid > *, .lead-layout > .panel, .stage-actions > .stage-btn, .funnel-track-step, .quick-actions > *, .metrics > *, .deal-grid > *'
-    );
-    if (!elements.length) return;
-    let observer;
+    )].slice(0, 250);
     try {
-      observer = new IntersectionObserver((entries) => {
-        entries.forEach((entry) => {
+      observer = new IntersectionObserver(entries => {
+        entries.forEach((entry, index) => {
           if (!entry.isIntersecting) return;
-          entry.target.classList.add('is-visible');
           observer.unobserve(entry.target);
+          if (preference?.matches || document.hidden || typeof entry.target.animate !== 'function') return;
+          try {
+            const animation = entry.target.animate([
+              { opacity: .86, transform: 'translateY(6px)' },
+              { opacity: 1, transform: 'none' },
+            ], { duration: 180, delay: Math.min(index, 3) * 25, easing: 'cubic-bezier(.22,1,.36,1)' });
+            running.add(animation);
+            animation.finished.then(() => running.delete(animation), () => running.delete(animation));
+          } catch (_) { /* Paint stays visible without the optional effect. */ }
         });
-      }, { threshold: 0.01, rootMargin: '0px 0px -8px' });
-      elements.forEach((element, index) => {
-        element.dataset.reveal = '';
-        element.style.setProperty('--reveal-delay', `${Math.min(index % 8, 7) * 45}ms`);
-        observer.observe(element);
-      });
-      document.documentElement.classList.add('motion-ready');
+      }, { threshold: 0.01 });
+      elements.forEach(element => observer.observe(element));
     } catch (_) {
-      try { observer?.disconnect(); } catch (_) {}
-      document.documentElement.classList.remove('motion-ready');
-      elements.forEach((element) => element.classList.add('is-visible'));
-      return;
+      observer?.disconnect();
+      stop();
     }
-    // Сразу показать уже видимые блоки — иначе opacity:0 до первого callback IO.
-    requestAnimationFrame(() => {
-      const vh = window.innerHeight || document.documentElement.clientHeight;
-      elements.forEach((element) => {
-        if (element.classList.contains('is-visible')) return;
-        const rect = element.getBoundingClientRect();
-        if (rect.bottom > 0 && rect.top < vh) {
-          element.classList.add('is-visible');
-          observer.unobserve(element);
-        }
-      });
-    });
   };
 
   const restoreViewState = () => {
@@ -698,6 +707,8 @@
     let navigationPending = false;
     let allowNavigation = false;
     const isDirty = () => canEdit && message() !== savedMessage;
+    const workflow = root.querySelector('[data-hot-workflow]');
+    const charCount = root.querySelector('[data-hot-char-count]');
     const syncActionButtons = () => {
       const hasText = Boolean(message());
       const busy = Boolean(pendingAction);
@@ -709,11 +720,19 @@
       if (copyBtn instanceof HTMLButtonElement) copyBtn.disabled = busy || !hasText;
       if (sentBtn instanceof HTMLButtonElement) sentBtn.disabled = busy || !canEdit || !hasText || alreadySent;
       root.setAttribute('aria-busy', String(busy));
+      if (charCount) charCount.textContent = `${draftEl?.value?.length || 0} / ${draftEl?.maxLength > 0 ? draftEl.maxLength : 4000}`;
+      const readiness = alreadySent ? 'Отправка отмечена. История сохранена.'
+        : busy ? 'Дождитесь завершения действия — текст защищён от изменений.'
+          : isDirty() ? 'Есть несохранённые правки. Сохраните текст перед переходом.'
+            : savedMessage ? 'Текст сохранён. Проверьте его перед отправкой.'
+              : 'Подготовьте текст через GPT или напишите вручную.';
+      if (workflow && workflow.textContent !== readiness) workflow.textContent = readiness;
+      root.dataset.draftState = alreadySent ? 'sent' : busy ? 'busy' : isDirty() ? 'dirty' : savedMessage ? 'ready' : 'empty';
       if (badge) {
         badge.textContent = alreadySent ? 'Отправлено'
           : isDirty() ? 'Не сохранено'
             : savedMessage ? 'Готов' : 'Нет текста';
-        badge.className = `tag ${alreadySent || savedMessage && !isDirty() ? 'success' : 'muted-tag'}`;
+        badge.className = `tag ${isDirty() ? 'warning' : alreadySent || savedMessage ? 'success' : 'muted-tag'}`;
       }
     };
     const beginAction = (name, button) => {
@@ -744,6 +763,24 @@
     draftEl?.addEventListener('input', syncActionButtons);
     syncActionButtons();
     const queue = root.querySelector('[data-hot-queue]');
+    const queueToggle = root.querySelector('[data-hot-queue-toggle]');
+    const editorJump = root.querySelector('[data-hot-editor-jump]');
+    const setQueueOpen = (open) => {
+      root.classList.toggle('is-queue-open', open);
+      queueToggle?.setAttribute('aria-expanded', String(open));
+    };
+    if (queueToggle) {
+      root.classList.add('hot-ready');
+      setQueueOpen(false);
+      queueToggle.addEventListener('click', () => setQueueOpen(!root.classList.contains('is-queue-open')));
+      editorJump?.addEventListener('click', () => {
+        setQueueOpen(false);
+        root.querySelector('[data-hot-composer]')?.scrollIntoView({
+          behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'instant' : 'smooth', block: 'start',
+        });
+        draftEl?.focus({ preventScroll: true });
+      });
+    }
     const activeItem = queue?.querySelector('.is-active');
     if (queue instanceof HTMLElement && activeItem instanceof HTMLElement) {
       requestAnimationFrame(() => {
@@ -1343,6 +1380,16 @@
   };
 
   let telegramAuthPending = false;
+  const authReturnTarget = (current = location.href) => {
+    const fallback = new URL('/radar', location.origin).href;
+    try {
+      const target = new URL(current, location.origin);
+      if (target.origin !== location.origin || ['/auth', '/logout'].includes(target.pathname)
+        || target.pathname === '/api' || target.pathname.startsWith('/api/')) return fallback;
+      return target.href;
+    } catch (_) { return fallback; }
+  };
+
   const authenticateTelegram = async () => {
     const status = document.getElementById('auth-status');
     if (!status) return;
@@ -1365,7 +1412,7 @@
     try {
       await api('/api/auth/telegram', { method: 'POST', body: JSON.stringify({ initData }) });
       status.textContent = 'Готово. Открываем Lead Radar…';
-      location.href = '/';
+      location.replace(authReturnTarget());
     } catch (error) {
       status.textContent = error.message;
       status.classList.add('bad');
@@ -1428,7 +1475,7 @@
       errorLabel.textContent = '';
       try {
         await api('/api/auth/password', { method: 'POST', body: JSON.stringify(formPayload(passwordForm)) });
-        location.href = '/radar';
+        location.replace(authReturnTarget());
       } catch (error) {
         errorLabel.textContent = error.message;
       } finally {
@@ -1524,32 +1571,76 @@
 
   const replyLabels = { FULL: 'Проверка ветки завершена', PARTIAL: 'Ветка собрана частично', UNKNOWN: 'Ветка ещё не проверена' };
   const replyPreviewBusy = new WeakSet();
-  const previewReplyThread = async (panel) => {
+  const replyPreviews = new WeakMap();
+  const replyCanStart = (panel) => {
+    const data = replyPreviews.get(panel);
+    return Boolean(data && !data.running && data.source_active !== false && data.budget?.can_start !== false
+      && panel.querySelector('[data-reply-form]')?.dataset.replyPaused !== '1');
+  };
+  const pendingReplyOperation = (form) => {
+    if (!form) return null;
+    let operation = pendingFormOperations.get(form);
+    if (!operation) {
+      try { operation = JSON.parse(sessionGet(operationStorageKey(form)) || 'null'); } catch (_) {}
+    }
+    return operation && typeof operation.key === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(operation.key) ? operation : null;
+  };
+  const syncReplyControls = (panel) => {
+    const form = panel.querySelector('[data-reply-form]');
+    if (!form || pendingApiForms.has(form)) return;
+    const operation = pendingReplyOperation(form);
+    const submit = form.querySelector('[type="submit"]');
+    const input = form.elements.max_credits;
+    input.disabled = Boolean(operation && !operation.rejected);
+    if (operation && !operation.rejected && Number.isInteger(operation.replyCredits)) input.value = String(operation.replyCredits);
+    submit.textContent = operation ? operation.rejected ? 'Повторить запрос' : 'Показать результат' : 'Проверить ответы';
+    submit.disabled = !operation && !replyCanStart(panel);
+    panel.setAttribute('aria-busy', 'false');
+  };
+  const previewReplyThread = async (panel, { preserveMessage = false } = {}) => {
     if (replyPreviewBusy.has(panel)) return;
     replyPreviewBusy.add(panel);
     const status = panel.querySelector('[data-reply-state]');
+    const button = panel.querySelector('[data-reply-preview]');
+    button?.setAttribute('aria-busy', 'true');
+    if (button) button.disabled = true;
     try {
       const data = await api(`/api/scan/replies/${panel.dataset.replyPanel}`, { method: 'GET' });
-      if (status) status.textContent = `${replyLabels[data.coverage] || replyLabels.UNKNOWN}. Сохранено ответов: ${data.saved_replies || 0}. ${data.has_continuation ? 'Следующий запуск продолжит сохранённую страницу.' : ''}${data.last_error ? ' Последняя страница не завершена; доступен повтор.' : ''}${data.running ? ' Сейчас выполняется проверка.' : ''}${data.source_active === false ? ' Источник приостановлен.' : ''}`;
+      if (!Object.hasOwn(replyLabels, data.coverage) || !Number.isInteger(data.saved_replies) || data.saved_replies < 0) {
+        throw new Error('Сервер не подтвердил состояние ветки. Обновите состояние.');
+      }
+      replyPreviews.set(panel, data);
+      if (status && !preserveMessage && !pendingApiForms.has(panel.querySelector('form'))) {
+        status.textContent = `${replyLabels[data.coverage]}. Сохранено ответов: ${data.saved_replies}. ${data.has_continuation ? 'Следующий запуск продолжит сохранённую страницу.' : ''}${data.last_error ? ' Последняя страница не завершена; доступен повтор.' : ''}${data.running ? ' Сейчас выполняется проверка.' : ''}${data.source_active === false ? ' Источник приостановлен.' : ''}${data.budget?.can_start === false ? ' Новый запуск сейчас недоступен.' : ''}${pendingReplyOperation(panel.querySelector('form')) ? ' Есть сохранённый запрос — сначала покажите его результат.' : ''}`;
+      }
     } catch (error) {
-      if (status) status.textContent = error.message;
+      replyPreviews.delete(panel);
+      if (status && !preserveMessage && !pendingApiForms.has(panel.querySelector('form'))) status.textContent = error.message;
     } finally {
       replyPreviewBusy.delete(panel);
+      if (button) button.disabled = false;
+      button?.setAttribute('aria-busy', 'false');
+      syncReplyControls(panel);
     }
   };
   document.addEventListener('toggle', (event) => {
     const panel = event.target;
-    if (panel instanceof HTMLDetailsElement && panel.matches('[data-reply-panel]') && panel.open) {
-      previewReplyThread(panel);
-    }
+    if (panel instanceof HTMLDetailsElement && panel.matches('[data-reply-panel]') && panel.open) previewReplyThread(panel);
   }, true);
   let replySubmissionPending = false;
+  const validateReplyReceipt = (data, key) => {
+    if (!data || data.ok !== true || data.request_key !== key || !['ACCEPTED', 'RUNNING', 'DONE', 'FAILED', 'INTERRUPTED'].includes(data.status)) {
+      throw new Error('Результат проверки не подтверждён. Ключ сохранён — повторно запускать поиск не нужно.');
+    }
+    return data;
+  };
   const submitReplyScan = async (form) => {
-    if (replySubmissionPending || pendingApiForms.has(form) || !form.reportValidity()) return;
+    const previous = pendingReplyOperation(form);
     const panel = form.closest('[data-reply-panel]');
+    if (replySubmissionPending || pendingApiForms.has(form) || !previous && (!replyCanStart(panel) || !form.reportValidity())) return;
     const status = panel.querySelector('[data-reply-state]');
     const button = form.querySelector('[type="submit"]');
-    const credits = Number(form.elements.max_credits.value);
+    const credits = Number(previous?.rejected ? form.elements.max_credits.value : previous?.replyCredits ?? form.elements.max_credits.value);
     if (!Number.isInteger(credits) || credits < 1 || credits > 20) {
       toast('Выберите целый лимит от 1 до 20 кредитов', true);
       return;
@@ -1559,20 +1650,36 @@
     const controls = [...form.querySelectorAll('input,button')].map(control => ({ control, disabled: control.disabled }));
     controls.forEach(({ control }) => { control.disabled = true; });
     setLoading(button, true);
+    panel.setAttribute('aria-busy', 'true');
     try {
-      const proceed = await confirmAction('Проверить ответы в этой ветке?', `Лимит: ${credits} кредитов. Проверяется только выбранный комментарий. Оценка новых ответов использует отдельный лимит GPT.`);
-      if (!proceed) return;
-      const body = { max_credits: credits, confirm_live: true };
-      const key = await requestIdForForm(form, body);
-      let data = await api(form.action, { method: 'POST', body: JSON.stringify(body), headers: { 'Idempotency-Key': key } });
-      if (data.ok !== true || data.request_key !== key) throw new Error('Сервер не подтвердил запрос. Повтор безопасен: ключ запроса сохранён.');
+      let key = previous?.key;
+      let data = null;
+      if (key) {
+        try {
+          data = validateReplyReceipt(await api(`/api/scan/replies/requests/${encodeURIComponent(key)}`, { method: 'GET' }), key);
+        } catch (error) {
+          if (error.status !== 404) throw error;
+          // A request never received by the server may be retried only with its
+          // original key and budget, after another explicit confirmation.
+          if (replyPreviews.get(panel)?.budget?.can_start === false) throw error;
+        }
+      }
+      if (!data) {
+        const proceed = await confirmAction('Проверить ответы в этой ветке?', `Лимит: ${credits} кредитов. Проверяется только выбранный комментарий. Оценка новых ответов использует отдельный лимит GPT.`);
+        if (!proceed) return;
+        const body = { max_credits: credits, confirm_live: true };
+        key ||= await requestIdForForm(form, body);
+        const operation = pendingFormOperations.get(form) || previous;
+        operation.replyCredits = credits;
+        operation.rejected = false;
+        pendingFormOperations.set(form, operation);
+        sessionSet(operationStorageKey(form), JSON.stringify(operation));
+        data = validateReplyReceipt(await api(form.action, { method: 'POST', body: JSON.stringify(body), headers: { 'Idempotency-Key': key } }), key);
+      }
       for (let attempt = 0; ['ACCEPTED', 'RUNNING'].includes(data.status) && attempt < 30; attempt += 1) {
         if (status) status.textContent = 'Проверка ответов выполняется. Можно продолжать работу на других страницах.';
         await new Promise(resolve => setTimeout(resolve, 2000));
-        data = await api(`/api/scan/replies/requests/${encodeURIComponent(key)}`, { method: 'GET' });
-        if (data.ok !== true || data.request_key !== key || !['ACCEPTED', 'RUNNING', 'DONE', 'FAILED', 'INTERRUPTED'].includes(data.status)) {
-          throw new Error('Результат проверки не подтверждён. Повтор безопасен: ключ запроса сохранён.');
-        }
+        data = validateReplyReceipt(await api(`/api/scan/replies/requests/${encodeURIComponent(key)}`, { method: 'GET' }), key);
       }
       if (['DONE', 'FAILED', 'INTERRUPTED'].includes(data.status)) {
         forgetFormOperation(form, key);
@@ -1582,8 +1689,19 @@
           : `Проверка остановлена. Сохранено новых комментариев: ${result.comments_created || 0}. Проверьте журнал расходов и состояние системы перед новым запуском.`;
         if (status) status.textContent = message;
         toast(message, data.status !== 'DONE');
-      } else if (status) status.textContent = 'Проверка продолжается. Повторное нажатие покажет результат того же запроса.';
+        await previewReplyThread(panel, { preserveMessage: true });
+      } else if (status) status.textContent = 'Проверка продолжается. «Показать результат» прочитает этот же запрос без нового поиска.';
     } catch (error) {
+      if ([400, 409, 428].includes(error.status)) {
+        const operation = pendingReplyOperation(form);
+        if (operation) {
+          // Keep the same identity. On retry GET checks for a possibly accepted
+          // request before any changed budget can be submitted.
+          operation.rejected = true;
+          pendingFormOperations.set(form, operation);
+          sessionSet(operationStorageKey(form), JSON.stringify(operation));
+        }
+      }
       if (status) status.textContent = error.message;
       toast(error.message, true);
     } finally {
@@ -1591,6 +1709,7 @@
       controls.forEach(({ control, disabled }) => { control.disabled = disabled; });
       replySubmissionPending = false;
       pendingApiForms.delete(form);
+      syncReplyControls(panel);
     }
   };
 
@@ -1605,7 +1724,7 @@
     );
     if (tracked) lastActionEl = tracked;
     const button = event.target.closest('.btn');
-    if (button && !button.disabled) {
+    if (button && !button.disabled && !window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
       const bounds = button.getBoundingClientRect();
       button.style.setProperty('--ripple-x', `${event.clientX - bounds.left}px`);
       button.style.setProperty('--ripple-y', `${event.clientY - bounds.top}px`);
@@ -2480,6 +2599,10 @@
   const onScanBudgetInput = (event) => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
+    if (target.matches('[data-custom-scan-budget], [data-custom-scan-budget-quick]')) {
+      const choice = target.closest('label')?.querySelector('input[type="radio"]');
+      if (choice instanceof HTMLInputElement) choice.checked = true;
+    }
     if (
       target.name === 'scan_budget'
       || target.name === 'scan_budget_quick'

@@ -1,0 +1,48 @@
+<section class="panel hot-detail" aria-label="Работа с лидом" data-hot-detail>
+    {% if selected %}
+    <div class="panel-head">
+      <div>
+        <span class="eyebrow">ЛИД #{{ selected.lead_id }}</span>
+        <h2>@{{ selected.username }} · {{ selected.score }}/100</h2>
+        <p>{{ lead_status_label(selected.status) }} · {{ intent_label(selected.intent) }} · {{ product_label(selected.product_category) }}{% for category in selected.get('product_categories', []) %} · {{ product_label(category) }}{% endfor %}</p>
+      </div>
+      <div class="hot-detail-links">
+        <a class="btn" target="_blank" rel="noopener" href="{{ selected.profile_url }}" data-hot-profile>Профиль Instagram ↗</a>
+        <a class="btn ghost" target="_blank" rel="noopener" href="{{ selected.post_url }}">Публикация ↗</a>
+        <a class="btn ghost" href="/leads/{{ selected.lead_id }}">Карточка</a>
+      </div>
+    </div>
+
+    {% if selected.contact_history and selected.contact_history.already_contacted %}
+    <div class="alert warn hot-prior-alert">
+      <b>Уже писали этому контакту</b>
+      <span>{{ selected.contact_history.prior_count }} предыдущих касаний ·
+        <a href="/contacts/{{ selected.contact_id }}">история клиента</a>
+        {% if selected.contact_history.priors %}
+          · ранее: {% for p in selected.contact_history.priors %}<a href="/leads/{{ p.lead_id }}">#{{ p.lead_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+        {% endif %}
+      </span>
+    </div>
+    {% endif %}
+
+    <span class="eyebrow hot-context-label">ЗАПРОС КЛИЕНТА</span>
+    <blockquote class="hot-comment">{{ selected.comment_text or 'Пустой комментарий' }}</blockquote>
+    <p class="muted">Источник: @{{ selected.competitor }} · {{ selected.ai_reason or 'Причина оценки не сохранена' }}</p>
+
+    <details class="hot-rec">
+      <summary><span class="eyebrow">ЧТО ПРЕДЛОЖИТЬ</span><b>{{ selected.recommendation.title }}</b><span class="hot-rec-chevron" aria-hidden="true">⌄</span></summary>
+      <p>{{ selected.recommendation.description }}</p>
+    </details>
+
+    {% include "partials/hot_composer.html" %}
+    {% else %}
+    <div class="empty-box large">
+      <span class="empty-icon" aria-hidden="true"><i data-lucide="message-circle"></i></span>
+      <b>Выберите клиента слева</b>
+      <span>Дальше: подготовить текст → скопировать → Instagram → «Отправил».</span>
+      {% if not queue %}
+      <a class="btn primary" href="{% if rv == 'ARTIFICIAL_RATTAN' %}/radar?vertical=ARTIFICIAL_RATTAN{% else %}/radar{% endif %}">Найти лидов</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>

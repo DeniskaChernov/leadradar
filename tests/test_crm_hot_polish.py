@@ -7,6 +7,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def test_crm_hot_human_copy_and_empty_states():
     hot = (PROJECT_ROOT / "app/web/templates/hot.html").read_text(encoding="utf-8")
+    hot += "".join((PROJECT_ROOT / f"app/web/templates/partials/hot_{name}.html").read_text(
+        encoding="utf-8",
+    ) for name in ("queue", "detail", "composer"))
     leads = (PROJECT_ROOT / "app/web/templates/leads.html").read_text(encoding="utf-8")
     base = (PROJECT_ROOT / "app/web/templates/base.html").read_text(encoding="utf-8")
     dashboard = (PROJECT_ROOT / "app/web/templates/dashboard.html").read_text(

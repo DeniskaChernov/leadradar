@@ -16,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 # Expose closures only in the test copy; deployed JavaScript has no test API.
 SCRIPT = SCRIPT.rsplit("})();", 1)[0] + """
-  window.uiTest = { api, enhanceMotion, applyScanProgress, runScan, reloadSoon, restoreViewState,
+  window.uiTest = { api, enhanceMotion, applyScanProgress, runScan, reloadSoon, restoreViewState, authReturnTarget,
     pollRadarFeed, pollScanProgress, notePollingFailure, notePollingSuccess,
     syncScanButtonsFromPreview, refreshScanBudgetPreview, initialRadarLayout };
 })();
@@ -506,3 +506,58 @@ def test_asset_cache_versions_match_every_shell():
         assert f"app.css?v={version}" in template
     offline = (PROJECT_ROOT / "app/web/static/offline.html").read_text(encoding="utf-8")
     assert f"app.css?v={version}" in offline
+
+async def test_silent_motion_observer_cannot_hide_content(ui_page):
+    page, _state, errors = ui_page
+    await page.evaluate("() => { window.IntersectionObserver = class { observe() {} unobserve() {} disconnect() {} }; }")
+    await page.add_style_tag(path=str(PROJECT_ROOT / 'app/web/static/app.css'))
+    await page.add_script_tag(content=SCRIPT)
+    await page.wait_for_function('Boolean(window.uiTest)')
+    assert await page.locator('#content').evaluate('el => getComputedStyle(el).opacity') == '1'
+    assert await page.locator('#content').evaluate('el => getComputedStyle(el).transform') == 'none'
+    assert not errors
+
+
+async def test_changing_reduced_motion_cancels_active_effects(ui_page):
+    page, _state, errors = ui_page
+    await page.emulate_media(reduced_motion='no-preference')
+    await page.evaluate('''() => {
+      const original = Element.prototype.animate;
+      Element.prototype.animate = function(frames, options) {
+        return original.call(this, frames, {...options, duration: 60000});
+      };
+    }''')
+    await page.add_style_tag(path=str(PROJECT_ROOT / 'app/web/static/app.css'))
+    await page.add_script_tag(content=SCRIPT)
+    await page.wait_for_function("document.querySelector('#content').getAnimations().length > 0")
+    await page.emulate_media(reduced_motion='reduce')
+    await page.wait_for_function("document.querySelector('#content').getAnimations().length === 0")
+    assert await page.locator('#content').evaluate('el => getComputedStyle(el).opacity') == '1'
+    assert not errors
+
+
+async def test_failed_animation_api_does_not_break_page_initialization(ui_page):
+    page, _state, errors = ui_page
+    await page.evaluate("() => { Element.prototype.animate = () => {throw new Error('Optional animation failed')}; }")
+    await page.add_style_tag(path=str(PROJECT_ROOT / 'app/web/static/app.css'))
+    await page.add_script_tag(content=SCRIPT)
+    await page.wait_for_function('Boolean(window.uiTest)')
+    assert await page.locator('#content').is_visible()
+    assert await page.locator('#content').evaluate('el => getComputedStyle(el).opacity') == '1'
+    assert not errors
+
+@pytest.mark.parametrize(('target', 'expected'), [
+    ('/hot?vertical=FURNITURE&page=1&lead_id=426', '/hot?vertical=FURNITURE&page=1&lead_id=426'),
+    ('/radar?post=12#radar-post-results', '/radar?post=12#radar-post-results'),
+    ('/auth?next=https://outside.invalid', '/radar'),
+    ('/api/scan', '/radar'),
+    ('//outside.invalid/path', '/radar'),
+    ('javascript:alert(1)', '/radar'),
+    ('http://127.0.0.1//outside.invalid/path', '//outside.invalid/path'),
+])
+async def test_login_return_target_retains_workspace_and_never_leaves_origin(ui_page, target, expected):
+    page, _state, errors = ui_page
+    await page.add_script_tag(content=SCRIPT)
+    result = await page.evaluate('target => window.uiTest.authReturnTarget(target)', target)
+    assert result == 'http://127.0.0.1' + expected
+    assert not errors

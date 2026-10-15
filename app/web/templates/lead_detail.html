@@ -14,7 +14,6 @@
 {% set ai = lead.analysis_details or {} %}
 {% set openai_cost = openai_cost or {'events': 0, 'known_spend_usd': 0, 'input_tokens': 0, 'output_tokens': 0} %}
 {% set need_ai_action = lead.status.value in ['AI_PENDING', 'NEW'] %}
-{% include "partials/reply_thread_control.html" %}
 
 <div class="hero-status lead-hero page-task {% if lead.lead_score >= settings.hot_lead_threshold %}hot live{% else %}safe{% endif %}" data-motion-root>
   <div class="lead-score-xl"><span>{{ lead.lead_score }}</span><small>из 100</small></div>
@@ -42,6 +41,8 @@
     <a class="btn ghost" target="_blank" rel="noopener" href="{{ post.url }}">Reel ↗</a>
   </div>
 </div>
+
+{% include "partials/reply_thread_control.html" %}
 
 <div class="lead-layout">
   <div class="lead-main">

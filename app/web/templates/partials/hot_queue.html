@@ -1,0 +1,37 @@
+<aside class="panel hot-queue" id="hot-queue-panel" aria-label="Очередь HOT">
+    <div class="panel-head"><div><h2>Кому писать</h2><p>Сильный интерес · ещё без предложения</p></div></div>
+    {% if queue %}
+    <div class="hot-queue-search">
+      <label for="hot-queue-search">Найти в очереди на этой странице</label>
+      <div><input id="hot-queue-search" type="search" data-hot-queue-search placeholder="Имя, комментарий, источник" autocomplete="off"><button class="btn tiny ghost" type="button" data-hot-search-clear hidden aria-label="Очистить поиск в очереди">Сбросить</button></div>
+      <small data-hot-search-status role="status" aria-live="polite"></small>
+    </div>
+    {% endif %}
+    <div class="hot-queue-list" data-hot-queue>
+      {% for item in queue %}
+      <a class="hot-queue-item {% if selected and selected.lead_id == item.lead_id %}is-active{% endif %} {% if item.already_contacted %}is-prior{% endif %}" href="{{ hot_base }}&page={{ queue_page }}&lead_id={{ item.lead_id }}" data-hot-lead-id="{{ item.lead_id }}" {% if selected and selected.lead_id == item.lead_id %}aria-current="true"{% endif %}>
+        <div class="hot-queue-top">
+          <b>@{{ item.username }}</b>
+          <strong class="hot-score">{{ item.score }}</strong>
+        </div>
+        <p>{{ item.comment_preview }}</p>
+        <small>@{{ item.competitor }} · {{ lead_status_label(item.status) }}{% if item.already_contacted %} · уже писали{% endif %}{% if item.has_draft %} · текст готов{% endif %}{% if item.sent %} · отправлено{% endif %}</small>
+      </a>
+      {% else %}
+      <div class="empty-box">
+        <span class="empty-icon" aria-hidden="true"><i data-lucide="flame"></i></span>
+        <b>Пока некому писать</b>
+        <span>Запустите «Найти лидов» — сюда попадут люди с прямой потребностью.</span>
+        <a class="btn primary tiny" href="{% if rv == 'ARTIFICIAL_RATTAN' %}/radar?vertical=ARTIFICIAL_RATTAN{% else %}/radar{% endif %}">Найти лидов</a>
+      </div>
+      {% endfor %}
+      <div class="empty-box" data-hot-search-empty hidden><b>На этой странице совпадений нет</b><span>Измените запрос или сбросьте поиск. Выбранный клиент остаётся открытым.</span></div>
+    </div>
+    {% if queue_pages > 1 %}
+    <nav class="hot-pagination" aria-label="Страницы очереди HOT">
+      {% if queue_page > 1 %}<a class="btn tiny" href="{{ hot_base }}&page={{ queue_page - 1 }}">← Назад</a>{% endif %}
+      <span>{{ queue_page }} / {{ queue_pages }}</span>
+      {% if queue_page < queue_pages %}<a class="btn tiny" href="{{ hot_base }}&page={{ queue_page + 1 }}">Далее →</a>{% endif %}
+    </nav>
+    {% endif %}
+  </aside>
