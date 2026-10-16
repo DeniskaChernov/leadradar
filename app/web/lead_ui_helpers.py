@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from app.db.models import Lead, LeadStatus
 
@@ -10,6 +11,32 @@ from app.db.models import Lead, LeadStatus
 def lead_analysis_details(lead: Lead) -> dict:
     details = lead.analysis_details
     return details if isinstance(details, dict) else {}
+
+
+def confidence_percent(value: object) -> int | None:
+    """Native integer percentages and legacy fractional values, without fake defaults."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):
+        return None
+    try:
+        number = Decimal(str(value).strip())
+    except InvalidOperation:
+        return None
+    if not number.is_finite() or not 0 <= number <= 100:
+        return None
+    integer_format = isinstance(value, int) or (isinstance(value, str) and value.strip().isdigit())
+    if not integer_format and number <= 1:
+        number *= 100
+    return int(number.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+
+def lead_confidence(lead: Lead) -> int | None:
+    details = lead_analysis_details(lead)
+    factors = details.get('factors')
+    factors = factors if isinstance(factors, dict) else {}
+    for value in (details.get('confidence'), details.get('confidence_score'), factors.get('confidence_score')):
+        if value is not None:
+            return confidence_percent(value)
+    return None
 
 
 def lead_is_off_catalog(lead: Lead) -> bool:

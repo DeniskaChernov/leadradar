@@ -44,7 +44,7 @@
   </div>
   <div class="task-card-actions">
     <a class="btn ghost" href="/contacts/{{ contact.id }}">История</a>
-    {% if lead and lead.lead_score >= settings.hot_lead_threshold and lead.status.value in ['NEW','TAKEN','CONTACTED','QUALIFIED','ANALYZING','AI_PENDING'] %}<a class="btn" href="/hot?vertical={{ lead.vertical.value }}&lead_id={{ lead.id }}">Написать</a>{% endif %}
+    {% if lead and lead.id in hot_lead_ids %}<a class="btn" href="/hot?vertical={{ lead.vertical.value }}&lead_id={{ lead.id }}">Написать</a>{% endif %}
     {% if task.status.value == 'OPEN' %}<button class="btn success" type="button" data-task-complete="{{ task.id }}">✓ Выполнено</button>{% endif %}
   </div>
 </article>

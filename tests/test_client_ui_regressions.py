@@ -25,6 +25,19 @@ SCRIPT = (PROJECT_ROOT / "app/web/static/app.js").read_text(encoding="utf-8")
 SCRIPT = SCRIPT.rsplit("})();", 1)[0] + "window.clientUiTest = {api};})();"
 
 
+@pytest.mark.parametrize('confidence', [85, 0, None])
+async def test_explanation_shows_saved_confidence_and_human_role(client_page, confidence):
+    page, state, errors = client_page
+    state['explanation'] = {'confidence': confidence, 'buyer_role': 'B2C_CONSUMER',
+                            'buyer_role_label': 'Розничный покупатель'}
+    await page.locator('[data-lead-explain="1"]').click()
+    await page.locator('.lead-explain-meta').wait_for()
+    text = await page.locator('.lead-explain-meta').inner_text()
+    assert (f'Уверенность {confidence}%' if confidence is not None else 'Уверенность не сохранена') in text
+    assert 'Розничный покупатель' in text and 'B2C_CONSUMER' not in text
+    assert not state['posts'] and not errors
+
+
 @pytest_asyncio.fixture
 async def client_page(session_factory):
     lead_id = await create_lead(session_factory)

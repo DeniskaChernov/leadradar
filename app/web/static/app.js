@@ -2844,7 +2844,7 @@
     const openLink = root.querySelector('[data-lead-explain-open]');
     if (subtitle) subtitle.textContent = 'Загружаю данные выбранного клиента…';
     if (openLink instanceof HTMLAnchorElement) openLink.href = `/leads/${leadId}#ai-evidence`;
-    if (body) body.innerHTML = '<p class="muted">Загружаю grounded explain…</p>';
+    if (body) body.innerHTML = '<p class="muted">Загружаю объяснение оценки…</p>';
     root.hidden = false;
     requestAnimationFrame(() => {
       if (generation === leadExplainGeneration) root.classList.add('is-open');
@@ -2868,12 +2868,17 @@
         ? `<p class="muted">Сохранено подтверждений: ${(data.evidence_ids || []).length}</p>`
         : '<p class="muted">Подтверждения ещё не сохранены.</p>';
       const qualification = data.qualification;
+      const confidenceLabel = Number.isInteger(data.confidence) && data.confidence >= 0 && data.confidence <= 100
+        ? `Уверенность ${data.confidence}%` : 'Уверенность не сохранена';
+      const roleLabel = data.buyer_role && data.buyer_role !== 'UNKNOWN' && data.buyer_role_label
+        ? `<span class="tag">${escapeHtml(data.buyer_role_label)}</span>` : '';
       const decision = qualification ? `
         <h4>${escapeHtml(qualification.title || 'Состояние оценки')}</h4>
         <p>${escapeHtml(qualification.action || '')}</p>
         <p class="muted">${escapeHtml(qualification.product_source || '')}</p>` : '';
       if (body) {
         body.innerHTML = `
+          <p class="lead-explain-meta"><span class="tag">${escapeHtml(confidenceLabel)}</span> ${roleLabel}</p>
           <p class="lead-explain-reason">${escapeHtml(data.reason || data.short_reason || 'Объяснение ещё не сформировано.')}</p>
           <p class="muted">${escapeHtml(data.comment_preview || '')}</p>
           ${decision}

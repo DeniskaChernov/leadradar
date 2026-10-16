@@ -6,7 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 
-from app.db.models import Comment, ContactEvent, Lead, LeadStatus, Vertical
+from app.db.models import Comment, ContactEvent, ContactTask, Lead, LeadStatus, Vertical
 from tests.e2e.helpers import build_e2e_app
 from tests.test_hot_backend_reliability import _service
 from tests.test_openings_and_hot_pagination import _many_hot
@@ -28,14 +28,28 @@ async def test_contact_has_no_outreach_link_for_leads_outside_hot(session_factor
         else:
             lead.status = {'negotiation': LeadStatus.NEGOTIATION,
                            'sent': LeadStatus.OFFER_SENT, 'lost': LeadStatus.LOST}[reason]
+        session.add(ContactTask(contact_id=contact_id, lead_id=lead_id,
+                                due_at=datetime.now(UTC) + timedelta(hours=1), note='target-regression-task'))
         await session.commit()
         history_before = await session.scalar(select(func.count()).select_from(ContactEvent))
     async with AsyncClient(transport=ASGITransport(app=build_e2e_app(session_factory)),
                            base_url='http://testserver') as client:
         response = await client.get(f'/contacts/{contact_id}')
+        detail = await client.get(f'/leads/{lead_id}')
+        radar = await client.get('/radar')
+        other_pages = [await client.get(path) for path in ('/', '/leads?view=list', '/leads?view=board', '/tasks')]
     assert response.status_code == 200
     assert f'/leads/{lead_id}' in response.text  # History remains readable.
     assert '>Написать</a>' not in response.text
+    assert detail.status_code == radar.status_code == 200
+    assert f'/hot?vertical=FURNITURE&lead_id={lead_id}' not in detail.text
+    assert f'/hot?vertical=FURNITURE&lead_id={lead_id}' not in radar.text
+    for page in other_pages:
+        assert page.status_code == 200
+        assert f'/hot?vertical=FURNITURE&lead_id={lead_id}' not in page.text
+    assert 'target-regression-task' in other_pages[-1].text
+    if reason in {'negotiation', 'sent', 'lost'}:
+        assert f'data-lead-take="{lead_id}"' not in radar.text
     async with session_factory() as session:
         assert await session.scalar(select(func.count()).select_from(ContactEvent)) == history_before
 

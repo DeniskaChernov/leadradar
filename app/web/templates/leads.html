@@ -85,7 +85,7 @@
     {% include "partials/lead_funnel_quick_action.html" %}
     <a class="btn ghost" href="/leads/{{ lead.id }}">Подробнее</a>
     <a class="btn ghost" href="/contacts/{{ contact.id }}">История клиента</a>
-    {% if lead.lead_score >= settings.hot_lead_threshold and lead.status.value not in ['WON','LOST','NOT_LEAD','OFFER_SENT','NEGOTIATION'] %}
+    {% if lead.id in hot_lead_ids %}
     <a class="btn" href="/hot?vertical={{ rv }}&lead_id={{ lead.id }}">Написать</a>
     {% endif %}
   </div>
@@ -135,7 +135,7 @@
       </a>
       <div class="kanban-card-actions lead-funnel-actions">
         {% include "partials/lead_funnel_quick_action.html" %}
-        {% if lead.lead_score >= settings.hot_lead_threshold and lead.status.value not in ['WON','LOST','NOT_LEAD','OFFER_SENT','NEGOTIATION'] %}
+        {% if lead.id in hot_lead_ids %}
         <a class="btn tiny" href="/hot?vertical={{ rv }}&lead_id={{ lead.id }}">Написать</a>
         {% endif %}
         <a class="btn tiny ghost" href="/leads/{{ lead.id }}">Подробнее</a>

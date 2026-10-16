@@ -56,7 +56,8 @@ from app.services.qualification_explanation import qualification_explanation
 from app.services.radar_results_service import RadarCompanyGroup, RadarPostGroup, RadarResultsPage
 from app.services.signal_recency import fresh_signal_clause
 from app.services.usage_service import ExternalUsageService
-from app.web.labels import CHANGE_TYPE_LABELS, label
+from app.web.labels import BUYER_ROLE_LABELS, CHANGE_TYPE_LABELS, label
+from app.web.lead_ui_helpers import confidence_percent, lead_confidence
 
 OPEN_LEAD_STATUSES = [
     LeadStatus.ANALYZING,
@@ -1358,20 +1359,20 @@ class WebQueryService:
             details = lead.analysis_details if isinstance(lead.analysis_details, dict) else {}
             factors_raw = details.get("factors") if isinstance(details.get("factors"), dict) else {}
             contributions: list[dict[str, object]] = []
-            for key, label in factor_labels.items():
+            for key, factor_label in factor_labels.items():
                 value = factors_raw.get(key, details.get(key))
                 if value is None:
                     continue
                 try:
-                    score = int(value)
+                    score = confidence_percent(value) if key == 'confidence_score' else int(value)
                 except (TypeError, ValueError):
                     continue
-                if score == 0:
+                if score in (None, 0):
                     continue
                 contributions.append(
                     {
                         "key": key,
-                        "label": label,
+                        "label": factor_label,
                         "score": score,
                     }
                 )
@@ -1386,11 +1387,6 @@ class WebQueryService:
                 for item in (details.get("evidence_ids") or [])
                 if isinstance(item, int) or (isinstance(item, str) and str(item).isdigit())
             ]
-            confidence = details.get("confidence", details.get("confidence_score"))
-            try:
-                confidence_int = int(confidence) if confidence is not None else None
-            except (TypeError, ValueError):
-                confidence_int = None
             return {
                 "lead_id": lead.id,
                 "username": contact.username,
@@ -1401,7 +1397,8 @@ class WebQueryService:
                 "reason": lead.ai_reason or details.get("short_reason") or "",
                 "short_reason": details.get("short_reason") or "",
                 "buyer_role": details.get("buyer_role") or "UNKNOWN",
-                "confidence": confidence_int,
+                "buyer_role_label": label(BUYER_ROLE_LABELS, details.get("buyer_role"), "Не определено"),
+                "confidence": lead_confidence(lead),
                 "quantity": details.get("quantity"),
                 "location": details.get("location"),
                 "comment_preview": (comment.text or "")[:280],

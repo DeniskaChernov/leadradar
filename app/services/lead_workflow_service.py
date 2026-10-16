@@ -29,6 +29,12 @@ from app.db.models import (
 from app.db.repositories.events import ContactEventRepository
 from app.services.assortment_policy import assortment_eligible_clause
 
+CLAIMABLE_LEAD_STATUSES = frozenset({LeadStatus.ANALYZING, LeadStatus.AI_PENDING, LeadStatus.NEW})
+
+
+def lead_can_be_claimed(lead: Lead) -> bool:
+    return lead.status in CLAIMABLE_LEAD_STATUSES and lead.assigned_manager_telegram_id is None
+
 MAX_CRM_AMOUNT = Decimal("999999999999.99")  # Numeric(14, 2)
 MAX_CRM_QUANTITY = 2_147_483_647  # PostgreSQL Integer
 
@@ -93,7 +99,7 @@ class LeadWorkflowService:
                 .where(
                     Lead.id == lead_id,
                     Lead.assigned_manager_telegram_id.is_(None),
-                    Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING, LeadStatus.NEW]),
+                    Lead.status.in_(CLAIMABLE_LEAD_STATUSES),
                 )
                 .values(
                     assigned_manager_telegram_id=manager_id,
@@ -114,11 +120,7 @@ class LeadWorkflowService:
                         raise LeadAlreadyAssignedError(current.assigned_manager_telegram_id)
                     previous = current.assigned_manager_telegram_id
                     current.assigned_manager_telegram_id = manager_id
-                    if current.status in {
-                        LeadStatus.NEW,
-                        LeadStatus.AI_PENDING,
-                        LeadStatus.ANALYZING,
-                    }:
+                    if current.status in CLAIMABLE_LEAD_STATUSES:
                         current.status = LeadStatus.TAKEN
                     current.updated_at = datetime.now(UTC)
                     await session.execute(

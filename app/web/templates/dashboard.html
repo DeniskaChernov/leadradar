@@ -53,7 +53,7 @@
       </a>
       {% endfor %}
       {% for lead, contact, comment, competitor in hot_leads %}
-      <a class="attention-item" href="/hot?lead_id={{ lead.id }}">
+      <a class="attention-item" href="{% if lead.id in hot_lead_ids %}/hot?vertical={{ lead.vertical.value }}&lead_id={{ lead.id }}{% else %}/leads/{{ lead.id }}{% endif %}">
         <span class="attention-icon hot">{{ lead.lead_score }}</span><div><b>@{{ contact.username }} · {{ intent_label(lead.intent) }}</b><p>{{ comment.text }}</p><small>@{{ competitor.normalized_handle }}</small></div><span>→</span>
       </a>
       {% endfor %}

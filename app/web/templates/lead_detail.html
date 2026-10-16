@@ -34,7 +34,7 @@
     </div>
   </div>
   <div class="lead-hero-actions">
-    {% if lead.lead_score >= settings.hot_lead_threshold and lead.status.value not in ['WON','LOST','NOT_LEAD','OFFER_SENT'] %}
+    {% if in_hot_queue %}
     <a class="btn primary" href="/hot?vertical={{ lead.vertical.value }}&lead_id={{ lead.id }}">Написать</a>
     {% endif %}
     <a class="btn" target="_blank" rel="noopener" href="{{ contact.profile_url }}">Профиль ↗</a>
@@ -102,7 +102,8 @@
     <details class="panel ai-intelligence page-task-secondary" id="lead-ai" {% if need_ai_action %}open{% endif %}>
       <summary>
         <b>AI-разбор</b>
-        <span>{% if ai %}Уверенность {{ ai.get('confidence', 50) }}% · {% endif %}детали оценки и evidence</span>
+        {% set confidence = lead_confidence(lead) %}
+        <span>{% if confidence is not none %}Уверенность {{ confidence }}%{% else %}Уверенность не сохранена{% endif %} · основания оценки</span>
       </summary>
       {% if not openai_spend_allowed %}
       <div class="alert warning"><b>GPT выключен</b><span>Оценка по локальным правилам. Включить GPT — в <a href="/system">Настройках</a>.</span></div>

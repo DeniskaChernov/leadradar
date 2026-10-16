@@ -48,7 +48,11 @@ from app.services.independent_quality_gates_service import IndependentQualityGat
 from app.services.lead_analysis_pipeline import LeadAnalysisPipeline
 from app.services.lead_intelligence_challenge import LeadIntelligenceChallenge
 from app.services.lead_service import LeadService
-from app.services.lead_workflow_service import LeadWorkflowError, LeadWorkflowService
+from app.services.lead_workflow_service import (
+    LeadWorkflowError,
+    LeadWorkflowService,
+    lead_can_be_claimed,
+)
 from app.services.market_intelligence_service import MarketIntelligenceService
 from app.services.meta_audience_service import MetaAudiencePlanningService
 from app.services.monitor_controller import MonitorController
@@ -98,6 +102,7 @@ from app.web.labels import (
     label,
 )
 from app.web.lead_ui_helpers import (
+    lead_confidence,
     lead_is_off_catalog,
     lead_next_action_overdue,
     lead_quality_badge,
@@ -303,6 +308,8 @@ def build_web_app(
         lead_next_action_overdue=lead_next_action_overdue,
         deadline_overdue=deadline_overdue,
         lead_quality_badge=lead_quality_badge,
+        lead_confidence=lead_confidence,
+        lead_can_be_claimed=lead_can_be_claimed,
     )
     templates.env.filters["display_dt"] = lambda value, fmt="%d.%m %H:%M": format_display_dt(
         value, fmt, timezone=settings.web_display_timezone
@@ -532,6 +539,7 @@ def build_web_app(
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request):
         data = await queries.dashboard()
+        data["hot_lead_ids"] = await hot_outreach_service.queued_lead_ids([row[0].id for row in data.get("hot_leads", [])])
         return templates.TemplateResponse(
             request=request,
             name="dashboard.html",
@@ -561,6 +569,9 @@ def build_web_app(
         grouped = await queries.radar_posts_page(
             q=q, competitor=competitor, kind=kind, vertical=selected_vertical, page=page, post_id=post,
         )
+        hot_lead_ids = await hot_outreach_service.queued_lead_ids(
+            [row[4].id for row in grouped.rows if row[4] is not None], vertical=selected_vertical,
+        )
         result_params = {"vertical": selected_vertical, "q": q, "competitor": competitor, "kind": kind}
         for company in grouped.companies:
             company.source_url = "/radar?" + urlencode({**result_params, "competitor": company.competitor.normalized_handle}) + "#radar-post-results"
@@ -578,6 +589,7 @@ def build_web_app(
                 request,
                 rows=grouped.rows,
                 radar_groups=grouped,
+                hot_lead_ids=hot_lead_ids,
                 post_filter=post,
                 radar_all_posts_url="/radar?" + urlencode(result_params) + "#radar-post-results",
                 radar_kind_urls={value: "/radar?" + urlencode({
@@ -748,6 +760,7 @@ def build_web_app(
         )
         rows = result.rows
         board_columns = OPERATOR_BOARD_COLUMNS
+        hot_lead_ids = await hot_outreach_service.queued_lead_ids([row[0].id for row in rows], vertical=selected_vertical)
         use_board = view == "board" and not status and quality not in {
             "not_lead",
             "off_catalog",
@@ -768,6 +781,7 @@ def build_web_app(
                 request,
                 rows=rows,
                 rows_by_column=rows_by_column,
+                hot_lead_ids=hot_lead_ids,
                 board_columns=board_columns,
                 q=q,
                 status_filter=status,
@@ -841,6 +855,7 @@ def build_web_app(
         data = await queries.lead_detail(lead_id, history_page=history_page)
         if data is None:
             raise HTTPException(status_code=404, detail="Лид не найден")
+        data["in_hot_queue"] = lead_id in await hot_outreach_service.queued_lead_ids([lead_id])
         data["deal_currencies"] = await queries.deal_currencies([data["deal"]] if data["deal"] else [])
         data["history_pager"] = page_context(
             request, data["history_pagination"], page_name="history_page", anchor="interest-history",
@@ -908,10 +923,11 @@ def build_web_app(
     async def tasks(request: Request, view: str = "open", q: str = "", page: int = 1):
         result = await queries.tasks_page(view=view, q=q, page=page)
         rows = result.rows
+        hot_lead_ids = await hot_outreach_service.queued_lead_ids([row[2].id for row in rows if row[2] is not None])
         return templates.TemplateResponse(
             request=request,
             name="tasks.html",
-            context=base_context(request, rows=rows, view=view, q=q, **page_context(request, result)),
+            context=base_context(request, rows=rows, view=view, q=q, hot_lead_ids=hot_lead_ids, **page_context(request, result)),
         )
 
     @app.get("/deals", response_class=HTMLResponse)

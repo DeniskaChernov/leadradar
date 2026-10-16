@@ -21,7 +21,7 @@
         <span>Ожидает оценки</span>
         {% else %}
         {% if lead.lead_score >= settings.hot_lead_threshold %}<span class="hot">HOT</span>{% endif %}
-        {% if ai.get('buyer_role') and ai.get('buyer_role') != 'UNKNOWN' %}<span>{{ ai.get('buyer_role') }}</span>{% endif %}
+        {% if ai.get('buyer_role') and ai.get('buyer_role') != 'UNKNOWN' %}<span>{{ buyer_role_label(ai.get('buyer_role')) }}</span>{% endif %}
         <span>{{ intent_label(lead.intent) }}</span>
         <span>{{ product_label(lead.product_category) }}</span>
         {% if lead.product_category == 'MIXED_FURNITURE' %}
@@ -38,7 +38,8 @@
         <span>Оценка ещё не рассчитана</span>
         {% else %}
         <span>Приоритет {{ lead.lead_score }}/100</span>
-        {% if ai.get('confidence') is not none %}<span>Уверенность {% set conf = ai.get('confidence') %}{{ ((conf * 100) if conf <= 1 else conf)|round|int }}%</span>{% endif %}
+        {% set confidence = lead_confidence(lead) %}
+        {% if confidence is not none %}<span>Уверенность {{ confidence }}%</span>{% endif %}
         {% endif %}
         <span>{{ lead_status_label(lead.status) }}</span>
         {% if ai.get('evidence_ids') %}<span>Подтверждений: {{ ai.get('evidence_ids')|length }}</span>{% endif %}
@@ -47,12 +48,12 @@
       <div class="find-lead-actions">
         {% if lead.status.value in ['WON', 'LOST'] %}
         <a class="btn tiny primary" href="/leads/{{ lead.id }}">Открыть карточку</a>
-        {% elif lead.lead_score >= settings.hot_lead_threshold %}
+        {% elif lead.id in hot_lead_ids %}
         <a class="btn tiny primary" href="/hot?vertical={{ rv }}&lead_id={{ lead.id }}">Написать</a>
         <a class="btn tiny ghost" href="/leads/{{ lead.id }}">Карточка</a>
         {% else %}
         <a class="btn tiny primary" href="/leads/{{ lead.id }}">Открыть лида</a>
-        <button type="button" class="btn tiny" data-lead-take="{{ lead.id }}">Взять в работу</button>
+        {% if lead_can_be_claimed(lead) %}<button type="button" class="btn tiny" data-lead-take="{{ lead.id }}">Взять в работу</button>{% endif %}
         {% endif %}
         <button type="button" class="btn tiny ghost" data-lead-explain="{{ lead.id }}">Почему это лид?</button>
       </div>

@@ -214,6 +214,15 @@ class HotOutreachService:
             row = (await session.execute(stmt)).first()
         return {"lead_id": row.id, "vertical": row.vertical.value} if row else None
 
+    async def queued_lead_ids(self, lead_ids: list[int], *, vertical: str | None = None) -> set[int]:
+        """Check a displayed page in one query using the authoritative HOT filters."""
+        if not lead_ids:
+            return set()
+        stmt, _, _ = self._queue_query(vertical)
+        stmt = stmt.with_only_columns(Lead.id).where(Lead.id.in_(lead_ids))
+        async with self.session_factory() as session:
+            return set(await session.scalars(stmt))
+
     async def queue(
         self,
         *,
