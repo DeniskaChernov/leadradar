@@ -46,7 +46,7 @@ async def test_system_page_shows_ai_version_info(session_factory):
     assert response.status_code == 200
     html = response.text
     assert "ai-version-info" in html
-    assert "lead-v3.1-validated-history" in html
+    assert "lead-v3.2-bounded-output" in html
 
 
 async def test_lead_detail_shows_prompt_version(session_factory):
@@ -64,7 +64,7 @@ async def test_lead_detail_shows_prompt_version(session_factory):
         response = await client.get(f"/leads/{lead_id}")
 
     assert response.status_code == 200
-    assert "lead-v3.1-validated-history" in response.text
+    assert "lead-v3.2-bounded-output" in response.text
     assert "lead-analysis-v3.2" in response.text
 
 

@@ -166,6 +166,7 @@ class HTTPInstagramProvider(InstagramProvider):
         for attempt in range(1, attempt_limit + 1):
             try:
                 response = await self.client.request(method, url, **kwargs)
+                self._observe_response(response, url)
                 if response.status_code in {401, 402, 403}:
                     raise ProviderAuthError(
                         f"{self.name} authentication failed ({response.status_code})"
@@ -189,6 +190,9 @@ class HTTPInstagramProvider(InstagramProvider):
         raise ProviderError(
             f"{self.name} request failed after {attempt_limit} attempts"
         ) from last_error
+
+    def _observe_response(self, response: httpx.Response, url: str) -> None:
+        """Allow adapters to retain billing facts before HTTP validation fails."""
 
     async def aclose(self) -> None:
         if self._owns_client:

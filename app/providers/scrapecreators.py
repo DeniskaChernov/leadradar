@@ -55,9 +55,14 @@ class ScrapeCreatorsProvider(HTTPInstagramProvider):
         # One delivered request per durable reservation. A lost/failed response
         # is reconciled by the budget wrapper, never retried inside the adapter.
         kwargs["attempts"] = 1
-        payload = await super()._request_json(method, url, **kwargs)
+        return await super()._request_json(method, url, **kwargs)
+
+    def _observe_response(self, response: httpx.Response, url: str) -> None:
+        try:
+            payload = response.json()
+        except ValueError:
+            return
         self._capture_credit_observation(payload, url)
-        return payload
 
     def pop_credit_observations(self) -> list[ProviderCreditObservation]:
         observations = self._credit_observations

@@ -45,7 +45,7 @@ class RuntimeDiagnostics:
             database.parent / ".runtime" / f"{database.name}.lifecycle.json" if database else None
         )
         self.data = {
-            "build": "2026-10-16-presentation1",
+            "build": "2026-10-17-error-recovery1",
             "run_id": uuid.uuid4().hex,
             "pid": os.getpid(),
             "mode": mode,

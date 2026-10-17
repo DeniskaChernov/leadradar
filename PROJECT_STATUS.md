@@ -1,5 +1,33 @@
 # Lead Radar — состояние проекта
 
+## Исправление запуска поиска и неполных AI-ответов — 2026-10-17
+
+Блокировка вызвана HTTP 500 ScrapeCreators на продолжении публикаций @aiko.uz
+16 октября. История провайдера подтвердила credits=0; №451 штатно закрыт как
+RELEASED с доказательством. Диагностический запрос №476 стоил 1 credit,
+отражён отдельно. Preview can_start=true, blocking_reasons пусты.
+
+Credit-факты теперь сохраняются до проверки HTTP-статуса. Обработчик AI
+сохраняет usage до валидации JSON; incomplete/malformed ответ учитывается
+один раз и допускает явный повтор вместо ложного постоянного отказа.
+SDK max_retries=0, timeout 60 с; prompt lead-v3.2-bounded-output, cap 3000 tokens.
+AIRequest #243 возвращён в RETRYABLE. Старый №457 остаётся UNCERTAIN без
+выдуманных токенов; к блокировке поиска Instagram не относится. AI_PENDING 17.
+
+44 целевых и 97 расширенных тестов PASS. Полный pytest: 1608 passed,
+2 skipped за 1108,11 с; JUnit failures/errors 0. Пропуски: PG concurrency
+при SQLite и SIGTERM на Windows. Ruff/обычный/staged diff check PASS.
+Runtime error-recovery1 full RUNNING/SERVING, PID 13096;
+по 18 маршрутов/ресурсов local/public — 200, Telegram API/получатель доступны.
+45 таблиц неизменны, четыре ledger-таблицы проверены по ожидаемым изменениям,
+четыре кеша совпали с независимым перерасчётом backup. Integrity ok/FK 0;
+439 comments/leads, 397 contacts, 2168 contact_events сохранены; cost_events 474.
+После полного pytest сохранность подтверждена повторно; `/ready` local/public 200,
+preview 10 credits can_start=true, поиск/анализ idle.
+Нового платного поиска/GPT и тестовых отправок не было. Текущий Cloudflare:
+https://men-convert-caution-nasa.trycloudflare.com/radar.
+Подробности: [SEARCH_FAILURE_RECOVERY_2026-10-17.md](docs/SEARCH_FAILURE_RECOVERY_2026-10-17.md).
+
 ## Аудит готовности — 2026-10-16
 
 Ручной поиск можно запускать; статус — готовность к контрольному рабочему

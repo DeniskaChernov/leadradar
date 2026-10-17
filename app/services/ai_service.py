@@ -8,9 +8,11 @@ import socket
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
+from inspect import isawaitable
 from typing import Any, ClassVar, Protocol
 from uuid import uuid4
 
+from pydantic import ValidationError
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -49,6 +51,18 @@ logger = logging.getLogger(__name__)
 
 class AIAnalysisError(RuntimeError):
     """The AI analysis could not be completed and should be retried later."""
+
+
+class AIOutputError(AIAnalysisError):
+    """A delivered response could not be used; its request/usage is still known."""
+
+    def __init__(
+        self, message: str, *, token_usage: tuple[int | None, int | None],
+        response_id: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.token_usage = token_usage
+        self.response_id = response_id
 
 
 @dataclass(frozen=True, slots=True)
@@ -1306,9 +1320,14 @@ class OpenAILeadAnalyzer:
                 from openai import AsyncOpenAI
             except ImportError as exc:
                 raise AIAnalysisError("OpenAI SDK is not installed") from exc
-            self.client = AsyncOpenAI(api_key=api_key)
+            # One durable reservation permits exactly one delivered HTTP attempt.
+            self.client = AsyncOpenAI(api_key=api_key, max_retries=0, timeout=60.0)
 
     async def analyze(self, context: LeadAnalysisContext) -> LeadAnalysis:
+        self.last_token_usage = (None, None)
+        token_usage: tuple[int | None, int | None] = (None, None)
+        response_id = None
+        response_received = False
         context_payload = asdict(context)
         payload = {
             **context_payload,
@@ -1327,7 +1346,7 @@ class OpenAILeadAnalyzer:
             ),
         }
         system_prompt = (
-            "You are Lead Radar Intelligence Agent (production prompt v3.1). Transform only supplied public commercial Evidence into structured sales intelligence. "
+            "You are Lead Radar Intelligence Agent (production prompt v3.2). Transform only supplied public commercial Evidence into structured sales intelligence. "
             "ValidatedCommercialHistory is already server-validated and contains no arbitrary raw prior comments. Qualify the current public Instagram "
             "comments in Russian, Uzbek Latin, Uzbek Cyrillic, or mixed language. The outcome must "
             "help a sales manager decide whether to act, why, how quickly, and what to say next. "
@@ -1349,23 +1368,42 @@ class OpenAILeadAnalyzer:
             "confidence in the classification, not purchase probability. Provide short observable "
             "evidence, uncertainty flags, intelligence_version '3.0', buyer_role, decomposed component scores, "
             "evidence_ids, and one concrete manager action. Do not reveal hidden "
-            "chain-of-thought or invent a rationale. Return only the validated structured result."
+            "chain-of-thought or invent a rationale. Keep reason and short_reason within 240 "
+            "characters each, evidence items within 160 characters, and actions within 240 "
+            "characters. Do not pad text or repeat whitespace. Return only the validated structured result."
         )
         try:
-            response = await self.client.responses.parse(
+            raw = await self.client.responses.with_raw_response.parse(
                 model=self.model,
                 instructions=system_prompt,
                 input=json.dumps(payload, ensure_ascii=False, default=str),
                 text_format=LeadAnalysis,
                 reasoning={"effort": "low"},
-                max_output_tokens=2000,
+                max_output_tokens=3000,
                 store=False,
                 prompt_cache_key="lead-radar-qualifier-v3",
             )
+            # Read the usage envelope before the SDK validates generated JSON.
+            # A truncated output can raise inside raw.parse() despite HTTP 200.
+            response_received = True
+            envelope = raw.http_response.json()
+            token_usage = self._extract_token_usage(envelope)
+            response_id = envelope.get("id")
+            if envelope.get("status") == "incomplete":
+                raise AIOutputError(
+                    "OpenAI вернул незавершённый ответ. Сигнал сохранён для повторного разбора.",
+                    token_usage=token_usage, response_id=response_id,
+                )
+            response = raw.parse()
+            if isawaitable(response):
+                response = await response
             parsed = response.output_parsed
             if parsed is None:
-                raise AIAnalysisError("OpenAI returned no parsed lead analysis")
-            self.last_token_usage = self._extract_token_usage(response)
+                raise AIOutputError(
+                    "OpenAI не вернул результат оценки. Сигнал сохранён для повторного разбора.",
+                    token_usage=token_usage, response_id=response_id,
+                )
+            self.last_token_usage = token_usage
             analysis = (
                 parsed
                 if isinstance(parsed, LeadAnalysis)
@@ -1387,26 +1425,38 @@ class OpenAILeadAnalyzer:
                     "intelligence_version": "3.0",
                 }
             )
+        except ValidationError as exc:
+            if not response_received:
+                raise AIAnalysisError("OpenAI lead analysis failed") from exc
+            raise AIOutputError(
+                "Ответ OpenAI не прошёл проверку формата. Сигнал сохранён для повторного разбора.",
+                token_usage=token_usage, response_id=response_id,
+            ) from exc
         except AIAnalysisError:
             raise
         except Exception as exc:
+            if response_received:
+                raise AIOutputError(
+                    "Не удалось прочитать оценку OpenAI. Сигнал сохранён для повторного разбора.",
+                    token_usage=token_usage, response_id=response_id,
+                ) from exc
             logger.exception("ai_analysis_failed error_type=%s", type(exc).__name__)
             raise AIAnalysisError("OpenAI lead analysis failed") from exc
 
     @staticmethod
     def _extract_token_usage(response: Any) -> tuple[int | None, int | None]:
-        usage = getattr(response, "usage", None)
+        usage = response.get("usage") if isinstance(response, dict) else getattr(response, "usage", None)
         if usage is None:
             return None, None
-        input_tokens = getattr(usage, "input_tokens", None)
-        output_tokens = getattr(usage, "output_tokens", None)
-        if input_tokens is None and output_tokens is None:
-            return None, None
+        input_tokens = usage.get("input_tokens") if isinstance(usage, dict) else getattr(usage, "input_tokens", None)
+        output_tokens = usage.get("output_tokens") if isinstance(usage, dict) else getattr(usage, "output_tokens", None)
+        input_tokens = input_tokens if type(input_tokens) is int and input_tokens >= 0 else None
+        output_tokens = output_tokens if type(output_tokens) is int and output_tokens >= 0 else None
         return input_tokens, output_tokens
 
 
 class BudgetedCachedOpenAIAnalyzer:
-    PROMPT_VERSION = "lead-v3.1-validated-history"
+    PROMPT_VERSION = "lead-v3.2-bounded-output"
     SCHEMA_VERSION = "lead-analysis-v3.2"
 
     def __init__(
@@ -1522,20 +1572,28 @@ class BudgetedCachedOpenAIAnalyzer:
                 self.inner, "last_token_usage", (None, None)
             )
         except Exception as exc:
-            # После call_started списание неизвестно — не придумываем charge.
-            await self.usage.mark_reservation_uncertain(
-                reservation_id,
-                reason="openai_call_failed_without_usage_proof",
-                details={
-                    "model": self.inner.model,
-                    "fingerprint": fingerprint,
-                    "billing_state": "UNKNOWN",
-                    "error_type": type(exc).__name__,
-                },
-            )
+            details = {"model": self.inner.model, "fingerprint": fingerprint,
+                       "error_type": type(exc).__name__}
+            if isinstance(exc, AIOutputError):
+                input_tokens, output_tokens = exc.token_usage
+                await self.usage.finalize_reservation(
+                    reservation_id, units=1, success=False,
+                    details={**details, "billing_state": "RESPONSE_RECEIVED_INVALID_OUTPUT",
+                             "response_id": exc.response_id},
+                    input_tokens=input_tokens, output_tokens=output_tokens,
+                    lead_id=context.lead_id, vertical=Vertical(context.vertical),
+                )
+            else:
+                # No delivered response proof: never invent a charge or release.
+                await self.usage.mark_reservation_uncertain(
+                    reservation_id,
+                    reason="openai_call_failed_without_usage_proof",
+                    details={**details, "billing_state": "UNKNOWN"},
+                )
             failure_status, failure_type = self._classify_failure(exc)
             await self._release_request_claim(
-                request_id, claim_token, failure_status, str(exc), failure_type
+                request_id, claim_token, failure_status, str(exc), failure_type,
+                input_tokens=input_tokens, output_tokens=output_tokens,
             )
             raise
 
@@ -1639,6 +1697,8 @@ class BudgetedCachedOpenAIAnalyzer:
 
     @staticmethod
     def _classify_failure(exc: Exception) -> tuple[AIRequestStatus, str]:
+        if isinstance(exc, AIOutputError):
+            return AIRequestStatus.RETRYABLE, type(exc).__name__
         root = exc
         while root.__cause__ is not None and isinstance(root.__cause__, Exception):
             root = root.__cause__
@@ -1756,6 +1816,8 @@ class BudgetedCachedOpenAIAnalyzer:
         error: str,
         error_type: str = "AIAnalysisError",
         paid_attempt: bool = True,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
     ) -> None:
         async with self.session_factory() as session:
             request = await session.scalar(
@@ -1780,6 +1842,8 @@ class BudgetedCachedOpenAIAnalyzer:
                     AIRequest.claim_token == claim_token,
                 )
                 .values(
+                    **({"input_tokens": input_tokens} if input_tokens is not None else {}),
+                    **({"output_tokens": output_tokens} if output_tokens is not None else {}),
                     status=final_status,
                     error=error[:1000],
                     error_type=error_type[:128],

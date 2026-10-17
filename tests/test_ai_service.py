@@ -9,10 +9,14 @@ class FakeResponses:
     def __init__(self, result):
         self.result = result
         self.kwargs = None
+        self.with_raw_response = self
 
     async def parse(self, **kwargs):
         self.kwargs = kwargs
-        return SimpleNamespace(output_parsed=self.result)
+        return SimpleNamespace(
+            http_response=SimpleNamespace(json=lambda: {"status": "completed", "usage": None}),
+            parse=lambda: SimpleNamespace(output_parsed=self.result),
+        )
 
 
 async def test_openai_structured_response_parsing():
