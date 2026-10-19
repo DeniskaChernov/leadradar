@@ -1309,6 +1309,8 @@ class MonitorRun(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     trigger: Mapped[str] = mapped_column(String(64), default="schedule", index=True)
     provider: Mapped[str | None] = mapped_column(String(128))
+    result_tracking_version: Mapped[int | None] = mapped_column(Integer)
+    vertical: Mapped[str | None] = mapped_column(String(32))
     status: Mapped[MonitorRunStatus] = mapped_column(
         Enum(MonitorRunStatus, native_enum=False),
         default=MonitorRunStatus.RUNNING,
@@ -1331,6 +1333,16 @@ class MonitorRun(Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SearchResultOrigin(Base):
+    """First creation provenance; repeated ingestion never moves a result to another run."""
+
+    __tablename__ = "search_result_origins"
+
+    comment_id: Mapped[int] = mapped_column(ForeignKey("comments.id"), primary_key=True)
+    discovered_run_id: Mapped[int | None] = mapped_column(ForeignKey("monitor_runs.id"), index=True)
+    lead_run_id: Mapped[int | None] = mapped_column(ForeignKey("monitor_runs.id"), index=True)
 
 
 class ContactTask(Base):

@@ -9,6 +9,14 @@
 
 {% include "partials/find_leads_wizard.html" %}
 
+<section class="panel search-run-shortcut" aria-label="Новые результаты и история поисков">
+  <div><span class="eyebrow">КАЖДЫЙ ПОИСК ОТДЕЛЬНО</span><h2>{% if last_run %}Последний поиск #{{ last_run.id }}{% else %}Новые результаты поиска{% endif %}</h2><p class="muted">Новые лиды без повторных карточек. Компании и посты — внутри выбранного запуска.</p>{% if last_run %}<p class="muted">{{ last_run.started_at | display_dt }} · {{ run_status_label(last_run.status) }} · новых комментариев: {{ last_run.stats_json.get('comments_created', 0) }}</p>{% endif %}</div>
+  <nav class="search-toolbar" aria-label="Открыть результаты последнего поиска">
+    {% if last_run %}<a class="btn primary" href="/searches/{{ last_run.id }}?vertical={{ rv }}">Новые лиды</a><a class="btn" href="/searches/{{ last_run.id }}?view=companies&amp;vertical={{ rv }}">По компаниям</a><a class="btn" href="/searches/{{ last_run.id }}?view=posts&amp;vertical={{ rv }}">По постам</a>{% endif %}
+    <a class="btn ghost" href="/searches?vertical={{ rv }}">История поисков →</a>
+  </nav>
+</section>
+
 {% if search_paused %}
 <section class="panel compact radar-search-paused">
   <div class="alert warn">

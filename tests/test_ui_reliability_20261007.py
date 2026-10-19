@@ -320,6 +320,40 @@ async def test_fast_accepted_scan_still_shows_completion(ui_page):
     assert "Поиск завершён" in await page.locator("[data-toast-message]").inner_text()
 
 
+@pytest.mark.parametrize("run_id", [77, None, "https://untrusted.example/"])
+async def test_scan_summary_links_open_that_saved_search_and_its_source_views(ui_page, run_id):
+    page, state, errors = ui_page
+    await page.locator('#content').evaluate("""element => {
+      element.insertAdjacentHTML('afterend', `<div id="scan-summary" hidden>
+        <p data-scan-summary-subtitle></p>
+        <a data-scan-summary-results="leads"></a><a data-scan-summary-results="companies"></a>
+        <a data-scan-summary-results="posts"></a><a data-scan-summary-results="comments"></a>
+        <button data-scan-summary-ok>Понятно</button></div>`);
+    }""")
+    running = True
+
+    async def feed(route):
+        await route.fulfill(content_type="application/json", body=json.dumps({
+            "cycle_running": running, "last_run_id": run_id,
+            "last_stats": {"comments_created": 5, "leads_created": 4},
+            "changes": [], "hot_leads": [],
+        }))
+
+    await page.route("**/api/radar/feed?*", feed)
+    await page.add_script_tag(content=SCRIPT)
+    await page.wait_for_function("document.querySelector('#scan-main').dataset.scanBusy === '1'")
+    running = False
+    await page.evaluate("uiTest.pollRadarFeed()")
+    await page.wait_for_function("!document.querySelector('#scan-summary').hidden")
+    for view in ("leads", "companies", "posts", "comments"):
+        target = urlsplit(await page.locator(f'[data-scan-summary-results="{view}"]').get_attribute('href'))
+        assert target.path == ("/searches/77" if run_id == 77 else "/searches")
+        if run_id == 77:
+            assert f"view={view}" in target.query
+        assert "vertical=FURNITURE" in target.query
+    assert state["scan_posts"] == 0 and not errors
+
+
 @pytest.mark.parametrize("active_page", ["/radar", "/hot"])
 async def test_scan_ignores_delayed_status_from_before_accepted_post(ui_page, active_page):
     page, state, errors = ui_page

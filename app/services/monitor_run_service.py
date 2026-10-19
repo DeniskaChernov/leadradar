@@ -27,12 +27,15 @@ class MonitorRunService:
         *,
         requested_credit_budget: int | None = None,
         effective_credit_budget: int | None = None,
+        vertical: str | None = None,
     ) -> int:
         budget = await self.budget_service.snapshot(self.primary_provider)
         async with self.session_factory() as session:
             run = MonitorRun(
                 trigger=trigger,
                 provider=self.provider_name,
+                result_tracking_version=1,
+                vertical=vertical,
                 status=MonitorRunStatus.RUNNING,
                 stats_json={},
                 requested_credit_budget=requested_credit_budget,

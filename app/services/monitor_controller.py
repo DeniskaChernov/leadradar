@@ -29,6 +29,7 @@ class RuntimeSnapshot:
     last_stats: CycleStats | None
     last_error: str | None
     progress: ScanProgress
+    last_run_id: int | None = None
 
 
 class MonitorController:
@@ -41,6 +42,7 @@ class MonitorController:
         self.last_cycle_completed_at: datetime | None = None
         self.last_stats: CycleStats | None = None
         self.last_error: str | None = None
+        self.last_run_id: int | None = None
         self._cycle_trigger: str | None = None
         self._requested_credit_budget: int | None = None
         self._effective_credit_budget: int | None = None
@@ -75,6 +77,7 @@ class MonitorController:
         # The accepted cycle owns the live result immediately, before its
         # background task reaches the database or provider.
         self.last_stats = None
+        self.last_run_id = None
         self.last_error = None
         self.last_cycle_started_at = datetime.now(UTC)
         self.last_cycle_completed_at = None
@@ -104,6 +107,7 @@ class MonitorController:
             last_stats=self.last_stats,
             last_error=self.last_error,
             progress=progress,
+            last_run_id=self.last_run_id,
         )
 
     async def stop(self) -> None:
@@ -123,7 +127,9 @@ class MonitorController:
                     self._cycle_trigger or "unknown",
                     requested_credit_budget=self._requested_credit_budget,
                     effective_credit_budget=self._effective_credit_budget,
+                    vertical=self._scan_vertical,
                 )
+                self.last_run_id = run_id
             force = (self._cycle_trigger or "") in {"web", "manual", "bot", "once"}
             parameters = inspect.signature(self.monitor.run_cycle).parameters
             kwargs: dict[str, Any] = {}
@@ -131,11 +137,14 @@ class MonitorController:
                 kwargs["force"] = force
             if "progress" in parameters:
                 kwargs["progress"] = self._progress
+            if "monitor_run_id" in parameters:
+                kwargs["monitor_run_id"] = run_id
             if "vertical" in parameters and self._scan_vertical:
                 kwargs["vertical"] = self._scan_vertical
             if self.reply_request_id is not None:
                 stats = await self.monitor.run_reply_cycle(
                     self.reply_request_id, progress=self._progress,
+                    monitor_run_id=run_id,
                 )
             else:
                 stats = await self.monitor.run_cycle(**kwargs)

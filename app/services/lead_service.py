@@ -26,6 +26,7 @@ from app.db.models import (
     Post,
     PublicSignal,
     PublicSignalStatus,
+    SearchResultOrigin,
 )
 from app.db.repositories.events import ContactEventRepository
 from app.schemas.leads import Intent, LeadAnalysis
@@ -110,7 +111,9 @@ class LeadService:
             significant_change_id=analyzed.significant_change_id,
         )
 
-    async def ensure_analyzing(self, signal: PersistedSignal) -> ProcessedLead:
+    async def ensure_analyzing(
+        self, signal: PersistedSignal, *, monitor_run_id: int | None = None,
+    ) -> ProcessedLead:
         """Create and commit the manager-visible lead shell before any analysis runs."""
 
         async with self.session_factory() as session:
@@ -140,6 +143,12 @@ class LeadService:
             session.add(lead)
             try:
                 await session.flush()
+                if monitor_run_id is not None:
+                    origin = await session.get(SearchResultOrigin, signal.comment_id)
+                    if origin is None:
+                        origin = SearchResultOrigin(comment_id=signal.comment_id)
+                        session.add(origin)
+                    origin.lead_run_id = monitor_run_id
                 await ContactEventRepository(session).add(
                     contact.id,
                     ContactEventType.LEAD_CREATED,

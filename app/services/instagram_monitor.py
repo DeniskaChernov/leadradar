@@ -35,6 +35,7 @@ class CycleStats:
     comment_requests: int = 0
     comments_seen: int = 0
     comments_created: int = 0
+    comments_existing: int = 0
     leads_created: int = 0
     hot_notifications: int = 0
     change_notifications: int = 0
@@ -133,6 +134,7 @@ class InstagramMonitor:
         force: bool = True,
         progress: ScanProgressTracker | None = None,
         vertical: str | None = None,
+        monitor_run_id: int | None = None,
     ) -> CycleStats:
         self.provider.begin_cycle()
         stats = CycleStats()
@@ -372,6 +374,7 @@ class InstagramMonitor:
                     candidate.reel,
                     candidate.check,
                     stats,
+                    monitor_run_id=monitor_run_id,
                 )
                 if not fetched_successfully:
                     discovery_failed.add(candidate.competitor.handle)
@@ -435,6 +438,7 @@ class InstagramMonitor:
         reel: InstagramPost,
         check: PostCheck,
         stats: CycleStats,
+        *, monitor_run_id: int | None = None,
     ) -> bool:
         batch = await self.provider.get_comment_batch(
             reel,
@@ -463,7 +467,8 @@ class InstagramMonitor:
                 else self.incremental_max_comment_pages
             )
             stats.avoided_requests += max(0, configured_pages - batch.pages_fetched)
-        await self._ingest_comments(reel, comments, stats, is_baseline=check.is_baseline)
+        await self._ingest_comments(reel, comments, stats, is_baseline=check.is_baseline,
+                                    monitor_run_id=monitor_run_id)
         await self._mark_comments_fetched(
             check.post_id,
             remote_comments_count=reel.comments_count,
@@ -483,14 +488,15 @@ class InstagramMonitor:
         )
         return batch.fetch_error is None
 
-    async def run_reply_cycle(self, request_id: int, *, progress=None) -> CycleStats:
+    async def run_reply_cycle(self, request_id: int, *, progress=None,
+                              monitor_run_id: int | None = None) -> CycleStats:
         stats = CycleStats()
         if progress is not None:
             progress.set_prepare("Проверка ответов в выбранной ветке…")
 
         async def ingest(post, comments):
             await self._ingest_comments(post, comments, stats, is_baseline=False,
-                                        preserve_post_metadata=True)
+                                        preserve_post_metadata=True, monitor_run_id=monitor_run_id)
             if progress is not None:
                 progress.update_stats(comments_created=stats.comments_created,
                                       leads_created=stats.leads_created)
@@ -506,6 +512,7 @@ class InstagramMonitor:
     async def _ingest_comments(
         self, reel: InstagramPost, comments: list[InstagramComment], stats: CycleStats,
         *, is_baseline: bool, preserve_post_metadata: bool = False,
+        monitor_run_id: int | None = None,
     ) -> None:
         for comment in comments:
             if not is_signal_within_window(
@@ -515,14 +522,20 @@ class InstagramMonitor:
                 stats.comments_skipped_stale += 1
                 continue
             options = {"preserve_post_metadata": True} if preserve_post_metadata else {}
+            if monitor_run_id is not None:
+                options["monitor_run_id"] = monitor_run_id
             signal = await self.contact_service.persist_signal(
                 reel, comment, is_baseline=is_baseline, **options,
             )
             if signal.created:
                 stats.comments_created += 1
+            else:
+                stats.comments_existing += 1
             if signal.is_baseline:
                 continue
-            lead = await self.lead_service.ensure_analyzing(signal)
+            lead = await self.lead_service.ensure_analyzing(
+                signal, **({"monitor_run_id": monitor_run_id} if monitor_run_id is not None else {}),
+            )
             if not lead.created:
                 continue
             stats.leads_created += 1

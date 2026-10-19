@@ -46,6 +46,34 @@ async def test_web_wrapper_returns_or_propagates_when_serve_finishes(monkeypatch
     assert not any(task.get_name() == "lead-radar-web-stop" for task in asyncio.all_tasks())
 
 
+async def test_offline_cli_once_records_exact_result_provenance(monkeypatch, file_session_factory):
+    from unittest.mock import AsyncMock
+
+    from sqlalchemy import func, select
+
+    from app.config import Settings
+    from app.db.models import CostEvent, MonitorRun, SearchResultOrigin
+
+    engine = file_session_factory.kw["bind"]
+    settings = Settings(_env_file=None, database_url=str(engine.url),
+        instagram_provider="mock", openai_api_key="", telegram_bot_token="",
+        ai_mode="rules", lead_search_enabled=True, process_existing_comments=True,
+        competitors=["aiko.uz"])
+    monkeypatch.setattr(main_module, "backup_sqlite_database", lambda settings: None)
+    monkeypatch.setattr(main_module, "upgrade_database", AsyncMock())
+    monkeypatch.setattr(main_module, "configure_logging", lambda settings: None)
+    monkeypatch.setattr(main_module, "init_error_monitoring", lambda settings: None)
+    monkeypatch.setattr(main_module, "create_engine", lambda settings: engine)
+    monkeypatch.setattr(main_module, "create_session_factory", lambda engine: file_session_factory)
+    assert await main_module._run_owned(settings, once=True) == 0
+    async with file_session_factory() as session:
+        run = await session.scalar(select(MonitorRun))
+        origins = list(await session.scalars(select(SearchResultOrigin)))
+        assert run.result_tracking_version == 1 and run.trigger == "once"
+        assert origins and all(o.discovered_run_id == o.lead_run_id == run.id for o in origins)
+        assert await session.scalar(select(func.count(CostEvent.id))) == 0
+
+
 @pytest.mark.parametrize("cancel", [False, True])
 async def test_web_wrapper_stops_all_tasks_on_shutdown_or_cancellation(monkeypatch, cancel):
     monkeypatch.setattr(main_module, "_install_shutdown_handlers", lambda *args, **kwargs: None)

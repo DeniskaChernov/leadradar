@@ -54,6 +54,8 @@ from app.services.economics_page_service import EconomicsPageService
 from app.services.product_catalog_service import normalize_product_category
 from app.services.qualification_explanation import qualification_explanation
 from app.services.radar_results_service import RadarCompanyGroup, RadarPostGroup, RadarResultsPage
+from app.services.search_results_service import unique_customer_cards
+from app.services.search_text_service import text_casefold
 from app.services.signal_recency import fresh_signal_clause
 from app.services.usage_service import ExternalUsageService
 from app.web.labels import BUYER_ROLE_LABELS, CHANGE_TYPE_LABELS, label
@@ -114,6 +116,7 @@ class WebQueryService:
         self.session_factory = session_factory
         self.hot_threshold = hot_threshold
         self.signal_max_age_days = max(0, signal_max_age_days)
+        self._text_casefold = text_casefold(session_factory)
 
     async def _paginate(self, stmt: Select, *, page: int, page_size: int = 50) -> QueryPage:
         async with self.session_factory() as session:
@@ -985,6 +988,9 @@ class WebQueryService:
         competitor: str = "",
         kind: str = "",
         vertical: str | None = None,
+        comment_ids: Select | None = None,
+        unique_contacts: bool = False,
+        unique_per_post: bool = False,
     ) -> Select:
         vertical_enum = None
         if vertical:
@@ -1003,14 +1009,15 @@ class WebQueryService:
         if vertical_enum is not None:
             stmt = stmt.where(Competitor.vertical == vertical_enum)
         if q.strip():
-            pattern = f"%{q.strip().lower()}%"
+            fold = self._text_casefold
+            pattern = fold(f"%{q.strip()}%")
             stmt = stmt.where(
                 or_(
-                    func.lower(Contact.username).like(pattern),
-                    func.lower(func.coalesce(Contact.display_name, "")).like(pattern),
-                    func.lower(Comment.text).like(pattern),
-                    func.lower(Post.caption).like(pattern),
-                    func.lower(func.coalesce(Lead.product_category, "")).like(pattern),
+                    fold(Contact.username).like(pattern),
+                    fold(func.coalesce(Contact.display_name, "")).like(pattern),
+                    fold(Comment.text).like(pattern),
+                    fold(Post.caption).like(pattern),
+                    fold(func.coalesce(Lead.product_category, "")).like(pattern),
                 )
             )
         if competitor.strip():
@@ -1034,9 +1041,21 @@ class WebQueryService:
                     Lead.status.in_([LeadStatus.ANALYZING, LeadStatus.AI_PENDING]),
                 )
             )
-        elif normalized_kind != "history":
+        elif normalized_kind != "history" and comment_ids is None:
             stmt = stmt.where(fresh_signal_clause(max_age_days=self.signal_max_age_days))
+        if comment_ids is not None:
+            stmt = stmt.where(Comment.id.in_(comment_ids))
+            if normalized_kind in {"hot", "warm"}:
+                stmt = stmt.where(Lead.status.in_(CONFIRMED_LEAD_STATUSES))
+        if unique_contacts or unique_per_post:
+            stmt = unique_customer_cards(stmt, per_post=unique_per_post)
         return stmt
+
+    async def search_history_page(self, *, page: int = 1, vertical: str = "") -> QueryPage:
+        statement = select(MonitorRun).order_by(desc(MonitorRun.started_at), desc(MonitorRun.id))
+        if vertical:
+            statement = statement.where(or_(MonitorRun.vertical == vertical, MonitorRun.vertical.is_(None)))
+        return await self._paginate(statement, page=page, page_size=20)
 
     async def leads(self, *, limit: int = 300, **filters) -> list:
         async with self.session_factory() as session:

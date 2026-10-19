@@ -3,7 +3,7 @@
     <div>
       <span class="eyebrow">КОМПАНИЯ → ПУБЛИКАЦИЯ → КОММЕНТАРИИ</span>
       <h3>{% if post_filter is not none %}Комментарии публикации{% else %}Лиды по публикациям{% endif %}</h3>
-      <p class="muted">По текущим фильтрам · Компании: {{ radar_groups.company_count }} · Публикации: {{ radar_groups.post_count }} · Комментарии: {{ radar_groups.comment_count }}.</p>
+      <p class="muted">{% if search_run %}Только поиск #{{ search_run.id }} · {% else %}По текущим фильтрам · {% endif %}Компании: {{ radar_groups.company_count }} · Публикации: {{ radar_groups.post_count }} · {{ 'Карточки людей' if search_run and search_view != 'comments' else 'Комментарии' }}: {{ radar_groups.comment_count }}.</p>
       {% if post_filter is none %}<p class="muted">Сначала лиды с высокой оценкой. В каждом блоке — до 12 комментариев; остальные можно открыть отдельно.</p>{% else %}<a class="btn tiny ghost" href="{{ radar_all_posts_url }}">← Ко всем публикациям</a>{% endif %}
     </div>
     <nav class="find-result-filters" data-find-result-filters aria-label="Показать сигналы">
@@ -25,7 +25,7 @@
       </div>
       <div class="radar-company-actions">
         <div class="radar-group-counts" aria-label="Результаты компании по текущим фильтрам">
-          <span>Комментарии <b>{{ company.total }}</b></span><span>Лиды <b>{{ company.leads }}</b></span><span class="hot">HOT <b>{{ company.hot }}</b></span>
+          <span>{{ 'Люди' if search_run and search_view == 'posts' else 'Комментарии' }} <b>{{ company.total }}</b></span><span>Лиды <b>{{ company.leads }}</b></span><span class="hot">HOT <b>{{ company.hot }}</b></span>
         </div>
         <a class="btn tiny ghost" href="{{ company.source_url }}">Только эта компания</a>
       </div>
@@ -40,7 +40,7 @@
             <span class="radar-post-kicker">{{ 'Reel' if post.post_type == 'REEL' else 'Публикация' }} · {% if post.published_at %}{{ post.published_at | display_dt }}{% else %}дата публикации не получена{% endif %} · #{{ post.id }}</span>
             <b>{{ (post.caption or 'Описание публикации не получено')[:220] }}{% if post.caption|length > 220 %}…{% endif %}</b>
           </span>
-          <span class="radar-group-counts"><span>Комментарии <b>{{ publication.total }}</b></span><span>Лиды <b>{{ publication.leads }}</b></span><span class="hot">HOT <b>{{ publication.hot }}</b></span></span>
+          <span class="radar-group-counts"><span>{{ 'Люди' if search_run and search_view == 'posts' else 'Комментарии' }} <b>{{ publication.total }}</b></span><span>Лиды <b>{{ publication.leads }}</b></span><span class="hot">HOT <b>{{ publication.hot }}</b></span></span>
           <span class="radar-post-toggle" aria-hidden="true"><i data-lucide="chevron-down"></i></span>
         </summary>
         <div class="radar-post-body">
@@ -53,10 +53,10 @@
             </div>
             <div class="radar-post-links">
               {% if publication.public_url %}<a class="btn tiny ghost" href="{{ publication.public_url }}" target="_blank" rel="noopener noreferrer">Пост в Instagram ↗</a>{% endif %}
-              {% if post_filter is none %}<a class="btn tiny" href="{{ publication.comments_url }}">Комментарии поста · {{ publication.total }} →</a>{% endif %}
+              {% if post_filter is none %}<a class="btn tiny" href="{{ publication.comments_url }}">{% if search_run and search_view != 'comments' %}Все новые комментарии поста →{% else %}Комментарии поста · {{ publication.total }} →{% endif %}</a>{% endif %}
             </div>
           </div>
-          <p class="radar-post-scope">В выборке · Лиды: {{ publication.leads }} · Ждут оценки: {{ publication.pending }} · Отсеяно: {{ publication.rejected }}. Комментарии: показано {{ publication.rows|length }} из {{ publication.total }}.</p>
+          <p class="radar-post-scope">В выборке · Лиды: {{ publication.leads }} · Ждут оценки: {{ publication.pending }} · Отсеяно: {{ publication.rejected }}. {{ 'Люди' if search_run and search_view == 'posts' else 'Комментарии' }}: показано {{ publication.rows|length }} из {{ publication.total }}.</p>
           <div class="find-lead-grid">
             {% for comment, contact, competitor, post, lead in publication.rows %}
               {% if lead and lead.status.value != 'NOT_LEAD' %}{% include "partials/radar_lead_card.html" %}{% endif %}
@@ -75,7 +75,7 @@
           </details>
           {% endif %}
           {% if post_filter is none and publication.rows|length < publication.total %}
-          <a class="btn ghost radar-post-more" href="{{ publication.comments_url }}">Все комментарии поста · {{ publication.total }} →</a>
+          <a class="btn ghost radar-post-more" href="{{ publication.comments_url }}">{% if search_run and search_view == 'posts' %}Все новые комментарии поста →{% else %}Все комментарии поста · {{ publication.total }} →{% endif %}</a>
           {% endif %}
         </div>
       </details>
@@ -86,7 +86,7 @@
   <div class="empty-box" data-find-filter-empty>
     <b>{% if post_filter is not none %}Нет комментариев этой публикации по выбранным условиям{% else %}По этим условиям ничего не найдено{% endif %}</b>
     <span>Измените фильтры или запустите поиск новых комментариев.</span>
-    <a class="btn tiny ghost" href="/radar?vertical={{ rv }}#radar-post-results">Показать все публикации</a>
+    <a class="btn tiny ghost" href="{{ radar_all_posts_url }}">Показать все публикации</a>
   </div>
   {% endfor %}
 </section>

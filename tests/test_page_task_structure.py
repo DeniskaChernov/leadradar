@@ -35,7 +35,8 @@ def test_hot_is_write_workspace_only() -> None:
     assert "page-task-meta" in hot or "GPT сегодня" in hot or "GPT выключен" in hot
     assert "{% block heading %}HOT{% endblock %}" in hot
     assert ">HOT</b>" in BASE
-    assert "Новые лиды" not in BASE
+    navigation = BASE.split('<nav id="main-navigation"', 1)[1].split("</nav>", 1)[0]
+    assert "Новые лиды" not in navigation
 
 
 def test_dashboard_is_now_actions() -> None:

@@ -65,6 +65,7 @@ from app.services.product_catalog_service import (
 )
 from app.services.provider_credit_budget_service import ProviderCreditBudgetService
 from app.services.reply_scan_service import ReplyScanConflict
+from app.services.search_results_service import SearchResultsService
 from app.services.significant_change_service import SignificantChangeDetector
 from app.services.telegram_notification_service import (
     resolve_uncertain_change_log,
@@ -608,6 +609,69 @@ def build_web_app(
                 radar_feed=radar_feed,
                 radar_vertical=selected_vertical,
                 **page_context(request, grouped.pagination, anchor="radar-post-results"),
+            ),
+        )
+
+    @app.get("/searches", response_class=HTMLResponse)
+    async def search_history(request: Request, page: int = 1, vertical: str = ""):
+        selected_vertical = resolve_business_vertical(request, explicit=vertical)
+        history = await queries.search_history_page(page=page, vertical=selected_vertical)
+        return templates.TemplateResponse(
+            request=request, name="search_history.html",
+            context=base_context(request, runs=[row[0] for row in history.rows],
+                                 **page_context(request, history)),
+        )
+
+    @app.get("/searches/{run_id}", response_class=HTMLResponse)
+    async def search_results(
+        request: Request, run_id: int, view: str = "leads", vertical: str = "",
+        q: str = "", competitor: str = "", kind: str = "", post: int | None = None, page: int = 1,
+    ):
+        service = SearchResultsService(queries.session_factory, settings.hot_lead_threshold)
+        scope = await service.load(run_id)
+        if scope is None:
+            raise HTTPException(status_code=404, detail="Поиск не найден")
+        selected_vertical = resolve_business_vertical(request, explicit=vertical or scope.run.vertical or "")
+        view = view if view in {"leads", "companies", "posts", "comments"} else "leads"
+        path = f"/searches/{run_id}"
+        params = {"vertical": selected_vertical, "view": view, "q": q, "competitor": competitor, "kind": kind}
+        filters = dict(q=q, competitor=competitor, kind=kind, vertical=selected_vertical,
+                       comment_ids=scope.comment_ids(comments=view == "comments"),
+                       unique_contacts=view == "leads", unique_per_post=view == "posts")
+        grouped = None
+        results = None
+        rows = []
+        pagination_context = {}
+        if view in {"posts", "comments"}:
+            grouped = await queries.radar_posts_page(page=page, post_id=post, **filters)
+            rows = grouped.rows
+            results = grouped.pagination
+            for company in grouped.companies:
+                company.source_url = path + "?" + urlencode({**params, "competitor": company.competitor.normalized_handle}) + "#radar-post-results"
+                for publication in company.posts:
+                    publication.comments_url = path + "?" + urlencode({"vertical": selected_vertical, "view": "comments", "post": publication.post.id}) + "#radar-post-results"
+        elif view == "leads":
+            results = await queries.signals_page(page=page, **filters)
+            rows = results.rows
+        if results is not None:
+            pagination_context = page_context(request, results, anchor="radar-post-results" if grouped else "search-results")
+        companies = await service.companies(scope, vertical=selected_vertical)
+        return templates.TemplateResponse(
+            request=request, name="search_results.html",
+            context=base_context(
+                request, search_scope=scope, search_run=scope.run, search_view=view,
+                search_summary=await service.summary(scope, vertical=selected_vertical),
+                search_companies=companies,
+                search_company_urls={row[0].id: path + "?" + urlencode({"vertical": selected_vertical, "view": "posts", "competitor": row[0].normalized_handle}) + "#radar-post-results" for row in companies},
+                search_view_urls={mode: path + "?" + urlencode({"vertical": selected_vertical, "view": mode}) for mode in ("leads", "companies", "posts", "comments")},
+                rows=rows, radar_groups=grouped, radar_vertical=selected_vertical,
+                hot_lead_ids=await hot_outreach_service.queued_lead_ids([row[4].id for row in rows if row[4]], vertical=selected_vertical),
+                post_filter=post, q=q, competitor_filter=competitor, kind_filter=kind,
+                radar_all_posts_url=path + "?" + urlencode({**params, "view": "posts"}) + "#radar-post-results",
+                radar_kind_urls={value: path + "?" + urlencode({**params, "kind": value, **({"post": post} if post is not None else {})}) + "#radar-post-results" for value in ("", "hot", "warm", "pending")},
+                pagination_label="Страницы результатов поиска",
+                pagination_unit="комментарии" if post is not None or view == "comments" else ("люди" if view == "leads" else "публикации"),
+                **pagination_context,
             ),
         )
 
@@ -2951,6 +3015,7 @@ def build_web_app(
             else None
         )
         payload["cycles_completed"] = snapshot.cycles_completed
+        payload["last_run_id"] = snapshot.last_run_id
         if analysis_pipeline is not None:
             payload["analysis_queue"] = analysis_pipeline.pending_count
             payload["analysis_in_flight"] = analysis_pipeline.in_flight_count
@@ -2971,6 +3036,7 @@ def build_web_app(
             "last_error": snapshot.last_error,
             "progress": snapshot.progress.to_dict(),
             "cycles_completed": snapshot.cycles_completed,
+            "last_run_id": snapshot.last_run_id,
             "last_stats": (
                 {
                     "competitors_checked": snapshot.last_stats.competitors_checked,

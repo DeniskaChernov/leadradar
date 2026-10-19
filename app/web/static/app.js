@@ -1335,6 +1335,7 @@
         // Remember the accepted cycle even if it finishes before the first poll.
         cycleWasRunning = true;
         scanSummaryShownForCycle = false;
+        lastSearchRunId = null;
         try {
           sessionStorage.setItem('lr:find-leads-pending-results', '1');
         } catch (_error) {
@@ -2407,6 +2408,7 @@
   let scanProgressBusy = false;
   let cycleWasRunning = false;
   let scanSummaryShownForCycle = false;
+  let lastSearchRunId = null;
   // Нельзя брать busy из DOM-баннера: AI_PENDING в HTML ≠ pipeline queue →
   // busy→idle на каждом poll давал бесконечный location.reload().
   let radarWasBusy = false;
@@ -2436,6 +2438,8 @@
   const showScanSummary = (payload) => {
     if (scanSummaryShownForCycle) return;
     scanSummaryShownForCycle = true;
+    const runId = Number(payload.last_run_id);
+    lastSearchRunId = Number.isSafeInteger(runId) && runId > 0 ? runId : null;
     const stats = payload.last_stats || {};
     const progress = payload.progress || payload.scan_progress || {};
     const competitors = Number(stats.competitors_checked ?? progress.competitors_checked ?? 0);
@@ -2448,7 +2452,7 @@
     toast(
       payload.last_error
         ? `Проверка завершена с ошибкой · ${String(payload.last_error).slice(0, 80)}`
-        : `Поиск завершён · ${leads} лидов · ${comments} сигналов · ${competitors} источников`,
+        : `Поиск завершён · ${comments} новых комментариев · ${competitors} источников`,
       Boolean(payload.last_error)
     );
 
@@ -2457,6 +2461,12 @@
       if ((document.body.dataset.page || '').startsWith('/radar')) reloadSoon(800);
       return;
     }
+    root.querySelectorAll('[data-scan-summary-results]').forEach((link) => {
+      const view = link.dataset.scanSummaryResults;
+      link.href = lastSearchRunId
+        ? withScanVertical(`/searches/${lastSearchRunId}?view=${encodeURIComponent(view)}`)
+        : withScanVertical('/searches');
+    });
     const setText = (sel, value) => {
       const el = root.querySelector(sel);
       if (el) el.textContent = String(value);
@@ -2471,7 +2481,7 @@
     if (subtitle) {
       subtitle.textContent = payload.last_error
         ? `Завершено с ошибкой: ${String(payload.last_error).slice(0, 120)}`
-        : `Найдено потенциальных клиентов: ${leads}. Фактический расход может быть меньше максимума.`;
+        : `Сохранено новых комментариев: ${comments}. Откройте лидов, компании или посты этого поиска. Оценка кандидатов может ещё продолжаться.`;
     }
 
     const previouslyFocused = document.activeElement;
@@ -2911,7 +2921,9 @@
 
   // Results are filtered by the server. A view must load all matching rows,
   // never hide a previously fetched subset using stale wizard preferences.
-  const findLeadsResultsUrl = () => `${withScanVertical('/radar')}#find-results`;
+  const findLeadsResultsUrl = () => lastSearchRunId
+    ? withScanVertical(`/searches/${lastSearchRunId}`)
+    : `${withScanVertical('/radar')}#find-results`;
 
   const scrollToFindResultsIfNeeded = () => {
     if (window.location.hash === '#radar-post-results') {

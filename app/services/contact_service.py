@@ -17,6 +17,7 @@ from app.db.models import (
     ContactEventType,
     Evidence,
     PublicSignal,
+    SearchResultOrigin,
     SignalSubjectType,
     SignalType,
     Vertical,
@@ -57,11 +58,13 @@ class ContactService:
         *,
         is_baseline: bool = False,
         preserve_post_metadata: bool = False,
+        monitor_run_id: int | None = None,
     ) -> PersistedSignal:
         for attempt in range(2):
             result = await self._persist_signal_once(
                 post_data, comment_data, is_baseline=is_baseline,
                 preserve_post_metadata=preserve_post_metadata,
+                monitor_run_id=monitor_run_id,
             )
             if result is not None:
                 return result
@@ -79,6 +82,7 @@ class ContactService:
         *,
         is_baseline: bool,
         preserve_post_metadata: bool = False,
+        monitor_run_id: int | None = None,
     ) -> PersistedSignal | None:
         async with self.session_factory() as session:
             comments = CommentRepository(session)
@@ -136,6 +140,8 @@ class ContactService:
                 )
                 session.add(comment)
                 await session.flush()
+                if monitor_run_id is not None:
+                    session.add(SearchResultOrigin(comment_id=comment.id, discovered_run_id=monitor_run_id))
                 public_signal = PublicSignal(
                     comment_id=comment.id,
                     contact_id=contact.id,

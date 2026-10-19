@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}История поисков · Lead Radar{% endblock %}
+{% block heading %}История поисков{% endblock %}
+{% block subheading %}Каждый запуск отдельно — его новые лиды, компании и публикации{% endblock %}
+{% block content %}
+<div class="search-toolbar"><a class="btn primary" href="/radar?vertical={{ selected_vertical }}">Найти новых лидов</a><a class="btn ghost" href="/hot?vertical={{ selected_vertical }}">Открыть HOT</a></div>
+{% include "partials/list_pagination.html" %}
+<div class="search-run-list">
+{% for run in runs %}
+<article class="panel search-run-card" data-search-run="{{ run.id }}">
+  <header class="search-run-header"><div><span class="eyebrow">ПОИСК #{{ run.id }}</span><h2>{{ run.started_at | display_dt('%d.%m.%Y · %H:%M') }}</h2><p class="muted">{{ trigger_label(run.trigger) }} · {{ 'Ротанг' if run.vertical == 'ARTIFICIAL_RATTAN' else ('Мебель' if run.vertical == 'FURNITURE' else 'Направление не сохранено') }}</p></div><span class="tag run-{{ run.status.value|lower }}">{{ run_status_label(run.status) }}</span></header>
+  <div class="search-run-metrics"><span><b>{{ run.stats_json.get('comments_created', 0) }}</b> новых комментариев</span><span><b>{{ run.stats_json.get('leads_created', 0) }}</b> кандидатов до оценки</span><span><b>{{ run.actual_credits_spent }}</b> credits</span></div>
+  {% if run.error %}<p class="alert warn">Частичные результаты сохранены. {{ run.error }}</p>{% endif %}
+  <nav class="search-toolbar" aria-label="Результаты поиска {{ run.id }}">
+    <a class="btn primary" href="/searches/{{ run.id }}?vertical={{ selected_vertical }}">Новые лиды</a>
+    <a class="btn" href="/searches/{{ run.id }}?view=companies&amp;vertical={{ selected_vertical }}">По компаниям</a>
+    <a class="btn" href="/searches/{{ run.id }}?view=posts&amp;vertical={{ selected_vertical }}">По постам</a>
+  </nav>
+</article>
+{% else %}<div class="empty-box"><b>Поисков пока нет</b><span>Запустите первый поиск — здесь сохранятся его результаты.</span></div>{% endfor %}
+</div>
+{% include "partials/list_pagination.html" %}
+{% endblock %}

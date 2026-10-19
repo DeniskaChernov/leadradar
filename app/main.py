@@ -270,7 +270,7 @@ async def _run_owned(
         if diagnostics is not None:
             diagnostics.ready()
         try:
-            stats = await monitor.run_cycle(force=True)
+            stats = await monitor.run_cycle(force=True, monitor_run_id=run_id)
             await run_service.finish_success(run_id, stats)
         except Exception as exc:
             await run_service.finish_failure(run_id, exc)
