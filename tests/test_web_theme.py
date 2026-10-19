@@ -42,7 +42,7 @@ def test_lead_detail_and_radar_expose_deep_responsive_analysis():
     assert 'data-lucide="circle-help"' in lead_detail
     assert 'data-page-task="lead-detail"' in lead_detail
     assert 'data-label="Оценка"' in radar
-    assert "РЕЗУЛЬТАТЫ ПОИСКА" in radar
+    assert "ВСЯ СОХРАНЁННАЯ БАЗА" in radar
     assert "partials/signal_review_actions.html" in radar
     assert "Оценить накопившееся" in signal_buttons
     assert "/api/signals/review-all" in signal_buttons

@@ -15,9 +15,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link id="optional-fonts" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print">
-  <link rel="stylesheet" href="/static/app.css?v=13.56.0-cloudflare-20261019-searches1">
+  <link rel="stylesheet" href="/static/app.css?v=13.56.0-cloudflare-20261019-usability3">
   <script async id="lucide-sdk" src="https://unpkg.com/lucide@1.34.0/dist/umd/lucide.js"></script>
-  <script defer src="/static/app.js?v=13.56.0-cloudflare-20261019-searches1"></script>
+  <script defer src="/static/app.js?v=13.56.0-cloudflare-20261019-usability3"></script>
 </head>
 <body data-safe-mode="{{ '1' if safe_mode else '0' }}" data-scan-cap="{{ settings.instagram_max_units_per_scan }}" data-page="{{ active_path }}" data-scan-vertical="{{ selected_vertical }}">
 <a class="skip-link" href="#main-content">Перейти к содержимому</a>
@@ -38,7 +38,7 @@
       </div>
       <button class="nav nav-more" type="button" data-more-toggle aria-expanded="false" aria-controls="more-navigation"><span aria-hidden="true"><i data-lucide="grid-2x2"></i></span><b>Ещё</b></button>
       <div class="nav-secondary" id="more-navigation" aria-label="Работа и настройки">
-      <a class="nav {% if active_path.startswith('/searches') %}active{% endif %}" href="/searches{{ vq }}"><span aria-hidden="true"><i data-lucide="history"></i></span><b>История поисков</b></a>
+      <a class="nav {% if active_path.startswith('/searches') %}active{% endif %}" href="/searches{{ vq }}" {% if active_path.startswith('/searches') %}aria-current="page"{% endif %}><span aria-hidden="true"><i data-lucide="history"></i></span><b>История поисков</b></a>
       <div class="nav-group">
         <span class="nav-group-label">Разведка</span>
         <a class="nav {% if active_path.startswith('/contacts') or active_path.startswith('/openings') %}active{% endif %}" href="{% if selected_vertical == 'ARTIFICIAL_RATTAN' %}/rattan#companies{% else %}/contacts{% endif %}"><span aria-hidden="true"><i data-lucide="{% if selected_vertical == 'ARTIFICIAL_RATTAN' %}building-2{% else %}contact{% endif %}"></i></span><b>{% if selected_vertical == 'ARTIFICIAL_RATTAN' %}Компании{% else %}Люди{% endif %}</b></a>

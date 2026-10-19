@@ -47,9 +47,28 @@ async def test_results_navigation_and_deduplication_on_mobile_and_desktop(file_s
             await page.goto(f"http://127.0.0.1/searches/{run.id}")
             assert await page.locator('[data-search-customer]').count() == 1
             assert await page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            assert await page.locator('input[name="q"]').evaluate("node => parseFloat(getComputedStyle(node).borderRadius)") >= 10
+            await page.get_by_label("Компания этого поиска", exact=True).select_option("beta")
+            await page.get_by_label("Сила сигнала", exact=True).select_option("hot")
+            await page.get_by_label("Поиск в результатах запуска", exact=True).fill("неизвестный_товар_" * 35)
+            await page.get_by_role("button", name="Применить", exact=True).click()
+            assert await page.locator('[data-search-customer]').count() == 0
+            assert await page.locator('[data-search-filter]').count() == 3
+            assert await page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            await page.locator('[data-search-filter="q"]').click()
+            assert parse_qs(urlsplit(page.url).query)["competitor"] == ["beta"]
+            assert parse_qs(urlsplit(page.url).query)["kind"] == ["hot"]
+            assert await page.locator('[data-search-customer]').count() == 1
+            assert await page.get_by_label("Компания этого поиска", exact=True).input_value() == "beta"
+            await page.get_by_role("link", name="Сбросить все", exact=True).click()
+            assert not {"kind", "q", "competitor"} & parse_qs(urlsplit(page.url).query).keys()
             await page.get_by_role("link", name="По компаниям", exact=True).click()
             assert await page.locator('.search-company-card').count() == 2
-            await page.get_by_role("link", name="Посмотреть лидов и посты →").first.click()
+            await page.get_by_role("link", name="Люди компании", exact=True).first.click()
+            assert parse_qs(urlsplit(page.url).query)["competitor"] == ["alpha"]
+            assert await page.locator('[data-search-filter="competitor"]').count() == 1
+            await page.get_by_role("link", name="По компаниям", exact=True).click()
+            await page.get_by_role("link", name="Посты и комментарии →").first.click()
             assert await page.locator('[data-radar-post]').count() == 2
             # One card per customer/post, all fifteen distinct comments remain reachable.
             assert await page.locator('.find-lead-card').count() == 2
@@ -63,5 +82,8 @@ async def test_results_navigation_and_deduplication_on_mobile_and_desktop(file_s
             assert await page.locator('[data-search-customer]').count() == 1
             await page.get_by_role("link", name="← История поисков", exact=True).click()
             assert await page.locator(f'[data-search-run="{run.id}"]').count() == 1
+            await page.emulate_media(reduced_motion="reduce")
+            await page.get_by_role("link", name="Новые лиды", exact=True).first.click()
+            assert await page.locator('.search-view-tab').first.evaluate("node => getComputedStyle(node).transitionDuration") == "0s"
             assert not errors and not writes
             await browser.close()

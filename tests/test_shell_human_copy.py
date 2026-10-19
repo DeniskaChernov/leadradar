@@ -33,5 +33,6 @@ def test_shell_human_find_leads_language():
     assert "13.56.0-cloudflare" in base
     assert "13.56.0-cloudflare" in sw
     radar = (PROJECT_ROOT / "app/web/templates/radar.html").read_text(encoding="utf-8")
-    assert "РЕЗУЛЬТАТЫ ПОИСКА" in radar
+    assert "ВСЯ СОХРАНЁННАЯ БАЗА" in radar
+    assert "Все сохранённые сигналы" in radar
     assert "РАДАР СИГНАЛОВ" not in radar

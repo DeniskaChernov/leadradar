@@ -112,3 +112,14 @@ class SearchResultsService:
             ).join(Comment, Comment.competitor_id == Competitor.id).where(
                 Competitor.vertical == vertical, Comment.id.in_(scope.comment_ids(comments=False)),
             ).group_by(Competitor.id).order_by(Competitor.normalized_handle))).all())
+
+    async def sources(self, scope: SearchScope, *, vertical: str) -> list[Competitor]:
+        """Include new comments with rejected leads and later recovered candidates."""
+        async with self.session_factory() as session:
+            return list((await session.scalars(select(Competitor).where(
+                Competitor.vertical == vertical,
+                Competitor.id.in_(select(Comment.competitor_id).where(or_(
+                    Comment.id.in_(scope.comment_ids(comments=True)),
+                    Comment.id.in_(scope.comment_ids(comments=False)),
+                ))),
+            ).order_by(Competitor.normalized_handle))).all())

@@ -633,8 +633,21 @@ def build_web_app(
             raise HTTPException(status_code=404, detail="Поиск не найден")
         selected_vertical = resolve_business_vertical(request, explicit=vertical or scope.run.vertical or "")
         view = view if view in {"leads", "companies", "posts", "comments"} else "leads"
+        q, competitor = q.strip(), competitor.strip().lower()
+        kind = kind.strip().lower()
+        kind = kind if kind in {"hot", "warm", "pending"} else ""
+        if view in {"leads", "companies"}:
+            post = None
         path = f"/searches/{run_id}"
         params = {"vertical": selected_vertical, "view": view, "q": q, "competitor": competitor, "kind": kind}
+        filter_values = {"q": q, "competitor": competitor, "kind": kind, "post": post}
+        filter_labels = {"q": f"Текст: {q}", "competitor": f"Компания: @{competitor}",
+                         "kind": {"hot": "Горячие", "warm": "Тёплые", "pending": "Ждут оценки"}.get(kind),
+                         "post": f"Пост #{post}"}
+        active_filters = [{"key": key, "label": filter_labels[key], "url": path + "?" + urlencode({
+            "vertical": selected_vertical, "view": view,
+            **{k: v for k, v in filter_values.items() if k != key and v not in (None, "")},
+        }) + "#search-filter-panel"} for key, value in filter_values.items() if value not in (None, "")]
         filters = dict(q=q, competitor=competitor, kind=kind, vertical=selected_vertical,
                        comment_ids=scope.comment_ids(comments=view == "comments"),
                        unique_contacts=view == "leads", unique_per_post=view == "posts")
@@ -662,8 +675,15 @@ def build_web_app(
                 request, search_scope=scope, search_run=scope.run, search_view=view,
                 search_summary=await service.summary(scope, vertical=selected_vertical),
                 search_companies=companies,
+                search_sources=await service.sources(scope, vertical=selected_vertical),
+                search_active_filters=active_filters,
                 search_company_urls={row[0].id: path + "?" + urlencode({"vertical": selected_vertical, "view": "posts", "competitor": row[0].normalized_handle}) + "#radar-post-results" for row in companies},
+                search_company_people_urls={row[0].id: path + "?" + urlencode({"vertical": selected_vertical, "view": "leads", "competitor": row[0].normalized_handle}) + "#search-filter-panel" for row in companies},
                 search_view_urls={mode: path + "?" + urlencode({"vertical": selected_vertical, "view": mode}) for mode in ("leads", "companies", "posts", "comments")},
+                search_metric_urls={name: path + "?" + urlencode({"vertical": selected_vertical, **values}) for name, values in {
+                    "comments": {"view": "comments"}, "people": {"view": "leads"},
+                    "hot": {"view": "leads", "kind": "hot"}, "pending": {"view": "leads", "kind": "pending"},
+                }.items()},
                 rows=rows, radar_groups=grouped, radar_vertical=selected_vertical,
                 hot_lead_ids=await hot_outreach_service.queued_lead_ids([row[4].id for row in rows if row[4]], vertical=selected_vertical),
                 post_filter=post, q=q, competitor_filter=competitor, kind_filter=kind,

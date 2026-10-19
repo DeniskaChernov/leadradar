@@ -28,8 +28,8 @@
 
 <section class="hero-status radar-hero find-results-hero {% if scan_budget.live_enabled %}live{% else %}safe{% endif %}" data-motion-root id="find-results">
   <div>
-    <span class="eyebrow">РЕЗУЛЬТАТЫ ПОИСКА</span>
-    <h2>Сигналы в базе</h2>
+    <span class="eyebrow">ВСЯ СОХРАНЁННАЯ БАЗА</span>
+    <h2>Все сохранённые сигналы</h2>
     <p class="find-results-count">Найдено <b>{{ overview.qualified }}</b> потенциальных покупателей · сигналов в базе: {{ overview.total }}</p>
     <div class="find-heat-strip" aria-label="Разбивка по силе">
       <span class="heat hot">🔥 Горячие: {{ overview.hot }}</span>
@@ -107,7 +107,9 @@
   </div>
 </section>
 
-<section class="panel radar-feed-panel page-task-results" id="radar-feed" data-page-task="radar-results">
+<details class="find-advanced panel radar-changes-disclosure" {% if snapshot.cycle_running %}open{% endif %}>
+  <summary><b>Изменения в сохранённой базе</b><span>Рост интереса и HOT из всех поисков</span></summary>
+<section class="radar-feed-panel page-task-results" id="radar-feed" data-page-task="radar-results">
   <div class="panel-head">
     <div><span class="eyebrow">РЕЗУЛЬТАТЫ</span><h2>Что нашли</h2><p>HOT и рост приоритета после поиска</p></div>
     <span class="tag {% if radar_feed.ai_pending or radar_feed.analyzing %}warning{% else %}success{% endif %}" data-radar-queue-badge>{% if radar_feed.ai_pending + radar_feed.analyzing > 0 %}Оценка: {{ radar_feed.ai_pending + radar_feed.analyzing }}{% else %}Оценка готова{% endif %}</span>
@@ -132,6 +134,7 @@
     {% endif %}
   </div>
 </section>
+</details>
 
 <details class="find-advanced panel find-advanced-budget">
   <summary>
@@ -200,6 +203,7 @@
 </section>
 {% endif %}
 
+<details class="find-advanced panel radar-summary-disclosure"><summary><b>Сводка по всей базе</b><span>Сигналы, очередь оценки и воронка из всех поисков</span></summary>
 <div class="metrics radar-metrics">
   <a class="metric" href="{{ radar_base }}"><span>Все сигналы</span><strong>{{ overview.total }}</strong><small>в базе</small></a>
   <a class="metric warn" href="{{ radar_base }}&kind=pending"><span>Спорные</span><strong>{{ overview.unprocessed_actionable + overview.pending }}</strong><small>{{ overview.unprocessed_actionable }} без лида · {{ overview.pending }} GPT</small></a>
@@ -208,6 +212,7 @@
   <a class="metric accent" href="{{ radar_base }}&kind=hot"><span>HOT</span><strong>{{ overview.hot }}</strong><small>от {{ settings.hot_lead_threshold }}/100</small></a>
   <div class="metric muted-metric"><span>Отсеяно</span><strong>{{ overview.rejected }}</strong><small>Не лид</small></div>
 </div>
+</details>
 
 <form class="filters radar-filters" method="get" aria-label="Фильтры радара сигналов">
   <input type="hidden" name="vertical" value="{{ rv }}">

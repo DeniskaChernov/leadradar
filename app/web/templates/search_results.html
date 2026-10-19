@@ -4,14 +4,23 @@
 {% block subheading %}{{ search_run.started_at | display_dt('%d.%m.%Y · %H:%M') }} · новые результаты этого запуска{% endblock %}
 {% block content %}
 {% set rv = radar_vertical %}
+{% set search_metric_urls = search_metric_urls|default(dict(comments=search_view_urls.comments, people=search_view_urls.leads, hot=search_view_urls.leads ~ '&kind=hot', pending=search_view_urls.leads ~ '&kind=pending')) %}
+{% set search_sources = search_sources|default([]) %}
+{% set search_active_filters = search_active_filters|default([]) %}
+{% set search_company_people_urls = search_company_people_urls|default({}) %}
 <section class="panel search-result-header">
-  <div class="search-run-header"><div><a class="btn tiny ghost" href="/searches?vertical={{ rv }}">← История поисков</a><p class="muted">{{ trigger_label(search_run.trigger) }} · <span class="tag run-{{ search_run.status.value|lower }}">{{ run_status_label(search_run.status) }}</span> · {{ search_run.actual_credits_spent }} credits</p></div><a class="btn" href="/radar?vertical={{ rv }}">Новый поиск</a></div>
+  <div class="search-run-header"><div><a class="btn tiny ghost" href="/searches?vertical={{ rv }}">← История поисков</a><p class="search-run-context"><span class="tag run-{{ search_run.status.value|lower }}">{{ run_status_label(search_run.status) }}</span><span>{{ trigger_label(search_run.trigger) }}</span><span>{{ search_run.actual_credits_spent }} credits</span></p></div><a class="btn" href="/radar?vertical={{ rv }}"><i data-lucide="search" aria-hidden="true"></i>Новый поиск</a></div>
   <nav class="search-view-tabs" aria-label="Как показать результаты">
-  {% for mode, title in [('leads', 'Новые лиды'), ('companies', 'По компаниям'), ('posts', 'По постам'), ('comments', 'Все новые комментарии')] %}<a class="btn {{ 'primary' if search_view == mode else 'ghost' }}" href="{{ search_view_urls[mode] }}" {% if search_view == mode %}aria-current="page"{% endif %}>{{ title }}</a>{% endfor %}
+  {% for mode, title, icon in [('leads', 'Новые лиды', 'users'), ('companies', 'По компаниям', 'building-2'), ('posts', 'По постам', 'panels-top-left'), ('comments', 'Все новые комментарии', 'message-circle')] %}<a class="search-view-tab" href="{{ search_view_urls[mode] }}" {% if search_view == mode %}aria-current="page"{% endif %}><i data-lucide="{{ icon }}" aria-hidden="true"></i>{{ title }}</a>{% endfor %}
   </nav>
   <p class="muted search-scope-note">Всего за этот поиск, до фильтров</p>
-  <div class="search-result-metrics"><div><b>{{ search_summary.comments }}</b><span>Новых комментариев</span></div><div><b>{{ search_summary.people }}</b><span>Людей без дублей</span></div><div><b>{{ search_summary.hot }}</b><span>HOT по текущей оценке</span></div><div><b>{{ search_summary.pending }}</b><span>Ждут оценки</span></div></div>
-  {% if search_run.error %}<p class="alert warn">Поиск завершился с ошибкой. Сохранённые результаты доступны ниже. {{ search_run.error }}</p>{% endif %}
+  <nav class="search-result-metrics" aria-label="Быстрый переход к результатам">
+    <a href="{{ search_metric_urls.comments }}"><span>Новые комментарии</span><b>{{ search_summary.comments }}</b><small>Открыть все <span aria-hidden="true">↗</span></small></a>
+    <a href="{{ search_metric_urls.people }}"><span>Люди без дублей</span><b>{{ search_summary.people }}</b><small>Посмотреть людей <span aria-hidden="true">↗</span></small></a>
+    <a class="search-metric-hot" href="{{ search_metric_urls.hot }}"><span>HOT по текущей оценке</span><b>{{ search_summary.hot }}</b><small>Сильный интерес <span aria-hidden="true">↗</span></small></a>
+    <a href="{{ search_metric_urls.pending }}"><span>Ждут оценки</span><b>{{ search_summary.pending }}</b><small>Проверить кандидатов <span aria-hidden="true">↗</span></small></a>
+  </nav>
+  {% if search_run.error %}<details class="alert warn search-run-warning"><summary>Поиск завершился с ошибкой</summary><p>Сохранённые результаты доступны ниже. {{ search_run.error }}</p></details>{% endif %}
   {% if not search_scope.exact %}<p class="muted search-scope-note">Старый поиск: результаты восстановлены по времени создания записей.</p>{% endif %}
   <details class="search-scope-help"><summary>Как учитываются новые лиды и повторы</summary>
   <p class="muted">В списке новых лидов — одна карточка на человека. {% if search_summary.repeated_cards %}Объединено повторных карточек: {{ search_summary.repeated_cards }}. {% endif %}В разрезе постов человек показан один раз в каждом посте, где написал. Все комментарии сохранены в истории клиента. Оценки обновляются по мере анализа.</p>
@@ -21,22 +30,31 @@
 {% if search_view == 'companies' %}
 <section class="search-company-grid" aria-label="Компании этого поиска">
 {% for company, people, posts, comments in search_companies %}
-<article class="panel search-company-card"><span class="eyebrow">КОМПАНИЯ</span><h2>{{ company.display_name or '@' ~ company.normalized_handle }}</h2><p class="muted">@{{ company.normalized_handle }}</p><p>Люди: {{ people }} · Посты: {{ posts }} · Комментарии с кандидатами: {{ comments }}</p><a class="btn primary" href="{{ search_company_urls[company.id] }}">Посмотреть лидов и посты →</a></article>
+<article class="panel search-company-card">
+  <header><span class="search-company-symbol" aria-hidden="true"><i data-lucide="building-2"></i></span><div><h2>{{ company.display_name or '@' ~ company.normalized_handle }}</h2><p class="muted">@{{ company.normalized_handle }}</p></div></header>
+  <dl class="search-company-stats"><div><dt>Люди</dt><dd>{{ people }}</dd></div><div><dt>Посты</dt><dd>{{ posts }}</dd></div><div><dt>Комментарии с кандидатами</dt><dd>{{ comments }}</dd></div></dl>
+  <div class="search-company-links"><a class="btn primary" href="{{ search_company_urls[company.id] }}">Посты и комментарии →</a><a class="btn ghost" href="{{ search_company_people_urls.get(company.id, '/searches/' ~ search_run.id ~ '?view=leads&vertical=' ~ rv ~ '&competitor=' ~ company.normalized_handle) }}">Люди компании</a></div>
+</article>
 {% else %}<div class="empty-box"><b>Новых кандидатов в этом поиске нет</b><a class="btn" href="{{ search_view_urls['comments'] }}">Посмотреть новые комментарии</a></div>{% endfor %}
 </section>
 {% else %}
-<form class="filters panel search-result-filters" method="get" action="/searches/{{ search_run.id }}" aria-label="Фильтры результатов этого поиска">
+<section class="panel search-filter-panel" id="search-filter-panel" aria-label="Отбор результатов">
+<form class="search-result-filters" method="get" action="/searches/{{ search_run.id }}#search-filter-panel" aria-label="Фильтры результатов этого поиска">
   <input type="hidden" name="view" value="{{ search_view }}"><input type="hidden" name="vertical" value="{{ rv }}">
   {% if post_filter is not none %}<input type="hidden" name="post" value="{{ post_filter }}">{% endif %}
-  <input type="search" name="q" value="{{ q }}" placeholder="Имя, комментарий или товар" aria-label="Поиск в результатах запуска">
-  <select name="kind" aria-label="Сила сигнала"><option value="" {% if not kind_filter %}selected{% endif %}>Все результаты</option><option value="hot" {% if kind_filter == 'hot' %}selected{% endif %}>Горячие</option><option value="warm" {% if kind_filter == 'warm' %}selected{% endif %}>Тёплые</option><option value="pending" {% if kind_filter == 'pending' %}selected{% endif %}>Ждут оценки</option></select>
-  {% if competitor_filter %}<input type="hidden" name="competitor" value="{{ competitor_filter }}"><span class="tag">@{{ competitor_filter }}</span>{% endif %}
-  <button class="btn" type="submit">Применить</button><a class="btn ghost" href="{{ search_view_urls[search_view] }}">Сбросить</a>
+  <label class="search-filter-text"><span>Найти в этом поиске</span><input type="search" name="q" value="{{ q }}" placeholder="Имя, комментарий или товар" aria-label="Поиск в результатах запуска"></label>
+  <label><span>Компания</span><select name="competitor" aria-label="Компания этого поиска"><option value="">Все компании</option>{% for source in search_sources %}<option value="{{ source.normalized_handle }}" {% if competitor_filter == source.normalized_handle %}selected{% endif %}>{{ source.display_name or '@' ~ source.normalized_handle }} · @{{ source.normalized_handle }}</option>{% endfor %}{% if competitor_filter and competitor_filter not in search_sources|map(attribute='normalized_handle')|list %}<option value="{{ competitor_filter }}" selected>@{{ competitor_filter }} · нет результатов</option>{% endif %}</select></label>
+  <label><span>Интерес к покупке</span><select name="kind" aria-label="Сила сигнала"><option value="" {% if not kind_filter %}selected{% endif %}>Все результаты</option><option value="hot" {% if kind_filter == 'hot' %}selected{% endif %}>Горячие</option><option value="warm" {% if kind_filter == 'warm' %}selected{% endif %}>Тёплые</option><option value="pending" {% if kind_filter == 'pending' %}selected{% endif %}>Ждут оценки</option></select></label>
+  <button class="btn primary" type="submit">Применить</button>
 </form>
+<div class="search-filter-state" aria-label="Применённые фильтры">
+  {% if search_active_filters %}<span class="muted">Фильтры:</span>{% for item in search_active_filters %}<a class="search-filter-chip" data-search-filter="{{ item.key }}" href="{{ item.url }}" aria-label="Убрать фильтр: {{ item.label }}"><span>{{ item.label }}</span><span aria-hidden="true">×</span></a>{% endfor %}<a class="search-filter-reset" href="{{ search_view_urls[search_view] }}#search-filter-panel">Сбросить все</a>{% else %}<span class="muted">Все компании · без дополнительных фильтров</span>{% endif %}
+</div>
+</section>
 {% if search_view == 'leads' %}
 <section id="search-results" aria-label="Новые лиды без повторных карточек">
 {% include "partials/list_pagination.html" %}
-<div class="find-lead-grid search-customer-grid">{% for comment, contact, competitor, post, lead in rows %}<div class="search-customer-result" data-search-customer="{{ contact.id }}">{% include "partials/radar_lead_card.html" %}<a class="btn tiny ghost" href="/contacts/{{ contact.id }}">Все комментарии и история клиента →</a></div>{% else %}<div class="empty-box"><b>Новых лидов по этим условиям нет</b><span>Повторно найденные старые лиды не добавляются в новый поиск.</span><a class="btn" href="{{ search_view_urls['comments'] }}">Проверить новые комментарии</a></div>{% endfor %}</div>
+<div class="find-lead-grid search-customer-grid">{% for comment, contact, competitor, post, lead in rows %}<div class="search-customer-result" data-search-customer="{{ contact.id }}">{% include "partials/radar_lead_card.html" %}<a class="btn tiny ghost" href="/contacts/{{ contact.id }}">Все комментарии и история клиента →</a></div>{% else %}<div class="empty-box"><b>Новых лидов по этим условиям нет</b><span>{% if search_active_filters %}Попробуйте убрать фильтр компании, текста или силы интереса.{% else %}Повторно найденные старые лиды не добавляются в новый поиск.{% endif %}</span>{% if search_active_filters %}<a class="btn" href="{{ search_view_urls['leads'] }}#search-filter-panel">Сбросить фильтры</a>{% endif %}<a class="btn ghost" href="{{ search_view_urls['comments'] }}">Проверить новые комментарии</a></div>{% endfor %}</div>
 {% include "partials/list_pagination.html" %}
 </section>
 {% else %}{% include "partials/radar_post_results.html" %}{% endif %}
