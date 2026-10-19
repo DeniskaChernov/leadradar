@@ -466,34 +466,57 @@ def test_wildcard_bind_uses_loopback_for_health_and_tunnel(tmp_path):
     assert result == {"ipv4": "http://127.0.0.1:8000", "ipv6": "http://127.0.0.1:8000"}
 
 
-@pytest.mark.parametrize("reuse_tunnel", [False, True])
-def test_cloudflare_reuses_owned_tunnel_or_cleans_failed_new_start(tmp_path, reuse_tunnel):
-    root = _fake_workspace(tmp_path, fail_health=False, existing=reuse_tunnel)
+def _fake_cloudflare_workspace(
+    tmp_path, *, reuse_tunnel=False, failure="", existing_server=None,
+    initial_url="https://owned-test.trycloudflare.com",
+):
+    root = _fake_workspace(
+        tmp_path, fail_health=False,
+        existing=reuse_tunnel if existing_server is None else existing_server,
+    )
     runtime = root / ".runtime"
     cloudflared = runtime / "bin" / "cloudflared.exe"
     cloudflared.parent.mkdir()
-    cloudflared.touch()
+    if failure != "download":
+        cloudflared.touch()
     helper = root / "scripts" / "windows_runtime.ps1"
     with helper.open("a", encoding="utf-8") as stream:
         stream.write(
             rf"""
 $global:FakeCloudflared={_ps_quote(cloudflared)}
+$global:FakeConfigUrl={_ps_quote(initial_url)}
 function Get-LeadRadarSettings {{
-    [pscustomobject]@{{ host='127.0.0.1'; port=8000; url='https://owned-test.trycloudflare.com'; auth=$true }}
+    [pscustomobject]@{{ host='127.0.0.1'; port=8000; url=$global:FakeConfigUrl; auth=$true }}
 }}
-function Set-LeadRadarWebAccess {{ }}
-function Assert-LeadRadarWebAuth {{ }}
+function Get-NetTCPConnection {{
+    if ($global:FakeProcesses.ContainsKey(501)) {{ [pscustomobject]@{{ OwningProcess=501 }} }}
+}}
+function Set-LeadRadarWebAccess {{
+    param($PythonPath, $PublicUrl='')
+    if ($PublicUrl) {{ $global:FakeConfigUrl=$PublicUrl }}
+}}
+function Assert-LeadRadarWebAuth {{
+    if ({'$true' if failure == 'auth' else '$false'}) {{ throw 'Simulated unprotected server' }}
+}}
+function Invoke-RestMethod {{
+    param($Uri)
+    if ($Uri -eq 'http://127.0.0.1:8000/health') {{
+        return [pscustomobject]@{{ ok=$true; cycle_running={'$true' if failure == 'busy' else '$false'};
+            analysis_queue=0; analysis_in_flight=0 }}
+    }}
+    throw 'Simulated network unavailable'
+}}
 function Assert-LeadRadarTunnelReady {{
-    if ({'$false' if reuse_tunnel else '$true'}) {{ throw 'Simulated unreachable tunnel' }}
+    if ({'$true' if failure == 'probe' else '$false'}) {{ throw 'Simulated unreachable tunnel' }}
 }}
 function New-FakeTunnel {{
     $global:FakeProcesses[600]=[pscustomobject]@{{ ProcessId=600; ParentProcessId=1;
         ExecutablePath=$global:FakeCloudflared;
-        CommandLine='cloudflared tunnel --no-autoupdate --protocol http2 --url http://127.0.0.1:8000';
+        CommandLine='cloudflared tunnel --no-autoupdate --protocol auto --url http://127.0.0.1:8000';
         CreationDate=[datetime]'2026-10-07T00:00:00Z' }}
 }}
 function Get-Process {{
-    $process=[pscustomobject]@{{ Id=600; HasExited=$false }}
+    $process=[pscustomobject]@{{ Id=600; HasExited={'$true' if failure == 'edge' else '$false'} }}
     $process | Add-Member ScriptMethod Refresh {{ }}
     return $process
 }}
@@ -501,9 +524,12 @@ function Start-Process {{
     param($FilePath, $ArgumentList, $WorkingDirectory, $WindowStyle, [switch]$PassThru,
         $RedirectStandardOutput, $RedirectStandardError)
     if ($FilePath -ne $global:FakeCloudflared) {{ throw 'No real processes allowed' }}
+    if (($ArgumentList -join ' ') -ne 'tunnel --no-autoupdate --protocol auto --url http://127.0.0.1:8000') {{
+        throw 'Use automatic transport negotiation for the configured local origin'
+    }}
     $global:FakeStarts++
     New-FakeTunnel
-    [IO.File]::WriteAllText($RedirectStandardError, 'https://owned-test.trycloudflare.com')
+    [IO.File]::WriteAllText($RedirectStandardError, 'https://owned-test.trycloudflare.com {'unconnected' if failure == 'edge' else 'Registered tunnel connection'}')
     return (Get-Process)
 }}
 if ({'$true' if reuse_tunnel else '$false'}) {{
@@ -527,6 +553,16 @@ if (-not $global:FakeProcesses.ContainsKey(500)) {{
         ROOT / "scripts" / "start_cloudflare_windows.ps1",
         root / "scripts" / "start_cloudflare_windows.ps1",
     )
+    return root
+
+
+@pytest.mark.parametrize("reuse_tunnel,failure", [
+    (True, ""), (False, ""), (True, "probe"), (False, "probe"),
+    (False, "edge"), (False, "download"),
+])
+def test_tunnel_failure_preserves_authenticated_local_server(tmp_path, reuse_tunnel, failure):
+    root = _fake_cloudflare_workspace(tmp_path, reuse_tunnel=reuse_tunnel, failure=failure)
+    runtime = root / ".runtime"
     result = _run(
         tmp_path,
         f"""
@@ -538,24 +574,65 @@ try {{ & {_ps_quote(root / 'scripts' / 'start_cloudflare_windows.ps1')} }} catch
     public_url=(Test-Path -LiteralPath {_ps_quote(runtime / 'public-url.txt')}) }} | ConvertTo-Json -Compress
 """,
     )
-    if reuse_tunnel:
-        assert result == {
-            "failed": False,
-            "starts": 0,
-            "stops": 0,
-            "server_pid": True,
-            "tunnel_pid": True,
-            "public_url": True,
-        }
-    else:
-        assert result == {
-            "failed": True,
-            "starts": 1,
-            "stops": 3,
-            "server_pid": False,
-            "tunnel_pid": False,
-            "public_url": False,
-        }
+    new_tunnel = not reuse_tunnel and failure != "download"
+    cleaned_tunnel = new_tunnel and bool(failure)
+    assert result == {
+        "failed": bool(failure), "starts": int(new_tunnel), "stops": int(cleaned_tunnel),
+        "server_pid": True, "tunnel_pid": not cleaned_tunnel and failure != "download",
+        "public_url": not cleaned_tunnel and failure != "download",
+    }
+
+
+@pytest.mark.parametrize("failure", ["edge", "download", "busy", ""])
+def test_new_hostname_restarts_only_after_edge_connection_and_while_idle(tmp_path, failure):
+    initial_url = "https://previous-test.trycloudflare.com"
+    root = _fake_cloudflare_workspace(
+        tmp_path, existing_server=True, failure=failure, initial_url=initial_url,
+    )
+    result = _run(tmp_path, f"""
+$failed=$false
+try {{ & {_ps_quote(root / 'scripts/start_cloudflare_windows.ps1')} }} catch {{ $failed=$true }}
+@{{ failed=$failed; stops=$global:FakeStops;
+    server_pid=(Test-Path -LiteralPath {_ps_quote(root / '.runtime/server-launcher.pid')});
+    configured_url=$global:FakeConfigUrl }} | ConvertTo-Json -Compress
+""")
+    assert result == {
+        "failed": bool(failure), "stops": 2 if not failure else int(failure != "download"),
+        "server_pid": True,
+        "configured_url": initial_url if failure else "https://owned-test.trycloudflare.com",
+    }
+
+
+def test_cold_start_with_failed_auth_is_stopped_without_publishing(tmp_path):
+    root = _fake_cloudflare_workspace(tmp_path, failure="auth")
+    result = _run(tmp_path, f"""
+$failed=$false
+try {{ & {_ps_quote(root / 'scripts/start_cloudflare_windows.ps1')} }} catch {{ $failed=$true }}
+@{{ failed=$failed; starts=$global:FakeStarts; stops=$global:FakeStops;
+    server_pid=(Test-Path -LiteralPath {_ps_quote(root / '.runtime/server-launcher.pid')}) }} | ConvertTo-Json -Compress
+""")
+    assert result == {"failed": True, "starts": 0, "stops": 2, "server_pid": False}
+
+
+@pytest.mark.parametrize("state", [
+    {"ok": True, "cycle_running": False, "analysis_queue": 0, "analysis_in_flight": 0},
+    {"ok": True, "cycle_running": True, "analysis_queue": 0, "analysis_in_flight": 0},
+    {"ok": True, "cycle_running": False, "analysis_queue": 1, "analysis_in_flight": 0},
+    {"ok": True, "cycle_running": False, "analysis_queue": 0, "analysis_in_flight": 1},
+    {"ok": True},
+    {"ok": False, "cycle_running": False, "analysis_queue": 0, "analysis_in_flight": 0},
+])
+def test_restart_requires_complete_idle_health_snapshot(tmp_path, state):
+    payload = json.dumps(state)
+    result = _run(tmp_path, f"""
+function Invoke-RestMethod {{ {_ps_quote(payload)} | ConvertFrom-Json }}
+$blocked=$false
+try {{ Assert-LeadRadarIdleForRestart 'http://127.0.0.1:8000' }} catch {{ $blocked=$true }}
+@{{ blocked=$blocked }} | ConvertTo-Json -Compress
+""")
+    assert result == {"blocked": state != {
+        "ok": True, "cycle_running": False, "analysis_queue": 0, "analysis_in_flight": 0,
+    }}
 
 
 def test_launcher_cleans_child_if_pid_persistence_fails(tmp_path):

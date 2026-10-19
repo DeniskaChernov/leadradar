@@ -195,6 +195,19 @@ function Assert-LeadRadarTunnelReady {
     throw 'Local Lead Radar is healthy, but the Cloudflare URL is unavailable. See .runtime tunnel logs and check the internet connection.'
 }
 
+function Assert-LeadRadarIdleForRestart {
+    param([string]$Origin)
+    $health = Invoke-RestMethod -Uri ($Origin + '/health') -TimeoutSec 5
+    if (-not $health.ok -or -not ($health.PSObject.Properties.Name -contains 'cycle_running') -or
+            -not ($health.PSObject.Properties.Name -contains 'analysis_queue') -or
+            -not ($health.PSObject.Properties.Name -contains 'analysis_in_flight')) {
+        throw 'Cannot verify that Lead Radar is idle. The running server was not restarted.'
+    }
+    if ($health.cycle_running -or $health.analysis_queue -gt 0 -or $health.analysis_in_flight -gt 0) {
+        throw 'Lead Radar is searching or analyzing. Retry Cloudflare after it finishes; the server was not restarted.'
+    }
+}
+
 function Open-LeadRadarBrowser {
     param([string]$Url)
     try { Start-Process $Url }
