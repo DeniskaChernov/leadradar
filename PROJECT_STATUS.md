@@ -1,5 +1,27 @@
 # Lead Radar — состояние проекта
 
+## Перенос приложения на сервер: подготовлен, нужен доступ — 2026-10-20
+
+Пользователь поручил перенести приложение с ПК, сохраняя полностью бесплатный
+вариант. Сам перенос **не выполнен**: нет доступа к целевой VM/SSH или
+аккаунту Oracle.
+Предварительный кандидат — Oracle Cloud Always Free; регистрация требует
+проверки владельца/карты, бесплатные мощности зависят от региона. Платные
+ресурсы не создавались; сервер не выключался, локальный full runtime работает.
+
+Создан source archive commit eff5bbd (576 entries) без данных/секретов и
+отдельный SQLite snapshot `.backups/lead_radar-server-migration-20261020-082954.db`.
+Integrity ok/FK 0; 558 comments/leads, 486 contacts, 2525 contact_events,
+711 cost_events, 152 lead notifications и 3 significant change notifications.
+Хеш истории совпадает с проверкой перед gateway. Приватные настройки не
+копировались в исходники и не отправлялись на хостинг. Manifest находится
+в `.runtime/server-migration-preparation-20261020.json`.
+Порядок staging, остановки локального Telegram worker, финального snapshot,
+переключения постоянного адреса и rollback: [SERVER_MIGRATION.md](docs/SERVER_MIGRATION.md).
+Архив не является доказательством развёртывания или готового Linux транспорта.
+Повторные deployment readiness тесты: 5 PASS; Ruff/diff check PASS. Код приложения
+на этом этапе не менялся; последняя полная регрессия — 1698 PASS / 2 SKIP.
+
 ## Постоянный адрес Cloudflare без платного сервера — 2026-10-20
 
 Платный Railway отклонён пользователем. Вместо него развёрнут отдельный Worker
