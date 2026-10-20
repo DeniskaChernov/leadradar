@@ -6,6 +6,7 @@ from typing import TypeVar
 
 from app.providers.base import (
     InstagramProvider,
+    ProviderCallFailedError,
     ProviderCallUncertainError,
     ProviderResponseError,
     ProviderUsageBlockedError,
@@ -225,7 +226,7 @@ class BudgetedInstagramProvider(InstagramProvider):
         try:
             result = await call()
         except Exception as exc:
-            await self._settle_failed_call(
+            confirmed_units = await self._settle_failed_call(
                 reservation_id,
                 reserved_units=1,
                 details=details,
@@ -233,6 +234,8 @@ class BudgetedInstagramProvider(InstagramProvider):
             )
             if isinstance(exc, ProviderUsageBlockedError):
                 raise
+            if confirmed_units is not None:
+                raise ProviderCallFailedError(confirmed_units) from exc
             raise ProviderCallUncertainError(
                 "External call failed after delivery started without provider credit proof"
             ) from exc
@@ -383,7 +386,7 @@ class BudgetedInstagramProvider(InstagramProvider):
                         post, known_comment_ids=known_comment_ids, max_pages=1, cursor=page_cursor,
                     )
             except Exception as exc:
-                await self._settle_failed_call(
+                confirmed_units = await self._settle_failed_call(
                     reservation_id,
                     reserved_units=1,
                     details=details,
@@ -394,10 +397,15 @@ class BudgetedInstagramProvider(InstagramProvider):
                 if pages_fetched > 0:
                     # Keep already paid-for pages and the failed request's
                     # cursor. A later scan retries exactly this failed page.
-                    fetch_error = ProviderCallUncertainError.__name__
+                    fetch_error = (
+                        ProviderCallFailedError.__name__ if confirmed_units is not None
+                        else ProviderCallUncertainError.__name__
+                    )
                     coverage = "PARTIAL"
                     cursor_exhausted = False
                     break
+                if confirmed_units is not None:
+                    raise ProviderCallFailedError(confirmed_units) from exc
                 raise ProviderCallUncertainError(
                     "Comment batch failed after delivery started without provider credit proof"
                 ) from exc
@@ -485,7 +493,7 @@ class BudgetedInstagramProvider(InstagramProvider):
         reserved_units: int,
         details: dict,
         uncertain_reason: str,
-    ) -> None:
+    ) -> int | None:
         """Списать подтверждённые credits и очистить leftover observations.
 
         Без credit proof резервация остаётся UNCERTAIN — charge не выдумывается.
@@ -510,6 +518,7 @@ class BudgetedInstagramProvider(InstagramProvider):
             details={**details, "failed_after_provider_credit": True},
             unit_source="PROVIDER_CONFIRMED",
         )
+        return confirmed_units
 
     async def _persist_credit_observations(self) -> int | None:
         observations = self.inner.pop_credit_observations()

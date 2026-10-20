@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from app.db.models import ExternalBudgetReservation, ReservationStatus
-from app.providers.base import ProviderCallUncertainError
+from app.providers.base import ProviderCallFailedError, ProviderCallUncertainError
 from app.providers.budgeted import BudgetedInstagramProvider, ScanBudget
 from app.schemas.instagram import InstagramProfile, ProviderCreditObservation
 from app.services.usage_service import ExternalUsageService
@@ -138,7 +138,7 @@ async def test_billed_parse_failure_does_not_leak_credits_to_next_call(session_f
         scan_budget=ScanBudget(default_limit=10),
     )
 
-    with pytest.raises(ProviderCallUncertainError):
+    with pytest.raises(ProviderCallFailedError):
         await provider.get_profile("aiko.uz")
 
     profile = await provider.get_profile("aiko.uz")

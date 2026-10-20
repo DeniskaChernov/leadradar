@@ -721,9 +721,17 @@ class RuleBasedLeadAnalyzer:
             ),
         ]
         matched_checks: list[tuple[Intent, int, str, list[str]]] = []
+        # "One must not be mistaken/deceived" is advice, not a request for
+        # furniture. Remove only this clause when evaluating BUY; another
+        # price question or a genuine "menga stul kerak" must still count.
+        purchase_text = re.sub(
+            r"\b(?:adashmaslik|aldanmaslik|адашмаслик|алданмаслик)\s+(?:kerak|керак)\b",
+            " ", text,
+        )
         for intent, phrases, base_score, reason in checks:
             matched_phrases = [
-                phrase for phrase in phrases if self._contains_marker(text, phrase)
+                phrase for phrase in phrases
+                if self._contains_marker(purchase_text if intent == Intent.BUY else text, phrase)
             ]
             if matched_phrases:
                 matched_checks.append((intent, base_score, reason, matched_phrases[:2]))
@@ -830,6 +838,13 @@ class RuleBasedLeadAnalyzer:
                 context,
                 buyer_role=BuyerRole.B2B_HORECA,
                 role_score=90,
+            )
+
+        if purchase_text != text:
+            return self._result(
+                False, 15, Intent.REACTION, self._product(caption), language,
+                "Совет или отзыв без отдельного запроса о покупке мебели.",
+                context, buyer_role=BuyerRole.UNKNOWN,
             )
 
         if any(word in text for word in self._reaction_words) and len(text.split()) <= 16:

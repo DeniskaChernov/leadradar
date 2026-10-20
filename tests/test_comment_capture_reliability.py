@@ -176,6 +176,44 @@ async def test_budgeted_failed_second_page_returns_first_page_and_retry_cursor(s
     assert statuses == [ReservationStatus.FINALIZED, ReservationStatus.UNCERTAIN]
 
 
+@pytest.mark.parametrize("charged", [0, 2])
+async def test_confirmed_failed_later_page_preserves_results_without_uncertain_charge(session_factory, charged):
+    from app.db.models import CostEvent
+
+    await seed_scrapecreators_instagram_policy(session_factory)
+    cursors = []
+
+    def handler(request):
+        cursor = request.url.params.get("cursor")
+        cursors.append(cursor)
+        if cursor:
+            return httpx.Response(500, json={"error": "upstream", "credits_charged": charged})
+        return httpx.Response(200, json={
+            "comments": [_comment_payload("first")], "cursor": "second-page",
+            "credits_charged": 1,
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = BudgetedInstagramProvider(
+            ScrapeCreatorsProvider("test-local", client=client, max_attempts=3),
+            ExternalUsageService(session_factory), enabled=True, daily_limit=100,
+            scan_budget=ScanBudget(default_limit=5),
+        )
+        batch = await provider.get_comment_batch(_post(), max_pages=3)
+    assert cursors == [None, "second-page"]
+    assert [item.platform_comment_id for item in batch.comments] == ["first"]
+    assert batch.next_cursor == "second-page" and batch.pages_fetched == 1
+    assert batch.coverage_status == "PARTIAL" and not batch.cursor_exhausted
+    assert batch.fetch_error == "ProviderCallFailedError"
+    assert provider.scan_budget.used == 1 + charged
+    async with session_factory() as session:
+        reservations = list(await session.scalars(select(ExternalBudgetReservation).order_by(ExternalBudgetReservation.id)))
+        costs = list(await session.scalars(select(CostEvent).order_by(CostEvent.id)))
+    assert [row.status for row in reservations] == [ReservationStatus.FINALIZED] * 2
+    assert [row.units for row in costs] == [1, charged]
+    assert {row.unit_source for row in costs} == {"PROVIDER_CONFIRMED"}
+
+
 async def test_monitor_commits_paid_page_after_later_page_failure_and_resumes(session_factory):
     await seed_scrapecreators_instagram_policy(session_factory)
     failed_once = False

@@ -6,6 +6,7 @@ from typing import TypeVar
 
 from app.providers.base import (
     InstagramProvider,
+    ProviderCallFailedError,
     ProviderCallUncertainError,
     ProviderError,
     ProviderUsageBlockedError,
@@ -91,8 +92,9 @@ class FallbackInstagramProvider(InstagramProvider):
         except ProviderUsageBlockedError:
             # Safety/budget blocks are intentional. Never bypass them by trying another paid API.
             raise
-        except ProviderCallUncertainError:
-            # Billing ambiguous after call_started — fallback would risk double spend.
+        except (ProviderCallUncertainError, ProviderCallFailedError):
+            # A delivered failure is not replayed on another paid provider,
+            # whether its billing is known or still requires reconciliation.
             raise
         except ProviderError as exc:
             logger.warning(

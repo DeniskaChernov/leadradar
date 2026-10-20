@@ -1,4 +1,5 @@
 import json
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -12,9 +13,12 @@ from app.db.models import (
     ExternalBudgetReservation,
     ReservationStatus,
 )
-from app.providers.base import ProviderCallUncertainError
+from app.providers.base import ProviderCallFailedError, ProviderCallUncertainError, ProviderError
 from app.providers.budgeted import BudgetedInstagramProvider, ScanBudget
+from app.providers.fallback import FallbackInstagramProvider
+from app.providers.mock import MockInstagramProvider
 from app.providers.scrapecreators import ScrapeCreatorsProvider
+from app.schemas.instagram import InstagramPost
 from app.schemas.leads import Intent, LeadAnalysis
 from app.services.ai_service import (
     AIOutputError,
@@ -125,7 +129,8 @@ async def test_default_openai_client_has_one_attempt_and_timeout_below_lease():
 
 
 @pytest.mark.parametrize("charged", [0, 1, None])
-async def test_provider_500_retains_only_explicit_credit_proof(session_factory, charged):
+@pytest.mark.parametrize("operation", ["get_reels", "get_comment_batch", "get_reply_batch"])
+async def test_provider_500_retains_only_explicit_credit_proof(session_factory, charged, operation):
     await seed_scrapecreators_instagram_policy(session_factory)
     calls = []
 
@@ -142,8 +147,28 @@ async def test_provider_500_retains_only_explicit_credit_proof(session_factory, 
             ScrapeCreatorsProvider("test-local", client=client, max_attempts=3),
             usage, enabled=True, daily_limit=10, scan_budget=ScanBudget(default_limit=5),
         )
-        with pytest.raises(ProviderCallUncertainError):
-            await provider.get_reels("aiko.uz")
+        fallback = MockInstagramProvider()
+        fallback.get_reels = AsyncMock()
+        fallback.get_comment_batch = AsyncMock()
+        fallback.get_reply_batch = AsyncMock()
+        chain = FallbackInstagramProvider(provider, fallback)
+        post = InstagramPost(platform_post_id="654321", competitor="aiko.uz",
+                             url="https://www.instagram.com/p/AbCd1234567/")
+        with pytest.raises(ProviderError) as error:
+            if operation == "get_reels":
+                await chain.get_reels("aiko.uz")
+            elif operation == "get_comment_batch":
+                await chain.get_comment_batch(post, max_pages=1)
+            else:
+                await chain.get_reply_batch(post, "123456")
+        assert isinstance(error.value, ProviderCallUncertainError) is (charged is None)
+        if charged is not None:
+            assert isinstance(error.value, ProviderCallFailedError)
+            assert error.value.confirmed_units == charged
+        fallback.get_reels.assert_not_awaited()
+        fallback.get_comment_batch.assert_not_awaited()
+        fallback.get_reply_batch.assert_not_awaited()
+        assert provider.scan_budget.used == (1 if charged is None else charged)
 
     assert len(calls) == 1
     async with session_factory() as session:

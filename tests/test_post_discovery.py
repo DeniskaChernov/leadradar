@@ -179,6 +179,64 @@ async def test_failed_page_does_not_advance_cursor(session_factory):
     assert state.next_cursor == "B"
 
 
+async def test_failure_receipts_are_idempotent_and_cannot_rewind_newer_pages(session_factory):
+    state = await record(session_factory)
+    failed_at = datetime.now(UTC) + timedelta(seconds=1)
+    async with session_factory() as session:
+        service = PostDiscoveryService(session)
+        changed = await service.record_failure(state.competitor_id, state.provider,
+            requested_cursor="A", error_type="ProviderCallFailedError", failed_at=failed_at)
+        assert changed.next_cursor == "A" and changed.visited_cursors == []
+        assert changed.coverage_status == CoverageStatus.PARTIAL and changed.completed_at is None
+        await session.commit()
+        assert await service.record_failure(state.competitor_id, state.provider,
+            requested_cursor="A", error_type="duplicate", failed_at=failed_at) is None
+        assert await service.record_failure(state.competitor_id, state.provider,
+            requested_cursor="A", error_type="stale", failed_at=failed_at-timedelta(seconds=1)) is None
+    await record(session_factory, cursor="A", next_cursor="B")
+    async with session_factory() as session:
+        assert await PostDiscoveryService(session).record_failure(state.competitor_id, state.provider,
+            requested_cursor="A", error_type="delayed", failed_at=failed_at+timedelta(seconds=5)) is None
+        saved = await session.get(PostDiscoveryState, state.id)
+        assert saved.next_cursor == "B" and saved.visited_cursors == ["A"]
+
+
+@pytest.mark.parametrize("failure", ["http", "malformed"])
+async def test_failed_historical_page_does_not_starve_other_companies(session_factory, failure):
+    await seed_scrapecreators_instagram_policy(session_factory)
+    continuations = []
+
+    def respond(request):
+        handle = request.url.params["handle"]
+        cursor = request.url.params.get("next_max_id")
+        if cursor and handle == "aiko.uz":
+            continuations.append(handle)
+            return httpx.Response(500 if failure == "http" else 200,
+                json={"items": [{}], "credits_charged": 0})
+        if cursor:
+            continuations.append(handle)
+        return httpx.Response(200, json={"items": [], "credits_charged": 1,
+            "more_available": not bool(cursor), "next_max_id": None if cursor else handle+"-A"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        provider = BudgetedInstagramProvider(ScrapeCreatorsProvider("test-only", client=client),
+            ExternalUsageService(session_factory), enabled=True, daily_limit=100, scan_budget=ScanBudget(6))
+        instance = monitor(session_factory, provider)
+        instance.competitors = ["aiko.uz", "beta"]
+        first = await instance.run_cycle()
+        assert first.errors == 1
+        second = await instance.run_cycle()
+        assert second.errors == 0
+    assert continuations == ["aiko.uz", "beta"]
+    async with session_factory() as session:
+        states = {row.provider+str(row.competitor_id): row for row in await session.scalars(select(PostDiscoveryState))}
+        assert len(states) == 2
+        pending = [row for row in states.values() if row.next_cursor]
+        assert len(pending) == 1 and pending[0].next_cursor == "aiko.uz-A"
+        assert pending[0].coverage_status == CoverageStatus.PARTIAL
+        assert len([row for row in states.values() if row.completed_at is not None]) == 1
+
+
 async def test_loop_across_separate_cycles_is_blocked(session_factory):
     await record(session_factory)
     await record(session_factory, cursor="A", next_cursor="B")

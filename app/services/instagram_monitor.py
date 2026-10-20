@@ -354,6 +354,15 @@ class InstagramMonitor:
                     except Exception as exc:
                         stats.errors += 1
                         discovery_failed.add(handle)
+                        try:
+                            async with self.session_factory() as session:
+                                await PostDiscoveryService(session).record_failure(
+                                    plan.competitor_id, self.provider.post_cursor_provider,
+                                    requested_cursor=cursor, error_type=type(exc).__name__,
+                                )
+                                await session.commit()
+                        except Exception:
+                            logger.exception("post_continuation_failure_state_failed competitor=%s", handle)
                         logger.exception("post_continuation_failed competitor=%s error_type=%s",
                                          handle, type(exc).__name__)
 

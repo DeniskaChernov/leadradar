@@ -50,6 +50,16 @@ class ProviderCallUncertainError(ProviderError):
     """
 
 
+class ProviderCallFailedError(ProviderError):
+    """Delivered request failed, but its charge is known; never replay implicitly."""
+
+    def __init__(self, confirmed_units: int):
+        self.confirmed_units = confirmed_units
+        super().__init__(
+            f"External call failed; provider confirmed charge: {confirmed_units} credits"
+        )
+
+
 class InstagramProvider(ABC):
     name: str
 

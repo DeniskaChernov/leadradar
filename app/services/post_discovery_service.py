@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import CoverageStatus, PostDiscoveryState
@@ -17,6 +17,27 @@ class PostDiscoveryService:
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def record_failure(
+        self, competitor_id: int, provider: str, *, requested_cursor: str,
+        error_type: str, failed_at: datetime | None = None,
+    ) -> PostDiscoveryState | None:
+        """Rotate failed work fairly, retaining its exact retry position."""
+        attempted = failed_at or datetime.now(UTC)
+        if attempted.tzinfo is None:
+            attempted = attempted.replace(tzinfo=UTC)
+        attempted = attempted.astimezone(UTC)
+        # The cursor and timestamp guard make delayed/replayed failures unable
+        # to overwrite a page that another worker has already committed.
+        return await self.session.scalar(update(PostDiscoveryState).where(
+            PostDiscoveryState.competitor_id == competitor_id,
+            PostDiscoveryState.provider == provider,
+            PostDiscoveryState.next_cursor == requested_cursor,
+            or_(PostDiscoveryState.page_checked_at.is_(None), PostDiscoveryState.page_checked_at < attempted),
+            or_(PostDiscoveryState.stop_reason.is_(None), PostDiscoveryState.stop_reason.not_in(self.BLOCKED_REASONS)),
+        ).values(coverage_status=CoverageStatus.PARTIAL, page_checked_at=attempted,
+                 completed_at=None, stop_reason=error_type[:64]).returning(PostDiscoveryState)
+            .execution_options(synchronize_session="fetch"))
 
     async def record_page(
         self, competitor_id: int, page: PostFetchResult, *, requested_cursor: str | None,
@@ -54,6 +75,7 @@ class PostDiscoveryService:
             return state
         if page.fetch_error:
             state.coverage_status = CoverageStatus.PARTIAL
+            state.page_checked_at = now
             state.stop_reason = page.fetch_error
             # Keep the failed request cursor (None means retry the head).
             state.next_cursor = requested_cursor
