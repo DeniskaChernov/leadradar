@@ -1,5 +1,27 @@
 # Lead Radar — состояние проекта
 
+## Постоянный адрес без покупки домена: подготовка Railway — 2026-10-20
+
+Пользователь выбрал адрес хостинга вместо собственного домена. Выбран Railway
+с предоставляемым HTTPS hostname `*.up.railway.app`; точный адрес ещё не выдан.
+CLI авторизован, но создание отдельного проекта `lead-radar` заблокировано:
+`Your trial has expired. Please select a plan to continue using Railway.`
+Платный тариф не подключался; новый сервис/volume не созданы, база и секреты
+на хостинг не отправлялись. Продолжение требует решения пользователя о расходах.
+
+Подготовлены отдельный `railway.full.json` (полный runtime, одна replica),
+безопасный шаблон staging vars и порядок переноса без двух polling-процессов.
+В стандартном web-only профиле healthcheck timeout поднят с 30 до 180 секунд.
+5 deployment readiness тестов PASS, Ruff/diff check PASS; staging vars прошли
+валидацию Settings с обязательной аутентификацией и выключенными платными вызовами.
+Это подготовка: живой build и перенос на Railway ещё не проверены.
+
+SQLite snapshot `.backups/lead_radar-railway-preparation-20261020-071444.db`:
+integrity ok/FK 0; исходные contact_events сохранены. 558 comments/leads,
+486 contacts, 2525 contact_events, 711 cost_events, 152 notification_logs;
+последний поиск #75. Локальный и текущий временный Cloudflare health — 200.
+Подробности и финансовые ограничения: [RAILWAY.md](docs/RAILWAY.md).
+
 ## Корректировки поиска и проверки рабочей базы — 2026-10-20
 
 Исправлены неверная пометка неизвестного списания при подтверждённых credits,
