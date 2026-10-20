@@ -603,6 +603,94 @@ try {{ & {_ps_quote(root / 'scripts/start_cloudflare_windows.ps1')} }} catch {{ 
     }
 
 
+@pytest.mark.parametrize("stale,sync_failure", [(False, False), (True, False), (True, True)])
+def test_gateway_reconnect_keeps_permanent_url_and_running_backend(tmp_path, stale, sync_failure):
+    public = "https://leadradar-gateway.example.workers.dev"
+    tunnel_url = "https://owned-test.trycloudflare.com"
+    root = _fake_cloudflare_workspace(tmp_path, reuse_tunnel=True, initial_url=public)
+    runtime = root / ".runtime"
+    helper = root / "scripts/windows_runtime.ps1"
+    with helper.open("a", encoding="utf-8") as stream:
+        stream.write(rf"""
+$global:FakeSync=''
+$global:FakeWatches=0
+$global:FakeProcesses[600].CommandLine='cloudflared tunnel --no-autoupdate --protocol auto --http-host-header leadradar-gateway.example.workers.dev --url http://127.0.0.1:8000'
+Set-LeadRadarRuntimeText {_ps_quote(runtime / 'public-url.txt')} {_ps_quote(public)}
+Set-LeadRadarRuntimeText {_ps_quote(runtime / 'cloudflare-origin-url.txt')} {_ps_quote(tunnel_url)}
+function Get-LeadRadarGateway {{
+    [pscustomobject]@{{ public_url={_ps_quote(public)}; host='leadradar-gateway.example.workers.dev' }}
+}}
+function Sync-LeadRadarGateway {{
+    param($PythonPath,$OriginUrl)
+    $global:FakeSync=$OriginUrl
+    if ({'$true' if sync_failure else '$false'}) {{ throw 'Simulated route update failure' }}
+}}
+function Start-LeadRadarGatewayWatchdog {{ $global:FakeWatches++ }}
+function Invoke-RestMethod {{
+    param($Uri)
+    if ($Uri -eq {_ps_quote(tunnel_url + '/health')} -and {'$true' if stale else '$false'}) {{ throw 'Stale tunnel' }}
+    return [pscustomobject]@{{ ok=$true; radar_live_armed=$true; cycle_running=$false; analysis_queue=0; analysis_in_flight=0 }}
+}}
+function Start-Process {{
+    param($FilePath,$ArgumentList,$WorkingDirectory,$WindowStyle,[switch]$PassThru,$RedirectStandardOutput,$RedirectStandardError)
+    if ($FilePath -ne $global:FakeCloudflared -or ($ArgumentList -join ' ') -ne 'tunnel --no-autoupdate --protocol auto --http-host-header leadradar-gateway.example.workers.dev --url http://127.0.0.1:8000') {{ throw 'Unexpected process or origin host header' }}
+    $global:FakeStarts++
+    New-FakeTunnel
+    $global:FakeProcesses[600].CommandLine='cloudflared ' + ($ArgumentList -join ' ')
+    [IO.File]::WriteAllText($RedirectStandardError, '{tunnel_url} Registered tunnel connection')
+    return (Get-Process)
+}}
+""")
+    result = _run(tmp_path, f"""
+$failed=$false
+try {{ & {_ps_quote(root / 'scripts/start_cloudflare_windows.ps1')} }} catch {{ $failed=$true }}
+@{{ failed=$failed; starts=$global:FakeStarts; stops=$global:FakeStops;
+    backend=$global:FakeProcesses.ContainsKey(501); configured_url=$global:FakeConfigUrl;
+    public_url=(Get-Content -LiteralPath {_ps_quote(runtime / 'public-url.txt')} -Raw).Trim();
+    origin_file=(Test-Path -LiteralPath {_ps_quote(runtime / 'cloudflare-origin-url.txt')});
+    synced=$global:FakeSync; watches=$global:FakeWatches }} | ConvertTo-Json -Compress
+""")
+    assert result == {
+        "failed": sync_failure, "starts": int(stale), "stops": int(stale) + int(sync_failure),
+        "backend": True, "configured_url": public, "public_url": public,
+        "origin_file": not sync_failure, "synced": tunnel_url, "watches": int(not sync_failure),
+    }
+
+
+def test_gateway_watchdog_recovers_after_two_failures_and_stops_when_disabled(tmp_path):
+    root = tmp_path / "watchdog"
+    (root / "scripts").mkdir(parents=True)
+    runtime = root / ".runtime"
+    runtime.mkdir()
+    config = runtime / "cloudflare-gateway.json"
+    config.write_text("{}")
+    shutil.copyfile(ROOT / "scripts/watch_cloudflare_gateway.ps1", root / "scripts/watch_cloudflare_gateway.ps1")
+    (root / "scripts/start_cloudflare_windows.ps1").write_text("$global:Recoveries++", encoding="utf-8-sig")
+    (root / "scripts/windows_runtime.ps1").write_text(f"""
+$global:Sleeps=0; $global:Recoveries=0; $global:Probes=0
+function Start-Sleep {{
+    param($Seconds)
+    if ($Seconds -ne 60) {{ throw 'Unexpected backoff' }}
+    $global:Sleeps++
+    if ($global:Sleeps -eq 3) {{ Remove-Item -LiteralPath {_ps_quote(config)} }}
+}}
+function Get-LeadRadarSettings {{ [pscustomobject]@{{ port=8000 }} }}
+function Get-LeadRadarOrigin {{ 'http://127.0.0.1:8000' }}
+function Get-LeadRadarGateway {{ [pscustomobject]@{{ public_url='https://unit.example.workers.dev' }} }}
+function Invoke-RestMethod {{
+    param($Uri)
+    if ($Uri -eq 'http://127.0.0.1:8000/health') {{ return [pscustomobject]@{{ ok=$true }} }}
+    $global:Probes++
+    throw 'Simulated public outage'
+}}
+""", encoding="utf-8-sig")
+    result = _run(tmp_path, f"""
+& {_ps_quote(root / 'scripts/watch_cloudflare_gateway.ps1')}
+@{{ probes=$global:Probes; recoveries=$global:Recoveries; sleeps=$global:Sleeps }} | ConvertTo-Json -Compress
+""")
+    assert result == {"probes": 2, "recoveries": 1, "sleeps": 3}
+
+
 def test_cold_start_with_failed_auth_is_stopped_without_publishing(tmp_path):
     root = _fake_cloudflare_workspace(tmp_path, failure="auth")
     result = _run(tmp_path, f"""
@@ -658,6 +746,7 @@ def test_windows_lifecycle_and_logon_scripts_parse(tmp_path):
         "start_web_windows.ps1",
         "start_cloudflare_windows.ps1",
         "stop_cloudflare_windows.ps1",
+        "watch_cloudflare_gateway.ps1",
         "start_at_logon_windows.ps1",
         "install_windows_startup.ps1",
     ]

@@ -10,6 +10,7 @@ __pycache__/
 htmlcov/
 .backups/
 .runtime/
+.wrangler/
 lead_radar.db
 *.db-journal
 *.sqlite3

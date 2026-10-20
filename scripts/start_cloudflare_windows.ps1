@@ -33,6 +33,9 @@ try {
     Assert-LeadRadarWebAuth $origin
     $localReady = $true
     $worker = Get-LeadRadarWebWorker $pythonPath $settings.port
+    $gateway = Get-LeadRadarGateway $pythonPath
+    $tunnelUrlFile = $urlFile
+    if ($gateway) { $tunnelUrlFile = Join-Path $runtime 'cloudflare-origin-url.txt' }
 
     if (-not (Test-Path -LiteralPath $cloudflared)) {
         $release = Invoke-RestMethod 'https://api.github.com/repos/cloudflare/cloudflared/releases/latest'
@@ -49,20 +52,31 @@ try {
     $publicUrl = ''
     $savedTunnel = Get-LeadRadarSavedProcess $pidFile $cloudflared '(?i)(?:^|\s)tunnel(?:\s|$).*\s--url\s+http://'
     $originPattern = '\s--url\s+"?' + [regex]::Escape($origin) + '"?(?:\s|$)'
-    if ($savedTunnel -and $savedTunnel.CommandLine -match $originPattern -and (Test-Path -LiteralPath $urlFile)) {
-        $candidateUrl = (Get-Content -LiteralPath $urlFile -Raw).Trim()
+    $hostHeaderMatches = -not $gateway
+    if ($gateway) { $hostHeaderMatches = $savedTunnel -and $savedTunnel.CommandLine -match ('\s--http-host-header\s+' + [regex]::Escape($gateway.host) + '(?:\s|$)') }
+    if ($savedTunnel -and $hostHeaderMatches -and $savedTunnel.CommandLine -match $originPattern -and (Test-Path -LiteralPath $tunnelUrlFile)) {
+        $candidateUrl = (Get-Content -LiteralPath $tunnelUrlFile -Raw).Trim()
         if ($candidateUrl -match '^https://[a-z0-9-]+\.trycloudflare\.com$') {
             $publicUrl = $candidateUrl
             $tunnel = Get-Process -Id $savedTunnel.ProcessId -ErrorAction SilentlyContinue
+            if ($gateway) {
+                try {
+                    $probe = Invoke-RestMethod ($candidateUrl + '/health') -TimeoutSec 8
+                    if (-not $probe.ok -or -not ($probe.PSObject.Properties.Name -contains 'radar_live_armed')) { $publicUrl = '' }
+                } catch { $publicUrl = '' }
+            }
         }
     }
     if (-not $publicUrl) {
         Stop-LeadRadarOwnedProcess $savedTunnel
         Remove-LeadRadarProcessFiles $pidFile
-        Remove-Item -LiteralPath $urlFile -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $tunnelUrlFile -ErrorAction SilentlyContinue
         $stamp = (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
         $tunnelLog = Join-Path $runtime ('cloudflare-' + $stamp + '.stderr.log')
-        $tunnel = Start-Process -FilePath $cloudflared -ArgumentList 'tunnel','--no-autoupdate','--protocol','auto','--url',$origin `
+        $tunnelArguments = @('tunnel','--no-autoupdate','--protocol','auto')
+        if ($gateway) { $tunnelArguments += @('--http-host-header', $gateway.host) }
+        $tunnelArguments += @('--url', $origin)
+        $tunnel = Start-Process -FilePath $cloudflared -ArgumentList $tunnelArguments `
             -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru `
             -RedirectStandardOutput (Join-Path $runtime ('cloudflare-' + $stamp + '.stdout.log')) `
             -RedirectStandardError $tunnelLog
@@ -87,9 +101,11 @@ try {
         }
         if (-not $publicUrl) { throw 'Cloudflare did not issue a URL. See .runtime tunnel logs.' }
         if (-not $tunnelConnected) { throw 'Cloudflare did not connect to its edge. The local server remains available.' }
-        Set-LeadRadarRuntimeText $urlFile $publicUrl
+        Set-LeadRadarRuntimeText $tunnelUrlFile $publicUrl
     }
-    if ($worker -and $settings.url -ne $publicUrl) {
+    $visibleUrl = $publicUrl
+    if ($gateway) { $visibleUrl = $gateway.public_url }
+    if ($worker -and $settings.url -ne $visibleUrl) {
         # A new hostname needs a reload of the exact allowed-host configuration.
         # Never interrupt a paid search/analysis just to replace its public URL.
         Assert-LeadRadarIdleForRestart $origin
@@ -99,14 +115,19 @@ try {
         $webWasStarted = $true
         $localReady = $false
     }
-    Set-LeadRadarWebAccess $pythonPath $publicUrl
+    Set-LeadRadarWebAccess $pythonPath $visibleUrl
     & (Join-Path $PSScriptRoot 'start_web_windows.ps1')
     Assert-LeadRadarWebAuth $origin
     $localReady = $true
-    Assert-LeadRadarTunnelReady $publicUrl
-    Write-Output ('Cloudflare URL: ' + $publicUrl + '/radar')
+    if ($gateway) {
+        Sync-LeadRadarGateway $pythonPath $publicUrl
+        Set-LeadRadarRuntimeText $urlFile $visibleUrl
+    }
+    Assert-LeadRadarTunnelReady $visibleUrl
+    if ($gateway) { Start-LeadRadarGatewayWatchdog $projectRoot }
+    Write-Output ('Cloudflare URL: ' + $visibleUrl + '/radar')
     Write-Output ('Password is stored locally: ' + (Join-Path $runtime 'web-access.txt'))
-    if ($OpenBrowser) { Open-LeadRadarBrowser ($publicUrl + '/radar') }
+    if ($OpenBrowser) { Open-LeadRadarBrowser ($visibleUrl + '/radar') }
 } catch {
     # Cleanup an unhealthy cold start, never a ready cabinet after a tunnel error.
     if ($webWasStarted -and -not $localReady) { Stop-LeadRadarWeb $pythonPath $runtime }
@@ -114,7 +135,7 @@ try {
         $ownedTunnel = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $tunnel.Id) -ErrorAction SilentlyContinue
         if ($ownedTunnel -and $ownedTunnel.ExecutablePath -eq $cloudflared -and $ownedTunnel.CommandLine -match $originPattern) { Stop-LeadRadarOwnedProcess $ownedTunnel }
         Remove-LeadRadarProcessFiles $pidFile
-        Remove-Item -LiteralPath $urlFile -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $tunnelUrlFile -ErrorAction SilentlyContinue
     }
     throw
 } finally {

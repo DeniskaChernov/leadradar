@@ -42,6 +42,47 @@ function Set-LeadRadarWebAccess {
     if ($LASTEXITCODE -ne 0) { throw 'Cannot configure browser access.' }
 }
 
+function Get-LeadRadarGateway {
+    param([string]$PythonPath)
+    if (-not (Test-Path -LiteralPath (Join-Path (Get-Location).Path '.runtime\cloudflare-gateway.json'))) { return $null }
+    $json = & $PythonPath -m scripts.cloudflare_gateway config
+    if ($LASTEXITCODE -ne 0) { throw 'Invalid local gateway configuration. Local server was not stopped.' }
+    return ($json | ConvertFrom-Json)
+}
+
+function Sync-LeadRadarGateway {
+    param([string]$PythonPath, [string]$OriginUrl)
+    & $PythonPath -m scripts.cloudflare_gateway sync --origin $OriginUrl
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot synchronize the permanent gateway route.' }
+}
+
+function Start-LeadRadarGatewayWatchdog {
+    param([string]$ProjectRoot)
+    $runtime = Join-Path $ProjectRoot '.runtime'
+    $pidFile = Join-Path $runtime 'cloudflare-watchdog.pid'
+    $executable = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $scriptPath = Join-Path $ProjectRoot 'scripts\watch_cloudflare_gateway.ps1'
+    $commandPattern = '(?i)\s-File\s+"?' + [regex]::Escape($scriptPath) + '"?\s*$'
+    $existing = Get-LeadRadarSavedProcess $pidFile $executable $commandPattern
+    if ($existing) { return }
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
+    $process = Start-Process -FilePath $executable -ArgumentList '-NoProfile','-WindowStyle','Hidden','-File',('"' + $scriptPath + '"') `
+        -WorkingDirectory $ProjectRoot -WindowStyle Hidden -PassThru `
+        -RedirectStandardOutput (Join-Path $runtime ('gateway-watchdog-' + $stamp + '.stdout.log')) `
+        -RedirectStandardError (Join-Path $runtime ('gateway-watchdog-' + $stamp + '.stderr.log'))
+    Save-LeadRadarProcess $pidFile $process
+}
+
+function Stop-LeadRadarGatewayWatchdog {
+    param([string]$ProjectRoot)
+    $pidFile = Join-Path $ProjectRoot '.runtime\cloudflare-watchdog.pid'
+    $executable = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $scriptPath = Join-Path $ProjectRoot 'scripts\watch_cloudflare_gateway.ps1'
+    $owned = Get-LeadRadarSavedProcess $pidFile $executable ('(?i)\s-File\s+"?' + [regex]::Escape($scriptPath) + '"?\s*$')
+    Stop-LeadRadarOwnedProcess $owned
+    Remove-LeadRadarProcessFiles $pidFile
+}
+
 function Get-LeadRadarOrigin {
     param($Settings)
     $hostname = $Settings.host
