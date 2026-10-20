@@ -35,7 +35,10 @@ from app.services.audience_facet_service import AudienceFacetQuery
 from app.services.audience_service import AudienceEngine
 from app.services.competitor_import_service import CompetitorImportService
 from app.services.crm_service import CRMRequestConflictError, CRMService
-from app.services.deployment_readiness_service import inspect_offline_readiness
+from app.services.deployment_readiness_service import (
+    inspect_offline_readiness,
+    inspect_runtime_readiness,
+)
 from app.services.discovery_service import DiscoveryService
 from app.services.export_recipe_service import ExportRecipeService
 from app.services.feedback_learning_service import FeedbackLearningService
@@ -325,7 +328,7 @@ def build_web_app(
 
     @app.middleware("http")
     async def protect_mini_app(request: Request, call_next):
-        public_paths = {"/auth", "/api/auth/telegram", "/api/auth/password", "/health", "/ready", "/sw.js"}
+        public_paths = {"/auth", "/api/auth/telegram", "/api/auth/password", "/health", "/health/runtime", "/ready", "/sw.js"}
         if not settings.web_auth_enabled:
             request.state.manager_id = local_manager_id()
             request.state.web_role = WebRole.ADMIN
@@ -3102,6 +3105,11 @@ def build_web_app(
             payload["analysis_in_flight"] = analysis_pipeline.in_flight_count
             payload["ai_analysis_max_concurrency"] = ops_control.snapshot().ai_analysis_max_concurrency
         return payload
+
+    @app.get("/health/runtime")
+    async def runtime_ready():
+        payload = await inspect_runtime_readiness(workflow.session_factory)
+        return JSONResponse(payload, status_code=200 if payload["ok"] else 503)
 
     @app.get("/ready")
     async def ready():

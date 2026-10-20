@@ -151,8 +151,12 @@ class TelegramWebAuth:
         return hmac.compare_digest(expected, csrf_token)
 
     def _session_key(self) -> bytes:
+        if self.settings.web_session_secret:
+            return hashlib.sha256(
+                f"lead-radar:web-session:{self.settings.web_session_secret}:{self.settings.web_password_hash}".encode()
+            ).digest()
         if not self.settings.telegram_bot_token:
-            raise TelegramAuthError("Telegram bot token is required for signed web sessions")
+            raise TelegramAuthError("A web session secret or Telegram bot token is required for signed web sessions")
         return hashlib.sha256(
             f"lead-radar:{self.settings.telegram_bot_token}:{self.settings.web_password_hash}".encode()
         ).digest()

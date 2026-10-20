@@ -1,89 +1,131 @@
-# Перенос с компьютера на отдельный сервер
+# Размещение Lead Radar на Render Free и Neon Free
 
-## Состояние 20 октября 2026
+## Выбранный режим
 
-Пользователь поручил перенести приложение на сервер, сохранив ранее указанное
-условие полностью бесплатного размещения. Перенос **ещё не выполнен**:
-доступа к целевой VM/SSH/облачному аккаунту нет. Платный Railway не используется.
-Текущий локальный full runtime и постоянный Cloudflare адрес продолжают работать.
+Пользователь согласовал бесплатное размещение без банковской карты и запуск
+при открытии кабинета. После 15 минут без входящего трафика Render Free
+останавливает процесс; пробуждение занимает примерно минуту. Во сне Telegram
+polling и обработка команд недоступны. Искусственный keepalive не настраивается.
+Локальный диск Render эфемерен, поэтому SQLite на него не переносится.
+Не использовать Render Free Postgres с истечением через 30 дней.
 
-Подготовлен source archive из commit `eff5bbd` (576 entries), без .env,
-ключей, локальной базы, runtime и резервных копий. Отдельно сохранён согласованный
-SQLite snapshot `.backups/lead_radar-server-migration-20261020-082954.db`:
-integrity ok/FK 0, 558 comments/leads, 486 contacts, 2525 contact_events,
-711 cost_events, 152 lead notifications, 3 significant change notifications.
-Полный хеш contact_events совпадает с проверкой до подготовки gateway.
-Никакие данные/секреты на новый хостинг не отправлялись, сервер не создавался.
-Manifest с SHA256 архива/базы сохранён локально:
-`.runtime/server-migration-preparation-20261020.json`.
-Это подготовительная копия: перед переключением нужен свежий snapshot.
+Внешняя база — отдельный Neon project lead-radar, регион Frankfurt,
+PostgreSQL 18, план существующей организации Free проверен. Ограничения Free
+на дату проверки: 1 GB/project, 100 CU-hours/month/project. Не добавлять карту,
+не переходить на paid plan и не создавать платные диски/фоновые workers.
+Oracle, Railway и Northflank исключены по условиям пользователя.
 
-## Бесплатный кандидат
+Приложение ещё работает на компьютере. Перенос не завершён: вход в Render
+не выполнен, владелец сообщил, что не получается войти. Source worktree с
+подготовкой отделён от live worktree, чтобы новая head не ломала старый /ready.
 
-Oracle Cloud Always Free предоставляет VM и постоянное блочное хранилище;
-ресурсы создаются только в home region. Доступность зависит от свободных мощностей.
-По документации на дату проверки A1 Free: суммарно до 2 OCPU / 12 GB RAM,
-boot/block storage до 200 GB на tenancy с учётом уже созданных ресурсов.
-Предварительный размер одной VM: Ubuntu 24.04, A1 1 OCPU / 6 GB RAM,
-boot disk около 50 GB, только при подтверждении Always Free в консоли.
-Не использовать временные $300 credits для ресурсов вне Always Free,
-не включать Pay As You Go и платные дополнения. При отсутствии бесплатной
-мощности не заменять её платной машиной.
+## Подготовка базы
 
-Oracle требует личный аккаунт и проверку карты; возможен временный
-авторизационный hold. Регистрация/вход пока не выполнены. Не создавать второй
-бесплатный аккаунт, если у пользователя уже есть один. Oracle вправе отозвать
-простаивающую бесплатную VM, поэтому это не гарантия непрерывной работы.
-Не создавать искусственную нагрузку для обхода политики простоя.
+Neon project: young-haze-35624501. Production branch br-morning-pine-b9lklzht
+пока без таблиц. Изолированные child branches:
+- migration-staging / br-empty-cake-b9jpfpqi — исторические Alembic миграции;
+- snapshot-validation / br-blue-silence-b9e8fxbs — восстановление полной копии.
 
-Render Free и Koyeb Free в текущей архитектуре не выбраны: они засыпают и
-не дают persistent volume для существующей SQLite. Перенос приложения
-на такой ephemeral disk без отдельной миграции БД недопустим.
+Существующий BTT CRM project не затрагивается. Предварительная исходная копия:
+.backups/lead_radar-server-migration-20261020-082954.db в live worktree,
+SHA256 0b97da3b938656e9b405114c279f6c5956d13ba4943e2183ae183b43956f450d.
+Это предварительная копия, не финальная production база.
+558 comments/leads, 486 contacts, 2525 contact_events, 711 cost_events,
+152 SENT lead notifications и 3 SENT significant-change notifications.
+Integrity ok, FK violations 0. Оригинальная revision ca219b748d30.
 
-## Порядок после получения доступа
+Создать рабочую копию через штатный SQLite backup, обновить только её до head.
+Новая revision d72c4a9e1036 расширяет 15 колонок Telegram IDs до BIGINT на
+PostgreSQL. В SQLite это no-op, кроме Alembic version. Контрольные суммы
+всех 53 таблиц должны совпасть до/после обновления. Следующая revision
+e83d5baf2147 расширяет language в PostgreSQL до TEXT, сохраняя длинные
+исторические метки без обрезания. SQLite VARCHAR(16) остаётся прежним.
 
-1. Проверить целевую VM, владельца, тариф, оставшиеся бесплатные лимиты и SSH.
-   Пароль/ключ/реквизиты не запрашивать в публичном чате; использовать локально
-   сохранённый ключ или открытую пользователем консоль аккаунта.
-2. Создать отдельные каталоги кода, настроек и постоянных данных. Подготовить
-   автозапуск/restart supervisor, ротацию логов и резервные копии. Существующий
-   Dockerfile запускает web-only по умолчанию; полный runtime запускается
-   отдельной командой `python -m app.main`. Один экземпляр приложения.
-3. Загрузить snapshot и проверить integrity, FK, Alembic head, количества строк
-   и полную историю contact_events. Данные не импортировать в пустую новую БД
-   поверх существующей базы пользователя. PostgreSQL в этом пути не требуется.
-4. Поднять сервер в staging web-only: EXTERNAL_KILL_SWITCH=true,
-   EXTERNAL_LIVE_UNLOCK пустой, INSTAGRAM_PROVIDER=replay,
-   INSTAGRAM_LIVE_CALLS_ENABLED=false, OPENAI_LIVE_CALLS_ENABLED=false,
-   LEAD_SEARCH_ENABLED=false, MONITOR_SCHEDULE_ENABLED=false,
-   AI_PENDING_RETRY_ENABLED=false. Существующий бот остаётся только локально.
-   Сохранить обязательную аутентификацию кабинета и текущий пароль.
-5. Проверить /health, /ready, отказ без входа, HOT, карточки и историю поисков.
-   Подготовить транспорт Cloudflare на сервере и обновление маршрута Worker.
-   Windows launcher/watchdog не предназначены для Linux: их нельзя просто
-   перенести и объявить рабочими. Серверный транспорт ещё не развёрнут.
-6. Проверить отсутствие активного поиска/анализа локально. Сохранить параметры
-   Windows автозапуска, выключить локальный logon bootstrap и watchdog,
-   остановить старый runtime. Только после этого сделать финальный SQLite
-   snapshot и перенести его на остановленный staging. Это исключает второй
-   Telegram polling и потерю изменений между предварительной и финальной копией.
-7. Загрузить production settings приватно: существующий токен/роли бота,
-   пароль кабинета, разрешения и лимиты поиска. Изменить только пути данных,
-   сетевой bind и параметры размещения. Сохранить ручной запуск поиска.
-8. Запустить один полный runtime на сервере; проверить health/ready и отсутствие
-   второго Telegram worker. Переключить существующий Worker URL на серверный
-   транспорт. Проверить доступ извне, вход, HOT, историю по постам/компаниям,
-   preview и неизменность сохранённых данных. Не запускать платный поиск/AI
-   или тестовые Telegram отправки ради проверки переноса.
-9. Проверить восстановление транспорта и перезапуск приложения/VM, сохранение
-   SQLite, отсутствие двойных процессов. Только после этого объявлять перенос
-   завершённым и работу независимой от компьютера пользователя.
+DSN брать из Connect для нужного branch и роли, не из другого проекта.
+Для asyncpg сформировать driver-native URL postgresql+asyncpg с direct endpoint
+(без -pooler) и ssl=verify-full. Не передавать libpq параметр channel_binding
+драйверу asyncpg. DSN хранить только в отдельном игнорируемом .runtime env file.
+Системные CA, CERT_REQUIRED и hostname verification обязательны.
 
-Rollback: сначала остановить удалённый full runtime, затем вернуть локальную
-копию с самой свежей БД, параметры Windows startup и штатный launcher. Новый
-локальный туннель обновит тот же постоянный адрес. Не запускать оба бота вместе.
+## Проверяемое восстановление
 
-Источники: [Oracle Free Tier](https://www.oracle.com/cloud/free/),
-[Always Free VM/storage/idle policy](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm),
-[Render Free](https://render.com/docs/free),
-[Koyeb Free](https://www.koyeb.com/docs/reference/instances).
+Dry run читает SQLite в read-only транзакции и не подключается к цели:
+
+    python -m scripts.migrate_sqlite_to_postgres --snapshot .runtime/migration-source.db
+
+Для полного восстановления нужна БД **без таблиц**. Исторические Alembic
+миграции создают стартовые policy rows, поэтому сначала выполнять их на такой
+цели нельзя. Явный флаг создаёт текущую схему из моделей и version row внутри
+той же PostgreSQL транзакции, что и импорт. Snapshot revision должна совпадать
+с единственной head кода. Никакая существующая схема не очищается.
+
+    python -m scripts.migrate_sqlite_to_postgres --snapshot .runtime/migration-source.db --env-file .runtime/neon-target.env --apply --initialize-target --report .runtime/import.json
+
+Повтор после успешного импорта — без --initialize-target:
+
+    python -m scripts.migrate_sqlite_to_postgres --snapshot .runtime/migration-source.db --env-file .runtime/neon-target.env --apply --report .runtime/import-repeat.json
+
+Повтор должен вернуть copied=false, sequences_repaired=0 и те же 53 хеша.
+Отличающаяся непустая база, несовпадение revision или неожиданные таблицы —
+отказ, без удаления/перезаписи. Проверить command.check и реальные страницы.
+Платные API и Telegram сообщения ради проверки не запускать.
+
+## Первоначальный Render staging
+
+render.yaml — JSON-совместимый YAML. Один service Free, Frankfurt, Docker,
+ветка codex/render-neon-migration, autoDeployTrigger=off. Health check:
+/health/runtime, один запрос revision с лимитом 3 секунды. Полный аудит /ready
+с Alembic reflection остаётся ручной проверкой и не подходит для probes каждые
+несколько секунд: Render ждёт HTTP ответ не более 5 секунд. Нет Render database,
+диска, cron или отдельного worker. Command: python -m app.main --web-only.
+Вход через GitHub DeniskaChernov завершает владелец. До создания проверить,
+что UI действительно показывает Free и не требует карту/оплату.
+
+Приватно задать в Render Environment DATABASE_URL нужного staging branch,
+текущий WEB_PASSWORD_HASH, TELEGRAM_ADMIN_CHAT_IDS и фактический HTTPS WEB_PUBLIC_URL выделенного
+onrender.com адреса. Не отключать CSRF, TrustedHost или обязательный вход.
+Не загружать .env в Git/Docker image. Bot token на staging не передаётся.
+Render генерирует отдельный WEB_SESSION_SECRET для подписи сессий/CSRF;
+он должен оставаться постоянным при перезапуске контейнера. Минимум 32 символа.
+Ротация этого ключа или смена пароля отзывают существующие веб-сессии.
+Kill switch включён, live unlock пустой, провайдер replay; live Instagram/OpenAI,
+поиск, расписание и retries отключены. Replay поиск на импортированных данных
+тоже не запускать: он создаст fixture данные.
+
+Проверить /health, /ready, отказ без входа, HOT, карточки, searches, группировку
+по постам/компаниям, историю и бесплатные preview. Проверить повторный запуск
+с сохранением PostgreSQL данных. Не считать web-only готовым full bot.
+
+## Что требуется перед полным переключением
+
+1. Проверить единственное владение full runtime на PostgreSQL. Текущий
+   DatabaseRuntimeLock защищает SQLite файлом; PostgreSQL не даёт exclusive=true,
+   поэтому recovery прерванных поисков там намеренно пропускается. Render rollout
+   может временно держать старый и новый экземпляры. До устранения/проверки
+   этого ограничения full polling и автоматический redeploy не включать.
+2. Проверить отсутствие активного поиска/анализа локально. Сохранить настройки
+   Windows автозапуска, отключить локальный bootstrap и gateway watchdog,
+   остановить локальный full runtime. Только затем снять свежую финальную копию.
+3. Обновить копию до head, восстановить в пустой production branch, сравнить
+   все таблицы и историю. Staging-копия не заменяет свежую финальную.
+4. Приватно передать прежние настройки бота/ролей, пароль и лимиты поиска
+   в Render Environment. Сохранить ручной режим и существующего бота.
+5. Запустить один full runtime; проверить readiness и отсутствие второго polling,
+   страницы без платных поисков и тестовых Telegram отправок.
+6. Переключить публичный URL. Имеющийся Cloudflare Worker принимает только
+   trycloudflare origin; нельзя записать туда onrender.com и объявить работу
+   проверенной. Для старой ссылки нужен безопасный redirect alias, либо
+   использовать постоянный URL Render. Это ещё не сделано.
+7. Проверить остановку/пробуждение Render, отсутствие дублей и сохранность данных.
+   Только после этого объявлять приложение независимым от ПК.
+
+Rollback: сначала остановить удалённый full runtime. Если на сервере уже были
+изменения, вернуть актуальные данные, а не предварительный SQLite snapshot.
+Затем восстановить локальный автозапуск и штатный launcher. Не включать два бота.
+
+Источники: [Render Free](https://render.com/docs/free),
+[Blueprint](https://render.com/docs/blueprint-spec),
+[Rollout](https://render.com/docs/deploys),
+[Health checks](https://render.com/docs/health-checks), [Neon](https://neon.com/pricing),
+[Connections](https://neon.com/docs/connect/connect-from-any-app),
+[asyncpg](https://magicstack.github.io/asyncpg/current/api/index.html).

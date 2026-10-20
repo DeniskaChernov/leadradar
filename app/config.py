@@ -89,6 +89,7 @@ class Settings(BaseSettings):
     web_manager_id: int = 0
     web_auth_enabled: bool = False
     web_password_hash: str = Field(default="", repr=False)
+    web_session_secret: str = Field(default="", repr=False)
     telegram_init_data_max_age_seconds: int = Field(default=300, ge=60, le=3600)
     log_level: str = "INFO"
     sentry_dsn: str = ""
@@ -213,8 +214,10 @@ class Settings(BaseSettings):
         if publicly_exposed and not self.web_public_url.startswith("https://"):
             raise ValueError("Public web access requires an HTTPS WEB_PUBLIC_URL")
         if self.web_auth_enabled:
-            if not self.telegram_bot_token:
-                raise ValueError("WEB_AUTH_ENABLED=true requires TELEGRAM_BOT_TOKEN")
+            if self.web_session_secret and len(self.web_session_secret) < 32:
+                raise ValueError("WEB_SESSION_SECRET must contain at least 32 characters")
+            if not self.telegram_bot_token and not self.web_session_secret:
+                raise ValueError("WEB_AUTH_ENABLED=true requires TELEGRAM_BOT_TOKEN or WEB_SESSION_SECRET")
             access_ids = (
                 set(self.telegram_admin_chat_ids)
                 | set(self.telegram_manager_chat_ids)

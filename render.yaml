@@ -1,0 +1,38 @@
+{
+  "services": [
+    {
+      "type": "web",
+      "name": "lead-radar",
+      "runtime": "docker",
+      "repo": "https://github.com/DeniskaChernov/leadradar",
+      "branch": "codex/render-neon-migration",
+      "region": "frankfurt",
+      "plan": "free",
+      "autoDeployTrigger": "off",
+      "dockerfilePath": "./Dockerfile",
+      "dockerContext": ".",
+      "dockerCommand": "python -m app.main --web-only",
+      "healthCheckPath": "/health/runtime",
+      "maxShutdownDelaySeconds": 60,
+      "envVars": [
+        {"key": "DATABASE_URL", "sync": false},
+        {"key": "WEB_PUBLIC_URL", "sync": false},
+        {"key": "WEB_PASSWORD_HASH", "sync": false},
+        {"key": "TELEGRAM_ADMIN_CHAT_IDS", "sync": false},
+        {"key": "WEB_SESSION_SECRET", "generateValue": true},
+        {"key": "WEB_ENABLED", "value": "true"},
+        {"key": "WEB_HOST", "value": "0.0.0.0"},
+        {"key": "WEB_PORT", "value": "8000"},
+        {"key": "WEB_AUTH_ENABLED", "value": "true"},
+        {"key": "EXTERNAL_KILL_SWITCH", "value": "true"},
+        {"key": "EXTERNAL_LIVE_UNLOCK", "value": ""},
+        {"key": "INSTAGRAM_PROVIDER", "value": "replay"},
+        {"key": "INSTAGRAM_LIVE_CALLS_ENABLED", "value": "false"},
+        {"key": "OPENAI_LIVE_CALLS_ENABLED", "value": "false"},
+        {"key": "LEAD_SEARCH_ENABLED", "value": "false"},
+        {"key": "MONITOR_SCHEDULE_ENABLED", "value": "false"},
+        {"key": "AI_PENDING_RETRY_ENABLED", "value": "false"}
+      ]
+    }
+  ]
+}

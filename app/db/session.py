@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import ssl
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 
 from alembic.config import Config
 from sqlalchemy import event
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -62,9 +64,24 @@ def normalize_database_url(url: str) -> str:
     return url
 
 
+def database_connect_args(url: str) -> dict:
+    """Use system CAs for explicit verify-full, including on fresh containers.
+
+    asyncpg's string mode otherwise requires ~/.postgresql/root.crt. An explicit
+    SSLContext keeps certificate and hostname verification enabled without that
+    developer-machine file. Other connection policies remain driver-managed.
+    """
+    parsed = make_url(url)
+    if parsed.get_backend_name() == "sqlite":
+        return {"timeout": 30}
+    if parsed.get_backend_name() == "postgresql" and parsed.query.get("ssl") == "verify-full":
+        return {"ssl": ssl.create_default_context()}
+    return {}
+
+
 def create_engine(settings: Settings) -> AsyncEngine:
     url = normalize_database_url(settings.database_url)
-    connect_args = {"timeout": 30} if url.startswith("sqlite+") else {}
+    connect_args = database_connect_args(url)
     engine = create_async_engine(url, pool_pre_ping=True, connect_args=connect_args)
     if url.startswith("sqlite+"):
 

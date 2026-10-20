@@ -10,7 +10,7 @@ from alembic import context
 from app.config import get_settings
 from app.db.base import Base
 from app.db.models import *  # noqa: F403
-from app.db.session import normalize_database_url
+from app.db.session import database_connect_args, normalize_database_url
 
 config = context.config
 if config.config_file_name is not None:
@@ -58,6 +58,7 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=database_connect_args(config.get_main_option("sqlalchemy.url")),
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

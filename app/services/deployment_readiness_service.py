@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from alembic.config import Config
@@ -66,6 +67,29 @@ def _check_migration_drift() -> None:
     # This lock runs in a worker thread and never blocks the HTTP event loop.
     with _ALEMBIC_CHECK_LOCK:
         command.check(alembic_config())
+
+
+@lru_cache(maxsize=1)
+def code_migration_heads() -> tuple[str, ...]:
+    """A running build has immutable migration files; cache their expected head."""
+    return tuple(ScriptDirectory.from_config(alembic_config()).get_heads())
+
+
+async def inspect_runtime_readiness(session_factory, *, timeout_seconds: float = 3.0) -> dict:
+    """Bounded platform probe; the full schema audit remains in /ready and CLI."""
+    payload = {"ok": False, "database_healthy": False, "migration_at_head": False}
+    try:
+        async with asyncio.timeout(timeout_seconds):
+            async with session_factory() as session:
+                revisions = (await session.execute(text("SELECT version_num FROM alembic_version"))).scalars().all()
+                payload["database_healthy"] = True
+                heads = code_migration_heads()
+                payload["migration_at_head"] = len(heads) == 1 and revisions == list(heads)
+                payload["ok"] = payload["migration_at_head"]
+    except Exception:
+        # Public health responses must not disclose DSNs, SQL or exception text.
+        pass
+    return payload
 
 
 def backup_present(settings: Settings) -> bool:

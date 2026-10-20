@@ -29,6 +29,10 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+# SQLite INTEGER is already signed 64-bit; PostgreSQL requires BIGINT explicitly.
+TELEGRAM_ID_TYPE = BigInteger().with_variant(Integer(), "sqlite")
+
+
 class ContactEventType(StrEnum):
     COMMENT_FOUND = "COMMENT_FOUND"
     LEAD_CREATED = "LEAD_CREATED"
@@ -397,13 +401,13 @@ class Product(Base):
     import_source: Mapped[str] = mapped_column(String(32), default="SEED")
     catalog_version: Mapped[int] = mapped_column(Integer, default=1)
     category_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    category_confirmed_by: Mapped[int | None] = mapped_column(Integer)
+    category_confirmed_by: Mapped[int | None] = mapped_column(TELEGRAM_ID_TYPE)
     price_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    price_confirmed_by: Mapped[int | None] = mapped_column(Integer)
+    price_confirmed_by: Mapped[int | None] = mapped_column(TELEGRAM_ID_TYPE)
     stock_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    stock_confirmed_by: Mapped[int | None] = mapped_column(Integer)
+    stock_confirmed_by: Mapped[int | None] = mapped_column(TELEGRAM_ID_TYPE)
     cogs_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    cogs_confirmed_by: Mapped[int | None] = mapped_column(Integer)
+    cogs_confirmed_by: Mapped[int | None] = mapped_column(TELEGRAM_ID_TYPE)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -417,7 +421,7 @@ class ProductChange(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
     change_type: Mapped[str] = mapped_column(String(32), index=True)
-    manager_telegram_id: Mapped[int] = mapped_column(Integer, index=True)
+    manager_telegram_id: Mapped[int] = mapped_column(TELEGRAM_ID_TYPE, index=True)
     source: Mapped[str] = mapped_column(String(32), default="MANUAL")
     before_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     after_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -507,7 +511,7 @@ class Contact(Base):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     current_lead_score: Mapped[int] = mapped_column(Integer, default=0)
-    assigned_manager_telegram_id: Mapped[int | None] = mapped_column()
+    assigned_manager_telegram_id: Mapped[int | None] = mapped_column(TELEGRAM_ID_TYPE)
     phone: Mapped[str | None] = mapped_column(String(64))
     preferred_channel: Mapped[str | None] = mapped_column(String(32))
     city: Mapped[str | None] = mapped_column(String(128))
@@ -1068,7 +1072,7 @@ class SignificantChangeNotification(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     change_id: Mapped[int] = mapped_column(ForeignKey("significant_changes.id"), index=True)
-    chat_id: Mapped[int] = mapped_column(index=True)
+    chat_id: Mapped[int] = mapped_column(TELEGRAM_ID_TYPE, index=True)
     message_id: Mapped[int | None] = mapped_column()
     status: Mapped[NotificationStatus] = mapped_column(
         Enum(NotificationStatus, native_enum=False), default=NotificationStatus.PENDING, index=True
@@ -1105,11 +1109,11 @@ class Lead(Base):
     lead_score: Mapped[int] = mapped_column(Integer, default=0)
     ai_reason: Mapped[str] = mapped_column(Text, default="")
     analysis_details: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    language: Mapped[str | None] = mapped_column(String(16))
+    language: Mapped[str | None] = mapped_column(String(16).with_variant(Text(), "postgresql"))
     status: Mapped[LeadStatus] = mapped_column(
         Enum(LeadStatus, native_enum=False), default=LeadStatus.AI_PENDING, index=True
     )
-    assigned_manager_telegram_id: Mapped[int | None] = mapped_column()
+    assigned_manager_telegram_id: Mapped[int | None] = mapped_column(TELEGRAM_ID_TYPE)
     ai_source: Mapped[str | None] = mapped_column(String(32))
     ai_attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     ai_last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -1136,7 +1140,7 @@ class Deal(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), index=True)
     lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"), index=True)
-    manager_telegram_id: Mapped[int | None] = mapped_column()
+    manager_telegram_id: Mapped[int | None] = mapped_column(TELEGRAM_ID_TYPE)
     product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), index=True)
     status: Mapped[DealStatus] = mapped_column(
         Enum(DealStatus, native_enum=False), default=DealStatus.NEW, index=True
@@ -1179,7 +1183,7 @@ class DealSaleSnapshot(Base):
     sale_currency: Mapped[str] = mapped_column(String(8), default="UZS")
     catalog_version: Mapped[int | None] = mapped_column(Integer)
     evidence_ids_json: Mapped[list[int]] = mapped_column(JSON, default=list)
-    manager_telegram_id: Mapped[int] = mapped_column(Integer)
+    manager_telegram_id: Mapped[int] = mapped_column(TELEGRAM_ID_TYPE)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -1193,7 +1197,7 @@ class ContactEvent(Base):
     )
     lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"), index=True)
     deal_id: Mapped[int | None] = mapped_column(ForeignKey("deals.id"), index=True)
-    manager_telegram_id: Mapped[int | None] = mapped_column()
+    manager_telegram_id: Mapped[int | None] = mapped_column(TELEGRAM_ID_TYPE)
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -1275,7 +1279,7 @@ class NotificationLog(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
-    chat_id: Mapped[int] = mapped_column(index=True)
+    chat_id: Mapped[int] = mapped_column(TELEGRAM_ID_TYPE, index=True)
     message_id: Mapped[int | None] = mapped_column()
     content_version: Mapped[int] = mapped_column(Integer, default=1)
     enrichment_followup_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -1520,7 +1524,7 @@ class OpeningSignal(Base):
     contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id"), index=True)
     lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"))
     review_status: Mapped[str] = mapped_column(String(32), default="PENDING_REVIEW", index=True)
-    reviewed_by_manager_id: Mapped[int | None] = mapped_column(Integer)
+    reviewed_by_manager_id: Mapped[int | None] = mapped_column(TELEGRAM_ID_TYPE)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -1670,7 +1674,7 @@ class FxRatePolicy(Base):
     rate: Mapped[Decimal] = mapped_column(Numeric(18, 8))
     effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    manager_telegram_id: Mapped[int] = mapped_column(Integer, index=True)
+    manager_telegram_id: Mapped[int] = mapped_column(TELEGRAM_ID_TYPE, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )
@@ -1680,7 +1684,7 @@ class AgentChatSession(Base):
     __tablename__ = "agent_chat_sessions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    manager_telegram_id: Mapped[int] = mapped_column(Integer, index=True)
+    manager_telegram_id: Mapped[int] = mapped_column(TELEGRAM_ID_TYPE, index=True)
     title: Mapped[str | None] = mapped_column(String(160))
     context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(
